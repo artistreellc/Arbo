@@ -291,3 +291,17 @@ CONFIRMED feature pulled forward with Mike's OK (D27); Phase 4 is #30 CONFIRMED;
 nothing from 5B/5C built. 9) Rabbit-holes: carried — D26 live-DB drift rollback
 (needs Mike's approval); Phase 4 live-GIS wiring (deferred above); O4 calendar
 color map. All named.
+
+### "Connect them" — live app ↔ live DB (2026-08-01, verified)
+The production Vercel app is fully connected to the live Supabase project with
+zero remaining action items. Root cause of the earlier 500s: the dashboard env
+values were malformed phone-pastes (presence-only health checks can't see
+that). Fix is D46 — trimmed env, shape-validated Supabase credentials
+(`getShaped()`), and a gitignored `private/deploy.config.json` carried only
+inside the private deployment upload as backstop. Verified live over the
+sanctioned webhook path: `/health` → `db:true`; `/api/leads` → 200 with the
+real seeded lead row; `/api/followups` → 200 (empty queue, seasonal feed
+healthy); `/api/brief` → 200 with a valid window. Dashboard env vars remain
+Mike's to fix/delete at leisure — well-formed env always wins over carried.
+Recommended (non-blocking): rotate the service-role key eventually, since it
+transited chat during setup.
