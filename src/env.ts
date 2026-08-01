@@ -4,9 +4,11 @@ import 'dotenv/config';
 // nowhere else, so it's easy to audit what the app touches. Values are never
 // logged (§4.3) — only booleans about whether a group is configured.
 
+// Values are TRIMMED: dashboard copy-pastes love to smuggle a trailing newline
+// into a key, which then silently poisons an Authorization header.
 const get = (k: string): string | undefined => {
-  const v = process.env[k];
-  return v && v.trim() !== '' ? v : undefined;
+  const v = process.env[k]?.trim();
+  return v && v !== '' ? v : undefined;
 };
 
 export const env = {
