@@ -10,7 +10,7 @@ export default [
     languageOptions: {
       parser: tsparser,
       parserOptions: { ecmaVersion: 2022, sourceType: 'module' },
-      globals: { process: 'readonly', console: 'readonly', fetch: 'readonly', URL: 'readonly' },
+      globals: { process: 'readonly', console: 'readonly', fetch: 'readonly', URL: 'readonly', URLSearchParams: 'readonly' },
     },
     plugins: { '@typescript-eslint': tseslint },
     rules: {

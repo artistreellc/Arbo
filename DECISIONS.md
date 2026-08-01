@@ -36,7 +36,21 @@ Every non-obvious choice and why. The map out of any future rabbit hole
 | D17 | Emergency detection is **deterministic and biased toward catching** (a false ping to Mike is acceptable; a miss is not). | §3.4 — a tree on a house/car/line must never be slotted as a normal estimate. |
 | D18 | Price/diagnosis patterns live in `guardrails.json` (per golden rule), consumed by the guard. | Single source of truth (§12) — tune the rules in one place; code + tests follow. |
 
+## Phase 3 — Booking & scheduling
+
+| # | Decision | Why |
+|---|---|---|
+| D19 | **Recommend-don't-commit** enforced in code: `bookApproved` throws `ApprovalRequiredError` unless `approved===true`, and `DoubleBookingError` if the slot is taken. | §5A #11 — ARBOR suggests, Mike approves. Never auto-books. |
+| D20 | Calendar client is **auth-agnostic** (`CalendarApi` + injected token), like Drive. | Same code runs under service account / OAuth at deploy; testable offline. |
+| D21 | Default colors **avoid Tomato (11)** — Mike uses it for payment reminders (seen on his live calendar). estimate=Blueberry(9), job=Basil(10), emergency=Tangerine(6), follow_up=Banana(5). | Don't clash with an existing convention (§5A #9). |
+| D22 | Working days Mon–Fri, 8am–5pm, with a productive-day factor 200/260. | §2 realistic capacity (rain/breakdowns cut ~260 workdays to ~200). |
+| D23 | Timezone via `Intl.DateTimeFormat` (America/New_York), not manual offsets. | §12 avoids the timezone rabbit hole. |
+
 ## Open decisions (revisit before the relevant phase)
+
+- **O4 — Confirm calendar color convention with Mike.** Defaults chosen to avoid
+  his payment-red; confirm estimate/job/emergency/follow-up colors match how he
+  wants his calendar to read.
 
 - **O1 — GitHub remote for `arbor`:** default plan is a new private repo under
   the `artistreellc` org named `arbor`. Confirm owner/name/visibility before first push.

@@ -59,6 +59,29 @@ end-to-end ✅ (verified live); **Drive folders auto-create per property** ✅
 Production runtime auth for the Drive API (service account vs OAuth) is wired at
 deploy — see DECISIONS O3.
 
+## Phase 3 — Booking, color-coding & ZIP clustering
+
+| # | Task | Status | Test |
+|---|------|--------|------|
+| 3.1 | Auth-agnostic Google Calendar client (list/create events) | ☑ | typecheck; live create+delete verified |
+| 3.2 | Color mapping per event kind (avoids the payment red /11) | ☑ | `scheduling.test.ts` |
+| 3.3 | Availability: working days/hours, realistic-day factor, no double-booking | ☑ | `scheduling.test.ts` |
+| 3.4 | ZIP/route clustering — same-ZIP work scored higher | ☑ | `scheduling.test.ts` |
+| 3.5 | Scheduler: recommend ranked slots, **never auto-commit** (§5A #11) — **AUDIT** | ☑ | `scheduling.test.ts` |
+
+**Acceptance (Phase 3):** a booked estimate lands **color-correct** (verified
+live: colorId 9 estimate created on the real calendar, then deleted), clustered
+near same-ZIP work, **without double-booking**; recommendations **require
+explicit approval** (booking throws otherwise). 98 tests pass.
+
+### Phase 3 audit (§11) — result
+94→98 tests pass, typecheck + lint clean. Guardrails/legal ✅ (unchanged, still
+green). No regressions ✅. Recommend-don't-commit enforced in code
+(`ApprovalRequiredError`) ✅. Double-booking blocked (`DoubleBookingError`) ✅.
+Colors avoid Mike's payment red; no Sunday bookings ✅. Rabbit-hole: color
+mapping is a sensible default pending Mike's confirmation (O4) — named, not
+silent. Timezone handled via Intl (no ad-hoc offset math).
+
 ## Phase 2 — Inbound voice reception (the brain)
 
 | # | Task | Status | Test |
