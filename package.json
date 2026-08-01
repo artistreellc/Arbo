@@ -4,14 +4,17 @@
   "private": true,
   "type": "module",
   "description": "ARBOR — AI reception & operations platform for Art-is-Tree LLC",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "boot": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "npm run typecheck && npm run lint && npm run test"
+    "check": "npm run typecheck && npm run lint && npm run test",
+    "serve": "tsx src/server.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.47.10",

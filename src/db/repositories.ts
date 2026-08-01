@@ -245,3 +245,92 @@ export async function createPhoto(input: CreatePhotoInput): Promise<{ id: string
   if (res.error) throw res.error;
   return res.data as { id: string };
 }
+
+// ---------------------------------------------------------------------------
+// Read-side queries for the backend API (server.ts). Same service-role-only
+// access model as the writes above.
+// ---------------------------------------------------------------------------
+
+export interface LeadListRow {
+  id: string;
+  source: string;
+  details: string | null;
+  qualification: Record<string, unknown> | null;
+  is_emergency: boolean;
+  status: string;
+  created_at: string;
+  contact: { name: string | null; phones: string[]; is_first_timer: boolean } | null;
+  property: { address: string; city: string; zip: string | null } | null;
+}
+
+/** Newest leads for the inbox (default: everything not yet converted/lost). */
+export async function listLeads(limit = 25): Promise<LeadListRow[]> {
+  const db = getDb();
+  const res = await db
+    .from('lead')
+    .select(
+      'id, source, details, qualification, is_emergency, status, created_at, contact:contact_id(name, phones, is_first_timer), property:property_id(address, city, zip)',
+    )
+    .in('status', ['new', 'qualified', 'emergency'])
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (res.error) throw res.error;
+  return res.data as unknown as LeadListRow[];
+}
+
+export interface DayStopRow {
+  id: string;
+  kind: 'estimate' | 'job';
+  timeIso: string | null;
+  name: string | null;
+  phone: string | null;
+  address: string | null;
+  city: string | null;
+  zip: string | null;
+  isFirstTimer: boolean | null;
+  scope: string | null;
+}
+
+/** Every estimate + job scheduled inside [fromIso, toIso) — feeds the brief. */
+export async function listStopsBetween(fromIso: string, toIso: string): Promise<DayStopRow[]> {
+  const db = getDb();
+  const [est, jobs] = await Promise.all([
+    db
+      .from('estimate')
+      .select('id, scheduled_slot, zip_cluster, property:property_id(address, city, zip), contact:contact_id(name, phones, is_first_timer)')
+      .gte('scheduled_slot', fromIso)
+      .lt('scheduled_slot', toIso),
+    db
+      .from('job')
+      .select('id, scheduled_for, materials, property:property_id(address, city, zip), contact:contact_id(name, phones, is_first_timer)')
+      .gte('scheduled_for', fromIso)
+      .lt('scheduled_for', toIso),
+  ]);
+  if (est.error) throw est.error;
+  if (jobs.error) throw jobs.error;
+
+  type Joined = {
+    id: string;
+    scheduled_slot?: string;
+    scheduled_for?: string;
+    materials?: string | null;
+    property: { address: string; city: string; zip: string | null } | null;
+    contact: { name: string | null; phones: string[]; is_first_timer: boolean } | null;
+  };
+  const map = (r: Joined, kind: 'estimate' | 'job'): DayStopRow => ({
+    id: r.id,
+    kind,
+    timeIso: r.scheduled_slot ?? r.scheduled_for ?? null,
+    name: r.contact?.name ?? null,
+    phone: r.contact?.phones?.[0] ?? null,
+    address: r.property?.address ?? null,
+    city: r.property?.city ?? null,
+    zip: r.property?.zip ?? null,
+    isFirstTimer: r.contact?.is_first_timer ?? null,
+    scope: r.materials ?? null,
+  });
+  return [
+    ...(est.data as unknown as Joined[]).map((r) => map(r, 'estimate')),
+    ...(jobs.data as unknown as Joined[]).map((r) => map(r, 'job')),
+  ];
+}
