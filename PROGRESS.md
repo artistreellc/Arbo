@@ -162,6 +162,16 @@ app surface needed something visible and it reads purely from spine data.
 | PF.5 | Live DataSource + read repos (`listLeads`, `listStopsBetween`) over the Phase 1 spine | ☑ | typecheck; `api.test.ts` behind injected source |
 | PF.6 | **The ARBOR app** (`src/app/index.html`, served at `/`): mobile-first single-file ops UI on the §9 tokens — Today (brief summary chips, ZIP run, ordered stops with red flags) + Leads (hot/warm/cool, emergency, §6B permit flags incl. screen-pending; never says "clear"). `APP_ACCESS_KEY` gate on `/api/*`, fail-closed with a connected DB (§4.3) | ☑ | `appUi.test.ts` (7) |
 | PF.7 | **Deployed on Railway** (D40): project `arbor`, push-to-deploy from `main`, healthcheck `/health`, `https://arbor-server-production.up.railway.app` — first deploy fires once Mike installs the Railway GitHub App on `artistreellc/Arbo` (only human step left) | ◐ | live `/health` check pending GitHub App install |
+| PF.8 | **Deployed on Vercel with zero GitHub dependency** (D41): esbuild-bundled function + policy/legal/app sidecars, all routes → one handler (`createArborRequestHandler()`, same law as node:http). Production: `https://arbor-artistree.vercel.app` | ◐ | bundle smoke-tested locally (health/app/api 200s); live URL verification pending build completion |
+
+## Phase 5/6 pull-forward — inbox lead recognition + follow-up queue (§5A #12, #16–20)
+
+| # | Task | Status | Test |
+|---|------|--------|------|
+| P56.1 | Lead-mail classifier over the REAL notification stream: Google Ads lead forms, CallRail (tracker = source tag, duration, repeat signal, Tagged-as), LSA calls; out-of-area flagged for review, marketing mail never lead-ified (D42) | ☑ | `leadMail.test.ts` (6) |
+| P56.2 | Follow-up engine: 2-day estimate cadence (+ proof of insurance on first, #17), review request 1d after paid (#18), no-show saver (#20); consent/STOP/quiet-hours gates in CODE; recommend-only (§5B #1); migration 0007 applied live | ☑ | `leadMail.test.ts` (9) |
+| P56.3 | `/api/followups` + app **Follow-ups tab** ("ARBOR recommends — nothing sends without you") | ☑ | typecheck + smoke; engine fully covered offline |
+| P56.4 | Live Gmail inbox monitor loop (poll/push wiring at deploy) | ☐ | deploy-time (needs Google creds on the host) |
 
 ## Phase 4 — Permitting & CBPA/RPA screening engine (§6B, §5A #30)
 
