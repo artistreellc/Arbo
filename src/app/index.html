@@ -152,11 +152,13 @@ nav button.active::after{content:"";width:24px;height:3px;border-radius:2px;back
 <main>
   <div id="view-today" class="view active"></div>
   <div id="view-leads" class="view"></div>
+  <div id="view-followups" class="view"></div>
 </main>
 
 <nav>
   <button id="tab-today" class="active"><span class="ico">&#9728;</span>Today</button>
   <button id="tab-leads"><span class="ico">&#9993;</span>Leads</button>
+  <button id="tab-followups"><span class="ico">&#8634;</span>Follow-ups</button>
 </nav>
 
 <script>
@@ -326,6 +328,54 @@ async function renderLeads() {
   }
 }
 
+// ---------- Follow-ups (§16–20 queue: ARBOR recommends, you approve) ----------
+const FU_LABEL = {
+  estimate_follow_up: ['FOLLOW-UP', 'b-warm'],
+  review_request: ['REVIEW ASK', 'b-cool'],
+  no_show_saver: ['NO-SHOW SAVE', 'b-hot'],
+  seasonal_outreach: ['SEASONAL', 'b-src'],
+};
+async function renderFollowUps() {
+  const v = $('view-followups');
+  v.replaceChildren();
+  let q;
+  try {
+    q = await api('/api/followups');
+  } catch (e) {
+    if (e.code === 401) return showKeywall();
+    v.appendChild(state('No follow-up queue yet', e.code === 503
+      ? 'Database not connected — the queue builds itself the moment it is.'
+      : 'Could not load follow-ups. Pull refresh to retry.'));
+    return;
+  }
+  const note = el('div', 'zip-run');
+  note.appendChild(document.createTextNode('ARBOR recommends — nothing sends without you.'));
+  v.appendChild(note);
+  if (!q.due.length) {
+    v.appendChild(state('Queue clear', 'Estimate follow-ups, review asks, and no-show saves land here when due.'));
+  }
+  for (const a of q.due) {
+    const c = el('div', 'card' + (a.type === 'no_show_saver' ? ' emergency' : ''));
+    const top = el('div', 'toprow');
+    top.appendChild(el('div', 'who', a.name || 'Unknown'));
+    top.appendChild(el('div', 'when', fmtTime(a.scheduledFor)));
+    c.appendChild(top);
+    c.appendChild(el('div', 'scope', a.note));
+    const b = el('div', 'badges');
+    const [label, cls] = FU_LABEL[a.type] || [a.type.toUpperCase(), 'b-src'];
+    b.appendChild(badge(label, cls));
+    if (a.includeProofOfInsurance) b.appendChild(badge('+ PROOF OF INSURANCE', 'b-verify'));
+    c.appendChild(b);
+    v.appendChild(c);
+  }
+  if (q.suppressed.length) {
+    const s = el('div', 'state');
+    s.appendChild(el('b', '', q.suppressed.length + ' held by the legal gate'));
+    s.appendChild(document.createTextNode('No consent on file or STOP on record — these never send.'));
+    v.appendChild(s);
+  }
+}
+
 // ---------- Shell ----------
 function showKeywall(msg) {
   $('keyerr').textContent = msg || '';
@@ -346,15 +396,16 @@ $('keygo').addEventListener('click', async () => {
 $('keyinput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('keygo').click(); });
 
 function switchTab(which) {
-  $('view-today').classList.toggle('active', which === 'today');
-  $('view-leads').classList.toggle('active', which === 'leads');
-  $('tab-today').classList.toggle('active', which === 'today');
-  $('tab-leads').classList.toggle('active', which === 'leads');
+  for (const t of ['today', 'leads', 'followups']) {
+    $('view-' + t).classList.toggle('active', which === t);
+    $('tab-' + t).classList.toggle('active', which === t);
+  }
 }
 $('tab-today').addEventListener('click', () => switchTab('today'));
 $('tab-leads').addEventListener('click', () => switchTab('leads'));
+$('tab-followups').addEventListener('click', () => switchTab('followups'));
 
-function refreshAll() { renderToday(); renderLeads(); }
+function refreshAll() { renderToday(); renderLeads(); renderFollowUps(); }
 $('refresh').addEventListener('click', refreshAll);
 
 $('dateline').textContent = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });

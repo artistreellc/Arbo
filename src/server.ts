@@ -5,12 +5,13 @@
 // Boot order matters: guardrails + legal config are loaded and VALIDATED before
 // the server accepts a single request (they are law — §0 rule 4).
 
-import { createServer, type IncomingMessage } from 'node:http';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { boot } from './index.js';
 import { createApi, type DataSource, type ApiLeadInput } from './server/api.js';
 import { hasDb } from './db/client.js';
-import { listLeads, listStopsBetween, latestPermitsForProperties } from './db/repositories.js';
+import { listLeads, listStopsBetween, latestPermitsForProperties, listFollowUpEstimates, listFollowUpJobs } from './db/repositories.js';
 import type { StopInput } from './ops/morningBrief.js';
+import type { EstimateState, JobState } from './ops/followUps.js';
 import { loadAllConfig } from './config/loadConfig.js';
 import { env } from './env.js';
 import { createVoiceLlm } from './voice/anthropicLlm.js';
@@ -72,6 +73,36 @@ export function createLiveSource(): DataSource {
         };
       });
     },
+    async followUpInputs(): Promise<{ estimates: EstimateState[]; jobs: JobState[] }> {
+      const [ests, jobs] = await Promise.all([listFollowUpEstimates(), listFollowUpJobs()]);
+      return {
+        estimates: ests.map((e) => ({
+          id: e.id,
+          name: e.contact?.name ?? undefined,
+          phone: e.contact?.phones?.[0],
+          // The visit anchor: geofence lands in Phase 6; until then a visited
+          // estimate anchors on its scheduled slot — never on a guess.
+          visitedAt: e.visited && e.scheduled_slot ? e.scheduled_slot : undefined,
+          windowEndsAt: e.scheduled_slot ?? undefined,
+          noShow: e.outcome === 'no_show',
+          resolved: e.outcome === 'won' || e.outcome === 'lost',
+          lastFollowUpAt: e.last_follow_up_at ?? undefined,
+          followUpCount: e.follow_up_count,
+          consentOnFile: e.contact ? e.contact.consent_source !== null : false,
+          suppressed: e.contact?.opted_out ?? false,
+        })),
+        jobs: jobs.map((j) => ({
+          id: j.id,
+          name: j.contact?.name ?? undefined,
+          phone: j.contact?.phones?.[0],
+          completedAt: j.completed_at ?? undefined,
+          paidAt: j.paid_at ?? undefined,
+          reviewRequestedAt: j.review_requested_at ?? undefined,
+          consentOnFile: j.contact ? j.contact.consent_source !== null : false,
+          suppressed: j.contact?.opted_out ?? false,
+        })),
+      };
+    },
   };
 }
 
@@ -97,8 +128,13 @@ const consoleAlerter: Alerter = {
   },
 };
 
-export function startServer(port: number) {
-  const summary = boot(); // validates guardrails + legal or throws
+/**
+ * The one request handler — identical behavior on node:http (Railway, local)
+ * and as a serverless function (Vercel). Boot validation runs at construction:
+ * the handler cannot exist with invalid law.
+ */
+export function createArborRequestHandler() {
+  boot(); // validates guardrails + legal or throws
   const api = createApi(createLiveSource());
 
   // The voice bridge shares the validated policy configs — one source of law.
@@ -111,7 +147,7 @@ export function startServer(port: number) {
     bridgeSecret: env.elevenlabs.bridgeSecret,
   });
 
-  const server = createServer(async (req, res) => {
+  return async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     const send = (status: number, body: unknown) => {
       res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
@@ -143,6 +179,9 @@ export function startServer(port: number) {
       if (req.method === 'GET' && url.pathname === '/api/leads') {
         return send(...unpack(await api.leads(Number(url.searchParams.get('limit') ?? 25))));
       }
+      if (req.method === 'GET' && url.pathname === '/api/followups') {
+        return send(...unpack(await api.followUps()));
+      }
       // ElevenLabs custom-LLM endpoint (the agent's Server URL points at
       // /voice/llm; the platform appends the OpenAI-style path).
       if (req.method === 'POST' && (url.pathname === '/voice/llm/chat/completions' || url.pathname === '/voice/llm/v1/chat/completions')) {
@@ -161,8 +200,12 @@ export function startServer(port: number) {
       console.error('[server]', err instanceof Error ? err.message : 'error');
       return send(500, { error: 'server_error' });
     }
-  });
+  };
+}
 
+export function startServer(port: number) {
+  const summary = boot();
+  const server = createServer(createArborRequestHandler());
   server.listen(port, () => {
     console.log(`✅ ARBOR backend on :${port} — guardrails v${summary.guardrailsVersion}, legal v${summary.legalVersion}, db ${summary.integrations.supabase ? 'connected' : 'not configured'}`);
   });

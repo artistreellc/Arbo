@@ -449,3 +449,63 @@ export async function listStopsBetween(fromIso: string, toIso: string): Promise<
     ...(jobs.data as unknown as Joined[]).map((r) => map(r, 'job')),
   ];
 }
+
+// ---------------------------------------------------------------------------
+// Follow-up queue inputs (§5A #16–20) — read models for src/ops/followUps.ts.
+// The engine is pure; these fetch the state it reads. Consent/suppression come
+// from the contact row so the §4 gates are evaluated on live data.
+// ---------------------------------------------------------------------------
+
+interface FollowUpContactJoin {
+  name: string | null;
+  phones: string[];
+  consent_source: string | null;
+  opted_out: boolean;
+}
+
+export interface FollowUpEstimateRow {
+  id: string;
+  scheduled_slot: string | null;
+  visited: boolean | null;
+  outcome: string;
+  last_follow_up_at: string | null;
+  follow_up_count: number;
+  contact: FollowUpContactJoin | null;
+}
+
+/** Open estimates (pending/no-show) with the consent facts riding along. */
+export async function listFollowUpEstimates(): Promise<FollowUpEstimateRow[]> {
+  const db = getDb();
+  const res = await db
+    .from('estimate')
+    .select(
+      'id, scheduled_slot, visited, outcome, last_follow_up_at, follow_up_count, contact:contact_id (name, phones, consent_source, opted_out)',
+    )
+    .in('outcome', ['pending', 'no_show'])
+    .order('scheduled_slot', { ascending: true })
+    .limit(200);
+  if (res.error) throw res.error;
+  return res.data as unknown as FollowUpEstimateRow[];
+}
+
+export interface FollowUpJobRow {
+  id: string;
+  status: string;
+  completed_at: string | null;
+  paid_at: string | null;
+  review_requested_at: string | null;
+  contact: FollowUpContactJoin | null;
+}
+
+/** Completed/paid jobs that may still owe a §18 review request. */
+export async function listFollowUpJobs(): Promise<FollowUpJobRow[]> {
+  const db = getDb();
+  const res = await db
+    .from('job')
+    .select('id, status, completed_at, paid_at, review_requested_at, contact:contact_id (name, phones, consent_source, opted_out)')
+    .in('status', ['completed', 'paid'])
+    .is('review_requested_at', null)
+    .limit(200);
+  if (res.error) throw res.error;
+  return res.data as unknown as FollowUpJobRow[];
+}

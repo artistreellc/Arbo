@@ -7,6 +7,7 @@
 
 import { loadAllConfig } from '../config/loadConfig.js';
 import { buildMorningBrief, type MorningBrief, type StopInput } from '../ops/morningBrief.js';
+import { buildFollowUpQueue, type EstimateState, type JobState } from '../ops/followUps.js';
 import { scoreLead, type LeadQualityResult } from '../reception/leadQuality.js';
 import { integrationStatus } from '../env.js';
 
@@ -40,6 +41,8 @@ export interface DataSource {
   ready(): boolean;
   stopsBetween(fromIso: string, toIso: string): Promise<StopInput[]>;
   newLeads(limit: number): Promise<ApiLeadInput[]>;
+  /** §16–20 queue inputs. Optional until the live source wires it. */
+  followUpInputs?(): Promise<{ estimates: EstimateState[]; jobs: JobState[] }>;
 }
 
 export interface ApiLeadInput {
@@ -124,6 +127,18 @@ export function createApi(source: DataSource) {
         };
       });
       return { status: 200, body: { leads } };
+    },
+
+    /**
+     * GET /api/followups — the §16–20 queue: what's due (recommend-only, Mike
+     * approves every send) and what's legally suppressed, with reasons.
+     */
+    async followUps(): Promise<ApiResult> {
+      if (!source.ready() || !source.followUpInputs) return { status: 503, body: { error: 'db_not_configured' } };
+      const { legal } = loadAllConfig();
+      const { estimates, jobs } = await source.followUpInputs();
+      const queue = buildFollowUpQueue(legal, estimates, jobs, new Date());
+      return { status: 200, body: queue };
     },
   };
 }
