@@ -1,8 +1,22 @@
-node_modules
-dist
-.vercel
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+coverage/
+
+# Secrets — NEVER commit these (Section 0, rule 8; Section 4.3)
 .env
-.env.local
-.env.*.local
-*.log
+.env.*
+!.env.example
+*.pem
+*.key
+service-account*.json
+credentials*.json
+google-*.json
+
+# OS / editor
 .DS_Store
+*.log
+.vscode/
+.idea/
