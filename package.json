@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "ARBOR — AI reception & operations platform for Art-is-Tree LLC",
+  "description": "ARBOR \u2014 AI reception & operations platform for Art-is-Tree LLC",
   "engines": {
     "node": ">=20"
   },
@@ -14,12 +14,14 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "npm run typecheck && npm run lint && npm run test",
-    "serve": "tsx src/server.ts"
+    "serve": "tsx src/server.ts",
+    "start": "tsx src/server.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
     "@supabase/supabase-js": "^2.47.10",
     "dotenv": "^16.4.7",
+    "tsx": "^4.19.2",
     "zod": "^3.24.1"
   },
   "devDependencies": {
@@ -28,7 +30,6 @@
     "@typescript-eslint/eslint-plugin": "^8.18.0",
     "@typescript-eslint/parser": "^8.18.0",
     "eslint": "^9.17.0",
-    "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   }
