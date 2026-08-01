@@ -20,3 +20,6 @@ google-*.json
 *.log
 .vscode/
 .idea/
+
+# Deployment-carried secrets (D46) — exist only inside private deploy uploads
+private/
