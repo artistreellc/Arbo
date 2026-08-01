@@ -1,16 +1,21 @@
 // The ARBOR backend service (brief §8): a single Node server hosting the
-// policy engine, the app API, and — as later phases land — the Vapi/Twilio
-// webhooks. Zero framework dependencies: node:http + the tested handlers.
+// policy engine, the app API, and the ElevenLabs voice bridge (D39). Zero
+// framework dependencies: node:http + the tested handlers.
 //
 // Boot order matters: guardrails + legal config are loaded and VALIDATED before
 // the server accepts a single request (they are law — §0 rule 4).
 
-import { createServer } from 'node:http';
+import { createServer, type IncomingMessage } from 'node:http';
 import { boot } from './index.js';
 import { createApi, type DataSource, type ApiLeadInput } from './server/api.js';
 import { hasDb } from './db/client.js';
 import { listLeads, listStopsBetween, latestPermitsForProperties } from './db/repositories.js';
 import type { StopInput } from './ops/morningBrief.js';
+import { loadAllConfig } from './config/loadConfig.js';
+import { env } from './env.js';
+import { createVoiceLlm } from './voice/anthropicLlm.js';
+import { createElevenLabsBridge, type BridgeRequestBody } from './voice/elevenlabsBridge.js';
+import type { Alerter } from './reception/receptionist.js';
 
 /** Live DataSource over the Phase 1 repositories (service-role, RLS-locked). */
 export function createLiveSource(): DataSource {
@@ -69,9 +74,41 @@ export function createLiveSource(): DataSource {
   };
 }
 
+/** Read + parse a JSON body, capped at 1 MB (voice turns are tiny). */
+async function readJson(req: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    if (size > 1_000_000) throw new Error('body too large');
+    chunks.push(chunk as Buffer);
+  }
+  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+}
+
+/**
+ * Emergency path until Twilio is wired at deploy (O2): loud in the server log,
+ * reason only — caller text/PII never hits logs (§4.3).
+ */
+const consoleAlerter: Alerter = {
+  async emergency({ reason }) {
+    console.error(`[voice] 🚨 EMERGENCY escalation for Mike: ${reason}`);
+  },
+};
+
 export function startServer(port: number) {
   const summary = boot(); // validates guardrails + legal or throws
   const api = createApi(createLiveSource());
+
+  // The voice bridge shares the validated policy configs — one source of law.
+  const { guardrails, legal } = loadAllConfig();
+  const bridge = createElevenLabsBridge({
+    guardrails,
+    legal,
+    llm: createVoiceLlm(env.anthropic.apiKey),
+    alerter: consoleAlerter,
+    bridgeSecret: env.elevenlabs.bridgeSecret,
+  });
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -86,6 +123,18 @@ export function startServer(port: number) {
       }
       if (req.method === 'GET' && url.pathname === '/api/leads') {
         return send(...unpack(await api.leads(Number(url.searchParams.get('limit') ?? 25))));
+      }
+      // ElevenLabs custom-LLM endpoint (the agent's Server URL points at
+      // /voice/llm; the platform appends the OpenAI-style path).
+      if (req.method === 'POST' && (url.pathname === '/voice/llm/chat/completions' || url.pathname === '/voice/llm/v1/chat/completions')) {
+        const body = (await readJson(req)) as BridgeRequestBody;
+        const out = await bridge.handle(req.headers.authorization, body);
+        if (out.sse) {
+          res.writeHead(out.status, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
+          for (const frame of out.sse) res.write(`${frame}\n\n`);
+          return res.end();
+        }
+        return send(out.status, out.json);
       }
       return send(404, { error: 'not_found' });
     } catch (err) {

@@ -113,7 +113,7 @@ outbound sends (follow-up/quote/reactivation) — Phase 6 behind the TCPA gate.
 | 2.4 | Lead qualification state machine (§3.3) + power-line red flag | ☑ | `qualification.test.ts` (5) |
 | 2.5 | Receptionist orchestrator + clean lead capture — **AUDIT after this** | ☑ | `receptionist.test.ts` (4) |
 | 2.6 | Live LeadSink over Phase 1 repositories | ☑ | typecheck; used by orchestrator |
-| 2.7 | Vapi + Twilio wiring (answer a real phone) | ☐ | **needs Twilio number + Vapi account** |
+| 2.7 | Voice platform wiring — **ElevenLabs Agents** (D39, supersedes Vapi): custom-LLM bridge over the Receptionist (`/voice/llm/chat/completions`, guard-before-stream, session TTL, fail-closed auth), Anthropic brain (`claude-opus-5`, latency-tuned, safe fallback line), TTS client for the spoken brief (§3.17). Live agent **created in Mike's ElevenLabs workspace** (`agent_1901kyyxyj2sf9nsx9jascy2ssxj`, voice George, full guarded prompt) via the connector — running on the built-in LLM until the bridge is deployed, then it flips to custom-LLM so the guard is code, not prompt. | ◐ | `voice.test.ts` (15) — offline; **to go live: deploy server (O1) + point agent's custom LLM at the bridge + phone number** |
 
 **Acceptance (Phase 2):** scripted test calls prove — **never** says a price
 (even when the model tries) ✅, **never** diagnoses ✅, never leaks Suffolk/TCIA

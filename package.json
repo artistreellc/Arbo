@@ -17,6 +17,7 @@
     "serve": "tsx src/server.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@supabase/supabase-js": "^2.47.10",
     "dotenv": "^16.4.7",
     "zod": "^3.24.1"
