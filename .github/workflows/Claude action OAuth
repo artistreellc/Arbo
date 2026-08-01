@@ -1,2 +1,0 @@
-name: Claude Code Action with OAuth
-uses: grll/claude-code-action@beta
