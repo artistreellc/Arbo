@@ -160,6 +160,8 @@ app surface needed something visible and it reads purely from spine data.
 | PF.3 | Backend service (`src/server.ts`): node:http, guardrails+legal validated at boot, no PII/stack traces on the wire (§4.3, §8) | ☑ | `api.test.ts` (5) |
 | PF.4 | API handlers (`src/server/api.ts`): `/health`, `/api/brief`, `/api/leads` (with hot/warm/cool read §3.14) over an injected DataSource | ☑ | `api.test.ts` |
 | PF.5 | Live DataSource + read repos (`listLeads`, `listStopsBetween`) over the Phase 1 spine | ☑ | typecheck; `api.test.ts` behind injected source |
+| PF.6 | **The ARBOR app** (`src/app/index.html`, served at `/`): mobile-first single-file ops UI on the §9 tokens — Today (brief summary chips, ZIP run, ordered stops with red flags) + Leads (hot/warm/cool, emergency, §6B permit flags incl. screen-pending; never says "clear"). `APP_ACCESS_KEY` gate on `/api/*`, fail-closed with a connected DB (§4.3) | ☑ | `appUi.test.ts` (7) |
+| PF.7 | **Deployed on Railway** (D40): project `arbor`, push-to-deploy from `main`, healthcheck `/health`, `https://arbor-server-production.up.railway.app` — first deploy fires once Mike installs the Railway GitHub App on `artistreellc/Arbo` (only human step left) | ◐ | live `/health` check pending GitHub App install |
 
 ## Phase 4 — Permitting & CBPA/RPA screening engine (§6B, §5A #30)
 
