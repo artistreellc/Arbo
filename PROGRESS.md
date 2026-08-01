@@ -147,3 +147,51 @@ final tree byte-identical to the incubator branch). The pre-brief generic-CRM
 detour on Arbo main is parked (D25). One named open item: live-DB drift
 rollback awaiting Mike's approval (D26). `npm run check` re-verified green
 post-merge (see below).
+
+## App surface pull-forward (Mike-directed) — Morning Brief + backend service
+
+Pulled forward at Mike's direction (D27); §5A #25 is normally Phase 8, but the
+app surface needed something visible and it reads purely from spine data.
+
+| # | Task | Status | Test |
+|---|------|--------|------|
+| PF.1 | Morning Brief assembler — route order (emergencies → jobs → ZIP-by-ZIP estimates), first-timer/repeat tags, red flags (§3.11, §5A #25, §9) | ☑ | `morningBrief.test.ts` (5) |
+| PF.2 | Interactive app design preview (`design/app-preview.html`: Brief / Inbox / Approve / Property twin, §9 tokens, glove-scale, both themes; sample data, clearly labeled) | ☑ | n/a (static preview) |
+| PF.3 | Backend service (`src/server.ts`): node:http, guardrails+legal validated at boot, no PII/stack traces on the wire (§4.3, §8) | ☑ | `api.test.ts` (5) |
+| PF.4 | API handlers (`src/server/api.ts`): `/health`, `/api/brief`, `/api/leads` (with hot/warm/cool read §3.14) over an injected DataSource | ☑ | `api.test.ts` |
+| PF.5 | Live DataSource + read repos (`listLeads`, `listStopsBetween`) over the Phase 1 spine | ☑ | typecheck; `api.test.ts` behind injected source |
+
+## Phase 4 — Permitting & CBPA/RPA screening engine (§6B, §5A #30)
+
+High value, legally sensitive — front-loads the highest-risk piece first: the
+screen that is **structurally incapable of saying "you're clear."**
+
+| # | Task | Status | Test |
+|---|------|--------|------|
+| 4.1 | Screening engine core — `ScreenStatus` has exactly 3 values (PERMIT_LIKELY / REVIEW_NEEDED / NO_OVERLAY_VERIFY); no CLEAR value exists in the type; `verifyWithCity` always true (§6B.3, §12) | ☑ | `screening.test.ts` (12) |
+| 4.2 | Per-city ruleset config — VB (Accela/PPR, reference impl), Norfolk, Chesapeake (eBUILD tiers), Portsmouth (WQIA); forms, portals, contacts, mitigation, **dated `lastVerified`** (§6B.4/4b) | ☑ | `screening.test.ts` |
+| 4.3 | Overlay coverage beyond CBPA — FEMA flood, local floodplain/land-disturbance, Norfolk CRO, city tree ordinance; plain-English "what it means" (§6B.4c) | ☑ | `screening.test.ts` |
+| 4.4 | Mitigation surfacing (3:1, min 3.5" DBH) on PERMIT_LIKELY removals; Chesapeake scale tiers (site-visit / Board hearing) | ☑ | `screening.test.ts` |
+| 4.5 | Power-line routing (§6B.4d) — utility-first, High Voltage Safety Act, ≥ REVIEW_NEEDED; `assertNeverClear` structural guard | ☑ | `screening.test.ts` |
+| 4.6 | **"Never say clear" test run twice** (Phase 4 acceptance) — every reachable result across all 4 cities × input shapes × overlay sets | ☑ | `screening.test.ts` (pass 1 + pass 2) |
+
+**Deferred to deploy / later (named, not silent):** live city GIS layer wiring
+(the injected `GisProvider`), geocoding, form-PDF retrieval, the interactive
+map + tree-labeling tool (§6B.2, mobile — Phase 11), and packet assembly +
+city handoff (§6B.1 steps 2–6). Same deferral pattern as Vapi/Twilio (2.7) and
+Drive OAuth (O3): the classification brain is complete and fully tested behind
+an injected interface; nothing is half-built.
+
+### Post-merge audit (§11) — result
+`npm run check` green: **138 tests pass, 4 live-integration skipped**,
+typecheck + lint clean. 1) Guardrails ✅ (price/diagnosis/Suffolk/TCIA suites
+green; merged code adds no price/diagnosis path; permit engine cannot output a
+"clear"). 2) Legal gates ✅ (unchanged; the new API is read-only GET — no
+outbound path added; server never logs PII/stack traces). 3) Tests ✅ 138/138.
+4) No regressions ✅ (all prior suites green). 5) Data integrity ✅ (new repos
+are read-only joins; no writes). 6) Secrets clean ✅ (`secrets.test.ts`). 7)
+Docs current ✅ (this update). 8) Scope honest ✅ — Morning Brief (#25) is a
+CONFIRMED feature pulled forward with Mike's OK (D27); Phase 4 is #30 CONFIRMED;
+nothing from 5B/5C built. 9) Rabbit-holes: carried — D26 live-DB drift rollback
+(needs Mike's approval); Phase 4 live-GIS wiring (deferred above); O4 calendar
+color map. All named.

@@ -100,3 +100,11 @@ Fully autonomous / self-rewriting learning · win-back nudges to cold estimates.
 | # | Decision | Why |
 |---|---|---|
 | D27 | **App surface pulled forward** at Mike's explicit direction ("start really building the app"). Built the Morning Brief assembler (`src/ops/morningBrief.ts`, pure + tested) and an interactive design preview of the phone app (`design/app-preview.html`: Brief / Inbox / Approve / Property twin, §9 tokens, glove-scale targets, both themes). | The approval surface is the missing half of already-built recommend-don't-commit (#11), and Mike needs something visible. Preview uses sample data, clearly labeled; real wiring lands with the API layer. Phase ordering otherwise unchanged. |
+
+## Phase 4 — Permitting & CBPA/RPA screening (§6B)
+
+| # | Decision | Why |
+|---|---|---|
+| D28 | **"Clear" is unrepresentable in the type.** `ScreenStatus` is exactly `PERMIT_LIKELY \| REVIEW_NEEDED \| NO_OVERLAY_VERIFY` — there is no CLEAR/NONE/OK value, `verifyWithCity` is the literal `true`, and `assertNeverClear()` guards the headline. The lowest outcome (no overlay found) still says "VERIFY WITH CITY". | §6B.3 / §12: GIS is wrong at parcel edges and a false "clear" is exactly what caused the real 8562 Circle Drive violation. Making it structurally impossible (like the receptionist output guard) beats hoping a prompt behaves. |
+| D29 | **GIS is an injected `GisProvider` interface; screening logic is pure and offline-tested.** Live city GIS/geocode, form-PDF retrieval, the map+tree-labeling tool (§6B.2), and packet assembly/handoff are deferred to deploy/mobile. | Same pattern as Vapi/Twilio (2.7) and Drive OAuth (O3) — build and fully test the brain now; wire external, credential-bound, or mobile-only pieces at their phase. Nothing half-built or silent. |
+| D30 | **Per-city rules live in a dated config module** (`src/permitting/cities.ts`) with `lastVerified` per city; city planning/environmental **office** contacts are stored (public, not customer PII). VB (Accela/PPR) is the reference implementation; the other three mirror the shape. | §6B.3 "configurable and dated"; the review loop (§13) re-checks the dates. Keeps forms/portals/contacts/mitigation out of the classification logic so Mike (or the loop) can update them in one place. |
