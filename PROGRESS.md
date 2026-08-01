@@ -180,6 +180,35 @@ screen that is **structurally incapable of saying "you're clear."**
 | 4.10 | **Intake auto-screen (§6B.1 step 1)** — lead capture screens the property the moment the address lands: `intakeScreen.ts` (honest PENDING when GIS is absent/down — never a fabricated NO_OVERLAY_VERIFY; failures never lose the lead), wired into the live LeadSink; `crewMayStartForProperty(null)` = blocked ("no screen on file is not clearance") | ☑ | `intakeScreen.test.ts` (11), `permitRecord.test.ts` (9) |
 | 4.11 | Screen flag rides the lead into the inbox — `/api/leads` carries `permit` + `screenPending` (property with no screen on file is surfaced, never assumed fine); permit-join failure degrades the flag, never kills the inbox | ☑ | `api.test.ts` (6), `permit.integration.test.ts` (guarded) |
 | 4.12 | **Live GisProvider stack** (`src/permitting/gis/`) — strict ArcGIS point-in-polygon client, VA-constrained Google geocoder, per-city dated layer registry (DEQ statewide CBPA baseline + city layers), provider that throws (→ honest PENDING) on no-verified-layers / geocode failure / any single layer failure. Candidate endpoints recorded with sources; **none marked live yet** (gov GIS hosts egress-blocked from this env) — a tripwire test fails if one is flipped live without updating the verification evidence | ☑ | `gis.test.ts` (14) |
+| 4.13 | **Packet assembly (§6B.1 step 6, #34)** — `assemblePacket()`: per-city checklist (forms/map/photos/owner/contractor), named missing items, mitigation surfaced up front, hand-off target (portal + contact) for MIKE; `neverAutoFiled: true` structural, no submit function exists; forbidden-string scan on output | ☑ | `packet.test.ts` (7) |
+
+## O4 RESOLVED — color map learned from the live calendar (2026-08-01)
+
+Analyzed 250 real events (Apr–Jul 2026) from the Art-is-Tree Google Calendar:
+
+| colorId | Meaning (observed) | Evidence |
+|---|---|---|
+| 4 Flamingo | **Virginia Beach** visits | 93/93 VB locations |
+| 10 Basil | **Norfolk** visits | 16/16 Norfolk |
+| 5 Banana | **Chesapeake** visits | 6/6 Chesapeake |
+| 6 Tangerine | **Portsmouth** visits | 3 Portsmouth (+1 historical out-of-area) |
+| 11 Tomato | **Payments/financial only** | 14/14 payment titles — D21 confirmed |
+| default | Booked **jobs** / admin | job-titled + address-only events |
+| 2 Sage | **UNKNOWN — open O5** | cross-city, REPEAT-heavy; ask Mike |
+
+Also learned: the real title format is **space-separated** (`Peter Simmons TT
+7578193493`), not the brief's hyphenated draft — code updated to match (D34).
+Two historical Suffolk-location events exist on the calendar (pre-drop, Mike's
+own entries — informational only; ARBOR can never create one).
+
+## D26 rollback — approved, execution blocked from this environment
+
+Mike approved the drift rollback ("do it all", 2026-08-01). Execution via
+tooling was blocked by the permission classifier (destructive SQL), so the
+exact SQL is committed at **`supabase/rollback/d26_remove_detour_drift.sql`**
+— paste into the Supabase SQL Editor (arbor project) and run. GIS endpoint
+verification (4.12) is likewise still blocked by this environment's egress
+policy — both remain one-step deploy-time actions.
 
 **Deferred to deploy / later (named, not silent):** live city GIS layer wiring
 (the injected `GisProvider`), geocoding, form-PDF retrieval, the interactive

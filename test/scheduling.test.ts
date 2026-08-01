@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { freeSlots, isFree, overlaps } from '../src/scheduling/availability.js';
 import { clusterScore, groupByZip } from '../src/scheduling/clustering.js';
 import { recommendSlots, bookApproved, ApprovalRequiredError, DoubleBookingError } from '../src/scheduling/scheduler.js';
-import { CALENDAR_COLORS, DEFAULT_SCHEDULING } from '../src/scheduling/config.js';
+import { CITY_CALENDAR_COLORS, colorFor, DEFAULT_SCHEDULING } from '../src/scheduling/config.js';
 import type { CalendarApi, CalendarEvent, CalendarEventInput } from '../src/integrations/calendar.js';
 
 // Fixed week: 2026-08-03 is a Monday (America/New_York). Use 13:00Z = 9am EDT.
@@ -54,12 +54,12 @@ describe('scheduler — recommend, never auto-commit (§5A #11)', () => {
   it('recommends slots ranked by clustering, all flagged requiresApproval', () => {
     const existing = [{ startIso: at(MON, 15), endIso: at(MON, 16), zip: '23451' }];
     const suggestions = recommendSlots(
-      { kind: 'estimate', zip: '23451', fromIso: at(MON, 12), toIso: at(MON, 21) },
+      { kind: 'estimate', city: 'Virginia Beach', zip: '23451', fromIso: at(MON, 12), toIso: at(MON, 21) },
       existing,
     );
     expect(suggestions.length).toBeGreaterThan(0);
     expect(suggestions.every((s) => s.requiresApproval === true)).toBe(true);
-    expect(suggestions[0]!.colorId).toBe(CALENDAR_COLORS.estimate);
+    expect(suggestions[0]!.colorId).toBe(CITY_CALENDAR_COLORS['Virginia Beach']);
     // top suggestion should be the same day as the same-ZIP work (clustered)
     expect(suggestions[0]!.startIso.slice(0, 10)).toBe(MON);
   });
@@ -82,10 +82,10 @@ describe('scheduler — recommend, never auto-commit (§5A #11)', () => {
 
     const ev = await bookApproved(api.api, {
       calendarId: 'primary', summary: 'Estimate — 742 Evergreen', kind: 'estimate',
-      zip: '23451', slot, approved: true, existingBusy: [],
+      city: 'Virginia Beach', zip: '23451', slot, approved: true, existingBusy: [],
     });
     expect(ev.id).toBeTruthy();
-    expect(api.created[0]!.colorId).toBe(CALENDAR_COLORS.estimate);
+    expect(api.created[0]!.colorId).toBe(CITY_CALENDAR_COLORS['Virginia Beach']);
 
     // now that slot is busy — a second booking must be refused
     await expect(
@@ -111,13 +111,29 @@ function fakeCalendar() {
   return { api, created };
 }
 
-// Sanity: config uses non-payment colors.
-describe('calendar colors avoid the payment red (11)', () => {
-  it('estimate/job/emergency are not Tomato', () => {
-    for (const k of ['estimate', 'job', 'emergency', 'follow_up'] as const) {
-      expect(CALENDAR_COLORS[k]).not.toBe('11');
+// Sanity: the learned scheme (D34) never writes the payment red (11) or the
+// unconfirmed Sage (2, open question O5); jobs ride the calendar default.
+describe('learned city color scheme (D34, resolves O4)', () => {
+  it('city colors match the live calendar; never 11 (payments) or 2 (O5)', () => {
+    expect(CITY_CALENDAR_COLORS['Virginia Beach']).toBe('4');
+    expect(CITY_CALENDAR_COLORS.Norfolk).toBe('10');
+    expect(CITY_CALENDAR_COLORS.Chesapeake).toBe('5');
+    expect(CITY_CALENDAR_COLORS.Portsmouth).toBe('6');
+    for (const city of ['Virginia Beach', 'Norfolk', 'Chesapeake', 'Portsmouth'] as const) {
+      for (const k of ['estimate', 'job', 'emergency', 'follow_up'] as const) {
+        expect(colorFor(k, city)).not.toBe('11');
+        expect(colorFor(k, city)).not.toBe('2');
+      }
     }
     expect(DEFAULT_SCHEDULING.workingDays).not.toContain(0); // no Sundays
+  });
+
+  it('visits get the city color; jobs/follow-ups ride the calendar default', () => {
+    expect(colorFor('estimate', 'Norfolk')).toBe('10');
+    expect(colorFor('emergency', 'Portsmouth')).toBe('6');
+    expect(colorFor('job', 'Virginia Beach')).toBeUndefined();
+    expect(colorFor('follow_up', 'Chesapeake')).toBeUndefined();
+    expect(colorFor('estimate')).toBeUndefined(); // no city yet → default, never a guess
   });
 });
 

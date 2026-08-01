@@ -5,11 +5,13 @@
 
 import { freeSlots, isFree, type Interval } from './availability.js';
 import { clusterScore, type ZipEvent } from './clustering.js';
-import { CALENDAR_COLORS, DEFAULT_SCHEDULING, windowForKind, type EventKind, type SchedulingConfig } from './config.js';
+import { colorFor, DEFAULT_SCHEDULING, windowForKind, type EventKind, type SchedulingConfig } from './config.js';
 import type { CalendarApi, CalendarEvent } from '../integrations/calendar.js';
+import type { ServiceCity } from '../lib/address.js';
 
 export interface ScheduleRequest {
   kind: EventKind;
+  city?: ServiceCity; // drives Mike's city color scheme (D34)
   zip?: string;
   fromIso: string;
   toIso: string;
@@ -19,7 +21,7 @@ export interface ScheduleRequest {
 export interface Suggestion {
   startIso: string;
   endIso: string;
-  colorId: string;
+  colorId?: string; // city color for visits; undefined = calendar default (jobs)
   kind: EventKind;
   clusterScore: number;
   reason: string;
@@ -47,7 +49,7 @@ export function recommendSlots(
       return {
         startIso: s.startIso,
         endIso: s.endIso,
-        colorId: CALENDAR_COLORS[req.kind],
+        colorId: colorFor(req.kind, req.city),
         kind: req.kind,
         clusterScore: score,
         reason: reasonFor(score, req.zip),
@@ -83,6 +85,7 @@ export interface BookParams {
   summary: string;
   description?: string;
   location?: string;
+  city?: ServiceCity; // drives the city color (D34)
   zip?: string;
   propertyId?: string;
   slot: Interval;
@@ -103,7 +106,7 @@ export async function bookApproved(api: CalendarApi, p: BookParams): Promise<Cal
     location: p.location,
     startIso: p.slot.startIso,
     endIso: p.slot.endIso,
-    colorId: CALENDAR_COLORS[p.kind],
+    colorId: colorFor(p.kind, p.city),
     zip: p.zip,
     propertyId: p.propertyId,
   });

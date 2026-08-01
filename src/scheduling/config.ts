@@ -1,6 +1,7 @@
 // Scheduling config (brief §3 Phase 3, §5A #9–11). Working-day + color
-// conventions live here so they're set in one place. Mike confirms the color
-// mapping (he already uses Tomato/11 for payment reminders, so ARBOR avoids it).
+// conventions live here so they're set in one place.
+
+import type { ServiceCity } from '../lib/address.js';
 
 // Google Calendar colorId → human name (for readability / confirmation).
 export const GOOGLE_COLOR_NAMES: Record<string, string> = {
@@ -11,18 +12,31 @@ export const GOOGLE_COLOR_NAMES: Record<string, string> = {
 
 export type EventKind = 'estimate' | 'job' | 'emergency' | 'follow_up';
 
-// NOTE (§3.22): on Mike's real calendar, colorId already carries meaning
-// (source / city-cluster), NOT event kind. ARBOR must LEARN that mapping from
-// the live calendar, not invent kind-colors. This kind-based map is only a
-// safe fallback for events whose source/city color isn't known yet — and it
-// deliberately avoids '11' (Tomato), which Mike uses for payment reminders.
-// Replacing this with a learned source/city color map is tracked as O4.
-export const CALENDAR_COLORS: Record<EventKind, string> = {
-  estimate: '9', // Blueberry (blue)
-  job: '10', // Basil (green) — "go / work"
-  emergency: '6', // Tangerine (orange) — attention, but not the payment red
-  follow_up: '5', // Banana (yellow)
+// THE LEARNED COLOR MAP (resolves O4; see D34). Read off Mike's live calendar
+// (250 events, Apr–Jul 2026): colorId encodes the CITY of a scheduled visit —
+// near-perfect separation in the data (93/93 VB=4, 16/16 Norfolk=10,
+// 6/6 Chesapeake=5, Portsmouth=6). '11' (Tomato) is strictly payments (14/14)
+// — ARBOR never writes it. Booked jobs/admin ride the calendar DEFAULT color
+// (no colorId). Sage '2' is a cross-city category the data alone can't decode
+// (REPEAT-heavy) — open question O5; ARBOR doesn't write '2' until Mike says
+// what it means.
+export const CITY_CALENDAR_COLORS: Record<ServiceCity, string> = {
+  'Virginia Beach': '4', // Flamingo
+  Norfolk: '10', // Basil
+  Chesapeake: '5', // Banana
+  Portsmouth: '6', // Tangerine
 };
+
+/**
+ * The colorId ARBOR writes for an event, per Mike's real scheme: location-bound
+ * visits (estimates; emergencies are urgent visits too) get the CITY color;
+ * jobs and follow-ups ride the calendar default (undefined), exactly as
+ * observed. Never '11' (payments) and never '2' (meaning unconfirmed, O5).
+ */
+export function colorFor(kind: EventKind, city?: ServiceCity): string | undefined {
+  if ((kind === 'estimate' || kind === 'emergency') && city) return CITY_CALENDAR_COLORS[city];
+  return undefined;
+}
 
 export interface HourWindow {
   startHour: number; // local, inclusive

@@ -1,8 +1,13 @@
 // Calendar-write formatting (brief §3.11, §3.20, §3.22). Every event ARBOR
 // creates must be indistinguishable from one Mike typed himself:
-//   Title:       "Client Name - SOURCE - 10-digit phone"  (nothing else)
+//   Title:       "Client Name SOURCE 10-digit-phone"  (space-separated)
 //   Description: all scope / site / access detail from intake
-// e.g. "Kathy Arnett - WEB - 7574273361". Mike calls straight from the title.
+// e.g. "Kathy Arnett WEB 7574273361". Mike calls straight from the title.
+//
+// FORMAT LEARNED FROM THE LIVE CALENDAR (D34): the brief documented a
+// hyphenated "Name - SOURCE - phone" but 250 real events (Apr–Jul 2026) are
+// space-separated ("Peter Simmons TT 7578193493", "April Herrod GG
+// 7574690321"). §3.11's own rule — model how Mike ACTUALLY books — wins.
 
 // The real source-tag set observed on Mike's calendar (§3.11 / §3.22 / §3.29).
 export const SOURCE_TAGS = ['TT', 'WEB', 'YELP', 'REFERAL', 'REC', 'GG', 'LSA', 'TLT', 'TSP', 'WL'] as const;
@@ -41,15 +46,16 @@ export interface EventTitleParts {
 }
 
 /**
- * Build the calendar title EXACTLY as Mike formats it. Falls back gracefully if
- * the phone isn't a clean 10 digits (keeps whatever was given rather than lose
- * the booking), but always uses a valid source tag.
+ * Build the calendar title EXACTLY as Mike formats it (space-separated, per the
+ * live calendar — D34). Falls back gracefully if the phone isn't a clean 10
+ * digits (keeps whatever was given rather than lose the booking), but always
+ * uses a valid source tag.
  */
 export function buildEventTitle(p: EventTitleParts): string {
   const name = (p.name || 'New Lead').trim();
   const source = normalizeSourceTag(p.source);
   const phone = tenDigitPhone(p.phone) ?? (p.phone || '').replace(/\D/g, '');
-  return `${name} - ${source} - ${phone}`.trim();
+  return `${name} ${source} ${phone}`.trim().replace(/\s+/g, ' ');
 }
 
 export interface IntakeDetail {

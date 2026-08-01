@@ -9,7 +9,8 @@ export interface CalendarEventInput {
   location?: string;
   startIso: string;
   endIso: string;
-  colorId: string;
+  // City color for visits (D34); omitted = calendar default (jobs/admin).
+  colorId?: string;
   // Stored so route-clustering and geofencing can find the property later.
   zip?: string;
   propertyId?: string;

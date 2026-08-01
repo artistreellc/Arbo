@@ -2,9 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { buildEventTitle, buildEventDescription, normalizeSourceTag, tenDigitPhone, SOURCE_TAGS } from '../src/scheduling/eventFormat.js';
 
 describe('calendar event formatting (§3.22 — looks exactly like Mike types)', () => {
-  it('builds the exact title format: Name - SOURCE - 10-digit phone', () => {
+  it('builds the observed title format: Name SOURCE 10-digit-phone (space-separated, D34)', () => {
+    // Matches the live calendar ("Peter Simmons TT 7578193493"), not the
+    // brief's hyphenated draft.
     expect(buildEventTitle({ name: 'Kathy Arnett', source: 'WEB', phone: '757-427-3361' })).toBe(
-      'Kathy Arnett - WEB - 7574273361',
+      'Kathy Arnett WEB 7574273361',
     );
   });
 
