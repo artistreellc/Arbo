@@ -138,6 +138,8 @@ export interface CreateEstimateInput {
   leadId?: string;
   scheduledSlot?: string; // ISO
   zipCluster?: string;
+  /** The booked calendar event — needed for the Sage won-recolor (D36). */
+  calendarEventId?: string;
 }
 
 export async function createEstimate(input: CreateEstimateInput): Promise<{ id: string }> {
@@ -150,6 +152,7 @@ export async function createEstimate(input: CreateEstimateInput): Promise<{ id: 
       lead_id: input.leadId ?? null,
       scheduled_slot: input.scheduledSlot ?? null,
       zip_cluster: input.zipCluster ?? null,
+      calendar_event_id: input.calendarEventId ?? null,
     })
     .select('id')
     .single();
@@ -187,14 +190,16 @@ export async function createJob(input: CreateJobInput): Promise<{ id: string }> 
 /**
  * A signed-contract photo converts an Estimate into a booked Job (§5 #14).
  * Creates the contract record (a stored image, not an e-signature — §4.5),
- * marks the estimate won, and books the job. Returns both new ids.
+ * marks the estimate won, and books the job. Returns both new ids plus the
+ * estimate's calendar event id so the caller can recolor it Sage — Mike's
+ * "job was won" convention (D36, markEstimateWonOnCalendar).
  */
 export async function convertEstimateToJob(params: {
   estimateId: string;
   propertyId: string;
   contactId?: string;
   contractDriveFileId?: string;
-}): Promise<{ jobId: string; contractId: string }> {
+}): Promise<{ jobId: string; contractId: string; estimateCalendarEventId: string | null }> {
   const db = getDb();
 
   const job = await createJob({
@@ -216,10 +221,19 @@ export async function convertEstimateToJob(params: {
     .single();
   if (contract.error) throw contract.error;
 
-  const upd = await db.from('estimate').update({ outcome: 'won' }).eq('id', params.estimateId);
+  const upd = await db
+    .from('estimate')
+    .update({ outcome: 'won' })
+    .eq('id', params.estimateId)
+    .select('calendar_event_id')
+    .single();
   if (upd.error) throw upd.error;
 
-  return { jobId: job.id, contractId: (contract.data as { id: string }).id };
+  return {
+    jobId: job.id,
+    contractId: (contract.data as { id: string }).id,
+    estimateCalendarEventId: (upd.data as { calendar_event_id: string | null }).calendar_event_id,
+  };
 }
 
 export interface CreatePhotoInput {

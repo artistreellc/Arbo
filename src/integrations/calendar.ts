@@ -28,6 +28,8 @@ export interface CalendarEvent {
 export interface CalendarApi {
   listEvents(calendarId: string, timeMinIso: string, timeMaxIso: string): Promise<CalendarEvent[]>;
   createEvent(input: CalendarEventInput): Promise<CalendarEvent>;
+  /** Recolor an existing event — the Sage "job won" flip (D36) uses this. */
+  updateEventColor(calendarId: string, eventId: string, colorId: string): Promise<void>;
 }
 
 const BASE = 'https://www.googleapis.com/calendar/v3';
@@ -69,6 +71,17 @@ export function createGoogleCalendarApi(getAccessToken: () => Promise<string>): 
       });
       if (!res.ok) throw new Error(`Calendar createEvent failed: ${res.status}`);
       return fromGoogle((await res.json()) as GoogleEvent);
+    },
+    async updateEventColor(calendarId, eventId, colorId) {
+      const res = await fetch(
+        `${BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+        {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json', ...(await auth()) },
+          body: JSON.stringify({ colorId }),
+        },
+      );
+      if (!res.ok) throw new Error(`Calendar updateEventColor failed: ${res.status}`);
     },
   };
 }

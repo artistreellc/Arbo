@@ -17,9 +17,7 @@ export type EventKind = 'estimate' | 'job' | 'emergency' | 'follow_up';
 // near-perfect separation in the data (93/93 VB=4, 16/16 Norfolk=10,
 // 6/6 Chesapeake=5, Portsmouth=6). '11' (Tomato) is strictly payments (14/14)
 // — ARBOR never writes it. Booked jobs/admin ride the calendar DEFAULT color
-// (no colorId). Sage '2' is a cross-city category the data alone can't decode
-// (REPEAT-heavy) — open question O5; ARBOR doesn't write '2' until Mike says
-// what it means.
+// (no colorId).
 export const CITY_CALENDAR_COLORS: Record<ServiceCity, string> = {
   'Virginia Beach': '4', // Flamingo
   Norfolk: '10', // Basil
@@ -27,11 +25,18 @@ export const CITY_CALENDAR_COLORS: Record<ServiceCity, string> = {
   Portsmouth: '6', // Tangerine
 };
 
+// Sage = THE JOB WAS WON (O5 resolved — confirmed by Mike, 2026-08-01). When a
+// signed contract flips an estimate to a booked job (§5A #14), the original
+// estimate event is recolored Sage — exactly what Mike does by hand. This is
+// the ONLY path that writes '2'; new bookings never start won.
+export const WON_ESTIMATE_COLOR = '2'; // Sage
+
 /**
- * The colorId ARBOR writes for an event, per Mike's real scheme: location-bound
- * visits (estimates; emergencies are urgent visits too) get the CITY color;
- * jobs and follow-ups ride the calendar default (undefined), exactly as
- * observed. Never '11' (payments) and never '2' (meaning unconfirmed, O5).
+ * The colorId ARBOR writes for a NEW event, per Mike's real scheme:
+ * location-bound visits (estimates; emergencies are urgent visits too) get the
+ * CITY color; jobs and follow-ups ride the calendar default (undefined),
+ * exactly as observed. Never '11' (payments) and never '2' (won — a new
+ * booking is never already won; see WON_ESTIMATE_COLOR).
  */
 export function colorFor(kind: EventKind, city?: ServiceCity): string | undefined {
   if ((kind === 'estimate' || kind === 'emergency') && city) return CITY_CALENDAR_COLORS[city];

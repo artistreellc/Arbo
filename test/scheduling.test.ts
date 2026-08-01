@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { freeSlots, isFree, overlaps } from '../src/scheduling/availability.js';
 import { clusterScore, groupByZip } from '../src/scheduling/clustering.js';
-import { recommendSlots, bookApproved, ApprovalRequiredError, DoubleBookingError } from '../src/scheduling/scheduler.js';
+import { recommendSlots, bookApproved, markEstimateWonOnCalendar, ApprovalRequiredError, DoubleBookingError } from '../src/scheduling/scheduler.js';
 import { CITY_CALENDAR_COLORS, colorFor, DEFAULT_SCHEDULING } from '../src/scheduling/config.js';
 import type { CalendarApi, CalendarEvent, CalendarEventInput } from '../src/integrations/calendar.js';
 
@@ -99,6 +99,7 @@ describe('scheduler — recommend, never auto-commit (§5A #11)', () => {
 
 function fakeCalendar() {
   const created: CalendarEventInput[] = [];
+  const recolored: Array<{ eventId: string; colorId: string }> = [];
   const api: CalendarApi = {
     async listEvents(): Promise<CalendarEvent[]> {
       return [];
@@ -107,14 +108,34 @@ function fakeCalendar() {
       created.push(input);
       return { id: `evt_${created.length}`, summary: input.summary, startIso: input.startIso, endIso: input.endIso, colorId: input.colorId };
     },
+    async updateEventColor(_calendarId: string, eventId: string, colorId: string): Promise<void> {
+      recolored.push({ eventId, colorId });
+    },
   };
-  return { api, created };
+  return { api, created, recolored };
 }
 
-// Sanity: the learned scheme (D34) never writes the payment red (11) or the
-// unconfirmed Sage (2, open question O5); jobs ride the calendar default.
+describe('Sage won-recolor (D36, resolves O5 — "sage means the job was won")', () => {
+  it('marking an estimate won recolors its event to Sage (2)', async () => {
+    const api = fakeCalendar();
+    await markEstimateWonOnCalendar(api.api, 'primary', 'evt_est_1');
+    expect(api.recolored).toEqual([{ eventId: 'evt_est_1', colorId: '2' }]);
+  });
+
+  it('new bookings still never start Sage — won is a flip, not a booking color', () => {
+    for (const city of ['Virginia Beach', 'Norfolk', 'Chesapeake', 'Portsmouth'] as const) {
+      for (const k of ['estimate', 'job', 'emergency', 'follow_up'] as const) {
+        expect(colorFor(k, city)).not.toBe('2');
+      }
+    }
+  });
+})
+
+// Sanity: the learned scheme (D34) never writes the payment red (11), and new
+// bookings never write Sage 2 (won — the D36 flip is the only path to it);
+// jobs ride the calendar default.
 describe('learned city color scheme (D34, resolves O4)', () => {
-  it('city colors match the live calendar; never 11 (payments) or 2 (O5)', () => {
+  it('city colors match the live calendar; new bookings never 11 (payments) or 2 (won)', () => {
     expect(CITY_CALENDAR_COLORS['Virginia Beach']).toBe('4');
     expect(CITY_CALENDAR_COLORS.Norfolk).toBe('10');
     expect(CITY_CALENDAR_COLORS.Chesapeake).toBe('5');

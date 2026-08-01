@@ -181,6 +181,7 @@ screen that is **structurally incapable of saying "you're clear."**
 | 4.11 | Screen flag rides the lead into the inbox — `/api/leads` carries `permit` + `screenPending` (property with no screen on file is surfaced, never assumed fine); permit-join failure degrades the flag, never kills the inbox | ☑ | `api.test.ts` (6), `permit.integration.test.ts` (guarded) |
 | 4.12 | **Live GisProvider stack** (`src/permitting/gis/`) — strict ArcGIS point-in-polygon client, VA-constrained Google geocoder, per-city dated layer registry (DEQ statewide CBPA baseline + city layers), provider that throws (→ honest PENDING) on no-verified-layers / geocode failure / any single layer failure. Candidate endpoints recorded with sources; **none marked live yet** (gov GIS hosts egress-blocked from this env) — a tripwire test fails if one is flipped live without updating the verification evidence | ☑ | `gis.test.ts` (14) |
 | 4.13 | **Packet assembly (§6B.1 step 6, #34)** — `assemblePacket()`: per-city checklist (forms/map/photos/owner/contractor), named missing items, mitigation surfaced up front, hand-off target (portal + contact) for MIKE; `neverAutoFiled: true` structural, no submit function exists; forbidden-string scan on output | ☑ | `packet.test.ts` (7) |
+| 4.14 | **Sage won-recolor (D36, resolves O5)** — `markEstimateWonOnCalendar()` flips a won estimate's event to Sage 2 (the only path that writes it); `CalendarApi.updateEventColor` (PATCH); `estimate.calendar_event_id` via migration 0004 (**applied live**); `convertEstimateToJob` returns the event id; D26 rollback file updated to keep the now-legit column | ☑ | `scheduling.test.ts` (won-recolor + never-Sage-on-new-bookings) |
 
 ## O4 RESOLVED — color map learned from the live calendar (2026-08-01)
 
@@ -194,7 +195,7 @@ Analyzed 250 real events (Apr–Jul 2026) from the Art-is-Tree Google Calendar:
 | 6 Tangerine | **Portsmouth** visits | 3 Portsmouth (+1 historical out-of-area) |
 | 11 Tomato | **Payments/financial only** | 14/14 payment titles — D21 confirmed |
 | default | Booked **jobs** / admin | job-titled + address-only events |
-| 2 Sage | **UNKNOWN — open O5** | cross-city, REPEAT-heavy; ask Mike |
+| 2 Sage | **Job WON** (O5 resolved — Mike confirmed) | cross-city + REPEAT-heavy fits: winners come from every city |
 
 Also learned: the real title format is **space-separated** (`Peter Simmons TT
 7578193493`), not the brief's hyphenated draft — code updated to match (D34).

@@ -5,7 +5,7 @@
 
 import { freeSlots, isFree, type Interval } from './availability.js';
 import { clusterScore, type ZipEvent } from './clustering.js';
-import { colorFor, DEFAULT_SCHEDULING, windowForKind, type EventKind, type SchedulingConfig } from './config.js';
+import { colorFor, WON_ESTIMATE_COLOR, DEFAULT_SCHEDULING, windowForKind, type EventKind, type SchedulingConfig } from './config.js';
 import type { CalendarApi, CalendarEvent } from '../integrations/calendar.js';
 import type { ServiceCity } from '../lib/address.js';
 
@@ -110,4 +110,17 @@ export async function bookApproved(api: CalendarApi, p: BookParams): Promise<Cal
     zip: p.zip,
     propertyId: p.propertyId,
   });
+}
+
+/**
+ * Recolor a won estimate's calendar event Sage (D36, §5A #14) — Mike's real
+ * "job was won" convention. Called when a signed contract converts the
+ * estimate to a booked job. The ONLY path that writes colorId 2.
+ */
+export async function markEstimateWonOnCalendar(
+  api: CalendarApi,
+  calendarId: string,
+  estimateEventId: string,
+): Promise<void> {
+  await api.updateEventColor(calendarId, estimateEventId, WON_ESTIMATE_COLOR);
 }
