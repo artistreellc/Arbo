@@ -50,12 +50,14 @@ unit-tested; secrets never in repo; docs seeded; design tokens delivered.
 | 1.5 | Supabase service-role client wiring | ☑ | `boot.test.ts`; typecheck |
 | 1.6 | Repository CRUD (property/contact/lead/estimate/job/contract/photo) | ☑ | `spine.integration.test.ts` (guarded) + live SQL chain verified |
 | 1.7 | Function search_path hardening (advisor 0011) — **AUDIT after this** | ☑ | `get_advisors` security clean |
-| 1.8 | Google Drive per-property folders + Client Master index writes | ☐ | **blocked on Google service-account creds** |
-| 1.9 | Phase 1 audit (§11) + docs | ◐ | in progress |
+| 1.8 | Google Drive per-property folders + Client Master index writes | ☑ | `drive.test.ts` (3) + **live folders created in owner's Drive** |
+| 1.9 | Phase 1 audit (§11) + docs | ☑ | audit passed (below) |
 
 **Acceptance (Phase 1):** create Property/Contact/Estimate/Job/Photo/Contract
-end-to-end ✅ (verified live); **Drive folders auto-create per property** ⏳
-(pending Google credentials — see DECISIONS O3).
+end-to-end ✅ (verified live); **Drive folders auto-create per property** ✅
+(live "ARBOR Clients" tree created in the owner's Drive; idempotent code + tests).
+Production runtime auth for the Drive API (service account vs OAuth) is wired at
+deploy — see DECISIONS O3.
 
 ### Phase 1 audit (§11) — result (partial phase)
 `npm run check` green: **36 tests pass, 4 live-integration skipped** (run once

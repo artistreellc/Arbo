@@ -34,13 +34,25 @@ Every non-obvious choice and why. The map out of any future rabbit hole
 - **O2 — Secrets manager beyond env vars:** Phase 0 uses gitignored `.env` +
   Vercel env vars. Revisit whether a dedicated manager (Doppler/1Password) is
   worth it as integrations grow.
-- **O3 — Google auth style + credentials (BLOCKS task 1.8):** the per-property
-  Drive folder auto-creation needs Google credentials. Recommended: a **Google
-  Cloud service account** with the Drive API enabled, and a parent "ARBOR
-  Clients" Drive folder shared to the service-account email. Needs Mike to:
-  create/confirm a Google Cloud project, enable the Drive API, create the
-  service account + JSON key, and share the parent folder. Then set
-  `GOOGLE_*` env vars. Until then, 1.8 is parked (not half-built).
+- **O3 — Google Drive runtime auth (deploy-time, NOT blocking):** the live
+  "ARBOR Clients" folder tree is created and the filing code is written +
+  tested. What remains is how the *deployed* backend authenticates to the Drive
+  API at runtime — a **service account** (share the ARBOR Clients folder with
+  its email) or a **stored OAuth refresh token** for the owner. The Drive code
+  is auth-agnostic (`createGoogleDriveApi(getAccessToken)`), so this is a
+  one-line wiring at deploy. Recommend service account. Decide at deploy (Phase 10).
+
+## Phase 1 — live Drive artifacts (created in owner's Drive)
+
+| Folder | ID |
+|---|---|
+| ARBOR Clients (root) | `1O76sL4tkQ33xDFTmoorayMT2pZwd6WAT` |
+| 742 Evergreen Terrace — Virginia Beach (pilot) | `1NO-sbywuK_gNGtHzvOFvVBXc1YR7uURv` |
+| ↳ Estimates / Signed Contracts / Job Photos / Documents | created |
+
+D14 — **Drive module is auth-agnostic** (`DriveApi` interface + injected token
+provider), so the same filing logic runs under a service account or OAuth
+without code changes.
 
 ## Backlog (§5C optional — DO NOT build without Mike's OK)
 

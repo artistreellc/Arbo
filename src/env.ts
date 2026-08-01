@@ -28,6 +28,7 @@ export const env = {
     clientEmail: get('GOOGLE_CLIENT_EMAIL'),
     privateKey: get('GOOGLE_PRIVATE_KEY'),
     mapsApiKey: get('GOOGLE_MAPS_API_KEY'),
+    driveRootFolderId: get('ARBOR_DRIVE_ROOT_FOLDER_ID'),
   },
   ownerAlertPhone: get('OWNER_ALERT_PHONE'),
 } as const;
