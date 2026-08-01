@@ -1,0 +1,394 @@
+<title>ARBOR — Art-is-Tree</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+  :root{
+    --ground:#EEF2EE; --card:#FFFFFF; --ink:#0F1A15; --muted:#5C6B62;
+    --line:#D5DCD7; --forest:#1B4D3E; --forest-deep:#12352B; --canopy:#2A7A5E;
+    --amber:#D4AF37; --danger:#C62828; --warn:#B36A00; --chipbg:#E7EDE8;
+    --shadow:0 1px 3px rgba(15,26,21,.12),0 1px 2px rgba(15,26,21,.08);
+    --on-forest:#F2F6F2;
+  }
+  @media (prefers-color-scheme: dark){:root{
+    --ground:#0D1512; --card:#152019; --ink:#E9F0EA; --muted:#93A398;
+    --line:#26332B; --forest:#153B2F; --forest-deep:#0E2A21; --canopy:#4FA37F;
+    --amber:#D9B84A; --danger:#E15B5B; --warn:#E0A23F; --chipbg:#1D2B23;
+    --shadow:0 1px 3px rgba(0,0,0,.5);
+  }}
+  :root[data-theme="light"]{
+    --ground:#EEF2EE; --card:#FFFFFF; --ink:#0F1A15; --muted:#5C6B62;
+    --line:#D5DCD7; --forest:#1B4D3E; --forest-deep:#12352B; --canopy:#2A7A5E;
+    --amber:#D4AF37; --danger:#C62828; --warn:#B36A00; --chipbg:#E7EDE8;
+    --shadow:0 1px 3px rgba(15,26,21,.12),0 1px 2px rgba(15,26,21,.08);
+  }
+  :root[data-theme="dark"]{
+    --ground:#0D1512; --card:#152019; --ink:#E9F0EA; --muted:#93A398;
+    --line:#26332B; --forest:#153B2F; --forest-deep:#0E2A21; --canopy:#4FA37F;
+    --amber:#D9B84A; --danger:#E15B5B; --warn:#E0A23F; --chipbg:#1D2B23;
+    --shadow:0 1px 3px rgba(0,0,0,.5);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--ground); color:var(--ink);
+    font:600 17px/1.4 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{max-width:430px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column;position:relative}
+  @media(min-width:520px){.app{border-left:1px solid var(--line);border-right:1px solid var(--line)}}
+
+  /* ---------- header ---------- */
+  header{
+    position:sticky;top:0;z-index:10;background:var(--forest);color:var(--on-forest);
+    padding:14px 16px 12px;display:flex;align-items:center;gap:12px;
+  }
+  .mark{
+    width:40px;height:40px;border-radius:50%;background:var(--forest-deep);
+    display:grid;place-items:center;flex:none;border:2px solid rgba(255,255,255,.22);
+  }
+  .mark svg{display:block}
+  .wordmark{font-weight:800;font-size:20px;letter-spacing:.06em}
+  .hdate{font-size:13px;font-weight:600;opacity:.85;letter-spacing:.02em}
+  .preview-chip{
+    margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.08em;
+    background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);
+    color:var(--on-forest);padding:4px 10px;border-radius:999px;white-space:nowrap;
+  }
+
+  /* ---------- content ---------- */
+  main{flex:1;padding:16px 16px 96px;display:flex;flex-direction:column;gap:12px}
+  .panel{display:none;flex-direction:column;gap:12px}
+  .panel.active{display:flex}
+
+  .eyebrow{font-size:12px;font-weight:700;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;margin:6px 2px 0}
+
+  /* summary strip — the biggest thing on screen */
+  .summary{
+    background:var(--forest);color:var(--on-forest);border-radius:16px;box-shadow:var(--shadow);
+    padding:18px 16px 14px;
+  }
+  .summary .line1{font-size:24px;font-weight:800;line-height:1.2;text-wrap:balance}
+  .summary .line1 .amber{color:var(--amber)}
+  .stats{display:flex;gap:8px;margin-top:14px}
+  .stat{flex:1;background:rgba(255,255,255,.10);border-radius:10px;padding:8px 6px;text-align:center}
+  .stat b{display:block;font-size:24px;font-weight:800;font-variant-numeric:tabular-nums}
+  .stat span{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;opacity:.85}
+  .stat.flag b{color:#FFD9D9}
+  .ziprun{margin-top:12px;font-size:13px;font-weight:600;opacity:.9}
+  .ziprun b{font-weight:800;letter-spacing:.03em}
+
+  /* stop cards */
+  .card{
+    background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);
+    padding:14px;display:flex;gap:12px;align-items:flex-start;position:relative;overflow:hidden;
+  }
+  .card.flagged{padding-left:18px}
+  .card.flagged::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--danger)}
+  .ordr{
+    flex:none;width:34px;height:34px;border-radius:50%;background:var(--chipbg);
+    display:grid;place-items:center;font-weight:800;font-size:15px;color:var(--forest);
+  }
+  :root[data-theme="dark"] .ordr,:root:not([data-theme="light"]) .ordr{color:var(--canopy)}
+  .stop-body{flex:1;min-width:0}
+  .stop-top{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+  .stop-name{font-weight:800;font-size:17px}
+  .stop-time{font-weight:800;font-size:15px;font-variant-numeric:tabular-nums;color:var(--canopy);white-space:nowrap}
+  .stop-addr{color:var(--muted);font-size:14px;margin-top:2px}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .chip{
+    font-size:11px;font-weight:700;letter-spacing:.06em;padding:3px 9px;border-radius:999px;
+    background:var(--chipbg);color:var(--ink);
+  }
+  .chip.src{background:transparent;border:1px solid var(--line);color:var(--muted)}
+  .chip.first{background:var(--canopy);color:#fff}
+  .chip.danger{background:var(--danger);color:#fff}
+  .chip.warn{background:var(--warn);color:#fff}
+  .chip.hot{background:var(--danger);color:#fff}
+  .chip.warm{background:var(--warn);color:#fff}
+  .chip.cool{background:var(--chipbg);color:var(--muted)}
+  .scope{font-size:14px;color:var(--muted);margin-top:8px;border-top:1px dashed var(--line);padding-top:8px}
+
+  /* approvals */
+  .apr .q{font-weight:800;font-size:17px;text-wrap:balance}
+  .apr .why{font-size:14px;color:var(--muted);margin-top:4px}
+  .apr-actions{display:flex;gap:10px;margin-top:12px}
+  .btn{
+    flex:1;min-height:48px;border-radius:10px;border:0;font:inherit;font-weight:800;font-size:16px;
+    cursor:pointer;display:grid;place-items:center;
+  }
+  .btn:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+  .btn.yes{background:var(--canopy);color:#fff}
+  .btn.no{background:transparent;color:var(--muted);border:2px solid var(--line)}
+  .apr.done .apr-actions{display:none}
+  .verdict{display:none;margin-top:12px;font-weight:800;font-size:15px}
+  .apr.done .verdict{display:block}
+  .verdict.ok{color:var(--canopy)} .verdict.skip{color:var(--muted)}
+
+  /* property twin */
+  .twin-head{background:var(--forest);color:var(--on-forest);border-radius:16px;padding:16px;box-shadow:var(--shadow)}
+  .twin-head .addr{font-size:20px;font-weight:800;line-height:1.25;text-wrap:balance}
+  .twin-head .meta{font-size:13px;opacity:.85;margin-top:4px}
+  .kv{display:flex;flex-direction:column;gap:0}
+  .kv .row{display:flex;justify-content:space-between;gap:12px;padding:12px 2px;border-bottom:1px solid var(--line);font-size:15px}
+  .kv .row:last-child{border-bottom:0}
+  .kv .k{color:var(--muted);font-weight:600}
+  .kv .v{font-weight:700;text-align:right}
+  .due{color:var(--warn)}
+  .block-title{font-weight:800;font-size:15px;letter-spacing:.02em;margin-bottom:6px}
+  .card.col{flex-direction:column;align-items:stretch}
+
+  /* bottom tabs */
+  nav{
+    position:fixed;bottom:0;left:0;right:0;z-index:10;background:var(--card);
+    border-top:1px solid var(--line);
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  .tabs{max-width:430px;margin:0 auto;display:flex}
+  .tab{
+    flex:1;min-height:56px;border:0;background:none;font:inherit;cursor:pointer;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+    color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.05em;position:relative;
+  }
+  .tab:focus-visible{outline:3px solid var(--amber);outline-offset:-3px}
+  .tab svg{width:22px;height:22px}
+  .tab.active{color:var(--forest)}
+  :root[data-theme="dark"] .tab.active,:root:not([data-theme="light"]) .tab.active{color:var(--canopy)}
+  @media (prefers-color-scheme: light){:root:not([data-theme="dark"]) .tab.active{color:var(--forest)}}
+  .tab.active::after{content:"";position:absolute;top:0;left:25%;right:25%;height:3px;border-radius:0 0 3px 3px;background:var(--amber)}
+  .badge{
+    position:absolute;top:8px;right:calc(50% - 22px);min-width:17px;height:17px;border-radius:999px;
+    background:var(--danger);color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center;padding:0 4px;
+  }
+  @media (prefers-reduced-motion: no-preference){
+    .panel.active{animation:rise .18s ease-out}
+    @keyframes rise{from{opacity:.4;transform:translateY(4px)}to{opacity:1;transform:none}}
+  }
+</style>
+
+<div class="app">
+  <header>
+    <div class="mark" aria-hidden="true">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <path d="M12 3L5 13h4l-3 6h12l-3-6h4L12 3z" fill="#D4AF37" opacity=".9"/>
+        <rect x="11" y="18" width="2" height="3.5" fill="#D4AF37" opacity=".7"/>
+      </svg>
+    </div>
+    <div>
+      <div class="wordmark">ARBOR</div>
+      <div class="hdate">Mon, Aug 3 · Art-is-Tree</div>
+    </div>
+    <span class="preview-chip">PREVIEW · SAMPLE DATA</span>
+  </header>
+
+  <main>
+    <!-- ================= MORNING BRIEF ================= -->
+    <section class="panel active" id="panel-brief" aria-label="Morning brief">
+      <div class="summary">
+        <div class="line1">Morning, Mike. <span class="amber">5 stops</span> today — 1 crew job, 4 estimates.</div>
+        <div class="stats">
+          <div class="stat"><b>5</b><span>Stops</span></div>
+          <div class="stat"><b>2</b><span>First-timers</span></div>
+          <div class="stat flag"><b>1</b><span>Red flag</span></div>
+        </div>
+        <div class="ziprun">Afternoon run: <b>23464 → 23462 → 23505</b> · Storms possible after 6 PM</div>
+      </div>
+
+      <p class="eyebrow">Morning — crew job</p>
+      <div class="card">
+        <div class="ordr">1</div>
+        <div class="stop-body">
+          <div class="stop-top"><span class="stop-name">Henderson</span><span class="stop-time">8:00 AM</span></div>
+          <div class="stop-addr">3 Oakcrest Dr, Chesapeake 23320</div>
+          <div class="chips"><span class="chip">REPEAT</span><span class="chip src">JOB</span></div>
+          <div class="scope">Oak removal + stump grind. Crane on site 7:30. Chips stay as mulch.</div>
+        </div>
+      </div>
+
+      <p class="eyebrow">Afternoon — estimates, ZIP by ZIP</p>
+      <div class="card">
+        <div class="ordr">2</div>
+        <div class="stop-body">
+          <div class="stop-top"><span class="stop-name">Kathy Arnett</span><span class="stop-time">1:00 PM</span></div>
+          <div class="stop-addr">12 Holly Rd, Virginia Beach 23464</div>
+          <div class="chips"><span class="chip first">FIRST-TIMER</span><span class="chip src">WEB</span></div>
+        </div>
+      </div>
+      <div class="card flagged">
+        <div class="ordr">3</div>
+        <div class="stop-body">
+          <div class="stop-top"><span class="stop-name">Sam Lee</span><span class="stop-time">1:30 PM</span></div>
+          <div class="stop-addr">44 Pine St, Virginia Beach 23464</div>
+          <div class="chips"><span class="chip danger">⚡ POWER LINES</span><span class="chip">REPEAT</span><span class="chip src">REFERAL</span></div>
+          <div class="scope">Tall pine leaning toward the service drop — plan the bucket, not spikes.</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="ordr">4</div>
+        <div class="stop-body">
+          <div class="stop-top"><span class="stop-name">Dana Whitfield</span><span class="stop-time">2:30 PM</span></div>
+          <div class="stop-addr">210 Larkspur Ln, Virginia Beach 23462</div>
+          <div class="chips"><span class="chip first">FIRST-TIMER</span><span class="chip src">LSA</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="ordr">5</div>
+        <div class="stop-body">
+          <div class="stop-top"><span class="stop-name">Ray Diaz</span><span class="stop-time">3:30 PM</span></div>
+          <div class="stop-addr">9 Bay Ct, Norfolk 23505</div>
+          <div class="chips"><span class="chip">REPEAT</span><span class="chip src">GG</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= LEAD INBOX ================= -->
+    <section class="panel" id="panel-inbox" aria-label="Lead inbox">
+      <p class="eyebrow">New leads — worked by ARBOR, waiting on you</p>
+      <div class="card flagged">
+        <div class="stop-body">
+          <div class="stop-top"><span class="stop-name">Marcus Boyd</span><span class="stop-time">12 min ago</span></div>
+          <div class="stop-addr">Chesapeake 23322 · called the line</div>
+          <div class="chips"><span class="chip hot">HOT</span><span class="chip danger">STORM DAMAGE</span><span class="chip src">CALL</span></div>
+          <div class="scope">Half an oak down across the back fence after last night's wind. Photos texted in. ARBOR suggested Thursday's 23322 run.</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="stop-body">
+          <div class="stop-top"><span class="stop-name">Elaine Porter</span><span class="stop-time">1 hr ago</span></div>
+          <div class="stop-addr">Virginia Beach 23464 · website form</div>
+          <div class="chips"><span class="chip warm">WARM</span><span class="chip first">FIRST-TIMER</span><span class="chip src">WEB</span></div>
+          <div class="scope">"Two crepe myrtles need shaping, one pine over the shed." Fits tomorrow's 23464 cluster.</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="stop-body">
+          <div class="stop-top"><span class="stop-name">J. Calloway</span><span class="stop-time">3 hrs ago</span></div>
+          <div class="stop-addr">Portsmouth 23704 · Google Ads</div>
+          <div class="chips"><span class="chip warm">WARM</span><span class="chip">REPEAT</span><span class="chip src">GG</span></div>
+          <div class="scope">Getting a couple of quotes for a maple takedown — normal buyer, ARBOR competing on value.</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="stop-body">
+          <div class="stop-top"><span class="stop-name">Unknown caller</span><span class="stop-time">5 hrs ago</span></div>
+          <div class="stop-addr">Out of area · asked "ballpark over the phone"</div>
+          <div class="chips"><span class="chip cool">COOL</span><span class="chip src">CALL</span></div>
+          <div class="scope">No address given, price-only pressure. Follow-up engine keeps it warm; not ahead of real jobs.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= APPROVALS ================= -->
+    <section class="panel" id="panel-approve" aria-label="Approvals">
+      <p class="eyebrow">ARBOR suggests — nothing happens without your tap</p>
+
+      <div class="card col apr" id="apr1">
+        <div class="q">Book Marcus Boyd into Thursday's 23322 run, 1:00 PM?</div>
+        <div class="why">Storm-damage lead · clusters with 2 estimates already booked in 23322 · no double-booking</div>
+        <div class="apr-actions">
+          <button class="btn yes" onclick="decide('apr1',true)">Book it</button>
+          <button class="btn no" onclick="decide('apr1',false)">Not now</button>
+        </div>
+        <div class="verdict"></div>
+      </div>
+
+      <div class="card col apr" id="apr2">
+        <div class="q">Add Elaine Porter to tomorrow's 23464 cluster, 2:00 PM?</div>
+        <div class="why">Two streets from Kathy Arnett's slot · keeps the run tight, no backtracking</div>
+        <div class="apr-actions">
+          <button class="btn yes" onclick="decide('apr2',true)">Book it</button>
+          <button class="btn no" onclick="decide('apr2',false)">Not now</button>
+        </div>
+        <div class="verdict"></div>
+      </div>
+
+      <div class="card col apr" id="apr3">
+        <div class="q">Send the 2-day follow-up to J. Calloway?</div>
+        <div class="why">Estimate ran Tuesday, no reply yet · consent on file · inside 8 AM–9 PM quiet hours</div>
+        <div class="apr-actions">
+          <button class="btn yes" onclick="decide('apr3',true)">Send it</button>
+          <button class="btn no" onclick="decide('apr3',false)">Hold</button>
+        </div>
+        <div class="verdict"></div>
+      </div>
+    </section>
+
+    <!-- ================= PROPERTY TWIN ================= -->
+    <section class="panel" id="panel-property" aria-label="Property">
+      <div class="twin-head">
+        <div class="addr">12 Holly Rd, Virginia Beach 23464</div>
+        <div class="meta">Kathy Arnett · first visit May 2025 · 3 trees on file</div>
+      </div>
+
+      <div class="card col">
+        <div class="block-title">Trees</div>
+        <div class="kv">
+          <div class="row"><span class="k">Red oak — back left, over fence</span><span class="v">Trimmed May ’25</span></div>
+          <div class="row"><span class="k">Loblolly pine — near driveway</span><span class="v due">Due ~Oct ’26</span></div>
+          <div class="row"><span class="k">Crepe myrtle — front bed</span><span class="v">Healthy</span></div>
+        </div>
+      </div>
+
+      <div class="card col">
+        <div class="block-title">History</div>
+        <div class="kv">
+          <div class="row"><span class="k">May 2025</span><span class="v">Oak trim + haul-off</span></div>
+          <div class="row"><span class="k">May 2025</span><span class="v">6 photos filed to Drive</span></div>
+          <div class="row"><span class="k">Aug 2026</span><span class="v">Estimate booked (tomorrow)</span></div>
+        </div>
+      </div>
+
+      <div class="card col">
+        <div class="block-title">Hazards &amp; access</div>
+        <div class="kv">
+          <div class="row"><span class="k">Power lines</span><span class="v">Clear</span></div>
+          <div class="row"><span class="k">Structures</span><span class="v">Shed near pine</span></div>
+          <div class="row"><span class="k">Access</span><span class="v">Gate code 4417 · friendly dog</span></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <nav aria-label="App sections">
+    <div class="tabs">
+      <button class="tab active" data-panel="brief" onclick="go('brief',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg>
+        Brief
+      </button>
+      <button class="tab" data-panel="inbox" onclick="go('inbox',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.5-6.9A2 2 0 0016.7 4H7.3a2 2 0 00-1.8 1.1z"/></svg>
+        Inbox
+        <span class="badge">4</span>
+      </button>
+      <button class="tab" data-panel="approve" onclick="go('approve',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+        Approve
+        <span class="badge" id="aprBadge">3</span>
+      </button>
+      <button class="tab" data-panel="property" onclick="go('property',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-6h6v6"/></svg>
+        Property
+      </button>
+    </div>
+  </nav>
+</div>
+
+<script>
+  function go(name, btn){
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    document.getElementById('panel-'+name).classList.add('active');
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelector('main').scrollTop = 0; window.scrollTo(0,0);
+  }
+  var remaining = 3;
+  function decide(id, yes){
+    var card = document.getElementById(id);
+    if(card.classList.contains('done')) return;
+    card.classList.add('done');
+    var v = card.querySelector('.verdict');
+    if(yes){ v.textContent = '✓ Done — on the calendar in your format.'; v.classList.add('ok'); }
+    else { v.textContent = 'Skipped — ARBOR will re-suggest if it still fits.'; v.classList.add('skip'); }
+    remaining -= 1;
+    var b = document.getElementById('aprBadge');
+    if(remaining > 0){ b.textContent = remaining; } else { b.remove(); }
+  }
+</script>
