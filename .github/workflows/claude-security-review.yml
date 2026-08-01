@@ -25,7 +25,7 @@ jobs:
       - name: Claude security review
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.MY_KEY }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
             Review this pull request. Focus on, in priority order:
             1. Security — injection, authz/RLS gaps, secret leakage, unsafe input handling, SSRF, PII exposure in logs.

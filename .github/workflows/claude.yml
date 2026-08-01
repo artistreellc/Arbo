@@ -37,7 +37,7 @@ jobs:
       - name: Run Claude Code
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.MY_KEY }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           # No 'prompt' input → interactive mode: waits for @claude mentions.
           claude_args: |
             --append-system-prompt "This is ARBOR (Art-is-Tree ops platform). Guardrails and legal rules are law: never introduce a price/diagnosis path, never let 'Suffolk' or 'TCIA' into customer-facing copy, keep secrets out of the repo, keep customer PII behind the service-role/RLS boundary. Every change ships with a passing test."
