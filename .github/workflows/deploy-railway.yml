@@ -1,0 +1,37 @@
+# Deploys main to Railway via `railway up` (D43) — no Railway GitHub App
+# needed: the action pushes the checkout up itself, authenticated by a Railway
+# PROJECT token. Until the RAILWAY_TOKEN secret exists the job skips green, so
+# pushes never go red over missing deploy credentials.
+#
+# One-time setup: Railway dashboard → project `arbor` → Settings → Tokens →
+# create a project token, then GitHub → Settings → Secrets and variables →
+# Actions → new secret RAILWAY_TOKEN.
+
+name: Deploy to Railway
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: railway-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip — RAILWAY_TOKEN secret not set yet
+        if: env.RAILWAY_TOKEN == ''
+        run: echo "RAILWAY_TOKEN not configured — add it in repo Settings → Secrets → Actions to enable deploys."
+
+      - name: Deploy to Railway
+        if: env.RAILWAY_TOKEN != ''
+        uses: jzeuzs/action-railway@v1.1.4
+        with:
+          railway_token: ${{ secrets.RAILWAY_TOKEN }}
