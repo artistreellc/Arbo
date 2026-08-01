@@ -100,6 +100,13 @@ export const GuardrailsSchema = z
         approvedLine: z.string().min(1),
       }),
     }),
+    // The exact call-open flow — name before disclosure (§3.10).
+    callOpen: z.object({
+      principle: z.string().min(1),
+      beats: z.array(z.string()).min(3),
+      nameAskLine: z.string().min(1),
+      example: z.string().min(1),
+    }),
   })
   .strict();
 

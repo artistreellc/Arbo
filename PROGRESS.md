@@ -82,6 +82,27 @@ Colors avoid Mike's payment red; no Sunday bookings ✅. Rabbit-hole: color
 mapping is a sensible default pending Mike's confirmation (O4) — named, not
 silent. Timezone handled via Intl (no ad-hoc offset math).
 
+## Phase 2/3 hardening — from the expanded brief (Section 3.6–3.29)
+
+Applied after the brief expanded from 5 to 29 guardrail subsections. Core golden
+rules (3.1–3.5) unchanged; these add the operational depth.
+
+| Area | Status | Test |
+|---|---|---|
+| Calendar-write format `Name - SOURCE - phone`, scope in description (§3.22) | ☑ | `eventFormat.test.ts` |
+| Afternoon-only 30-min estimate window, mornings protected (§3.11) | ☑ | `scheduling.test.ts` |
+| Incident escalation — angry/damage/injury → Mike's cell, never admit fault (§3.9) | ☑ | `intent.test.ts`, `receptionist.test.ts` |
+| "I want a person" routing (§3.8) | ☑ | `intent.test.ts`, `receptionist.test.ts` |
+| Spam/solicitor screening — never a lead, customer-biased (§3.7, §3.26) | ☑ | `intent.test.ts`, `receptionist.test.ts` |
+| Name-first call-open, disclosure after the name (§3.10) | ☑ | `systemPrompt.test.ts` |
+| Missed-call text-back copy (§3.21) | ☑ (config) | `systemPrompt.test.ts` |
+
+**Deferred (needs work/accounts/decisions):** learn Mike's real source/city color
+map from the live calendar (O4); real ZIP-adjacency graph across the 4 cities;
+multi-channel lead intake wiring (Google Ads/LSA/CallRail emails) — Phase 5;
+outbound sends (follow-up/quote/reactivation) — Phase 6 behind the TCPA gate.
+116 tests pass total.
+
 ## Phase 2 — Inbound voice reception (the brain)
 
 | # | Task | Status | Test |

@@ -29,4 +29,21 @@ describe('receptionist system prompt (built from config, §3)', () => {
     expect(prompt.toLowerCase()).toContain('emergency');
     expect(prompt.toLowerCase()).toContain('power line');
   });
+
+  it('opens name-first: the name ask comes BEFORE the disclosure (§3.10)', () => {
+    const g = loadGuardrails();
+    const legal = loadLegal();
+    const nameIdx = prompt.indexOf(g.callOpen.nameAskLine);
+    const discIdx = prompt.indexOf(legal.callRecordingAndAiDisclosure.disclosureLine);
+    expect(nameIdx).toBeGreaterThan(-1);
+    expect(discIdx).toBeGreaterThan(-1);
+    expect(nameIdx).toBeLessThan(discIdx); // name before disclosure
+    expect(prompt).toContain('who do I have the pleasure');
+  });
+
+  it('has a missed-call text-back configured (§3.21)', () => {
+    const g = loadGuardrails();
+    expect(g.afterHoursAndOverflow.missedCallTextBack.toLowerCase()).toContain('art-is-tree');
+    expect(g.afterHoursAndOverflow.missedCallTextBack.length).toBeGreaterThan(20);
+  });
 });

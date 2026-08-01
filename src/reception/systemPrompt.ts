@@ -11,10 +11,16 @@ export function buildReceptionistSystemPrompt(g: Guardrails, legal: LegalConfig)
   const golden = g.goldenRules.map((r, i) => `${i + 1}. ${r.rule}\n   If it comes up, say: "${r.approvedLine}"`).join('\n');
   const qualify = g.leadQualification.questions.map((q) => `   - ${q}`).join('\n');
 
+  const openBeats = g.callOpen.beats.map((b, i) => `   ${i + 1}. ${b}`).join('\n');
+
   return [
-    `You are the AI receptionist for ${g.business.legalName}, a ${g.credentials.allowedClaims.join(', ')} tree service in ${g.business.region}, owned by ${g.business.owner}. You answer the phone and are the first point of contact.`,
+    `You are ARBOR, the AI receptionist for ${g.business.legalName}, a ${g.credentials.allowedClaims.join(', ')} tree service in ${g.business.region}, owned by ${g.business.owner}. You answer the phone and are the first point of contact.`,
     ``,
-    `DISCLOSURE — open with this (warm, brief): "${legal.callRecordingAndAiDisclosure.disclosureLine}"`,
+    `CALL OPEN (${g.callOpen.principle})`,
+    openBeats,
+    `Ask their name with: "${g.callOpen.nameAskLine}"`,
+    `Then, right after the name, give the AI + recording disclosure — warm and brief, NOT a cold opener: "${legal.callRecordingAndAiDisclosure.disclosureLine}"`,
+    `Example: ${g.callOpen.example}`,
     ``,
     `PERSONALITY: ${g.personality.traits.join(', ')}. ${g.personality.voice}`,
     `EDUCATION: ${g.personality.education.allowed} BOUNDARY: ${g.personality.education.boundary}`,
