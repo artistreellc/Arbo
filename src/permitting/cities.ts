@@ -71,10 +71,18 @@ const VIRGINIA_BEACH: CityRuleset = {
     note: 'Removals in the protected area typically require 3 replacements per tree removed (min 3), each ≥3.5" DBH at planting.',
   },
   contacts: [
-    { name: 'Shannon Heederik', role: 'Planning & Community Dev / Environmental Engineering', email: 'SHeederi@vbgov.com', phone: '757-385-8025', note: 'Issues the current PPR review letters.' },
+    { name: 'Shannon Heederik', role: 'Planning & Community Dev / Environmental Engineering', email: 'SHeederi@vbgov.com', phone: '757-385-8025', note: 'Issues the current PPR review letters (confirmed active in 2026 correspondence).' },
     { name: 'Cole S. Fisher', role: 'Environmental Planner II (CBPA)', email: 'CSFisher@vbgov.com', phone: '757-385-6661', note: 'CBPA contact 2023–2025.' },
-    { name: 'Patricia Burns', role: 'Intake', email: 'PBurns@vbgov.com', phone: '757-385-4902' },
+    { name: 'Patricia Burns', role: 'Intake', email: 'PBurns@vbgov.com', phone: '757-385-4902', note: 'Issues duplicate-PPR VOID warnings — one record per location.' },
+    { name: 'L. A. Gordon', role: 'Accela / records help', email: 'lagordon@vbgov.com', note: 'Helped reopen/attach documents to Accela records (mined correspondence).' },
   ],
+  // Learned from mined correspondence (§5A #35, 2026-08-01):
+  // - Denied/edge PPRs can proceed via a CBPA ADMINISTRATIVE VARIANCE
+  //   ($150 fee, posted signs, conditions letter) — a real prior filing path.
+  // - Trees near an eagle's nest require DWR coordination (dwr.virginia.gov)
+  //   BEFORE the city issues CBPA approval.
+  // - Simple single-tree cases have been approved directly by the CBPA
+  //   planner over email, with conditions — ask before assuming a full PPR.
   lastVerified: '2026-08-01',
 };
 
