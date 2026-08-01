@@ -24,6 +24,8 @@ export const env = {
     bridgeSecret: get('ELEVENLABS_BRIDGE_SECRET'),
   },
   anthropic: { apiKey: get('ANTHROPIC_API_KEY') },
+  /** Access key for the ops app + /api routes (§8 admin-only surface). */
+  appAccessKey: get('APP_ACCESS_KEY'),
   twilio: {
     accountSid: get('TWILIO_ACCOUNT_SID'),
     authToken: get('TWILIO_AUTH_TOKEN'),

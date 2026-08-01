@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1B4D3E">
+<title>ARBOR — Art-is-Tree</title>
+<style>
+/* Design tokens (src/design/tokens.ts, §9) — inlined so the app is one file,
+   sunlight-readable, glove-friendly (48px+ targets), one-handed. */
+:root{
+  --forest:#1B4D3E; --forest-dark:#12352B; --canopy:#2A7A5E; --moss:#6B8F71;
+  --bark:#3E2C23; --clay:#B4552D; --amber:#D4AF37;
+  --ink:#0F1A15; --surface:#FFFFFF; --surface-alt:#F3F5F2; --border:#D5DCD7; --muted:#5C6B62;
+  --emergency:#C62828; --warning:#E08A00; --ok:#2A7A5E; --info:#2B6CB0;
+  --r-sm:6px; --r-md:10px; --r-lg:16px; --r-pill:999px;
+  --shadow-card:0 1px 3px rgba(15,26,21,.12),0 1px 2px rgba(15,26,21,.08);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:17px;line-height:1.4;color:var(--ink);background:var(--surface-alt);
+  padding-bottom:calc(72px + env(safe-area-inset-bottom));
+}
+header{
+  background:var(--forest);color:#fff;padding:14px 16px 12px;
+  padding-top:calc(14px + env(safe-area-inset-top));
+  position:sticky;top:0;z-index:10;box-shadow:var(--shadow-card);
+}
+.hrow{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{font-size:24px;font-weight:800;letter-spacing:.5px}
+.brand small{font-weight:600;font-size:15px;opacity:.85;margin-left:8px}
+#dateline{font-size:15px;opacity:.9;margin-top:2px}
+#refresh{
+  min-width:48px;min-height:48px;border:0;border-radius:var(--r-md);
+  background:var(--forest-dark);color:#fff;font-size:20px;cursor:pointer;
+}
+#refresh:active{opacity:.7}
+main{padding:16px;max-width:640px;margin:0 auto}
+.view{display:none}
+.view.active{display:block}
+
+/* Summary chips */
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.chip{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-pill);
+  padding:10px 16px;font-size:15px;font-weight:600;display:flex;align-items:center;gap:6px;
+}
+.chip b{font-size:20px;font-weight:800}
+.chip.alert{border-color:var(--emergency);color:var(--emergency)}
+.zip-run{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:16px;font-size:15px;color:var(--muted);font-weight:600}
+.zip-run span{background:var(--forest);color:#fff;border-radius:var(--r-pill);padding:6px 14px;font-weight:700}
+
+/* Cards */
+.card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-card);padding:16px;margin-bottom:12px;
+}
+.card.emergency{border-left:6px solid var(--emergency)}
+.card .toprow{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:4px}
+.card .who{font-size:20px;font-weight:800}
+.card .when{font-size:17px;font-weight:700;color:var(--forest);white-space:nowrap}
+.card .addr{font-size:17px;margin:2px 0 8px}
+.card .addr a{color:var(--info);text-decoration:none;font-weight:600}
+.card .scope{font-size:15px;color:var(--muted);margin-bottom:8px}
+.badges{display:flex;flex-wrap:wrap;gap:6px}
+.badge{
+  font-size:13px;font-weight:800;letter-spacing:.4px;border-radius:var(--r-sm);
+  padding:4px 8px;border:1.5px solid transparent;
+}
+.b-job{background:var(--forest);color:#fff}
+.b-est{border-color:var(--canopy);color:var(--canopy)}
+.b-emg{background:var(--emergency);color:#fff}
+.b-flag{border-color:var(--emergency);color:var(--emergency)}
+.b-first{border-color:var(--amber);color:#8a6d00}
+.b-repeat{border-color:var(--moss);color:var(--moss)}
+.b-src{background:var(--surface-alt);color:var(--muted);border-color:var(--border)}
+.b-hot{background:var(--clay);color:#fff}
+.b-warm{background:var(--warning);color:#fff}
+.b-cool{border-color:var(--info);color:var(--info)}
+.b-permit-likely{background:var(--warning);color:#fff}
+.b-review{background:var(--info);color:#fff}
+.b-verify{border-color:var(--muted);color:var(--muted)}
+.b-pending{background:var(--surface-alt);color:var(--muted);border-color:var(--border)}
+.ordernum{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:28px;height:28px;border-radius:50%;background:var(--forest);color:#fff;
+  font-size:15px;font-weight:800;margin-right:8px;flex:none;
+}
+.section-title{font-size:15px;font-weight:800;letter-spacing:1px;color:var(--muted);margin:20px 0 10px;text-transform:uppercase}
+
+/* States */
+.state{
+  text-align:center;padding:48px 24px;color:var(--muted);font-size:17px;
+  background:var(--surface);border:1px dashed var(--border);border-radius:var(--r-lg);
+}
+.state b{display:block;font-size:20px;color:var(--ink);margin-bottom:8px}
+
+/* Bottom nav */
+nav{
+  position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--surface);
+  border-top:1px solid var(--border);padding-bottom:env(safe-area-inset-bottom);z-index:10;
+}
+nav button{
+  flex:1;min-height:56px;border:0;background:none;font-size:15px;font-weight:700;
+  color:var(--muted);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0;
+}
+nav button.active{color:var(--forest)}
+nav button .ico{font-size:22px;line-height:1}
+nav button.active::after{content:"";width:24px;height:3px;border-radius:2px;background:var(--forest);margin-top:2px}
+
+/* Key overlay */
+#keywall{
+  position:fixed;inset:0;background:var(--forest);color:#fff;z-index:100;
+  display:none;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;
+}
+#keywall.show{display:flex}
+#keywall h1{font-size:38px;font-weight:800;margin-bottom:4px}
+#keywall p{opacity:.9;margin-bottom:24px;max-width:320px}
+#keywall input{
+  width:100%;max-width:320px;min-height:56px;border:0;border-radius:var(--r-md);
+  padding:0 16px;font-size:17px;margin-bottom:12px;text-align:center;
+}
+#keywall button{
+  width:100%;max-width:320px;min-height:56px;border:0;border-radius:var(--r-md);
+  background:var(--amber);color:var(--ink);font-size:17px;font-weight:800;cursor:pointer;
+}
+.errline{color:#FFD3D3;margin-top:12px;font-weight:600;min-height:24px}
+</style>
+</head>
+<body>
+
+<div id="keywall">
+  <h1>ARBOR</h1>
+  <p>Art-is-Tree ops. Enter your access key — you only do this once per device.</p>
+  <input id="keyinput" type="password" inputmode="text" autocomplete="current-password" placeholder="Access key">
+  <button id="keygo">Open</button>
+  <div class="errline" id="keyerr"></div>
+</div>
+
+<header>
+  <div class="hrow">
+    <div>
+      <div class="brand">ARBOR<small>Art-is-Tree</small></div>
+      <div id="dateline"></div>
+    </div>
+    <button id="refresh" title="Refresh" aria-label="Refresh">&#8635;</button>
+  </div>
+</header>
+
+<main>
+  <div id="view-today" class="view active"></div>
+  <div id="view-leads" class="view"></div>
+</main>
+
+<nav>
+  <button id="tab-today" class="active"><span class="ico">&#9728;</span>Today</button>
+  <button id="tab-leads"><span class="ico">&#9993;</span>Leads</button>
+</nav>
+
+<script>
+'use strict';
+// All user-sourced text is rendered via textContent (XSS-safe by construction).
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+};
+
+let KEY = localStorage.getItem('arborKey') || '';
+
+async function api(path) {
+  const res = await fetch(path, { headers: KEY ? { 'x-arbor-key': KEY } : {} });
+  if (res.status === 401) throw Object.assign(new Error('unauthorized'), { code: 401 });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(body.error || 'error'), { code: res.status });
+  return body;
+}
+
+function state(title, msg) {
+  const box = el('div', 'state');
+  box.appendChild(el('b', '', title));
+  box.appendChild(document.createTextNode(msg));
+  return box;
+}
+
+function fmtTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function mapsLink(address, city) {
+  const a = el('a', '', address + (city ? ', ' + city : ''));
+  a.href = 'https://maps.google.com/?q=' + encodeURIComponent(address + ', ' + city + ', VA');
+  a.target = '_blank';
+  a.rel = 'noopener';
+  return a;
+}
+
+function badge(text, cls) { return el('span', 'badge ' + cls, text); }
+
+function permitBadge(lead) {
+  if (lead.permit) {
+    const s = lead.permit.screenStatus;
+    if (s === 'PERMIT_LIKELY') return badge('PERMIT LIKELY', 'b-permit-likely');
+    if (s === 'REVIEW_NEEDED') return badge('PERMIT: REVIEW NEEDED', 'b-review');
+    return badge('NO OVERLAY — VERIFY W/ CITY', 'b-verify');
+  }
+  if (lead.screenPending) return badge('PERMIT SCREEN PENDING', 'b-pending');
+  return null;
+}
+
+// ---------- Today (Morning Brief) ----------
+async function renderToday() {
+  const v = $('view-today');
+  v.replaceChildren();
+  const start = new Date(); start.setHours(0, 0, 0, 0);
+  const end = new Date(start); end.setDate(end.getDate() + 1);
+  let brief;
+  try {
+    brief = await api('/api/brief?from=' + start.toISOString() + '&to=' + end.toISOString());
+  } catch (e) {
+    if (e.code === 401) return showKeywall();
+    v.appendChild(state('No schedule yet', e.code === 503
+      ? 'Database not connected — the day’s route shows up the moment it is.'
+      : 'Could not load the brief. Pull refresh to retry.'));
+    return;
+  }
+  const s = brief.summary;
+  const chips = el('div', 'chips');
+  const chip = (label, n, alert) => {
+    const c = el('span', 'chip' + (alert && n > 0 ? ' alert' : ''));
+    c.appendChild(el('b', '', String(n)));
+    c.appendChild(document.createTextNode(label));
+    return c;
+  };
+  chips.appendChild(chip('stops', s.totalStops));
+  chips.appendChild(chip('jobs', s.jobs));
+  chips.appendChild(chip('estimates', s.estimates));
+  chips.appendChild(chip('first-timers', s.firstTimers));
+  chips.appendChild(chip('red flags', s.redFlagCount, true));
+  chips.appendChild(chip('emergencies', s.emergencies, true));
+  v.appendChild(chips);
+
+  if (s.zipRun && s.zipRun.length) {
+    const zr = el('div', 'zip-run');
+    zr.appendChild(document.createTextNode('ZIP run:'));
+    s.zipRun.forEach(z => zr.appendChild(el('span', '', z)));
+    v.appendChild(zr);
+  }
+
+  if (!brief.stops.length) {
+    v.appendChild(state('Nothing on the books today', 'New bookings land here automatically.'));
+    return;
+  }
+  for (const stop of brief.stops) {
+    const c = el('div', 'card' + (stop.redFlags.length ? ' emergency' : ''));
+    const top = el('div', 'toprow');
+    const who = el('div', 'who');
+    who.appendChild(el('span', 'ordernum', String(stop.order)));
+    who.appendChild(document.createTextNode(stop.name || 'Unnamed'));
+    top.appendChild(who);
+    top.appendChild(el('div', 'when', fmtTime(stop.timeIso)));
+    c.appendChild(top);
+    const addr = el('div', 'addr');
+    addr.appendChild(mapsLink(stop.address, stop.city));
+    c.appendChild(addr);
+    if (stop.scope) c.appendChild(el('div', 'scope', stop.scope));
+    const b = el('div', 'badges');
+    b.appendChild(badge(stop.kind === 'job' ? 'JOB' : 'ESTIMATE', stop.kind === 'job' ? 'b-job' : 'b-est'));
+    stop.redFlags.forEach(f => b.appendChild(badge(f, f === 'EMERGENCY' ? 'b-emg' : 'b-flag')));
+    stop.tags.forEach(t => {
+      if (t === 'FIRST-TIMER') b.appendChild(badge(t, 'b-first'));
+      else if (t === 'REPEAT') b.appendChild(badge(t, 'b-repeat'));
+      else b.appendChild(badge(t, 'b-src'));
+    });
+    c.appendChild(b);
+    v.appendChild(c);
+  }
+}
+
+// ---------- Leads ----------
+async function renderLeads() {
+  const v = $('view-leads');
+  v.replaceChildren();
+  let data;
+  try {
+    data = await api('/api/leads?limit=50');
+  } catch (e) {
+    if (e.code === 401) return showKeywall();
+    v.appendChild(state('No leads yet', e.code === 503
+      ? 'Database not connected — leads appear here the moment it is.'
+      : 'Could not load leads. Pull refresh to retry.'));
+    return;
+  }
+  if (!data.leads.length) {
+    v.appendChild(state('Inbox zero', 'New calls and web leads land here.'));
+    return;
+  }
+  const rank = { hot: 0, warm: 1, cool: 2 };
+  const leads = [...data.leads].sort((a, b) =>
+    (b.isEmergency - a.isEmergency) || (rank[a.quality.priority] - rank[b.quality.priority]) ||
+    (new Date(b.createdAt) - new Date(a.createdAt)));
+  for (const lead of leads) {
+    const c = el('div', 'card' + (lead.isEmergency ? ' emergency' : ''));
+    const top = el('div', 'toprow');
+    top.appendChild(el('div', 'who', lead.name || 'Unknown caller'));
+    top.appendChild(el('div', 'when', new Date(lead.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })));
+    c.appendChild(top);
+    if (lead.city) c.appendChild(el('div', 'addr', lead.city + (lead.zip ? ' · ' + lead.zip : '')));
+    if (lead.details) c.appendChild(el('div', 'scope', lead.details));
+    const b = el('div', 'badges');
+    if (lead.isEmergency) b.appendChild(badge('EMERGENCY', 'b-emg'));
+    b.appendChild(badge(lead.quality.priority.toUpperCase(), 'b-' + lead.quality.priority));
+    const pb = permitBadge(lead);
+    if (pb) b.appendChild(pb);
+    if (lead.isFirstTimer === true) b.appendChild(badge('FIRST-TIMER', 'b-first'));
+    if (lead.isFirstTimer === false) b.appendChild(badge('REPEAT', 'b-repeat'));
+    if (lead.source) b.appendChild(badge(lead.source.toUpperCase(), 'b-src'));
+    c.appendChild(b);
+    v.appendChild(c);
+  }
+}
+
+// ---------- Shell ----------
+function showKeywall(msg) {
+  $('keyerr').textContent = msg || '';
+  $('keywall').classList.add('show');
+}
+$('keygo').addEventListener('click', async () => {
+  KEY = $('keyinput').value.trim();
+  localStorage.setItem('arborKey', KEY);
+  try {
+    await api('/api/leads?limit=1');
+    $('keywall').classList.remove('show');
+    refreshAll();
+  } catch (e) {
+    if (e.code === 401) showKeywall('That key didn’t work — check it and try again.');
+    else { $('keywall').classList.remove('show'); refreshAll(); }
+  }
+});
+$('keyinput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('keygo').click(); });
+
+function switchTab(which) {
+  $('view-today').classList.toggle('active', which === 'today');
+  $('view-leads').classList.toggle('active', which === 'leads');
+  $('tab-today').classList.toggle('active', which === 'today');
+  $('tab-leads').classList.toggle('active', which === 'leads');
+}
+$('tab-today').addEventListener('click', () => switchTab('today'));
+$('tab-leads').addEventListener('click', () => switchTab('leads'));
+
+function refreshAll() { renderToday(); renderLeads(); }
+$('refresh').addEventListener('click', refreshAll);
+
+$('dateline').textContent = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+refreshAll();
+setInterval(refreshAll, 60000);
+</script>
+</body>
+</html>

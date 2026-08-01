@@ -16,6 +16,7 @@ import { env } from './env.js';
 import { createVoiceLlm } from './voice/anthropicLlm.js';
 import { createElevenLabsBridge, type BridgeRequestBody } from './voice/elevenlabsBridge.js';
 import type { Alerter } from './reception/receptionist.js';
+import { loadAppHtml } from './server/appPage.js';
 
 /** Live DataSource over the Phase 1 repositories (service-role, RLS-locked). */
 export function createLiveSource(): DataSource {
@@ -116,8 +117,26 @@ export function startServer(port: number) {
       res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
       res.end(JSON.stringify(body));
     };
+    // Lead/brief data is customer PII — the /api surface fails CLOSED (§4.3):
+    // with a key configured it must match; with no key configured it only
+    // opens while the DB is disconnected (nothing to leak). /health and the
+    // voice bridge (own secret) stay outside this gate.
+    const apiAuthorized = (): boolean => {
+      if (env.appAccessKey) {
+        const given = req.headers['x-arbor-key'] ?? url.searchParams.get('key');
+        return given === env.appAccessKey;
+      }
+      return !hasDb();
+    };
     try {
+      if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/app')) {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+        return res.end(loadAppHtml());
+      }
       if (req.method === 'GET' && url.pathname === '/health') return send(...unpack(await api.health()));
+      if (url.pathname.startsWith('/api/') && !apiAuthorized()) {
+        return send(401, { error: 'unauthorized' });
+      }
       if (req.method === 'GET' && url.pathname === '/api/brief') {
         return send(...unpack(await api.brief(url.searchParams.get('from') ?? '', url.searchParams.get('to') ?? '')));
       }
