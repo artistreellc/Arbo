@@ -18,6 +18,12 @@ export const env = {
     serviceRoleKey: get('SUPABASE_SERVICE_ROLE_KEY'),
   },
   vapi: { apiKey: get('VAPI_API_KEY') },
+  elevenlabs: {
+    apiKey: get('ELEVENLABS_API_KEY'),
+    /** Shared secret ElevenLabs sends to our custom-LLM bridge (we mint it). */
+    bridgeSecret: get('ELEVENLABS_BRIDGE_SECRET'),
+  },
+  anthropic: { apiKey: get('ANTHROPIC_API_KEY') },
   twilio: {
     accountSid: get('TWILIO_ACCOUNT_SID'),
     authToken: get('TWILIO_AUTH_TOKEN'),
