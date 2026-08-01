@@ -1,0 +1,49 @@
+{
+  "version": "2026-07-31",
+  "disclaimer": "Engineering guidance to keep the build clean and defensible. Not legal advice — Mike confirms specifics with his own attorney.",
+  "tcpa": {
+    "consentRequired": true,
+    "consentModel": "A customer who called in or booked an estimate establishes a business relationship. Capture and log that consent event with a timestamp and source before any automated outbound.",
+    "businessIdentityInFirstMessage": "Art-is-Tree",
+    "optOut": {
+      "keyword": "STOP",
+      "instructionText": "Reply STOP to opt out",
+      "honor": "instantly and permanently",
+      "suppressionListRespectedSystemWide": true
+    },
+    "quietHours": {
+      "timezone": "America/New_York",
+      "earliestHour": 8,
+      "latestHour": 21,
+      "rule": "No automated messages before 8:00 AM or after 9:00 PM local time. Queue anything outside that window.",
+      "appliesTo": ["follow-ups", "review requests", "seasonal outreach", "predictive outreach", "reschedule notices"]
+    },
+    "throttle": "Never blast. Space outreach so it reads as a small company, not a spam cannon."
+  },
+  "callRecordingAndAiDisclosure": {
+    "state": "Virginia",
+    "recordingConsent": "one-party",
+    "disclosureLine": "Hi, thanks for calling Art-is-Tree — you may be speaking with our automated assistant, and calls can be recorded for quality. How can I help with your trees?",
+    "disclosureRequiredAtCallStart": true
+  },
+  "dataPrivacy": {
+    "classification": "sensitive PII (names, addresses, phones, photos, property history)",
+    "encryptAtRest": true,
+    "encryptInTransit": true,
+    "leastPrivilegeAccess": true,
+    "noCustomerDataInLogs": true,
+    "consentAndOptOutRecordKept": true
+  },
+  "ownerLocation": {
+    "principle": "Mike tracking himself, on his own phone, by choice — no third-party privacy issue.",
+    "requirement": "Clear ON/OFF, working-hours-only, never running after hours."
+  },
+  "contractsAndCredentials": {
+    "signedContractPhotos": "Records, not e-signatures. Fine to store and file; do not represent as anything else.",
+    "proofOfInsurance": "Always send the current, valid COI. Never send an expired one; never overstate coverage."
+  },
+  "outboundGate": {
+    "description": "Every automated outbound message MUST pass all of these checks before sending.",
+    "checks": ["consent", "quietHours", "notSuppressed", "businessIdentityPresent", "optOutInstructionPresent"]
+  }
+}

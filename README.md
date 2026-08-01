@@ -1,145 +1,125 @@
-# Arbo — Tree Service CRM
+# ARBOR
 
-Arbo is a standalone, AI-powered CRM command center for a tree service business.
-It is the destination every lead flows into — website form, AI receptionist,
-Gmail, phone — and the board every job moves across, from first call to paid.
+**AI reception & operations platform for Art-is-Tree LLC** — Hampton Roads, VA.
+The nerve center that answers the phone, qualifies and books work, files the
+paperwork, covers for Mike in the field, and — over time — generates its own
+repeat business from the property history it accumulates.
 
-It began as "Phase 1" built inside the marketing site (`art-is-tree`); this repo
-is that foundation lifted into its own app, plus the next four roadmap items:
-**real authentication, Gmail sync, email notifications, and Google Calendar
-sync.**
+> **North star:** *Every customer feels like Art-is-Tree's only customer, while
+> Mike touches a phone as little as possible.*
 
----
-
-## What's built
-
-| Area | Status | Where |
-|---|---|---|
-| **Lead Inbox** — every inquiry from every channel in one triage list | ✅ | `/inbox` |
-| **Job Pipeline** — lead → estimate → scheduled → done → paid, Kanban board | ✅ | `/pipeline` |
-| **Job detail** — editable job, contact card, activity timeline, call/note logging | ✅ | `/jobs/:id` |
-| **Dashboard** — new leads, open jobs, pipeline value, emergency alerts | ✅ | `/` |
-| **AI Receptionist** — Claude-powered front desk that captures leads, tuned to your rules | ✅ | `/settings` + `/api/crm/receptionist` |
-| **Real authentication** — Supabase Auth (per-user login), JWT-verified API, admin allowlist | ✅ | `/login` |
-| **Email notifications** — emails you the moment a new/emergency lead lands (Resend) | ✅ | `api/crm/_notify.js` |
-| **Gmail sync** — scheduled import of inquiry emails as leads, deduped & labeled | ✅ | `api/crm/sync/gmail.js` |
-| **Google Calendar sync** — estimates & scheduled jobs pushed to your calendar | ✅ | `api/crm/sync/calendar.js` |
-| **Business phone (calls/SMS) logging** | 🔜 Next | schema + `source: phone` ready |
+This is the **Art-is-Tree hard-coded edition** (per the Master Build Brief §0A).
+A parallel white-label edition turns every Art-is-Tree specific into per-tenant
+config; features stay in sync across both.
 
 ---
 
-## Architecture
+## Non-negotiables (law — enforced in code, not just prompts)
 
-```
-Browser (React SPA, Vite)
-   │   Supabase Auth session → Authorization: Bearer <user JWT>
-   ▼
-/api/crm/* (Vercel serverless functions)     ← hold the SERVICE ROLE key
-   │   verify JWT + admin allowlist
-   ├─► Supabase Postgres (crm_* tables, RLS on — service role only)
-   ├─► Resend            (new-lead email notifications)
-   └─► Google APIs       (Gmail import + Calendar events)
-```
-
-**Why the API layer:** the browser never gets the database service key, and the
-public anon key has **zero** access to CRM tables (RLS on, no anon policy). All
-customer PII flows through server functions only. The browser's anon key is used
-solely for authentication.
-
-### Endpoints
-- `GET/PATCH/POST /api/crm/leads` — inbox list, status updates, convert-to-job
-- `GET/POST/PATCH /api/crm/jobs` — pipeline board + job detail (auto-syncs Calendar on schedule)
-- `POST/DELETE /api/crm/appointments` — estimates/jobs, mirrored to Google Calendar
-- `POST /api/crm/activities` — log notes/calls/emails on the timeline
-- `GET/PATCH /api/crm/settings` — business info + receptionist persona
-- `GET /api/crm/integrations` — which optional integrations are connected
-- `POST /api/crm/sync/gmail` — import inquiry emails (cron + manual)
-- `POST /api/crm/sync/calendar` — reconcile un-synced appointments (cron + manual)
-- `POST /api/crm/intake` — **public** universal lead capture (website, etc.)
-- `POST /api/crm/receptionist` — **public** AI receptionist chat + auto-capture
+- **Service area = exactly four cities:** Virginia Beach, Norfolk, Chesapeake,
+  Portsmouth. **Suffolk is never served or mentioned** (blocked by a DB check
+  constraint *and* a customer-facing-copy test).
+- **Never a price over the phone** — no quote, range, or ballpark; every price
+  question pivots to a free in-person estimate.
+- **Never diagnose a tree over the phone.** General education, yes; "what's
+  wrong with *my* tree," no.
+- **Credentials:** licensed & insured, BBB A+ only. **Never claim TCIA.**
+- **Never autonomous.** ARBOR proposes; Mike approves. It is structurally
+  incapable of changing its own rules — improvement is human-reviewed only.
+- Guardrails (`src/policy/guardrails.json`) and legal rules
+  (`src/legal/compliance.json`) are the **single source of truth**, loaded by
+  every layer and validated at boot.
 
 ---
 
-## Setup
+## What works today (Phases 0–3 + reception hardening)
 
-### 1. Database
-Run the migrations in `supabase/migrations/` against your Supabase project
-(Dashboard → SQL Editor, or `supabase db push`):
-- `0001_crm_schema.sql` — contacts, leads, jobs, activities, appointments, settings; RLS on.
-- `0002_admins.sql` — the `crm_admins` allowlist (seeded with the owner email).
+**Foundation & data**
+- Guardrail + legal policy as validated, loadable config; design tokens; CI;
+  secret hygiene (nothing sensitive in the repo).
+- Full data spine on a live Supabase project (property "twin", contacts with
+  timestamped consent, leads, estimates, jobs, contracts, photos, message/call
+  logs, suppression list, Client Master index) — RLS locked to service-role.
+- Address normalization so one lot never becomes two twins.
+- Per-property Google Drive filing (Estimates / Signed Contracts / Job Photos /
+  Documents) — created live in the owner's Drive.
 
-### 2. Create your login
-In Supabase → **Authentication → Users**, add yourself (email + password). Make
-sure that email is in `CRM_ADMIN_EMAILS` **or** the `crm_admins` table.
+**AI receptionist (the brain)**
+- Opens like Mike does — **name first, then the AI/recording disclosure** (§3.10).
+- Qualifies the lead (tree/size, proximity to house & power lines, job type),
+  asks "had tree work before?", captures a clean lead.
+- **Guardrails enforced in code** — an output guard blocks any price/diagnosis/
+  forbidden term *even if the model produces it*; the caller can't talk it out
+  of the rules.
+- **Emergencies** (tree on house/car/line, someone in danger) → instant alert.
+- **Incidents** (crew damage, injury, genuinely angry caller) → de-escalates,
+  **never admits fault or quotes a repair cost**, live-forwards to Mike's cell +
+  urgent alert.
+- **"I want a person"** → flagged as a priority relationship call.
+- **Spam / sales calls** → screened out, never become a lead — but a real
+  customer is *never* mistaken for spam.
+- **Lead-quality read** (hot/warm/cool) to prioritize follow-up; "getting
+  multiple quotes" is treated as normal serious-buyer behavior, never a down-rank.
 
-### 3. Environment variables
-Copy `.env.example` → `.env` for local dev, and set the same keys in
-**Vercel → Settings → Environment Variables**. The essentials:
+**Booking**
+- Writes Google Calendar events in Mike's exact format —
+  `Client Name - SOURCE - 10-digit phone`, scope in the description.
+- **Afternoon-only 30-min estimate slots**, mornings protected for crew jobs.
+- ZIP clustering + **recommend-don't-commit** (never auto-books, never
+  double-books) — verified live against the real calendar.
 
-| Variable | Purpose |
-|---|---|
-| `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | Browser auth client |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server DB access (never prefix `VITE_`) |
-| `CRM_ADMIN_EMAILS` | Comma-separated admin allowlist |
-| `ANTHROPIC_API_KEY` | AI receptionist (optional) |
-| `RESEND_API_KEY`, `NOTIFY_FROM`, `NOTIFY_TO`, `APP_URL` | Email notifications (optional) |
-| `GOOGLE_CLIENT_ID/SECRET`, `GOOGLE_REFRESH_TOKEN` | Gmail + Calendar sync (optional) |
-| `CRON_SECRET` | Protects the scheduled sync endpoints |
+**Status:** ~116 tests passing; `npm run check` green. See `PROGRESS.md`.
 
-Every optional integration **degrades gracefully** — the app runs fine with only
-the Supabase keys set; unconfigured integrations simply show "Not connected."
+---
 
-### 4. Local dev & deploy
+## Roadmap (12 phases, per the expanded brief)
+
+| # | Phase | Status |
+|---|-------|--------|
+| 0 | Foundation & guardrails-as-config | ✅ done |
+| 1 | The data spine | ✅ done |
+| 2 | Inbound voice reception (the brain) | ✅ done (+ §3.6–3.29 hardening) |
+| 3 | Booking, color-coding & ZIP clustering | ✅ done (colors: learn live map) |
+| 4 | **Permitting & CBPA/RPA screening** (never "clear" — always "verify") | ⏭️ next |
+| 5 | Inbox monitoring & paperwork automation | ⬜ |
+| 6 | Follow-ups & outbound (TCPA-gated) | ⬜ |
+| 7 | Location intelligence (geofence, running-late auto-cover) | ⬜ |
+| 8 | Daily ops intelligence (morning brief, storm rescheduler) | ⬜ |
+| 9 | Predictive Property Intelligence (the centerpiece) | ⬜ |
+| 10 | The review loop (human-in-the-loop) | ⬜ |
+| 11 | The mobile app & polish (Expo/React Native) | ⬜ |
+
+Later capability layers from the brief (crew app, equipment/parts log,
+tree-health assessment, storm war-room, per-job P&L, customer portal, owner
+cockpit, wearables) are sequenced across phases 4–11.
+
+---
+
+## Stack
+
+Node + TypeScript backend · **Supabase** (Postgres/storage, system of record) ·
+Google Calendar/Drive/Gmail/Maps · **Vapi + Twilio** (voice/SMS — wired at
+Phase 2 go-live) · **Vercel** hosting · **Expo/React Native** app (Phase 11).
+Rationale for every choice is logged in `DECISIONS.md`.
+
+---
+
+## Develop
+
 ```bash
+cp .env.example .env      # fill in real values; .env is gitignored
 npm install
-npm run dev      # Vite dev server on :3000 (API functions run on Vercel)
-npm run build    # production build → dist/
+npm run check             # typecheck + lint + tests  (the guardrail suite runs here)
+npm run boot              # boots: loads & validates the policy + legal config
 ```
-Deploy to Vercel (`framework: vite`). The `vercel.json` wires SPA routing and two
-cron jobs (Gmail every 15 min, Calendar reconcile hourly).
 
-> **Cron & plan note:** sub-daily cron schedules require a Vercel **Pro** plan;
-> on Hobby, crons run once per day. You can always trigger a Gmail import
-> manually from **Settings → Sync now** regardless of plan.
+Requires Node ≥ 20. Secrets never enter the repo — Supabase service-role key,
+Vapi/Twilio/Google credentials all live in `.env` / the host's secret manager.
 
----
+## Project docs
 
-## The integrations, in detail
+- **`PROGRESS.md`** — every task, its status, its test result.
+- **`DECISIONS.md`** — every non-obvious choice and why (the map out of any
+  future rabbit hole).
 
-### Real authentication
-The Phase-1 shared-token gate is gone. The browser signs in with Supabase Auth;
-every admin API call carries the user's JWT, which the serverless functions
-verify with Supabase and check against the admin allowlist (`CRM_ADMIN_EMAILS`
-∪ `crm_admins`). If neither allowlist is configured, the API **fails closed**.
-
-### Email notifications (Resend)
-`captureLead()` fires a best-effort email on every new lead — with a 🚨 EMERGENCY
-subject when the lead is urgent — to the address in **Settings → Notify new leads
-to** (falling back to `NOTIFY_TO`). No Resend key? Intake still works; no email
-is sent.
-
-### Gmail sync
-`GET/POST /api/crm/sync/gmail` (Vercel Cron, or **Settings → Sync now**) runs a
-Gmail search (`GMAIL_QUERY`) over the business inbox, captures each message as a
-`source: gmail` lead, dedupes by Gmail message id, and applies a processed label
-so nothing is imported twice. Uses one Google OAuth refresh token — no SDK.
-
-### Google Calendar sync
-Creating an appointment (from a job's detail page) or moving a job into a
-scheduling stage with a date pushes a Google Calendar event and stores its
-`google_event_id` on the appointment. `sync/calendar` is the safety net that
-retries anything still pending/failed.
-
----
-
-## Roadmap (what's next)
-
-1. **Business phone.** Route the number through a provider (e.g. Twilio) so
-   calls/texts log as `crm_activities` and missed calls create `source: phone`
-   leads. Optionally connect the receptionist to voice (Vapi/Retell).
-2. **Receptionist → live web widget & after-hours SMS**, using the same endpoint.
-3. **Two-way Calendar sync** — drag-to-reschedule in Google reflects back into
-   the pipeline.
-
-Each is an additive layer on the inbox, pipeline, schema, and receptionist brain
-already in place.
+Build one clean phase at a time. Audit every five tasks. Ask before you guess.
