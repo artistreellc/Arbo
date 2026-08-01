@@ -3,7 +3,7 @@
 // hours are evaluated in the configured timezone via Intl (no ad-hoc offset
 // math — §12 avoids the timezone rabbit hole).
 
-import { DEFAULT_SCHEDULING, type SchedulingConfig } from './config.js';
+import { DEFAULT_SCHEDULING, type SchedulingConfig, type HourWindow } from './config.js';
 
 export interface Interval {
   startIso: string;
@@ -33,14 +33,16 @@ export function isFree(slot: Interval, busy: Interval[]): boolean {
   return !busy.some((b) => overlaps(slot, b));
 }
 
-function withinWorkingWindow(startMs: number, durationMs: number, cfg: SchedulingConfig): boolean {
+function withinWorkingWindow(startMs: number, durationMs: number, cfg: SchedulingConfig, window?: HourWindow): boolean {
+  const startHour = window?.startHour ?? cfg.workingStartHour;
+  const endHour = window?.endHour ?? cfg.workingEndHour;
   const start = localParts(new Date(startMs), cfg.timezone);
   const end = localParts(new Date(startMs + durationMs - 1), cfg.timezone);
   if (!cfg.workingDays.includes(start.weekday)) return false;
   if (end.weekday !== start.weekday) return false; // must not cross midnight
   const startMinutes = start.hour * 60 + start.minute;
   const endMinutes = end.hour * 60 + end.minute + 1;
-  return startMinutes >= cfg.workingStartHour * 60 && endMinutes <= cfg.workingEndHour * 60;
+  return startMinutes >= startHour * 60 && endMinutes <= endHour * 60;
 }
 
 /**
@@ -53,6 +55,7 @@ export function freeSlots(
   busy: Interval[],
   durationMin: number,
   cfg: SchedulingConfig = DEFAULT_SCHEDULING,
+  window?: HourWindow,
 ): Interval[] {
   const stepMs = cfg.slotMinutes * 60_000;
   const durMs = durationMin * 60_000;
@@ -60,7 +63,7 @@ export function freeSlots(
   const to = Date.parse(toIso);
   const out: Interval[] = [];
   for (let s = alignUp(from, stepMs); s + durMs <= to; s += stepMs) {
-    if (!withinWorkingWindow(s, durMs, cfg)) continue;
+    if (!withinWorkingWindow(s, durMs, cfg, window)) continue;
     const slot = { startIso: new Date(s).toISOString(), endIso: new Date(s + durMs).toISOString() };
     if (isFree(slot, busy)) out.push(slot);
   }

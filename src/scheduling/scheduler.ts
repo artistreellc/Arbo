@@ -5,7 +5,7 @@
 
 import { freeSlots, isFree, type Interval } from './availability.js';
 import { clusterScore, type ZipEvent } from './clustering.js';
-import { CALENDAR_COLORS, DEFAULT_SCHEDULING, type EventKind, type SchedulingConfig } from './config.js';
+import { CALENDAR_COLORS, DEFAULT_SCHEDULING, windowForKind, type EventKind, type SchedulingConfig } from './config.js';
 import type { CalendarApi, CalendarEvent } from '../integrations/calendar.js';
 
 export interface ScheduleRequest {
@@ -37,7 +37,9 @@ export function recommendSlots(
   limit = 3,
 ): Suggestion[] {
   const duration = req.durationMin ?? cfg.durationsMin[req.kind];
-  const slots = freeSlots(req.fromIso, req.toIso, existing, duration, cfg);
+  // Estimates are constrained to the afternoon window; other kinds to the
+  // broad working day (§3.11).
+  const slots = freeSlots(req.fromIso, req.toIso, existing, duration, cfg, windowForKind(req.kind, cfg));
 
   const ranked = slots
     .map((s) => {

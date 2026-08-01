@@ -11,8 +11,12 @@ export const GOOGLE_COLOR_NAMES: Record<string, string> = {
 
 export type EventKind = 'estimate' | 'job' | 'emergency' | 'follow_up';
 
-// Default color mapping — DELIBERATELY avoids '11' (Tomato), which Mike uses for
-// payment reminders. Confirm/adjust with Mike (DECISIONS O4).
+// NOTE (§3.22): on Mike's real calendar, colorId already carries meaning
+// (source / city-cluster), NOT event kind. ARBOR must LEARN that mapping from
+// the live calendar, not invent kind-colors. This kind-based map is only a
+// safe fallback for events whose source/city color isn't known yet — and it
+// deliberately avoids '11' (Tomato), which Mike uses for payment reminders.
+// Replacing this with a learned source/city color map is tracked as O4.
 export const CALENDAR_COLORS: Record<EventKind, string> = {
   estimate: '9', // Blueberry (blue)
   job: '10', // Basil (green) — "go / work"
@@ -20,11 +24,19 @@ export const CALENDAR_COLORS: Record<EventKind, string> = {
   follow_up: '5', // Banana (yellow)
 };
 
+export interface HourWindow {
+  startHour: number; // local, inclusive
+  endHour: number; // local, exclusive
+}
+
 export interface SchedulingConfig {
   timezone: string;
   workingDays: number[]; // 0=Sun … 6=Sat
-  workingStartHour: number; // local
+  workingStartHour: number; // local (broad working day)
   workingEndHour: number;
+  // Estimates run AFTERNOONS (~12–5pm); mornings are protected for crew jobs
+  // (§3.11 — Mike's real rhythm). Adjustable in Settings, never hard-coded.
+  estimateWindow: HourWindow;
   slotMinutes: number;
   durationsMin: Record<EventKind, number>;
   // Realistic capacity: ~260 workdays/yr, but rain/breakdowns/no-shows cut it to
@@ -37,10 +49,20 @@ export const DEFAULT_SCHEDULING: SchedulingConfig = {
   workingDays: [1, 2, 3, 4, 5], // Mon–Fri (~260/yr)
   workingStartHour: 8,
   workingEndHour: 17,
+  estimateWindow: { startHour: 12, endHour: 17 }, // afternoons only (§3.11)
   slotMinutes: 30,
   durationsMin: { estimate: 30, job: 180, emergency: 60, follow_up: 30 },
   productiveDayFactor: 200 / 260,
 };
+
+/**
+ * The hour window a given event kind may be booked in. Estimates are afternoon-
+ * only (§3.11); other kinds use the broad working day.
+ */
+export function windowForKind(kind: EventKind, cfg: SchedulingConfig = DEFAULT_SCHEDULING): HourWindow {
+  if (kind === 'estimate') return cfg.estimateWindow;
+  return { startHour: cfg.workingStartHour, endHour: cfg.workingEndHour };
+}
 
 /** Productive days available in a window of `calendarWorkdays` working days. */
 export function productiveDays(calendarWorkdays: number, cfg = DEFAULT_SCHEDULING): number {

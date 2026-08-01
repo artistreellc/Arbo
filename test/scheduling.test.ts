@@ -120,3 +120,21 @@ describe('calendar colors avoid the payment red (11)', () => {
     expect(DEFAULT_SCHEDULING.workingDays).not.toContain(0); // no Sundays
   });
 });
+
+describe('estimates are afternoon-only (§3.11 — mornings protected for crew jobs)', () => {
+  it('never suggests a morning estimate slot', () => {
+    // Offer the whole working day 8am–6pm EDT (12:00Z–22:00Z); estimates must
+    // only land in the afternoon window (12pm–5pm EDT = 16:00Z–21:00Z).
+    const suggestions = recommendSlots(
+      { kind: 'estimate', zip: '23464', fromIso: at(MON, 12), toIso: at(MON, 22) },
+      [],
+      undefined,
+      20,
+    );
+    expect(suggestions.length).toBeGreaterThan(0);
+    for (const s of suggestions) {
+      expect(Date.parse(s.startIso)).toBeGreaterThanOrEqual(Date.parse(at(MON, 16))); // >= 12pm EDT
+      expect(Date.parse(s.endIso)).toBeLessThanOrEqual(Date.parse(at(MON, 21))); // <= 5pm EDT
+    }
+  });
+});
