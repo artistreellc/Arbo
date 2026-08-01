@@ -73,6 +73,32 @@ export const GuardrailsSchema = z
     afterHoursAndOverflow: z.object({
       afterHours: z.string().min(1),
       overflow: z.string().min(1),
+      missedCallTextBack: z.string().min(1),
+    }),
+    // Call routing beyond the normal lead path (§3.7–3.9, §3.21, §3.26).
+    callRouting: z.object({
+      wantsHuman: z.object({
+        triggers: z.array(z.string()).min(1),
+        action: z.string().min(1),
+        approvedLine: z.string().min(1),
+      }),
+      incident: z.object({
+        description: z.string().min(1),
+        triggers: z.object({
+          angry: z.array(z.string()).min(1),
+          damage: z.array(z.string()).min(1),
+          injury: z.array(z.string()).min(1),
+        }),
+        neverAdmitFault: z.literal(true),
+        neverQuoteRepairCost: z.literal(true),
+        approvedLine: z.string().min(1),
+      }),
+      spam: z.object({
+        description: z.string().min(1),
+        solicitorTriggers: z.array(z.string()).min(1),
+        biasTowardCustomer: z.literal(true),
+        approvedLine: z.string().min(1),
+      }),
     }),
   })
   .strict();

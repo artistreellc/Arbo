@@ -28,6 +28,16 @@ class FakeSink implements LeadSink {
     return { leadId: 'lead_1' };
   }
 }
+class FakeEscalator {
+  public incidents: Array<{ incidentType: string; reason: string }> = [];
+  public humanRequests = 0;
+  async incident(p: { incidentType: string; reason: string }): Promise<void> {
+    this.incidents.push({ incidentType: p.incidentType, reason: p.reason });
+  }
+  async wantsHuman(): Promise<void> {
+    this.humanRequests += 1;
+  }
+}
 
 describe('receptionist end-to-end (Phase 2 acceptance)', () => {
   it('NEVER says a price — even when the model tries to', async () => {
@@ -52,6 +62,37 @@ describe('receptionist end-to-end (Phase 2 acceptance)', () => {
     expect(alerter.calls).toHaveLength(1);
     expect(turn.emergency).toBe(true);
     expect(r.isEmergency).toBe(true);
+  });
+
+  it('routes a crew-damage call to an incident escalation, not a lead', async () => {
+    const escalator = new FakeEscalator();
+    const alerter = new FakeAlerter();
+    const r = new Receptionist({ g, legal, llm: new FakeLlm(['...']), alerter, escalator });
+    const turn = await r.handleUserTurn('your guys broke my fence and drove off');
+    expect(turn.intent).toBe('incident');
+    expect(turn.incidentType).toBe('damage');
+    expect(escalator.incidents).toHaveLength(1);
+    expect(r.isIncident).toBe(true);
+    // the reply is the de-escalation policy line, and never admits fault / quotes a repair cost
+    expect(turn.reply).toContain('really sorry');
+    expect(turn.reply).not.toMatch(/\$\s?\d/);
+  });
+
+  it('routes a "want a person" call to Mike and stays warm', async () => {
+    const escalator = new FakeEscalator();
+    const r = new Receptionist({ g, legal, llm: new FakeLlm(['...']), alerter: new FakeAlerter(), escalator });
+    const turn = await r.handleUserTurn("I don't want to talk to a robot, can I get Mike?");
+    expect(turn.intent).toBe('wants_human');
+    expect(escalator.humanRequests).toBe(1);
+    expect(r.wantsHuman).toBe(true);
+  });
+
+  it('screens spam and refuses to create a lead from it', async () => {
+    const r = new Receptionist({ g, legal, llm: new FakeLlm(['...']), alerter: new FakeAlerter() });
+    const turn = await r.handleUserTurn('I can get your business on the first page of Google, SEO special today');
+    expect(turn.intent).toBe('spam');
+    expect(r.isScreened).toBe(true);
+    await expect(r.finalize(new FakeSink())).rejects.toThrow(/screened/);
   });
 
   it('qualifies and captures a clean lead', async () => {

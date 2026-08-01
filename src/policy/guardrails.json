@@ -81,6 +81,31 @@
   },
   "afterHoursAndOverflow": {
     "afterHours": "Greet, triage. Emergencies alert Mike. Everything else: capture details, promise a callback, queue for morning.",
-    "overflow": "Two calls at once or a missed call: capture details and log the lead so no caller ever hits a dead end. Emergencies jump the queue."
+    "overflow": "Two calls at once or a missed call: capture details and log the lead so no caller ever hits a dead end. Emergencies jump the queue.",
+    "missedCallTextBack": "Sorry we missed you! This is Art-is-Tree — happy to get you a free estimate. What's going on with your trees?"
+  },
+  "callRouting": {
+    "wantsHuman": {
+      "triggers": ["is mike there", "talk to a person", "speak to someone", "real person", "don't want to talk to a robot", "talk to a human", "speak to mike", "get mike", "is there a person", "actual person"],
+      "action": "Take a complete message and flag as a wants-Mike-personally call (push + SMS). Treat as a high-priority relationship call. Never trap the caller in an AI loop or insist they deal with the AI.",
+      "approvedLine": "Absolutely — let me grab a few details and I'll have Mike reach out to you personally, as fast as he can."
+    },
+    "incident": {
+      "description": "Angry/upset caller, property damage caused by the crew, or an injury. Attempt a live warm transfer to Mike's personal cell (admin-only, never shown to caller). If no answer: de-escalate warmly, capture the full incident, fire an URGENT alert (push + SMS), and keep it warm with a hard callback expectation.",
+      "triggers": {
+        "angry": ["furious", "pissed", "ridiculous", "unacceptable", "so angry", "fed up", "livid", "outrageous", "disgusted", "never again", "worst experience"],
+        "damage": ["broke my", "broke the", "damaged my", "damaged the", "hit my", "ran over", "destroyed my", "cracked my", "knocked over", "smashed my", "tore up my", "ruined my"],
+        "injury": ["someone got hurt", "someone is hurt", "injured", "bleeding", "went to the hospital", "call an ambulance", "fell on someone", "hurt my", "he got hurt", "she got hurt"]
+      },
+      "neverAdmitFault": true,
+      "neverQuoteRepairCost": true,
+      "approvedLine": "I'm really sorry this happened — that's not okay, and I want to make sure Mike knows right away. Let me get the details so he can call you back personally as fast as possible."
+    },
+    "spam": {
+      "description": "Sales/solicitation/robocall — do NOT create a lead, do NOT clutter the Morning Brief, do NOT start follow-up. Log to a reviewable screened bucket. Bias toward treating anything ambiguous as a real customer; never drop a possible real lead.",
+      "solicitorTriggers": ["page one of google", "first page of google", "rank your website", "seo services", "more leads", "get you more customers", "marketing services", "insurance quote", "extended warranty", "lower your rate", "business loan", "merchant services", "franchise opportunity", "press one", "this is a courtesy call", "final notice", "your google listing", "boost your ranking"],
+      "biasTowardCustomer": true,
+      "approvedLine": "We're not looking for that, thanks — you have a good one."
+    }
   }
 }
