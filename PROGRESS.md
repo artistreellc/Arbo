@@ -36,6 +36,33 @@ Run at Phase 0 end. `npm run check` green: 28 tests pass, typecheck + lint clean
 unit-tested; secrets never in repo; docs seeded; design tokens delivered.
 
 ### Notes
-- 0.3 is partially open pending the real Supabase project + keys (see DECISIONS O1).
-  Boot + config validation is complete and tested; live Supabase connection is
-  verified once the new project's keys are in `.env`.
+- 0.3 resolved: dedicated Supabase project **`arbor`** (`wdpyysgxmwvvoyveihum`,
+  us-east-1) created and live. Boot + config validation complete and tested.
+
+## Phase 1 — The data spine
+
+| # | Task | Status | Test |
+|---|------|--------|------|
+| 1.1 | Dedicated Supabase project `arbor` provisioned (free tier) | ☑ | project ACTIVE_HEALTHY |
+| 1.2 | §7 schema + migrations applied (13 tables, RLS service-role-only) | ☑ | `list_tables` — all present, RLS on |
+| 1.3 | Service area enforced in DB (city CHECK; Suffolk impossible) | ☑ | live: Suffolk insert rejected by constraint |
+| 1.4 | Address normalization — no double twins (§12) + ZIP capture | ☑ | `address.test.ts` (8) |
+| 1.5 | Supabase service-role client wiring | ☑ | `boot.test.ts`; typecheck |
+| 1.6 | Repository CRUD (property/contact/lead/estimate/job/contract/photo) | ☑ | `spine.integration.test.ts` (guarded) + live SQL chain verified |
+| 1.7 | Function search_path hardening (advisor 0011) — **AUDIT after this** | ☑ | `get_advisors` security clean |
+| 1.8 | Google Drive per-property folders + Client Master index writes | ☐ | **blocked on Google service-account creds** |
+| 1.9 | Phase 1 audit (§11) + docs | ◐ | in progress |
+
+**Acceptance (Phase 1):** create Property/Contact/Estimate/Job/Photo/Contract
+end-to-end ✅ (verified live); **Drive folders auto-create per property** ⏳
+(pending Google credentials — see DECISIONS O3).
+
+### Phase 1 audit (§11) — result (partial phase)
+`npm run check` green: **36 tests pass, 4 live-integration skipped** (run once
+service-role key is in `.env`), typecheck + lint clean. Supabase security
+advisor: clean (the `rls_enabled_no_policy` INFO notes are intentional — §4.3
+service-role-only). 1) Guardrails ✅ 2) Legal gates ✅ (configured) 3) Tests ✅
+4) No regressions ✅ 5) Data integrity ✅ (FKs + cascade + dedupe verified live)
+6) Secrets clean ✅ 7) Docs current ✅ 8) Scope honest ✅ 9) Rabbit-hole: one
+named open item — Drive integration (1.8) needs Google creds; not silently
+half-built.
