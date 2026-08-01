@@ -9,9 +9,19 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { boot } from './index.js';
 import { createApi, type DataSource, type ApiLeadInput } from './server/api.js';
 import { hasDb } from './db/client.js';
-import { listLeads, listStopsBetween, latestPermitsForProperties, listFollowUpEstimates, listFollowUpJobs } from './db/repositories.js';
+import {
+  listLeads,
+  listStopsBetween,
+  latestPermitsForProperties,
+  listFollowUpEstimates,
+  listFollowUpJobs,
+  updateEstimateOutcome,
+  recordFollowUpSent,
+  recordReviewRequested,
+} from './db/repositories.js';
 import type { StopInput } from './ops/morningBrief.js';
 import type { EstimateState, JobState } from './ops/followUps.js';
+import { createNwsAlertsProvider } from './ops/stormWatch.js';
 import { loadAllConfig } from './config/loadConfig.js';
 import { env } from './env.js';
 import { createVoiceLlm } from './voice/anthropicLlm.js';
@@ -103,6 +113,9 @@ export function createLiveSource(): DataSource {
         })),
       };
     },
+    recordOutcome: (id, outcome) => updateEstimateOutcome(id, outcome),
+    recordFollowUpSent: (id, at) => recordFollowUpSent(id, at),
+    recordReviewRequested: (id, at) => recordReviewRequested(id, at),
   };
 }
 
@@ -135,7 +148,9 @@ const consoleAlerter: Alerter = {
  */
 export function createArborRequestHandler() {
   boot(); // validates guardrails + legal or throws
-  const api = createApi(createLiveSource());
+  const api = createApi(createLiveSource(), {
+    alerts: createNwsAlertsProvider((url, init) => fetch(url, init)),
+  });
 
   // The voice bridge shares the validated policy configs — one source of law.
   const { guardrails, legal } = loadAllConfig();
@@ -181,6 +196,22 @@ export function createArborRequestHandler() {
       }
       if (req.method === 'GET' && url.pathname === '/api/followups') {
         return send(...unpack(await api.followUps()));
+      }
+      if (req.method === 'GET' && url.pathname === '/api/storm') {
+        return send(...unpack(await api.storm()));
+      }
+      {
+        const m = url.pathname.match(/^\/api\/estimates\/([^/]+)\/outcome$/);
+        if (req.method === 'POST' && m) {
+          const body = (await readJson(req)) as { outcome?: string };
+          return send(...unpack(await api.setOutcome(m[1]!, body.outcome ?? '')));
+        }
+      }
+      {
+        const m = url.pathname.match(/^\/api\/followups\/(estimate|review)\/([^/]+)\/sent$/);
+        if (req.method === 'POST' && m) {
+          return send(...unpack(await api.markFollowUpSent(m[1]!, m[2]!)));
+        }
       }
       // ElevenLabs custom-LLM endpoint (the agent's Server URL points at
       // /voice/llm; the platform appends the OpenAI-style path).

@@ -172,6 +172,8 @@ app surface needed something visible and it reads purely from spine data.
 | P56.2 | Follow-up engine: 2-day estimate cadence (+ proof of insurance on first, #17), review request 1d after paid (#18), no-show saver (#20); consent/STOP/quiet-hours gates in CODE; recommend-only (§5B #1); migration 0007 applied live | ☑ | `leadMail.test.ts` (9) |
 | P56.3 | `/api/followups` + app **Follow-ups tab** ("ARBOR recommends — nothing sends without you") | ☑ | typecheck + smoke; engine fully covered offline |
 | P56.4 | Live Gmail inbox monitor loop (poll/push wiring at deploy) | ☐ | deploy-time (needs Google creds on the host) |
+| P56.5 | **Write side / app buttons** (D44): outcome taps (won/lost/no-show), Mark-sent per follow-up card (the only cadence-advancer) | ☑ | `stormWatch.test.ts` API suite |
+| P56.6 | **Storm watch #26** (D44): NWS alerts per city centroid (verified live), work-stopping filter, at-risk stop flags, Today-tab banner; feed-down ≠ clear skies | ☑ | `stormWatch.test.ts` (7) |
 
 ## Phase 4 — Permitting & CBPA/RPA screening engine (§6B, §5A #30)
 

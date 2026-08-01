@@ -127,6 +127,19 @@ nav button.active::after{content:"";width:24px;height:3px;border-radius:2px;back
   background:var(--amber);color:var(--ink);font-size:17px;font-weight:800;cursor:pointer;
 }
 .errline{color:#FFD3D3;margin-top:12px;font-weight:600;min-height:24px}
+/* Storm banner + action buttons */
+.storm{
+  background:var(--emergency);color:#fff;border-radius:var(--r-lg);padding:14px 16px;
+  margin-bottom:16px;font-weight:700;font-size:15px;line-height:1.35;
+}
+.storm small{display:block;font-weight:600;opacity:.9;margin-top:4px}
+.storm-muted{color:var(--muted);font-size:13px;margin-bottom:12px}
+.actbtn{
+  min-height:48px;border:0;border-radius:var(--r-md);background:var(--forest);color:#fff;
+  font-size:15px;font-weight:800;padding:0 18px;cursor:pointer;margin-top:10px;
+}
+.actbtn:disabled{opacity:.5}
+.actbtn.done{background:var(--surface-alt);color:var(--ok);border:1.5px solid var(--ok)}
 </style>
 </head>
 <body>
@@ -174,8 +187,12 @@ const el = (tag, cls, text) => {
 
 let KEY = localStorage.getItem('arborKey') || '';
 
-async function api(path) {
-  const res = await fetch(path, { headers: KEY ? { 'x-arbor-key': KEY } : {} });
+async function api(path, opts) {
+  const res = await fetch(path, {
+    method: (opts && opts.method) || 'GET',
+    headers: Object.assign({ 'content-type': 'application/json' }, KEY ? { 'x-arbor-key': KEY } : {}),
+    body: opts && opts.body ? JSON.stringify(opts.body) : undefined,
+  });
   if (res.status === 401) throw Object.assign(new Error('unauthorized'), { code: 401 });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw Object.assign(new Error(body.error || 'error'), { code: res.status });
@@ -216,10 +233,28 @@ function permitBadge(lead) {
   return null;
 }
 
+// ---------- Storm banner (§26: flags, never silently clear) ----------
+async function stormBanner() {
+  try {
+    const s = await api('/api/storm');
+    if (!s.alerts.length) return null;
+    const box = el('div', 'storm');
+    const worst = s.alerts[0];
+    box.appendChild(document.createTextNode('⛈ ' + s.alerts.map(a => a.event).join(' · ')));
+    if (worst.headline) box.appendChild(el('small', '', worst.headline));
+    if (s.atRisk.length) box.appendChild(el('small', '', s.atRisk.length + ' booked stop(s) fall inside the alert window — consider moving them early.'));
+    return box;
+  } catch (e) {
+    // A dead weather feed is reported, never treated as clear skies.
+    return e.code === 503 ? el('div', 'storm-muted', 'Storm watch: weather feed unavailable right now.') : null;
+  }
+}
+
 // ---------- Today (Morning Brief) ----------
 async function renderToday() {
   const v = $('view-today');
   v.replaceChildren();
+  stormBanner().then((b) => { if (b) v.prepend(b); });
   const start = new Date(); start.setHours(0, 0, 0, 0);
   const end = new Date(start); end.setDate(end.getDate() + 1);
   let brief;
@@ -366,6 +401,19 @@ async function renderFollowUps() {
     b.appendChild(badge(label, cls));
     if (a.includeProofOfInsurance) b.appendChild(badge('+ PROOF OF INSURANCE', 'b-verify'));
     c.appendChild(b);
+    // "I sent it" — the only way the cadence advances (ARBOR never marks its
+    // own recommendations done).
+    const kind = a.type === 'review_request' ? 'review' : 'estimate';
+    const btn = el('button', 'actbtn', 'Mark sent ✓');
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        await api('/api/followups/' + kind + '/' + a.targetId + '/sent', { method: 'POST', body: {} });
+        btn.textContent = 'Recorded';
+        btn.className = 'actbtn done';
+      } catch { btn.disabled = false; }
+    });
+    c.appendChild(btn);
     v.appendChild(c);
   }
   if (q.suppressed.length) {

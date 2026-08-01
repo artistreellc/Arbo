@@ -8,6 +8,7 @@
 import { loadAllConfig } from '../config/loadConfig.js';
 import { buildMorningBrief, type MorningBrief, type StopInput } from '../ops/morningBrief.js';
 import { buildFollowUpQueue, type EstimateState, type JobState } from '../ops/followUps.js';
+import { flagStopsAtRisk, type AlertsProvider } from '../ops/stormWatch.js';
 import { scoreLead, type LeadQualityResult } from '../reception/leadQuality.js';
 import { integrationStatus } from '../env.js';
 
@@ -43,6 +44,15 @@ export interface DataSource {
   newLeads(limit: number): Promise<ApiLeadInput[]>;
   /** §16–20 queue inputs. Optional until the live source wires it. */
   followUpInputs?(): Promise<{ estimates: EstimateState[]; jobs: JobState[] }>;
+  /** Write side of the app's buttons (§5A #14, #16–20 bookkeeping). */
+  recordOutcome?(estimateId: string, outcome: 'pending' | 'won' | 'lost' | 'no_show'): Promise<void>;
+  recordFollowUpSent?(estimateId: string, atIso: string): Promise<void>;
+  recordReviewRequested?(jobId: string, atIso: string): Promise<void>;
+}
+
+/** Optional live feeds beyond the database (weather now; more later). */
+export interface ApiExtras {
+  alerts?: AlertsProvider;
 }
 
 export interface ApiLeadInput {
@@ -69,7 +79,9 @@ export interface ApiResult {
 
 const IN_AREA = new Set(['Virginia Beach', 'Norfolk', 'Chesapeake', 'Portsmouth']);
 
-export function createApi(source: DataSource) {
+const OUTCOMES = new Set(['pending', 'won', 'lost', 'no_show']);
+
+export function createApi(source: DataSource, extras: ApiExtras = {}) {
   return {
     /** GET /health — config versions + which integrations are wired. Never leaks values. */
     async health(): Promise<ApiResult> {
@@ -139,6 +151,60 @@ export function createApi(source: DataSource) {
       const { estimates, jobs } = await source.followUpInputs();
       const queue = buildFollowUpQueue(legal, estimates, jobs, new Date());
       return { status: 200, body: queue };
+    },
+
+    /** POST /api/estimates/:id/outcome — Mike's won/lost/no-show tap (§5A #14). */
+    async setOutcome(estimateId: string, outcome: string): Promise<ApiResult> {
+      if (!source.ready() || !source.recordOutcome) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!estimateId || !OUTCOMES.has(outcome)) return { status: 400, body: { error: 'bad_outcome' } };
+      await source.recordOutcome(estimateId, outcome as 'pending' | 'won' | 'lost' | 'no_show');
+      return { status: 200, body: { ok: true } };
+    },
+
+    /**
+     * POST /api/followups/:kind/:id/sent — records that Mike actually sent a
+     * queued follow-up or review request. This is the ONLY way the cadence
+     * advances: ARBOR never marks its own recommendations as done.
+     */
+    async markFollowUpSent(kind: string, id: string): Promise<ApiResult> {
+      if (!source.ready()) return { status: 503, body: { error: 'db_not_configured' } };
+      const now = new Date().toISOString();
+      if (kind === 'estimate' && source.recordFollowUpSent) {
+        await source.recordFollowUpSent(id, now);
+        return { status: 200, body: { ok: true } };
+      }
+      if (kind === 'review' && source.recordReviewRequested) {
+        await source.recordReviewRequested(id, now);
+        return { status: 200, body: { ok: true } };
+      }
+      return { status: 400, body: { error: 'bad_kind' } };
+    },
+
+    /**
+     * GET /api/storm — §5A #26. Honest tri-state: alerts (possibly empty) when
+     * the feed answered, 503 when it didn't. A dead feed is NEVER clear skies.
+     */
+    async storm(): Promise<ApiResult> {
+      if (!extras.alerts) return { status: 503, body: { error: 'weather_not_configured' } };
+      let alerts;
+      try {
+        alerts = await extras.alerts.activeAlerts();
+      } catch (err) {
+        console.error('[storm] feed failed:', err instanceof Error ? err.message : 'error');
+        return { status: 503, body: { error: 'weather_unavailable' } };
+      }
+      let atRisk: ReturnType<typeof flagStopsAtRisk> = [];
+      if (source.ready() && alerts.length > 0) {
+        const from = new Date();
+        const to = new Date(from.getTime() + 48 * 60 * 60 * 1000);
+        const stops = await source.stopsBetween(from.toISOString(), to.toISOString());
+        atRisk = flagStopsAtRisk(
+          alerts,
+          stops.map((s) => ({ id: s.id, city: s.city, timeIso: s.timeIso ?? null })),
+          from,
+        );
+      }
+      return { status: 200, body: { alerts, atRisk } };
     },
   };
 }

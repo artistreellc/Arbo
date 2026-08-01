@@ -509,3 +509,40 @@ export async function listFollowUpJobs(): Promise<FollowUpJobRow[]> {
   if (res.error) throw res.error;
   return res.data as unknown as FollowUpJobRow[];
 }
+
+// ---------------------------------------------------------------------------
+// Outcome & outreach bookkeeping (§5A #14, #16–20 write side). These are the
+// state changes behind the app's buttons: Mike taps, ARBOR records. The DB
+// CHECK on estimate.outcome is the validator — unknown values throw here.
+// ---------------------------------------------------------------------------
+
+export type EstimateOutcome = 'pending' | 'won' | 'lost' | 'no_show';
+
+export async function updateEstimateOutcome(estimateId: string, outcome: EstimateOutcome): Promise<void> {
+  const db = getDb();
+  const res = await db.from('estimate').update({ outcome, updated_at: new Date().toISOString() }).eq('id', estimateId);
+  if (res.error) throw res.error;
+}
+
+/** Record that a §16 follow-up actually went out (advances the 2-day cadence). */
+export async function recordFollowUpSent(estimateId: string, atIso: string): Promise<void> {
+  const db = getDb();
+  const cur = await db.from('estimate').select('follow_up_count').eq('id', estimateId).single();
+  if (cur.error) throw cur.error;
+  const res = await db
+    .from('estimate')
+    .update({
+      last_follow_up_at: atIso,
+      follow_up_count: ((cur.data as { follow_up_count: number }).follow_up_count ?? 0) + 1,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', estimateId);
+  if (res.error) throw res.error;
+}
+
+/** Record the once-ever §18 review request. */
+export async function recordReviewRequested(jobId: string, atIso: string): Promise<void> {
+  const db = getDb();
+  const res = await db.from('job').update({ review_requested_at: atIso, updated_at: new Date().toISOString() }).eq('id', jobId);
+  if (res.error) throw res.error;
+}
