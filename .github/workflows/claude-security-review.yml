@@ -1,8 +1,9 @@
 name: Claude Security Review
 
 # Reviews every pull request for security issues (and ARBOR's guardrail
-# invariants) and posts findings as a PR review. Requires the ANTHROPIC_API_KEY
-# repo secret and the Claude GitHub App installed on this repo.
+# invariants) and posts findings as a PR review. Runs on Mike's Claude subscription via the
+# CLAUDE_CODE_OAUTH_TOKEN repo secret (mint with `claude setup-token`); needs
+# the Claude GitHub App installed on this repo.
 
 on:
   pull_request:
@@ -25,7 +26,7 @@ jobs:
       - name: Claude security review
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             Review this pull request. Focus on, in priority order:
             1. Security — injection, authz/RLS gaps, secret leakage, unsafe input handling, SSRF, PII exposure in logs.

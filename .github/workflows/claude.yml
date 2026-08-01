@@ -1,7 +1,8 @@
 name: Claude Code Assistant
 
-# Responds to @claude mentions in issues and pull requests. Requires the
-# ANTHROPIC_API_KEY repo secret and the Claude GitHub App installed on this repo.
+# Responds to @claude mentions in issues and pull requests. Runs on Mike's Claude
+# subscription via the CLAUDE_CODE_OAUTH_TOKEN repo secret (mint with
+# `claude setup-token`); needs the Claude GitHub App installed on this repo.
 
 on:
   issue_comment:
@@ -37,7 +38,7 @@ jobs:
       - name: Run Claude Code
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # No 'prompt' input → interactive mode: waits for @claude mentions.
           claude_args: |
             --append-system-prompt "This is ARBOR (Art-is-Tree ops platform). Guardrails and legal rules are law: never introduce a price/diagnosis path, never let 'Suffolk' or 'TCIA' into customer-facing copy, keep secrets out of the repo, keep customer PII behind the service-role/RLS boundary. Every change ships with a passing test."
