@@ -1,0 +1,43 @@
+name: Claude Security Review
+
+# Reviews every pull request for security issues (and ARBOR's guardrail
+# invariants) and posts findings as a PR review. Requires the ANTHROPIC_API_KEY
+# repo secret and the Claude GitHub App installed on this repo.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Claude security review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.MY_KEY }}
+          prompt: |
+            Review this pull request. Focus on, in priority order:
+            1. Security — injection, authz/RLS gaps, secret leakage, unsafe input handling, SSRF, PII exposure in logs.
+            2. ARBOR guardrail invariants (these are LAW):
+               - No new path can quote a price or diagnose a tree over the phone/text.
+               - "Suffolk" and "TCIA" must never appear in customer-facing copy.
+               - Customer PII stays behind the service-role/RLS boundary; never in logs or the repo.
+               - The system must remain unable to change its own guardrails autonomously.
+            3. Correctness, likely bugs, and missing test coverage.
+            Post concrete, line-anchored findings as a PR review. If nothing is wrong, say so briefly.
+          claude_args: |
+            --append-system-prompt "Follow ARBOR's coding standards: single source of truth for guardrails/legal config, tests for every change, secrets never in the repo."
+            --max-turns 12
+            --model claude-opus-5
+          track_progress: true

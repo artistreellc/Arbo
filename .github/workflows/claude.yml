@@ -1,0 +1,46 @@
+name: Claude Code Assistant
+
+# Responds to @claude mentions in issues and pull requests. Requires the
+# ANTHROPIC_API_KEY repo secret and the Claude GitHub App installed on this repo.
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  issues:
+    types: [opened, assigned]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+  actions: read
+
+jobs:
+  claude:
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.MY_KEY }}
+          # No 'prompt' input → interactive mode: waits for @claude mentions.
+          claude_args: |
+            --append-system-prompt "This is ARBOR (Art-is-Tree ops platform). Guardrails and legal rules are law: never introduce a price/diagnosis path, never let 'Suffolk' or 'TCIA' into customer-facing copy, keep secrets out of the repo, keep customer PII behind the service-role/RLS boundary. Every change ships with a passing test."
+            --max-turns 15
+            --model claude-sonnet-5
+            --allowedTools "Edit,Read,Write,Bash(npm install),Bash(npm run check),Bash(npm test),Bash(npm run lint),Bash(npm run typecheck)"
