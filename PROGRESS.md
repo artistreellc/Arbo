@@ -59,6 +59,34 @@ end-to-end ✅ (verified live); **Drive folders auto-create per property** ✅
 Production runtime auth for the Drive API (service account vs OAuth) is wired at
 deploy — see DECISIONS O3.
 
+## Phase 2 — Inbound voice reception (the brain)
+
+| # | Task | Status | Test |
+|---|------|--------|------|
+| 2.1 | Receptionist system prompt assembled from config (single source of truth) | ☑ | `systemPrompt.test.ts` (4) |
+| 2.2 | Output guard — price/diagnosis/forbidden enforced in CODE, not just prompt | ☑ | `outputGuard.test.ts` (many) |
+| 2.3 | Emergency detection → alert to Mike | ☑ | `emergency.test.ts` (13) |
+| 2.4 | Lead qualification state machine (§3.3) + power-line red flag | ☑ | `qualification.test.ts` (5) |
+| 2.5 | Receptionist orchestrator + clean lead capture — **AUDIT after this** | ☑ | `receptionist.test.ts` (4) |
+| 2.6 | Live LeadSink over Phase 1 repositories | ☑ | typecheck; used by orchestrator |
+| 2.7 | Vapi + Twilio wiring (answer a real phone) | ☐ | **needs Twilio number + Vapi account** |
+
+**Acceptance (Phase 2):** scripted test calls prove — **never** says a price
+(even when the model tries) ✅, **never** diagnoses ✅, never leaks Suffolk/TCIA
+✅, qualifies correctly ✅, escalates emergencies ✅, captures a clean lead ✅.
+Guardrail suite run **twice**, green both times. The one remaining item (2.7) is
+the telephony wiring, which needs external accounts.
+
+### Phase 2 audit (§11) — result
+85 tests pass (×2 runs), typecheck + lint clean. 1) Guardrails ✅ enforced in
+code (output guard) — the model cannot quote a price or diagnose; caller can't
+override. 2) Legal gates ✅ disclosure line is in the prompt. 3) Tests ✅ 4) No
+regressions ✅ (Phase 0/1 suites still green). 5) Data integrity ✅ (lead capture
+reuses the deduping repositories). 6) Secrets clean ✅. 7) Docs current ✅.
+8) Scope honest ✅ (no 5B/5C). 9) Rabbit-hole: one named open item — Vapi/Twilio
+wiring (2.7) needs accounts; the brain is complete and fully tested behind
+injected interfaces.
+
 ### Phase 1 audit (§11) — result (partial phase)
 `npm run check` green: **36 tests pass, 4 live-integration skipped** (run once
 service-role key is in `.env`), typecheck + lint clean. Supabase security

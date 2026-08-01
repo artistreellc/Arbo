@@ -20,12 +20,13 @@
       "id": "no-price",
       "rule": "Never say a dollar amount, range, or ballpark. Every price question pivots to booking an in-person look.",
       "approvedLine": "Tree work is really circumstantial — the price varies drastically depending on the situation, so we'd need to come take a look to give you an accurate number. I can get you on the schedule for a free estimate.",
-      "forbiddenPatterns": ["\\$\\s?\\d", "\\bdollars?\\b", "\\bballpark\\b", "\\brough(ly)? (cost|price|estimate)\\b", "\\bprice range\\b", "\\baround \\d"]
+      "forbiddenPatterns": ["\\$\\s?\\d", "\\b\\d+\\s*(dollars?|bucks|grand)\\b", "\\bdollars?\\b", "\\bballpark\\b", "\\bprice range\\b", "\\b(rough(ly)?|around|about|approximately)\\s+\\$?\\d{2,}\\b", "\\b\\d+\\s?k\\b"]
     },
     {
       "id": "no-diagnosis",
       "rule": "Never diagnose a specific tree over the phone (dead, dangerous, diseased). Pivot to an in-person look.",
-      "approvedLine": "That's really something we'd want to see in person. I can get you on the schedule for a free estimate."
+      "approvedLine": "That's really something we'd want to see in person. I can get you on the schedule for a free estimate.",
+      "forbiddenPatterns": ["\\b(it'?s|that tree is|your tree is|the tree is|it is)\\s+(dead|dying|diseased|dangerous|hazardous|rotten|rotting|sick|a hazard)\\b", "\\b(needs?|has|have) to (come down|be removed|be taken down)\\b", "\\b(definitely|probably)\\s+(dead|dying|dangerous|diseased)\\b", "\\bthat tree('?s| is) going to fall\\b"]
     },
     {
       "id": "no-date-guarantee",

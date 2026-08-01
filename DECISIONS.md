@@ -27,6 +27,15 @@ Every non-obvious choice and why. The map out of any future rabbit hole
 | D12 | Empty `tree.next_due_forecast` (+ other twin fields) created now, populated in Phase 8. | §6 build note: capture cleanly from day one, forecast last. |
 | D13 | `text` columns with CHECK constraints for enums (source/status/etc.), not PG enum types. | Easier to evolve without migrations; same integrity. |
 
+## Phase 2 — Inbound voice reception
+
+| # | Decision | Why |
+|---|---|---|
+| D15 | **Guardrails enforced in CODE (output guard), not only in the prompt.** Every candidate reply is scanned; price/diagnosis/forbidden terms are blocked and replaced with the approved pivot line before anything is spoken. | §3/§12 "guardrails are law." An LLM can be imperfect or jailbroken; this layer cannot be talked out of the rules. Proven by tests where the model tries to quote a price and the guard blocks it. |
+| D16 | **All external edges injected** — `LlmClient`, `Alerter`, `LeadSink`. | The receptionist brain is fully testable offline (fakes) and the same code runs under Vapi + Twilio + Anthropic in prod with no changes. |
+| D17 | Emergency detection is **deterministic and biased toward catching** (a false ping to Mike is acceptable; a miss is not). | §3.4 — a tree on a house/car/line must never be slotted as a normal estimate. |
+| D18 | Price/diagnosis patterns live in `guardrails.json` (per golden rule), consumed by the guard. | Single source of truth (§12) — tune the rules in one place; code + tests follow. |
+
 ## Open decisions (revisit before the relevant phase)
 
 - **O1 — GitHub remote for `arbor`:** default plan is a new private repo under
