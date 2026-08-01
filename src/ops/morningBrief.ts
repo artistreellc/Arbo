@@ -97,3 +97,25 @@ export function buildMorningBrief(stops: StopInput[]): MorningBrief {
     },
   };
 }
+
+/**
+ * The brief as SPEECH (§3.17): what Mike hears on the drive, not a data dump.
+ * Short sentences, worst news first, no PII beyond what he needs to drive.
+ */
+export function briefToSpeech(brief: MorningBrief): string {
+  const s = brief.summary;
+  const parts: string[] = [];
+  parts.push(`Good morning. ${s.totalStops === 0 ? 'Nothing on the books today.' : `${s.totalStops} stop${s.totalStops === 1 ? '' : 's'} today: ${s.jobs} job${s.jobs === 1 ? '' : 's'} and ${s.estimates} estimate${s.estimates === 1 ? '' : 's'}.`}`);
+  if (s.emergencies > 0) parts.push(`Heads up: ${s.emergencies} emergency stop${s.emergencies === 1 ? '' : 's'} lead${s.emergencies === 1 ? 's' : ''} the day.`);
+  if (s.redFlagCount > 0) parts.push(`${s.redFlagCount} stop${s.redFlagCount === 1 ? ' has' : 's have'} red flags — check power lines before you cut.`);
+  if (s.firstTimers > 0) parts.push(`${s.firstTimers} first-timer${s.firstTimers === 1 ? '' : 's'} — extra hand-holding.`);
+  if (s.zipRun.length > 0) parts.push(`Afternoon ZIP run: ${s.zipRun.join(', then ')}.`);
+  for (const stop of brief.stops.slice(0, 8)) {
+    const t = stop.timeIso
+      ? new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' }).format(new Date(stop.timeIso))
+      : 'unscheduled';
+    parts.push(`Stop ${stop.order}, ${t}: ${stop.name ?? 'unnamed'}, ${stop.kind}, ${stop.city}${stop.redFlags.length ? ` — ${stop.redFlags.join(' and ')}` : ''}.`);
+  }
+  if (brief.stops.length > 8) parts.push(`Plus ${brief.stops.length - 8} more — they're in the app.`);
+  return parts.join(' ');
+}

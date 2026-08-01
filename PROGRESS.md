@@ -174,6 +174,9 @@ app surface needed something visible and it reads purely from spine data.
 | P56.4 | Live Gmail inbox monitor loop (poll/push wiring at deploy) | ☐ | deploy-time (needs Google creds on the host) |
 | P56.5 | **Write side / app buttons** (D44): outcome taps (won/lost/no-show), Mark-sent per follow-up card (the only cadence-advancer) | ☑ | `stormWatch.test.ts` API suite |
 | P56.6 | **Storm watch #26** (D44): NWS alerts per city centroid (verified live), work-stopping filter, at-risk stop flags, Today-tab banner; feed-down ≠ clear skies | ☑ | `stormWatch.test.ts` (7) |
+| P56.7 | **Repeat-customer memory #27** (D45): one-line property history on every lead card ("🌳 Job done & paid Mar 2025 — oak removal"); auxiliary — fetch failure never kills the inbox | ☑ | `memoryOutreach.test.ts` |
+| P56.8 | **Pre-storm outreach #19** (D45): storm-triggered only, past customers in affected cities, consent/STOP/quiet-hours gated, recommend-only; `seasonalUnavailable` honesty flag | ☑ | `memoryOutreach.test.ts` |
+| P56.9 | **Spoken brief §3.17** (D45): `/api/brief/audio` — brief → drive-time speech → ElevenLabs MP3; 503 until the real key | ☑ | `memoryOutreach.test.ts` |
 
 ## Phase 4 — Permitting & CBPA/RPA screening engine (§6B, §5A #30)
 

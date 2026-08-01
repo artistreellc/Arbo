@@ -546,3 +546,94 @@ export async function recordReviewRequested(jobId: string, atIso: string): Promi
   const res = await db.from('job').update({ review_requested_at: atIso, updated_at: new Date().toISOString() }).eq('id', jobId);
   if (res.error) throw res.error;
 }
+
+// ---------------------------------------------------------------------------
+// Repeat-customer memory (§5A #27): the property's work history, surfaced so
+// every call feels personal. Batch read — rides the lead list like permits do.
+// ---------------------------------------------------------------------------
+
+export interface PropertyHistoryRow {
+  property_id: string;
+  kind: 'job' | 'estimate';
+  when: string | null;
+  scope: string | null;
+  status: string | null;
+}
+
+/** Latest completed/paid job (fallback: latest estimate) per property. */
+export async function latestHistoryForProperties(propertyIds: string[]): Promise<Map<string, PropertyHistoryRow>> {
+  const out = new Map<string, PropertyHistoryRow>();
+  if (propertyIds.length === 0) return out;
+  const db = getDb();
+  const jobs = await db
+    .from('job')
+    .select('property_id, scheduled_for, completed_at, materials, status')
+    .in('property_id', propertyIds)
+    .in('status', ['completed', 'paid'])
+    .order('completed_at', { ascending: false, nullsFirst: false });
+  if (jobs.error) throw jobs.error;
+  for (const j of jobs.data as Array<{ property_id: string; scheduled_for: string | null; completed_at: string | null; materials: string | null; status: string }>) {
+    if (!out.has(j.property_id)) {
+      out.set(j.property_id, { property_id: j.property_id, kind: 'job', when: j.completed_at ?? j.scheduled_for, scope: j.materials, status: j.status });
+    }
+  }
+  const remaining = propertyIds.filter((id) => !out.has(id));
+  if (remaining.length > 0) {
+    const ests = await db
+      .from('estimate')
+      .select('property_id, scheduled_slot, outcome')
+      .in('property_id', remaining)
+      .neq('outcome', 'pending')
+      .order('scheduled_slot', { ascending: false, nullsFirst: false });
+    if (ests.error) throw ests.error;
+    for (const e of ests.data as Array<{ property_id: string; scheduled_slot: string | null; outcome: string }>) {
+      if (!out.has(e.property_id)) {
+        out.set(e.property_id, { property_id: e.property_id, kind: 'estimate', when: e.scheduled_slot, scope: null, status: e.outcome });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Past customers for seasonal outreach (§5A #19): consented, unsuppressed
+ * contacts with a completed/paid job on file, with their property city so the
+ * nudge only goes where the storm actually is.
+ */
+export interface PastCustomerRow {
+  contact_id: string;
+  name: string | null;
+  city: string | null;
+  last_job_at: string | null;
+  consent_source: string | null;
+  opted_out: boolean;
+}
+
+export async function listPastCustomers(): Promise<PastCustomerRow[]> {
+  const db = getDb();
+  const res = await db
+    .from('job')
+    .select('completed_at, contact:contact_id (id, name, consent_source, opted_out), property:property_id (city)')
+    .in('status', ['completed', 'paid'])
+    .order('completed_at', { ascending: false, nullsFirst: false })
+    .limit(500);
+  if (res.error) throw res.error;
+  const seen = new Map<string, PastCustomerRow>();
+  type Row = {
+    completed_at: string | null;
+    contact: { id: string; name: string | null; consent_source: string | null; opted_out: boolean } | null;
+    property: { city: string | null } | null;
+  };
+  for (const r of res.data as unknown as Row[]) {
+    if (!r.contact || seen.has(r.contact.id)) continue;
+    seen.set(r.contact.id, {
+      contact_id: r.contact.id,
+      name: r.contact.name,
+      city: r.property?.city ?? null,
+      last_job_at: r.completed_at,
+      consent_source: r.contact.consent_source,
+      opted_out: r.contact.opted_out,
+    });
+  }
+  return [...seen.values()];
+}

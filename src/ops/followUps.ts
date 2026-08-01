@@ -194,3 +194,55 @@ export function buildFollowUpQueue(
   due.sort((a, b) => Date.parse(a.scheduledFor) - Date.parse(b.scheduledFor));
   return { due, suppressed };
 }
+
+// ---------------------------------------------------------------------------
+// §19 — seasonal / pre-storm outreach. Fires ONLY when real weather is coming
+// (the §26 storm feed says so), targets ONLY past customers in the affected
+// cities, and passes the same §4 gates. Recommend-only, throttled to one nudge
+// per contact per queue build — "reads as a small company, not a spam cannon".
+// ---------------------------------------------------------------------------
+
+export interface PastCustomer {
+  contactId: string;
+  name?: string;
+  city?: string;
+  lastJobAt?: string;
+  consentOnFile?: boolean;
+  suppressed?: boolean;
+}
+
+export interface StormContext {
+  /** Cities currently under a work-stopping alert (from stormWatch). */
+  citiesUnderAlert: string[];
+  /** The headline event, for the queue note. */
+  event: string;
+}
+
+export function buildSeasonalOutreach(
+  legal: LegalConfig,
+  storm: StormContext,
+  pastCustomers: PastCustomer[],
+  now: Date,
+): FollowUpQueue {
+  const due: FollowUpAction[] = [];
+  const suppressed: SuppressedAction[] = [];
+  if (storm.citiesUnderAlert.length === 0) return { due, suppressed };
+  const scheduledFor = clampToQuietHours(legal, now).toISOString();
+  for (const c of pastCustomers) {
+    if (!c.city || !storm.citiesUnderAlert.includes(c.city)) continue;
+    const g = gate(c, 'seasonal_outreach', c.contactId);
+    if (g) {
+      suppressed.push(g);
+      continue;
+    }
+    due.push({
+      type: 'seasonal_outreach',
+      targetId: c.contactId,
+      name: c.name,
+      note: `${storm.event} headed for ${c.city} — past customer; offer a pre-storm tree check.`,
+      scheduledFor,
+      recommendOnly: true,
+    });
+  }
+  return { due, suppressed };
+}

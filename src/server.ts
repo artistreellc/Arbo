@@ -18,7 +18,10 @@ import {
   updateEstimateOutcome,
   recordFollowUpSent,
   recordReviewRequested,
+  latestHistoryForProperties,
+  listPastCustomers,
 } from './db/repositories.js';
+import { createElevenLabsTts } from './voice/elevenlabsTts.js';
 import type { StopInput } from './ops/morningBrief.js';
 import type { EstimateState, JobState } from './ops/followUps.js';
 import { createNwsAlertsProvider } from './ops/stormWatch.js';
@@ -62,8 +65,18 @@ export function createLiveSource(): DataSource {
         console.error('[server] permit flag fetch failed:', err instanceof Error ? err.message : 'error');
         permits = new Map();
       }
+      // §27 memory — auxiliary like permits: a failure degrades to "no history
+      // line", never a dead inbox.
+      let history: Awaited<ReturnType<typeof latestHistoryForProperties>>;
+      try {
+        history = await latestHistoryForProperties(propertyIds);
+      } catch (err) {
+        console.error('[server] history fetch failed:', err instanceof Error ? err.message : 'error');
+        history = new Map();
+      }
       return rows.map((r) => {
         const permit = r.property ? permits.get(r.property.id) ?? null : null;
+        const h = r.property ? history.get(r.property.id) ?? null : null;
         return {
           id: r.id,
           source: r.source,
@@ -80,8 +93,19 @@ export function createLiveSource(): DataSource {
           permit: permit
             ? { screenStatus: permit.screen_status, inRpa: permit.in_rpa, status: permit.status }
             : null,
+          history: h ? { kind: h.kind, when: h.when, scope: h.scope, status: h.status } : null,
         };
       });
+    },
+    async pastCustomers() {
+      return (await listPastCustomers()).map((c) => ({
+        contactId: c.contact_id,
+        name: c.name ?? undefined,
+        city: c.city ?? undefined,
+        lastJobAt: c.last_job_at ?? undefined,
+        consentOnFile: c.consent_source !== null,
+        suppressed: c.opted_out,
+      }));
     },
     async followUpInputs(): Promise<{ estimates: EstimateState[]; jobs: JobState[] }> {
       const [ests, jobs] = await Promise.all([listFollowUpEstimates(), listFollowUpJobs()]);
@@ -150,6 +174,7 @@ export function createArborRequestHandler() {
   boot(); // validates guardrails + legal or throws
   const api = createApi(createLiveSource(), {
     alerts: createNwsAlertsProvider((url, init) => fetch(url, init)),
+    ...(env.elevenlabs.apiKey ? { tts: createElevenLabsTts(env.elevenlabs.apiKey) } : {}),
   });
 
   // The voice bridge shares the validated policy configs — one source of law.
@@ -199,6 +224,14 @@ export function createArborRequestHandler() {
       }
       if (req.method === 'GET' && url.pathname === '/api/storm') {
         return send(...unpack(await api.storm()));
+      }
+      if (req.method === 'GET' && url.pathname === '/api/brief/audio') {
+        const out = await api.briefAudio(url.searchParams.get('from') ?? '', url.searchParams.get('to') ?? '');
+        if (out.status === 200 && out.audio) {
+          res.writeHead(200, { 'content-type': 'audio/mpeg', 'cache-control': 'no-store' });
+          return res.end(Buffer.from(out.audio));
+        }
+        return send(out.status, out.body);
       }
       {
         const m = url.pathname.match(/^\/api\/estimates\/([^/]+)\/outcome$/);

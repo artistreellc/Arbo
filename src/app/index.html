@@ -349,6 +349,7 @@ async function renderLeads() {
     top.appendChild(el('div', 'when', new Date(lead.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })));
     c.appendChild(top);
     if (lead.city) c.appendChild(el('div', 'addr', lead.city + (lead.zip ? ' · ' + lead.zip : '')));
+    if (lead.history) c.appendChild(el('div', 'scope', '🌳 ' + lead.history));
     if (lead.details) c.appendChild(el('div', 'scope', lead.details));
     const b = el('div', 'badges');
     if (lead.isEmergency) b.appendChild(badge('EMERGENCY', 'b-emg'));

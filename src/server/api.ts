@@ -6,9 +6,10 @@
 // session). No customer PII in errors or logs (§4.3).
 
 import { loadAllConfig } from '../config/loadConfig.js';
-import { buildMorningBrief, type MorningBrief, type StopInput } from '../ops/morningBrief.js';
-import { buildFollowUpQueue, type EstimateState, type JobState } from '../ops/followUps.js';
-import { flagStopsAtRisk, type AlertsProvider } from '../ops/stormWatch.js';
+import { buildMorningBrief, briefToSpeech, type MorningBrief, type StopInput } from '../ops/morningBrief.js';
+import { buildFollowUpQueue, buildSeasonalOutreach, type EstimateState, type JobState, type PastCustomer } from '../ops/followUps.js';
+import { flagStopsAtRisk, isWorkStopping, type AlertsProvider } from '../ops/stormWatch.js';
+import type { TtsClient } from '../voice/elevenlabsTts.js';
 import { scoreLead, type LeadQualityResult } from '../reception/leadQuality.js';
 import { integrationStatus } from '../env.js';
 
@@ -35,6 +36,8 @@ export interface ApiLead {
   permit: ApiPermitFlag | null;
   /** True when the lead HAS a property but NO screen on file — it still needs one (§6B.1). */
   screenPending: boolean;
+  /** §5A #27 repeat-customer memory — one human line, e.g. "Job completed Mar 2025 — oak removal". */
+  history: string | null;
 }
 
 /** What the API needs from storage — live impl wraps the repositories. */
@@ -48,11 +51,14 @@ export interface DataSource {
   recordOutcome?(estimateId: string, outcome: 'pending' | 'won' | 'lost' | 'no_show'): Promise<void>;
   recordFollowUpSent?(estimateId: string, atIso: string): Promise<void>;
   recordReviewRequested?(jobId: string, atIso: string): Promise<void>;
+  /** §19 seasonal outreach targets: past customers with consent facts. */
+  pastCustomers?(): Promise<PastCustomer[]>;
 }
 
-/** Optional live feeds beyond the database (weather now; more later). */
+/** Optional live feeds beyond the database (weather + voice). */
 export interface ApiExtras {
   alerts?: AlertsProvider;
+  tts?: TtsClient;
 }
 
 export interface ApiLeadInput {
@@ -70,6 +76,8 @@ export interface ApiLeadInput {
   isFirstTimer: boolean | null;
   /** Latest permit track for the lead's property; null when none on file. */
   permit: ApiPermitFlag | null;
+  /** Latest prior work at the property (§5A #27); null when none. */
+  history: { kind: 'job' | 'estimate'; when: string | null; scope: string | null; status: string | null } | null;
 }
 
 export interface ApiResult {
@@ -80,6 +88,18 @@ export interface ApiResult {
 const IN_AREA = new Set(['Virginia Beach', 'Norfolk', 'Chesapeake', 'Portsmouth']);
 
 const OUTCOMES = new Set(['pending', 'won', 'lost', 'no_show']);
+
+const MONTH_FMT = new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric', timeZone: 'America/New_York' });
+
+/** §27: one warm, human line of property memory. */
+function formatHistory(h: ApiLeadInput['history']): string | null {
+  if (!h) return null;
+  const when = h.when ? MONTH_FMT.format(new Date(h.when)) : null;
+  if (h.kind === 'job') {
+    return `Job ${h.status === 'paid' ? 'done & paid' : 'completed'}${when ? ` ${when}` : ''}${h.scope ? ` — ${h.scope}` : ''}`;
+  }
+  return `Estimate ${h.status ?? ''}${when ? ` ${when}` : ''}`.trim();
+}
 
 export function createApi(source: DataSource, extras: ApiExtras = {}) {
   return {
@@ -136,6 +156,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
           // A lead with a property but no screen on file still needs one (§6B.1)
           // — surfaced, never silently assumed fine.
           screenPending: r.propertyId != null && r.permit == null,
+          history: formatHistory(r.history),
         };
       });
       return { status: 200, body: { leads } };
@@ -149,8 +170,40 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       if (!source.ready() || !source.followUpInputs) return { status: 503, body: { error: 'db_not_configured' } };
       const { legal } = loadAllConfig();
       const { estimates, jobs } = await source.followUpInputs();
-      const queue = buildFollowUpQueue(legal, estimates, jobs, new Date());
-      return { status: 200, body: queue };
+      const now = new Date();
+      const queue = buildFollowUpQueue(legal, estimates, jobs, now);
+      // §19 — pre-storm nudges join the queue only when real weather is coming.
+      // A dead feed just omits them (honest: absence of nudges is not a claim),
+      // flagged so the app can say so.
+      let seasonalUnavailable = false;
+      if (extras.alerts && source.pastCustomers) {
+        try {
+          const alerts = (await extras.alerts.activeAlerts()).filter(isWorkStopping);
+          if (alerts.length > 0) {
+            const cities = [...new Set(alerts.flatMap((a) => a.cities))];
+            const seasonal = buildSeasonalOutreach(
+              legal,
+              { citiesUnderAlert: cities, event: alerts[0]!.event },
+              await source.pastCustomers(),
+              now,
+            );
+            queue.due.push(...seasonal.due);
+            queue.suppressed.push(...seasonal.suppressed);
+          }
+        } catch {
+          seasonalUnavailable = true;
+        }
+      }
+      return { status: 200, body: { ...queue, seasonalUnavailable } };
+    },
+
+    /** GET /api/brief/audio — the §3.17 SPOKEN brief (MP3). 503 until the TTS key lands. */
+    async briefAudio(fromIso: string, toIso: string): Promise<ApiResult & { audio?: Uint8Array }> {
+      if (!extras.tts) return { status: 503, body: { error: 'tts_not_configured' } };
+      const res = await this.brief(fromIso, toIso);
+      if (res.status !== 200) return res;
+      const audio = await extras.tts.synthesize(briefToSpeech(res.body as MorningBrief));
+      return { status: 200, body: null, audio };
     },
 
     /** POST /api/estimates/:id/outcome — Mike's won/lost/no-show tap (§5A #14). */
