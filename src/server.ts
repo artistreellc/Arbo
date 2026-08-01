@@ -9,7 +9,7 @@ import { createServer } from 'node:http';
 import { boot } from './index.js';
 import { createApi, type DataSource, type ApiLeadInput } from './server/api.js';
 import { hasDb } from './db/client.js';
-import { listLeads, listStopsBetween } from './db/repositories.js';
+import { listLeads, listStopsBetween, latestPermitsForProperties } from './db/repositories.js';
 import type { StopInput } from './ops/morningBrief.js';
 
 /** Live DataSource over the Phase 1 repositories (service-role, RLS-locked). */
@@ -33,19 +33,38 @@ export function createLiveSource(): DataSource {
     },
     async newLeads(limit): Promise<ApiLeadInput[]> {
       const rows = await listLeads(limit);
-      return rows.map((r) => ({
-        id: r.id,
-        source: r.source,
-        details: r.details,
-        qualification: r.qualification,
-        isEmergency: r.is_emergency,
-        status: r.status,
-        createdAt: r.created_at,
-        name: r.contact?.name ?? null,
-        city: r.property?.city ?? null,
-        zip: r.property?.zip ?? null,
-        isFirstTimer: r.contact?.is_first_timer ?? null,
-      }));
+      // The §6B screen flag rides each lead: latest permit per property, batched.
+      // A permit-join failure must not kill the inbox (the lead list is the
+      // lifeblood) — degrade to "no flag on file", which the API surfaces as
+      // screenPending, the honest "still needs a screen" state. Never a clear.
+      const propertyIds = [...new Set(rows.map((r) => r.property?.id).filter((id): id is string => Boolean(id)))];
+      let permits: Awaited<ReturnType<typeof latestPermitsForProperties>>;
+      try {
+        permits = await latestPermitsForProperties(propertyIds);
+      } catch (err) {
+        console.error('[server] permit flag fetch failed:', err instanceof Error ? err.message : 'error');
+        permits = new Map();
+      }
+      return rows.map((r) => {
+        const permit = r.property ? permits.get(r.property.id) ?? null : null;
+        return {
+          id: r.id,
+          source: r.source,
+          details: r.details,
+          qualification: r.qualification,
+          isEmergency: r.is_emergency,
+          status: r.status,
+          createdAt: r.created_at,
+          name: r.contact?.name ?? null,
+          propertyId: r.property?.id ?? null,
+          city: r.property?.city ?? null,
+          zip: r.property?.zip ?? null,
+          isFirstTimer: r.contact?.is_first_timer ?? null,
+          permit: permit
+            ? { screenStatus: permit.screen_status, inRpa: permit.in_rpa, status: permit.status }
+            : null,
+        };
+      });
     },
   };
 }

@@ -62,11 +62,13 @@ describe('backend API (server handlers)', () => {
           {
             id: 'l1', source: 'call', details: 'Half an oak down across the back fence after the storm',
             qualification: { urgency: 'storm' }, isEmergency: false, status: 'new',
-            createdAt: at(9), name: 'Marcus', city: 'Chesapeake', zip: '23322', isFirstTimer: true,
+            createdAt: at(9), name: 'Marcus', propertyId: 'p1', city: 'Chesapeake', zip: '23322',
+            isFirstTimer: true, permit: null,
           },
           {
             id: 'l2', source: 'call', details: null, qualification: null, isEmergency: false,
-            status: 'new', createdAt: at(8), name: null, city: null, zip: null, isFirstTimer: null,
+            status: 'new', createdAt: at(8), name: null, propertyId: null, city: null, zip: null,
+            isFirstTimer: null, permit: null,
           },
         ],
       }),
@@ -76,5 +78,43 @@ describe('backend API (server handlers)', () => {
     const { leads } = r.body as { leads: Array<{ id: string; quality: { priority: string } }> };
     expect(leads.find((l) => l.id === 'l1')!.quality.priority).toBe('hot');
     expect(leads.find((l) => l.id === 'l2')!.quality.priority).toBe('cool');
+  });
+
+  it('the §6B permit flag rides the lead — and a missing screen is surfaced, never assumed fine', async () => {
+    const api = createApi(
+      fakeSource({
+        leads: [
+          {
+            id: 'flagged', source: 'call', details: 'Big oak removal near the water', qualification: {},
+            isEmergency: false, status: 'new', createdAt: at(9), name: 'Dana', propertyId: 'p-rpa',
+            city: 'Norfolk', zip: '23503', isFirstTimer: true,
+            permit: { screenStatus: 'PERMIT_LIKELY', inRpa: true, status: 'needed' },
+          },
+          {
+            id: 'unscreened', source: 'call', details: 'Trim job', qualification: {},
+            isEmergency: false, status: 'new', createdAt: at(8), name: 'Lee', propertyId: 'p-new',
+            city: 'Chesapeake', zip: '23320', isFirstTimer: false, permit: null,
+          },
+          {
+            id: 'no-property', source: 'call', details: null, qualification: null,
+            isEmergency: false, status: 'new', createdAt: at(7), name: null, propertyId: null,
+            city: null, zip: null, isFirstTimer: null, permit: null,
+          },
+        ],
+      }),
+    );
+    const r = await api.leads();
+    const { leads } = r.body as {
+      leads: Array<{ id: string; permit: { screenStatus: string; inRpa: boolean } | null; screenPending: boolean }>;
+    };
+    const flagged = leads.find((l) => l.id === 'flagged')!;
+    expect(flagged.permit?.screenStatus).toBe('PERMIT_LIKELY');
+    expect(flagged.permit?.inRpa).toBe(true);
+    expect(flagged.screenPending).toBe(false);
+
+    // Property exists but no screen on file → pending, surfaced.
+    expect(leads.find((l) => l.id === 'unscreened')!.screenPending).toBe(true);
+    // No property captured yet → nothing to screen (address comes first).
+    expect(leads.find((l) => l.id === 'no-property')!.screenPending).toBe(false);
   });
 });

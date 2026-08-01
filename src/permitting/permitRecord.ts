@@ -80,3 +80,22 @@ export function crewMayStart(p: { screenStatus: ScreenStatus; inRpa: boolean; st
     reason: `Protected work: permit status is "${p.status}". Crew is BLOCKED until it is approved or verified not-required with the city (§6B.3).`,
   };
 }
+
+/**
+ * The gate when all you have is the property's latest permit track — or none.
+ * NO SCREEN ON FILE IS NOT CLEARANCE: intake auto-screens every property
+ * (§6B.1), so a missing record means the screen never ran (GIS down, pre-ARBOR
+ * property, …). The honest floor is BLOCKED until the screen runs — assuming
+ * "no record = fine" is exactly the false clear §6B.3 forbids.
+ */
+export function crewMayStartForProperty(
+  latest: { screenStatus: ScreenStatus; inRpa: boolean; status: PermitLifecycle } | null,
+): ClearanceDecision {
+  if (latest === null) {
+    return {
+      mayStart: false,
+      reason: 'No CBPA/RPA screen on file for this property — run the screen before any crew starts (§6B.1/§6B.3).',
+    };
+  }
+  return crewMayStart(latest);
+}

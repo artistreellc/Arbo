@@ -10,6 +10,13 @@ import { buildMorningBrief, type MorningBrief, type StopInput } from '../ops/mor
 import { scoreLead, type LeadQualityResult } from '../reception/leadQuality.js';
 import { integrationStatus } from '../env.js';
 
+/** The §6B screen flag riding a lead — the property's latest permit track. */
+export interface ApiPermitFlag {
+  screenStatus: 'PERMIT_LIKELY' | 'REVIEW_NEEDED' | 'NO_OVERLAY_VERIFY';
+  inRpa: boolean;
+  status: string; // lifecycle: needed / applied / approved / not_required_verified
+}
+
 export interface ApiLead {
   id: string;
   source: string;
@@ -22,6 +29,10 @@ export interface ApiLead {
   zip: string | null;
   isFirstTimer: boolean | null;
   quality: LeadQualityResult;
+  /** Latest permit screen for the lead's property, when one is on file. */
+  permit: ApiPermitFlag | null;
+  /** True when the lead HAS a property but NO screen on file — it still needs one (§6B.1). */
+  screenPending: boolean;
 }
 
 /** What the API needs from storage — live impl wraps the repositories. */
@@ -40,9 +51,12 @@ export interface ApiLeadInput {
   status: string;
   createdAt: string;
   name: string | null;
+  propertyId: string | null;
   city: string | null;
   zip: string | null;
   isFirstTimer: boolean | null;
+  /** Latest permit track for the lead's property; null when none on file. */
+  permit: ApiPermitFlag | null;
 }
 
 export interface ApiResult {
@@ -103,6 +117,10 @@ export function createApi(source: DataSource) {
             scopeClarity: r.details && r.details.length > 20 ? 'specific' : r.details ? 'vague' : 'unknown',
             gaveAddress: r.city != null,
           }),
+          permit: r.permit,
+          // A lead with a property but no screen on file still needs one (§6B.1)
+          // — surfaced, never silently assumed fine.
+          screenPending: r.propertyId != null && r.permit == null,
         };
       });
       return { status: 200, body: { leads } };

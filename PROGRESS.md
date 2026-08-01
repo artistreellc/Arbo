@@ -177,6 +177,8 @@ screen that is **structurally incapable of saying "you're clear."**
 | 4.7 | Permit entity in the spine — migration `0003_permit.sql` (§7 fields; `screen_status` CHECK mirrors the type, no "clear" storable; RLS service-role-only) | ☑ | schema CHECK; `permit.integration.test.ts` (guarded) |
 | 4.8 | Screen→permit bridge + repo (`createPermit`, `getLatestPermitForProperty`, `updatePermitStatus`) — lifecycle needed→applied→approved/not_required_verified | ☑ | `permitRecord.test.ts`, `permit.integration.test.ts` |
 | 4.9 | **Crew clearance gate (§6B.3)** — `crewMayStart()` blocks protected work (PERMIT_LIKELY / REVIEW_NEEDED / in-RPA) until a human resolves the permit; `not_required_verified` is never inferred from a screen | ☑ | `permitRecord.test.ts` (7) |
+| 4.10 | **Intake auto-screen (§6B.1 step 1)** — lead capture screens the property the moment the address lands: `intakeScreen.ts` (honest PENDING when GIS is absent/down — never a fabricated NO_OVERLAY_VERIFY; failures never lose the lead), wired into the live LeadSink; `crewMayStartForProperty(null)` = blocked ("no screen on file is not clearance") | ☑ | `intakeScreen.test.ts` (11), `permitRecord.test.ts` (9) |
+| 4.11 | Screen flag rides the lead into the inbox — `/api/leads` carries `permit` + `screenPending` (property with no screen on file is surfaced, never assumed fine); permit-join failure degrades the flag, never kills the inbox | ☑ | `api.test.ts` (6), `permit.integration.test.ts` (guarded) |
 
 **Deferred to deploy / later (named, not silent):** live city GIS layer wiring
 (the injected `GisProvider`), geocoding, form-PDF retrieval, the interactive

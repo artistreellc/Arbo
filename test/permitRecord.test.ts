@@ -4,6 +4,7 @@ import {
   screenToPermitRecord,
   requiresClearance,
   crewMayStart,
+  crewMayStartForProperty,
   type PermitLifecycle,
 } from '../src/permitting/permitRecord.js';
 
@@ -65,5 +66,16 @@ describe('the crew clearance gate (§6B.3) — no protected work without clearan
     const d = crewMayStart({ screenStatus: 'PERMIT_LIKELY', inRpa: true, status: 'needed' });
     expect(d.reason).toMatch(/BLOCKED/);
     expect(d.reason).toMatch(/6B\.3/);
+  });
+
+  it('NO SCREEN ON FILE is not clearance — a property with no permit record is blocked', () => {
+    const d = crewMayStartForProperty(null);
+    expect(d.mayStart).toBe(false);
+    expect(d.reason).toMatch(/no cbpa\/rpa screen on file/i);
+  });
+
+  it('crewMayStartForProperty delegates to the gate when a record exists', () => {
+    expect(crewMayStartForProperty({ screenStatus: 'PERMIT_LIKELY', inRpa: true, status: 'approved' }).mayStart).toBe(true);
+    expect(crewMayStartForProperty({ screenStatus: 'PERMIT_LIKELY', inRpa: true, status: 'needed' }).mayStart).toBe(false);
   });
 });

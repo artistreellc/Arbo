@@ -4,10 +4,12 @@ import {
   upsertProperty,
   createPermit,
   getLatestPermitForProperty,
+  latestPermitsForProperties,
   updatePermitStatus,
 } from '../src/db/repositories.js';
 import { screenProperty, type GisProvider, type OverlayHit } from '../src/permitting/screening.js';
 import { screenToPermitRecord } from '../src/permitting/permitRecord.js';
+import { createLiveLeadSink } from '../src/reception/leadSink.js';
 
 // Live integration for the Permit track (Phase 4). Runs only with real Supabase
 // creds; CI without secrets stays green (same pattern as spine.integration).
@@ -53,6 +55,49 @@ d('permit track end-to-end (live Supabase)', () => {
     });
     const res = await bad;
     expect(res.error).toBeTruthy();
+  });
+
+  it('intake auto-screen: a captured call lead lands with a permit row on its property (§6B.1)', async () => {
+    const sink = createLiveLeadSink({ gis: gisWith([CBPA]) });
+    const result = await sink.capture({
+      name: 'Intake Test Caller',
+      phone: '+17575550142',
+      address: '77 Bayside Rd',
+      city: 'Virginia Beach',
+      qualification: { jobType: 'removal', powerLineRedFlag: false },
+      isEmergency: false,
+    });
+    expect(result.leadId).toBeTruthy();
+    expect(result.permitScreen?.screened).toBe(true);
+    expect(result.permitScreen?.status).toBe('PERMIT_LIKELY');
+
+    const property = await upsertProperty({ address: '77 Bayside Rd', city: 'Virginia Beach' });
+    cleanup.push(property.id);
+    const latest = await getLatestPermitForProperty(property.id);
+    expect(latest?.screen_status).toBe('PERMIT_LIKELY');
+    expect(latest?.in_rpa).toBe(true);
+
+    const batch = await latestPermitsForProperties([property.id]);
+    expect(batch.get(property.id)?.id).toBe(latest?.id);
+  });
+
+  it('intake with no GIS wired: lead survives, screen honestly pending, no permit row', async () => {
+    const sink = createLiveLeadSink(); // no gis — the pre-deploy reality
+    const result = await sink.capture({
+      name: 'Pending Screen Caller',
+      phone: '+17575550143',
+      address: '12 Creekview Ct',
+      city: 'Portsmouth',
+      qualification: { jobType: 'not sure' },
+      isEmergency: false,
+    });
+    expect(result.leadId).toBeTruthy();
+    expect(result.permitScreen?.screened).toBe(false);
+    expect(result.permitScreen?.pendingReason).toMatch(/NOT run/i);
+
+    const property = await upsertProperty({ address: '12 Creekview Ct', city: 'Portsmouth' });
+    cleanup.push(property.id);
+    expect(await getLatestPermitForProperty(property.id)).toBeNull();
   });
 
   it('cleanup', async () => {

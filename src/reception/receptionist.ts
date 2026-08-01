@@ -6,6 +6,7 @@
 
 import type { Guardrails } from '../config/guardrails.schema.js';
 import type { LegalConfig } from '../config/legal.schema.js';
+import type { PermitScreenSummary } from '../permitting/intakeScreen.js';
 import { buildReceptionistSystemPrompt } from './systemPrompt.js';
 import { guardReply, type GuardResult } from './outputGuard.js';
 import { detectIntent, type CallIntent, type IncidentType } from './intent.js';
@@ -46,7 +47,11 @@ export interface LeadSink {
     qualification: Record<string, unknown>;
     isEmergency: boolean;
     hadWorkBefore?: boolean;
-  }): Promise<{ leadId: string }>;
+  }): Promise<{
+    leadId: string;
+    /** Intake permit screen (§6B.1) — attached by the live sink when a property was captured. */
+    permitScreen?: PermitScreenSummary;
+  }>;
 }
 
 export interface TurnResult {

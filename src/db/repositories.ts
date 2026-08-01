@@ -289,6 +289,26 @@ export async function createPermit(input: PermitRecordInput): Promise<{ id: stri
   return res.data as { id: string };
 }
 
+/**
+ * Latest permit track per property, batched (feeds the leads inbox — the §6B
+ * flag rides the lead). One query for all ids; newest row per property wins.
+ */
+export async function latestPermitsForProperties(propertyIds: string[]): Promise<Map<string, PermitRow>> {
+  const out = new Map<string, PermitRow>();
+  if (propertyIds.length === 0) return out;
+  const db = getDb();
+  const res = await db
+    .from('permit')
+    .select('id, property_id, job_id, city, screen_status, in_rpa, status, form_ref, ruleset_last_verified, created_at, updated_at')
+    .in('property_id', propertyIds)
+    .order('created_at', { ascending: false });
+  if (res.error) throw res.error;
+  for (const row of res.data as PermitRow[]) {
+    if (!out.has(row.property_id)) out.set(row.property_id, row); // newest-first → first seen wins
+  }
+  return out;
+}
+
 /** The newest permit track for a property (the current screen of record). */
 export async function getLatestPermitForProperty(propertyId: string): Promise<PermitRow | null> {
   const db = getDb();
@@ -341,7 +361,7 @@ export interface LeadListRow {
   status: string;
   created_at: string;
   contact: { name: string | null; phones: string[]; is_first_timer: boolean } | null;
-  property: { address: string; city: string; zip: string | null } | null;
+  property: { id: string; address: string; city: string; zip: string | null } | null;
 }
 
 /** Newest leads for the inbox (default: everything not yet converted/lost). */
@@ -350,7 +370,7 @@ export async function listLeads(limit = 25): Promise<LeadListRow[]> {
   const res = await db
     .from('lead')
     .select(
-      'id, source, details, qualification, is_emergency, status, created_at, contact:contact_id(name, phones, is_first_timer), property:property_id(address, city, zip)',
+      'id, source, details, qualification, is_emergency, status, created_at, contact:contact_id(name, phones, is_first_timer), property:property_id(id, address, city, zip)',
     )
     .in('status', ['new', 'qualified', 'emergency'])
     .order('created_at', { ascending: false })
