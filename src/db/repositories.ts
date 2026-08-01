@@ -4,6 +4,7 @@
 
 import { getDb } from './client.js';
 import { parseAddress, type ServiceCity } from '../lib/address.js';
+import type { PermitRecordInput, PermitLifecycle } from '../permitting/permitRecord.js';
 
 /** Thrown when an address is outside the four served cities (§2). */
 export class OutOfServiceAreaError extends Error {
@@ -244,6 +245,86 @@ export async function createPhoto(input: CreatePhotoInput): Promise<{ id: string
     .single();
   if (res.error) throw res.error;
   return res.data as { id: string };
+}
+
+// ---------------------------------------------------------------------------
+// Permit track (§6B, §7). Persists a screen result and its lifecycle so no crew
+// starts protected work without clearance (§6B.3). The DB CHECK constraints
+// mirror the code types — screen_status can never be a bare "clear".
+// ---------------------------------------------------------------------------
+
+export interface PermitRow {
+  id: string;
+  property_id: string;
+  job_id: string | null;
+  city: ServiceCity;
+  screen_status: 'PERMIT_LIKELY' | 'REVIEW_NEEDED' | 'NO_OVERLAY_VERIFY';
+  in_rpa: boolean;
+  status: PermitLifecycle;
+  form_ref: string | null;
+  ruleset_last_verified: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Persist a screen result as a permit track. Lifecycle starts at 'needed'. */
+export async function createPermit(input: PermitRecordInput): Promise<{ id: string }> {
+  const db = getDb();
+  const res = await db
+    .from('permit')
+    .insert({
+      property_id: input.propertyId,
+      job_id: input.jobId ?? null,
+      city: input.city,
+      screen_status: input.screenStatus,
+      in_rpa: input.inRpa,
+      overlay_source: input.overlaySource,
+      status: input.status,
+      city_contact: input.cityContact,
+      ruleset_last_verified: input.rulesetLastVerified,
+    })
+    .select('id')
+    .single();
+  if (res.error) throw res.error;
+  return res.data as { id: string };
+}
+
+/** The newest permit track for a property (the current screen of record). */
+export async function getLatestPermitForProperty(propertyId: string): Promise<PermitRow | null> {
+  const db = getDb();
+  const res = await db
+    .from('permit')
+    .select('id, property_id, job_id, city, screen_status, in_rpa, status, form_ref, ruleset_last_verified, created_at, updated_at')
+    .eq('property_id', propertyId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (res.error) throw res.error;
+  return (res.data as PermitRow | null) ?? null;
+}
+
+/**
+ * Advance the permit lifecycle (§6B.3). Setting 'not_required_verified' or
+ * 'approved' is the human clearance step — an explicit write here, never a side
+ * effect of screening. `formRef` records e.g. the VB PPR record number.
+ */
+export async function updatePermitStatus(
+  id: string,
+  status: PermitLifecycle,
+  patch?: { formRef?: string; notes?: string; labeledMapFile?: string; packetFile?: string },
+): Promise<void> {
+  const db = getDb();
+  const res = await db
+    .from('permit')
+    .update({
+      status,
+      ...(patch?.formRef !== undefined ? { form_ref: patch.formRef } : {}),
+      ...(patch?.notes !== undefined ? { notes: patch.notes } : {}),
+      ...(patch?.labeledMapFile !== undefined ? { labeled_map_file: patch.labeledMapFile } : {}),
+      ...(patch?.packetFile !== undefined ? { packet_file: patch.packetFile } : {}),
+    })
+    .eq('id', id);
+  if (res.error) throw res.error;
 }
 
 // ---------------------------------------------------------------------------

@@ -174,6 +174,9 @@ screen that is **structurally incapable of saying "you're clear."**
 | 4.4 | Mitigation surfacing (3:1, min 3.5" DBH) on PERMIT_LIKELY removals; Chesapeake scale tiers (site-visit / Board hearing) | ☑ | `screening.test.ts` |
 | 4.5 | Power-line routing (§6B.4d) — utility-first, High Voltage Safety Act, ≥ REVIEW_NEEDED; `assertNeverClear` structural guard | ☑ | `screening.test.ts` |
 | 4.6 | **"Never say clear" test run twice** (Phase 4 acceptance) — every reachable result across all 4 cities × input shapes × overlay sets | ☑ | `screening.test.ts` (pass 1 + pass 2) |
+| 4.7 | Permit entity in the spine — migration `0003_permit.sql` (§7 fields; `screen_status` CHECK mirrors the type, no "clear" storable; RLS service-role-only) | ☑ | schema CHECK; `permit.integration.test.ts` (guarded) |
+| 4.8 | Screen→permit bridge + repo (`createPermit`, `getLatestPermitForProperty`, `updatePermitStatus`) — lifecycle needed→applied→approved/not_required_verified | ☑ | `permitRecord.test.ts`, `permit.integration.test.ts` |
+| 4.9 | **Crew clearance gate (§6B.3)** — `crewMayStart()` blocks protected work (PERMIT_LIKELY / REVIEW_NEEDED / in-RPA) until a human resolves the permit; `not_required_verified` is never inferred from a screen | ☑ | `permitRecord.test.ts` (7) |
 
 **Deferred to deploy / later (named, not silent):** live city GIS layer wiring
 (the injected `GisProvider`), geocoding, form-PDF retrieval, the interactive
@@ -181,6 +184,21 @@ map + tree-labeling tool (§6B.2, mobile — Phase 11), and packet assembly +
 city handoff (§6B.1 steps 2–6). Same deferral pattern as Vapi/Twilio (2.7) and
 Drive OAuth (O3): the classification brain is complete and fully tested behind
 an injected interface; nothing is half-built.
+
+**Migration 0003 not yet applied to the live `arbor` project** (no DB creds in
+this environment). It's written and in the source of truth (`supabase/migrations/`);
+apply it at deploy alongside the D26 drift rollback. Named, not silent.
+
+### Phase 4 audit (§11) — result (checkpoint after 4.7–4.9)
+`npm run check` green: **145 tests pass, 7 live-integration skipped**, typecheck
++ lint clean. 1) Guardrails ✅ (permit engine still cannot emit a "clear"; both
+the type and the DB CHECK enforce it). 2) Legal gates ✅ (no outbound path
+added). 3) Tests ✅ 145/145 run. 4) No regressions ✅. 5) Data integrity ✅
+(permit FKs cascade from property, set-null from job; migration mirrors code
+types). 6) Secrets clean ✅ (city-office contacts are public, not PII/secrets).
+7) Docs current ✅ (this update; D28–D31). 8) Scope honest ✅ (all Phase 4 = #30
+CONFIRMED). 9) Rabbit-holes: carried — D26 drift rollback + migration 0003
+apply (both need live DB), live-GIS wiring, O4 color map. All named.
 
 ### Post-merge audit (§11) — result
 `npm run check` green: **138 tests pass, 4 live-integration skipped**,
