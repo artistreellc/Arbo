@@ -21,7 +21,8 @@ import { rulesetFor, type CityRuleset, type MitigationRule } from './cities.js';
 export type ScreenStatus = 'PERMIT_LIKELY' | 'REVIEW_NEEDED' | 'NO_OVERLAY_VERIFY';
 
 export type OverlayKind =
-  | 'CBPA_RPA' // Chesapeake Bay Preservation Area / Resource Protection Area
+  | 'CBPA_RPA' // Chesapeake Bay Preservation Area / Resource Protection Area — direct hit
+  | 'CBPA_RPA_PROXIMITY' // RPA within the proximity probe (D37) — parcel may reach the buffer
   | 'FEMA_FLOOD' // Special Flood Hazard Area (zones A*/V*)
   | 'LOCAL_FLOODPLAIN' // city floodplain ordinance / land-disturbance trigger
   | 'NORFOLK_CRO' // Norfolk Coastal Resilience Overlay (+ URO)

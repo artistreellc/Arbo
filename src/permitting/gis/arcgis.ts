@@ -9,11 +9,17 @@
 
 export type FetchFn = (url: string) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
 
-/** True when the WGS84 point intersects any feature of the layer. */
+/**
+ * True when the WGS84 point intersects any feature of the layer.
+ * `distanceMeters` widens the test to "within N meters" — the proximity tier
+ * (D37): geocoders return street-centerline points, and the verified Circle
+ * Drive case showed the rear-lot RPA sits 150–300 m from that point.
+ */
 export async function pointIntersectsLayer(
   fetchFn: FetchFn,
   layerUrl: string,
   point: { lat: number; lng: number },
+  distanceMeters?: number,
 ): Promise<boolean> {
   const params = new URLSearchParams({
     f: 'json',
@@ -23,6 +29,7 @@ export async function pointIntersectsLayer(
     spatialRel: 'esriSpatialRelIntersects',
     returnCountOnly: 'true',
     where: '1=1',
+    ...(distanceMeters ? { distance: String(distanceMeters), units: 'esriSRUnit_Meter' } : {}),
   });
   const url = `${layerUrl.replace(/\/+$/, '')}/query?${params.toString()}`;
 

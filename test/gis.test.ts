@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { pointIntersectsLayer, type FetchFn } from '../src/permitting/gis/arcgis.js';
-import { createGoogleGeocoder, type Geocoder } from '../src/permitting/gis/geocode.js';
+import { createCensusGeocoder, createGoogleGeocoder, type Geocoder } from '../src/permitting/gis/geocode.js';
 import { CITY_GIS_LAYERS, usableLayers } from '../src/permitting/gis/layers.js';
 import { createLiveGisProvider } from '../src/permitting/gis/liveGisProvider.js';
 import { runIntakeScreen } from '../src/permitting/intakeScreen.js';
+import { screenProperty } from '../src/permitting/screening.js';
 import { SERVICE_CITIES } from '../src/lib/address.js';
 
 // --- fakes -------------------------------------------------------------
@@ -107,12 +108,22 @@ describe('GIS layer registry', () => {
     }
   });
 
-  it('no layer is marked live yet — endpoints are egress-blocked from this env', () => {
-    // This test EXISTS to fail when someone flips a layer to 'live': doing so
-    // must come with real verification per the procedure in layers.ts — update
-    // this test in the same commit as the verification evidence.
+  it('every city has a verified-LIVE RPA layer (DEQ statewide, verified 2026-08-01)', () => {
     for (const city of SERVICE_CITIES) {
-      expect(usableLayers(city, false)).toHaveLength(0);
+      const live = usableLayers(city, false);
+      expect(live.length).toBeGreaterThanOrEqual(1);
+      expect(live.some((l) => l.kind === 'CBPA_RPA')).toBe(true);
+    }
+  });
+
+  it('tripwire: every LIVE layer must carry verification evidence in its source', () => {
+    // Flipping a layer to 'live' without recording the verification is exactly
+    // the unvalidated-endpoint risk D33 exists to prevent.
+    for (const city of SERVICE_CITIES) {
+      for (const l of usableLayers(city, false)) {
+        expect(l.source).toMatch(/verified/i);
+        expect(l.url).toMatch(/\/(MapServer|FeatureServer)\/\d+$/);
+      }
     }
   });
 
@@ -126,8 +137,8 @@ describe('GIS layer registry', () => {
 describe('live GisProvider — honest end to end', () => {
   const input = { city: 'Chesapeake' as const, address: '9 Creek Rd', isRemoval: true };
 
-  it('throws when the city has no usable layers (default: candidates excluded) → intake PENDING', async () => {
-    const provider = createLiveGisProvider({ geocoder: pointGeocoder(), fetchFn: routedFetch([]) });
+  it('throws when a city has no usable layers → intake PENDING (honesty floor)', async () => {
+    const provider = createLiveGisProvider({ geocoder: pointGeocoder(), fetchFn: routedFetch([]), layersFor: () => [] });
     await expect(provider.overlaysFor(input)).rejects.toThrow(/No verified GIS layers/);
 
     const outcome = await runIntakeScreen(
@@ -186,5 +197,77 @@ describe('live GisProvider — honest end to end', () => {
       allowCandidates: true,
     });
     await expect(provider.overlaysFor(input)).rejects.toThrow(/ZERO_RESULTS/);
+  });
+});
+
+describe('the proximity tier (D37 — the Circle Drive lesson)', () => {
+  // Street-centerline geocodes sit 150–300 m from a rear-lot RPA buffer
+  // (verified on the real violation case). Direct miss + probe hit must
+  // surface as the softer PROXIMITY overlay → REVIEW_NEEDED, never silence.
+  const probeAwareFetch: FetchFn = async (url) => {
+    if (url.includes('distance=300')) return jsonResponse({ count: 1 }); // probe hits
+    return jsonResponse({ count: 0 }); // direct misses
+  };
+
+  it('direct miss + 300 m probe hit → CBPA_RPA_PROXIMITY overlay', async () => {
+    const provider = createLiveGisProvider({ geocoder: pointGeocoder(), fetchFn: probeAwareFetch });
+    const overlays = await provider.overlaysFor({ city: 'Norfolk', address: '8562 Circle Drive', isRemoval: true });
+    expect(overlays).toHaveLength(1);
+    expect(overlays[0]!.kind).toBe('CBPA_RPA_PROXIMITY');
+    expect(overlays[0]!.meaning).toMatch(/300 m/);
+  });
+
+  it('a proximity-only hit screens REVIEW_NEEDED — flagged, not PERMIT_LIKELY, never clear', async () => {
+    const provider = createLiveGisProvider({ geocoder: pointGeocoder(), fetchFn: probeAwareFetch });
+    const overlays = await provider.overlaysFor({ city: 'Norfolk', address: '8562 Circle Drive', isRemoval: true });
+    const screen = await screenProperty(
+      { city: 'Norfolk', address: '8562 Circle Drive', isRemoval: true },
+      { overlaysFor: async () => overlays },
+    );
+    expect(screen.status).toBe('REVIEW_NEEDED');
+    expect(screen.headline).toMatch(/verify/i);
+  });
+
+  it('a DIRECT hit skips the probe and stays PERMIT_LIKELY on removals', async () => {
+    const provider = createLiveGisProvider({ geocoder: pointGeocoder(), fetchFn: routedFetch([['query', { count: 1 }]]) });
+    const overlays = await provider.overlaysFor({ city: 'Norfolk', address: '1 Shore Dr', isRemoval: true });
+    expect(overlays.some((o) => o.kind === 'CBPA_RPA')).toBe(true);
+    const screen = await screenProperty(
+      { city: 'Norfolk', address: '1 Shore Dr', isRemoval: true },
+      { overlaysFor: async () => overlays },
+    );
+    expect(screen.status).toBe('PERMIT_LIKELY');
+  });
+
+  it('the probe request carries the distance + meter units', async () => {
+    const urls: string[] = [];
+    const spy: FetchFn = async (url) => {
+      urls.push(url);
+      return jsonResponse({ count: 0 });
+    };
+    const provider = createLiveGisProvider({ geocoder: pointGeocoder(), fetchFn: spy });
+    await provider.overlaysFor({ city: 'Portsmouth', address: '2 River Rd', isRemoval: true });
+    const probe = urls.find((u) => u.includes('distance='));
+    expect(probe).toBeDefined();
+    expect(probe).toContain('distance=300');
+    expect(probe).toContain('units=esriSRUnit_Meter');
+  });
+});
+
+describe('Census geocoder — keyless fallback (verified live 2026-08-01)', () => {
+  const MATCH = { result: { addressMatches: [{ coordinates: { x: -76.260956646037, y: 36.931651997559 } }] } };
+
+  it('resolves a confident match to lat/lng', async () => {
+    const g = createCensusGeocoder(routedFetch([['geocoding.geo.census.gov', MATCH]]));
+    expect(await g.geocode('8562 Circle Drive', 'Norfolk')).toEqual({ lat: 36.931651997559, lng: -76.260956646037 });
+  });
+
+  it('no match / HTTP error → throw (screen goes pending, never wrong-point)', async () => {
+    await expect(
+      createCensusGeocoder(routedFetch([['census', { result: { addressMatches: [] } }]])).geocode('x', 'Norfolk'),
+    ).rejects.toThrow(/no confident match/);
+    await expect(
+      createCensusGeocoder(routedFetch([['census', {}, false, 500]])).geocode('x', 'Norfolk'),
+    ).rejects.toThrow(/HTTP 500/);
   });
 });
