@@ -187,9 +187,12 @@ city handoff (§6B.1 steps 2–6). Same deferral pattern as Vapi/Twilio (2.7) an
 Drive OAuth (O3): the classification brain is complete and fully tested behind
 an injected interface; nothing is half-built.
 
-**Migration 0003 not yet applied to the live `arbor` project** (no DB creds in
-this environment). It's written and in the source of truth (`supabase/migrations/`);
-apply it at deploy alongside the D26 drift rollback. Named, not silent.
+**Migration 0003 APPLIED to the live `arbor` project** (Supabase tooling became
+available mid-session): `permit` table live with RLS enabled; all three CHECK
+constraints verified in pg_catalog (city ∈ 4 cities; screen_status ∈ the three
+no-clear values; lifecycle ∈ needed/applied/approved/not_required_verified).
+Security advisor: only the intentional D11 `rls_enabled_no_policy` INFO notes.
+The D26 drift rollback (destructive) still awaits Mike's approval.
 
 ### Phase 4 audit (§11) — result (checkpoint after 4.7–4.9)
 `npm run check` green: **145 tests pass, 7 live-integration skipped**, typecheck
