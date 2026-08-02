@@ -339,3 +339,14 @@ Deployment `dpl_HaLUaeNXg1mzUDdyE7EME9KPJbaL` READY on production
 live over the webhook path: /health 200 db:true; /api/location/status 200
 (tracking OFF by default, late=no_data); /api/review/backlog 200 (empty);
 /api/leads 200 with the real seeded row. Full loop green end-to-end.
+
+### §6 Predictive Property Intelligence (#28, the centerpiece) — built 2026-08-02
+`growthForecast.ts` (8 new tests, 276 total green): species-routed
+maintenance cycles over each tree's real `last_service_date` — no history,
+no forecast. `GET /api/forecast` lists due/overdue properties worst-first
+and back-fills `tree.next_due_forecast` (the D12 column, live at last).
+Growth nudges join /api/followups through the same §4 gates as seasonal
+("COMING DUE" badge in the app), recommend-only, with `growthUnavailable`
+honesty on twin-read failure. Also fixed: Mark-sent button now only renders
+on cadence-bearing queue items. The layer compounds automatically: every
+completed job that records tree service dates feeds next season's queue.
