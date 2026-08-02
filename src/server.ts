@@ -33,6 +33,11 @@ import {
   listProperties,
   getPropertyTwin,
   updateLeadStatus,
+  loadLoopSnapshot,
+  propertyIdsWithJobs,
+  leakageWindow,
+  createLeakageEvent,
+  listAgentRuns,
 } from './db/repositories.js';
 import { createCensusGeocoder } from './permitting/gis/geocode.js';
 import { createElevenLabsTts } from './voice/elevenlabsTts.js';
@@ -45,6 +50,7 @@ import { createVoiceLlm } from './voice/anthropicLlm.js';
 import { createElevenLabsBridge, type BridgeRequestBody } from './voice/elevenlabsBridge.js';
 import type { Alerter } from './reception/receptionist.js';
 import { loadAppHtml } from './server/appPage.js';
+import { emitSafe } from './binder/eventBus.js';
 
 /** Live DataSource over the Phase 1 repositories (service-role, RLS-locked). */
 export function createLiveSource(): DataSource {
@@ -210,6 +216,39 @@ export function createLiveSource(): DataSource {
     properties: () => listProperties(),
     propertyTwin: (id) => getPropertyTwin(id),
     setLeadStatus: (id, status) => updateLeadStatus(id, status),
+    // §1E Loop-Closer snapshot: the silence rules run over the last 45 days.
+    async loopSnapshot() {
+      const rows = await loadLoopSnapshot();
+      const wonPropertyIds = rows.estimates
+        .filter((e) => e.outcome === 'won' && e.property_id)
+        .map((e) => e.property_id as string);
+      const booked = await propertyIdsWithJobs(wonPropertyIds);
+      return {
+        nowIso: new Date().toISOString(),
+        estimates: rows.estimates.map((e) => ({
+          id: e.id,
+          propertyId: e.property_id,
+          scheduledIso: e.scheduled_slot,
+          visitedAtIso: e.visited_at,
+          outcome: e.outcome as 'pending' | 'won' | 'lost' | 'no_show',
+          outcomeAtIso: e.outcome === 'pending' ? null : e.updated_at,
+          hasJobForProperty: e.property_id ? booked.has(e.property_id) : false,
+        })),
+        jobs: rows.jobs.map((j) => ({ id: j.id, scheduledIso: j.scheduled_for, status: j.status })),
+        leads: rows.leads.map((l) => ({
+          id: l.id,
+          createdAtIso: l.created_at,
+          status: l.status,
+          needsCallback: ['missed', 'abandoned', 'voicemail'].includes(String(l.qualification?.['kind'] ?? '')),
+        })),
+      };
+    },
+    // §6J2.4 leakage line.
+    leakageWindow: () => leakageWindow(),
+    logLeakage: (input) => createLeakageEvent(input),
+    // §8A.6g audit surface + §8A.6b bus.
+    agentRuns: (limit) => listAgentRuns(limit),
+    emit: (type, payload) => emitSafe(type, payload, 'server'),
   };
 }
 
@@ -361,6 +400,22 @@ export function createArborRequestHandler() {
         if (req.method === 'POST' && m) {
           return send(...unpack(await api.markReviewed(m[1]!)));
         }
+      }
+      // §1E backup brain: every open loop the day left behind.
+      if (req.method === 'GET' && url.pathname === '/api/queue') {
+        return send(...unpack(await api.queue()));
+      }
+      // §6J2 yard check — INTERNAL ONLY, behind the admin key like all /api.
+      if (req.method === 'POST' && url.pathname === '/api/estimating/check') {
+        return send(...unpack(await api.estimatingCheck((await readJson(req)) as Record<string, unknown>)));
+      }
+      // §6J2.4 leakage line: log a repair/damage event from the field.
+      if (req.method === 'POST' && url.pathname === '/api/leakage') {
+        return send(...unpack(await api.logLeakage((await readJson(req)) as Record<string, unknown>)));
+      }
+      // §8A.6g: what the agents did, straight from the audit log.
+      if (req.method === 'GET' && url.pathname === '/api/agents/runs') {
+        return send(...unpack(await api.agentRuns(Number(url.searchParams.get('limit') ?? 20))));
       }
       // ElevenLabs custom-LLM endpoint (the agent's Server URL points at
       // /voice/llm; the platform appends the OpenAI-style path).

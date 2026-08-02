@@ -912,3 +912,99 @@ export async function updateLeadStatus(leadId: string, status: 'new' | 'qualifie
   const res = await db.from('lead').update({ status, updated_at: new Date().toISOString() }).eq('id', leadId);
   if (res.error) throw res.error;
 }
+
+// ============================================================================
+// Loop-Closer snapshot (§1E, §8A.5 #3) — everything the silence rules need in
+// one round trip. outcome age uses updated_at (last touch) — the honest proxy
+// until outcome_at exists.
+// ============================================================================
+export interface LoopSnapshotRows {
+  estimates: Array<{
+    id: string; property_id: string | null; scheduled_slot: string | null;
+    visited_at: string | null; outcome: string; updated_at: string;
+  }>;
+  jobs: Array<{ id: string; property_id: string | null; scheduled_for: string | null; status: string }>;
+  leads: Array<{ id: string; created_at: string; status: string; qualification: Record<string, unknown> | null }>;
+}
+
+export async function loadLoopSnapshot(): Promise<LoopSnapshotRows> {
+  const db = getDb();
+  const since = new Date(Date.now() - 45 * 86400_000).toISOString(); // 45-day working window
+  const [estimates, jobs, leads] = await Promise.all([
+    db.from('estimate')
+      .select('id, property_id, scheduled_slot, visited_at, outcome, updated_at')
+      .gte('created_at', since),
+    db.from('job')
+      .select('id, property_id, scheduled_for, status')
+      .in('status', ['booked', 'in_progress'])
+      .gte('created_at', since),
+    db.from('lead')
+      .select('id, created_at, status, qualification')
+      .eq('status', 'new')
+      .gte('created_at', since),
+  ]);
+  for (const r of [estimates, jobs, leads]) if (r.error) throw r.error;
+  return {
+    estimates: (estimates.data ?? []) as LoopSnapshotRows['estimates'],
+    jobs: (jobs.data ?? []) as LoopSnapshotRows['jobs'],
+    leads: (leads.data ?? []) as LoopSnapshotRows['leads'],
+  };
+}
+
+/** Property ids that already have a job — closes the won-but-never-booked rule. */
+export async function propertyIdsWithJobs(propertyIds: string[]): Promise<Set<string>> {
+  if (propertyIds.length === 0) return new Set();
+  const db = getDb();
+  const res = await db.from('job').select('property_id').in('property_id', propertyIds);
+  if (res.error) throw res.error;
+  return new Set((res.data ?? []).map((r) => r.property_id as string).filter(Boolean));
+}
+
+// ============================================================================
+// §6J2.4 leakage line — log events, derive the load from actuals.
+// ============================================================================
+export async function createLeakageEvent(input: {
+  jobId?: string; unitId?: string; kind: 'equipment_repair' | 'property_damage';
+  cause?: string; cost: number; notes?: string;
+}): Promise<{ id: string }> {
+  const db = getDb();
+  const res = await db.from('leakage_event').insert({
+    job_id: input.jobId ?? null,
+    unit_id: input.unitId ?? null,
+    kind: input.kind,
+    cause: input.cause ?? null,
+    cost: input.cost,
+    notes: input.notes ?? null,
+  }).select('id').single();
+  if (res.error) throw res.error;
+  return { id: res.data.id as string };
+}
+
+/** Trailing-window totals for deriveLeakagePct. Nulls = not enough data (honest). */
+export async function leakageWindow(trailingDays = 90): Promise<{ leakageTotal: number | null; revenueTotal: number | null }> {
+  const db = getDb();
+  const since = new Date(Date.now() - trailingDays * 86400_000).toISOString().slice(0, 10);
+  const [leak, rev] = await Promise.all([
+    db.from('leakage_event').select('cost').gte('occurred_on', since),
+    db.from('invoice').select('amount').eq('status', 'paid').gte('paid_at', since + 'T00:00:00Z'),
+  ]);
+  if (leak.error) throw leak.error;
+  if (rev.error) throw rev.error;
+  const leakRows = leak.data ?? [];
+  const revRows = rev.data ?? [];
+  return {
+    leakageTotal: leakRows.length ? leakRows.reduce((s, r) => s + Number(r.cost), 0) : null,
+    revenueTotal: revRows.length ? revRows.reduce((s, r) => s + Number(r.amount), 0) : null,
+  };
+}
+
+/** Recent agent runs for the admin surface (§8A.6g visibility). */
+export async function listAgentRuns(limit = 20): Promise<unknown[]> {
+  const db = getDb();
+  const res = await db.from('agent_run')
+    .select('id, agent, status, output_summary, duration_ms, started_at, finished_at')
+    .order('started_at', { ascending: false })
+    .limit(limit);
+  if (res.error) throw res.error;
+  return res.data ?? [];
+}

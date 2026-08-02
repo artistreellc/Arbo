@@ -11,6 +11,8 @@ import { buildFollowUpQueue, buildSeasonalOutreach, type EstimateState, type Job
 import { flagStopsAtRisk, isWorkStopping, type AlertsProvider } from '../ops/stormWatch.js';
 import { assessRunningLate, detectVisits, withinWorkingHours, type LocationPing, type GeoStop } from '../ops/locationIntel.js';
 import { buildDueProperties, buildGrowthOutreach, type GrowthTarget } from '../ops/growthForecast.js';
+import { findOpenLoops, type LoopSnapshot } from '../ops/loopCloser.js';
+import { quoteCheck, deriveLeakagePct, type QuoteCheckInput } from '../ops/estimating.js';
 import type { TtsClient } from '../voice/elevenlabsTts.js';
 import { scoreLead, type LeadQualityResult } from '../reception/leadQuality.js';
 import { integrationStatus } from '../env.js';
@@ -77,6 +79,15 @@ export interface DataSource {
   properties?(): Promise<unknown[]>;
   propertyTwin?(id: string): Promise<unknown | null>;
   setLeadStatus?(leadId: string, status: 'new' | 'qualified' | 'spam' | 'converted' | 'lost'): Promise<void>;
+  /** §1E Loop-Closer: the silence-detection snapshot. */
+  loopSnapshot?(): Promise<LoopSnapshot>;
+  /** §6J2.4 leakage line: trailing-window actuals + event logging. */
+  leakageWindow?(): Promise<{ leakageTotal: number | null; revenueTotal: number | null }>;
+  logLeakage?(input: { jobId?: string; unitId?: string; kind: 'equipment_repair' | 'property_damage'; cause?: string; cost: number; notes?: string }): Promise<{ id: string }>;
+  /** §8A.6g: recent agent runs for the admin surface. */
+  agentRuns?(limit: number): Promise<unknown[]>;
+  /** §8A.6b: fire-and-forget event emission (must never break a write). */
+  emit?(type: string, payload: Record<string, unknown>): Promise<boolean>;
 }
 
 export interface ApiGeoStop {
@@ -471,6 +482,87 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       if (!id) return { status: 400, body: { error: 'bad_id' } };
       await source.markReviewed(id);
       return { status: 200, body: { ok: true } };
+    },
+
+    /**
+     * GET /api/queue — the §1E backup brain: every open loop the day left
+     * behind, worst first. Silence is never treated as success; each item is
+     * a decision Mike still owes someone.
+     */
+    async queue(): Promise<ApiResult> {
+      if (!source.ready() || !source.loopSnapshot) return { status: 503, body: { error: 'db_not_configured' } };
+      const snapshot = await source.loopSnapshot();
+      const open = findOpenLoops(snapshot);
+      if (source.emit) {
+        for (const item of open.filter((i) => i.severity === 'urgent')) {
+          await source.emit('needs_decision.raised', { key: item.key, kind: item.kind, refTable: item.refTable, refId: item.refId });
+        }
+      }
+      return { status: 200, body: { open, checkedAtIso: snapshot.nowIso } };
+    },
+
+    /**
+     * POST /api/estimating/check — the §6J2 yard check. INTERNAL ONLY: this
+     * result is Mike's instrument, never a customer artifact; the leakage load
+     * is re-derived from logged actuals, defaulting honestly when data is thin.
+     */
+    async estimatingCheck(body: Record<string, unknown>): Promise<ApiResult> {
+      const jobType = String(body.jobType ?? '');
+      const hours = Number(body.truckToTruckHours);
+      const crew = Number(body.crewSize);
+      const price = Number(body.quotedPrice);
+      const labor = Number(body.loadedLaborPerManHour);
+      if (!['removal', 'pruning', 'other'].includes(jobType)) return { status: 400, body: { error: 'bad_job_type' } };
+      if (!Number.isFinite(hours) || hours <= 0) return { status: 400, body: { error: 'bad_hours' } };
+      if (!Number.isFinite(crew) || crew < 1) return { status: 400, body: { error: 'bad_crew' } };
+      if (!Number.isFinite(price) || price <= 0) return { status: 400, body: { error: 'bad_price' } };
+      if (!Number.isFinite(labor) || labor <= 0) return { status: 400, body: { error: 'bad_labor_rate' } };
+
+      let leakage: ReturnType<typeof deriveLeakagePct> = { pct: 0.08, basis: 'default_insufficient_data' };
+      if (source.ready() && source.leakageWindow) {
+        try {
+          leakage = deriveLeakagePct(await source.leakageWindow());
+        } catch {
+          // DB hiccup: the default 8% stands, named as default below.
+        }
+      }
+      const input: QuoteCheckInput = {
+        jobType: jobType as QuoteCheckInput['jobType'],
+        truckToTruckHours: hours,
+        crewSize: crew,
+        quotedPrice: price,
+        loadedLaborPerManHour: labor,
+        leakagePct: leakage.pct,
+        ...(Number.isFinite(Number(body.equipmentCost)) ? { equipmentCost: Number(body.equipmentCost) } : {}),
+        ...(Number.isFinite(Number(body.dumpFees)) ? { dumpFees: Number(body.dumpFees) } : {}),
+        ...(Number.isFinite(Number(body.materials)) ? { materials: Number(body.materials) } : {}),
+      };
+      return { status: 200, body: { ...quoteCheck(input), leakageBasis: leakage.basis } };
+    },
+
+    /** POST /api/leakage — log one §6J2.4 leakage event (repair or damage). */
+    async logLeakage(body: Record<string, unknown>): Promise<ApiResult> {
+      if (!source.ready() || !source.logLeakage) return { status: 503, body: { error: 'db_not_configured' } };
+      const kind = String(body.kind ?? '');
+      const cost = Number(body.cost);
+      if (!['equipment_repair', 'property_damage'].includes(kind)) return { status: 400, body: { error: 'bad_kind' } };
+      if (!Number.isFinite(cost) || cost < 0) return { status: 400, body: { error: 'bad_cost' } };
+      const created = await source.logLeakage({
+        kind: kind as 'equipment_repair' | 'property_damage',
+        cost,
+        ...(typeof body.jobId === 'string' ? { jobId: body.jobId } : {}),
+        ...(typeof body.unitId === 'string' ? { unitId: body.unitId } : {}),
+        ...(typeof body.cause === 'string' ? { cause: body.cause } : {}),
+        ...(typeof body.notes === 'string' ? { notes: body.notes } : {}),
+      });
+      if (source.emit) await source.emit('leakage.logged', { id: created.id, kind });
+      return { status: 200, body: { ok: true, id: created.id } };
+    },
+
+    /** GET /api/agents/runs — §8A.6g audit visibility: what the agents did. */
+    async agentRuns(limit = 20): Promise<ApiResult> {
+      if (!source.ready() || !source.agentRuns) return { status: 503, body: { error: 'db_not_configured' } };
+      return { status: 200, body: { runs: await source.agentRuns(limit) } };
     },
   };
 }
