@@ -16,6 +16,8 @@ export interface WorkOrderSource {
   hazardStructures: boolean;
   /** Permit posture for this address — vocabulary is fixed (§6B.3). */
   permitStatus: 'PERMIT_LIKELY' | 'REVIEW_NEEDED' | 'NO_OVERLAY_VERIFY' | null;
+  /** No screen on file (or the lookup failed) — UNKNOWN, never "fine". */
+  permitScreenPending?: boolean;
   /** Photo refs for before/after (the job cannot complete without the pair). */
   photoRefs: string[];
   /** The gated safety briefing that rides under the order (§6V.4). */

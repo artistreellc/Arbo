@@ -24,9 +24,9 @@ describe('ARBOR app shell', () => {
     // Mike's rule: the calendar IS Google Calendar, planted in the app.
     expect(html).toContain('calendar.google.com/calendar/embed');
     expect(html).toContain('artistreeofvirginia@gmail.com');
-    // The embed is the ONE sanctioned outbound host. Anything else would be a
-    // third-party dependency the app must not grow.
-    const hosts = [...html.matchAll(/https:\/\/([a-z0-9.-]+)/gi)].map((m) => m[1]!.toLowerCase());
+    // These three are the ONLY sanctioned outbound hosts. Anything else — over
+    // https, http, or protocol-relative — is a dependency the app must not grow.
+    const hosts = [...html.matchAll(/(?:https?:)?\/\/([a-z0-9.-]+\.[a-z]{2,})/gi)].map((m) => m[1]!.toLowerCase());
     const allowed = new Set(['calendar.google.com', 'maps.google.com', 'www.google.com']);
     expect([...new Set(hosts)].filter((h) => !allowed.has(h))).toEqual([]);
   });

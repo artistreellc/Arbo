@@ -34,6 +34,8 @@ export interface GateVerdict {
 /** Words per second a fast reader manages on a phone in the field. */
 const WORDS_PER_SECOND = 4;
 const MIN_SECONDS = 10;
+/** Ceiling on payable minutes for ONE acknowledgment (see buildAcknowledgment). */
+export const MAX_ACK_MINUTES = 15;
 const MAX_SECONDS = 15;
 
 /** Length-scaled read floor: never under 10s, never a punitive wait over 15s. */
@@ -80,7 +82,10 @@ export function buildAcknowledgment(params: {
     throw new Error(`briefing not acknowledged: missing ${verdict.missing.join(',')}`);
   }
   const elapsedMs = Date.parse(params.completedAtIso) - Date.parse(params.startedAtIso);
-  const minutes = Math.max(1, Math.ceil(elapsedMs / 60_000)); // never round paid time to zero
+  // Never round paid time to zero — and never let a client-supplied span mint
+  // a fraudulent one: the gate itself tops out at 15 seconds of required
+  // reading, so anything past a few minutes is a bad clock or a bad actor.
+  const minutes = Math.min(MAX_ACK_MINUTES, Math.max(1, Math.ceil(elapsedMs / 60_000)));
   return {
     crewMemberId: params.crewMemberId,
     itemIds: [params.content.id],

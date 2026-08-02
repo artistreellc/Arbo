@@ -65,7 +65,7 @@ describe('crew work orders (§6F) — the API cannot leak admin data', () => {
 });
 
 describe('gated briefing over the API (§6V.4 / §4.6)', () => {
-  const content = { id: 'b1', body: 'Watch the drop zone. Call every cut.', standardRefs: ['Z133 §8.1'] };
+  const content = { id: '33333333-3333-3333-3333-333333333333', body: 'Watch the drop zone. Call every cut.', standardRefs: ['Z133 §8.1'] };
 
   it('a half-completed gate does NOT unlock and names what is missing', async () => {
     const api = createApi(crewSource([]));
@@ -97,5 +97,37 @@ describe('gated briefing over the API (§6V.4 / §4.6)', () => {
       crewMemberId: 'c1', content, state: {},
       startedAtIso: 'not-a-time', completedAtIso: 'nope',
     })).status).toBe(400);
+  });
+
+  it('rejects a reversed span — a client clock cannot mint negative time', async () => {
+    const api = createApi(crewSource([]));
+    const res = await api.ackBriefing({
+      crewMemberId: 'c1', content,
+      state: { scrolledToBottom: true, checkboxTicked: true, secondsOnScreen: 20 },
+      startedAtIso: '2026-08-05T10:05:00Z', completedAtIso: '2026-08-05T10:00:00Z',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a non-UUID briefing id (uuid[] would commit PAID time then fail)', async () => {
+    const api = createApi(crewSource([]));
+    const res = await api.ackBriefing({
+      crewMemberId: 'c1', content: { id: 'b1', body: 'x', standardRefs: [] },
+      state: { scrolledToBottom: true, checkboxTicked: true, secondsOnScreen: 20 },
+      startedAtIso: '2026-08-05T10:00:00Z', completedAtIso: '2026-08-05T10:00:20Z',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: 'bad_item_id' });
+  });
+
+  it('clamps payable minutes — a year-long span cannot become a payroll row', async () => {
+    let recorded: { payableMinutes: number } | null = null;
+    const api = createApi(crewSource([], (i) => { recorded = i as { payableMinutes: number }; }));
+    await api.ackBriefing({
+      crewMemberId: 'c1', content,
+      state: { scrolledToBottom: true, checkboxTicked: true, secondsOnScreen: 9999 },
+      startedAtIso: '2025-08-05T00:00:00Z', completedAtIso: '2026-08-05T00:00:00Z',
+    });
+    expect(recorded!.payableMinutes).toBeLessThanOrEqual(15);
   });
 });

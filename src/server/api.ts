@@ -15,6 +15,7 @@ import { findOpenLoops, type LoopSnapshot } from '../ops/loopCloser.js';
 import { quoteCheck, deriveLeakagePct, type QuoteCheckInput } from '../ops/estimating.js';
 import { buildCrewPayload, sequenceRoute, type WorkOrderSource } from '../crew/workOrder.js';
 import { evaluateGate, buildAcknowledgment, type BriefingContent } from '../crew/briefingGate.js';
+import { etToday, etDayWindow } from '../lib/etDay.js';
 import type { TtsClient } from '../voice/elevenlabsTts.js';
 import { scoreLead, type LeadQualityResult } from '../reception/leadQuality.js';
 import { integrationStatus } from '../env.js';
@@ -111,6 +112,7 @@ export interface CrewJobSource {
   hazardPowerLines: boolean;
   hazardStructures: boolean;
   permitStatus: string | null;
+  permitScreenPending?: boolean;
   propertyId: string;
 }
 
@@ -613,10 +615,11 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      */
     async crewWorkOrders(dateIso: string, briefingId: string | null = null): Promise<ApiResult> {
       if (!source.ready() || !source.crewJobs) return { status: 503, body: { error: 'db_not_configured' } };
-      const day = dateIso && /^\d{4}-\d{2}-\d{2}$/.test(dateIso) ? dateIso : new Date().toISOString().slice(0, 10);
-      const from = `${day}T00:00:00.000Z`;
-      const to = new Date(Date.parse(from) + 86400_000).toISOString();
-      const rows = await source.crewJobs(from, to);
+      // The crew's day is the HAMPTON ROADS day, not the server's UTC day —
+      // a 9pm-ET open must not hand them tomorrow's sheet.
+      const day = dateIso && /^\d{4}-\d{2}-\d{2}$/.test(dateIso) ? dateIso : etToday();
+      const { startUtc, endUtc } = etDayWindow(day);
+      const rows = await source.crewJobs(startUtc.toISOString(), endUtc.toISOString());
       const sources: WorkOrderSource[] = rows.map((r, i) => ({
         jobId: r.jobId,
         routeOrder: i + 1,
@@ -628,6 +631,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
         hazardStructures: r.hazardStructures,
         permitStatus: (['PERMIT_LIKELY', 'REVIEW_NEEDED', 'NO_OVERLAY_VERIFY'] as const)
           .find((s) => s === r.permitStatus) ?? null,
+        permitScreenPending: r.permitScreenPending === true,
         photoRefs: [],
         briefingId,
       }));
@@ -649,8 +653,19 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       const startedAtIso = String(body.startedAtIso ?? '');
       const completedAtIso = String(body.completedAtIso ?? '');
       if (!crewMemberId || !content?.id || !content?.body || !state) return { status: 400, body: { error: 'bad_request' } };
-      if (Number.isNaN(Date.parse(startedAtIso)) || Number.isNaN(Date.parse(completedAtIso))) {
+      const startedMs = Date.parse(startedAtIso);
+      const completedMs = Date.parse(completedAtIso);
+      if (Number.isNaN(startedMs) || Number.isNaN(completedMs)) {
         return { status: 400, body: { error: 'bad_times' } };
+      }
+      // Client-supplied timestamps decide PAY. Reject reversed spans outright;
+      // buildAcknowledgment clamps the upper end (a briefing ack is seconds,
+      // never hours — an unclamped span writes a fraudulent payroll row).
+      if (completedMs <= startedMs) return { status: 400, body: { error: 'bad_times' } };
+      // item_ids is uuid[]: a non-UUID here commits the paid time entry and
+      // then fails the acknowledgment insert, which is the worst outcome.
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(content.id)) {
+        return { status: 400, body: { error: 'bad_item_id' } };
       }
       const gateState = {
         scrolledToBottom: state.scrolledToBottom === true,

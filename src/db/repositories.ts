@@ -1105,6 +1105,8 @@ export interface CrewJobRow {
   hazardPowerLines: boolean;
   hazardStructures: boolean;
   permitStatus: string | null;
+  /** True when the permit lookup could not answer — UNKNOWN, not "fine". */
+  permitScreenPending: boolean;
   propertyId: string;
 }
 
@@ -1125,11 +1127,15 @@ export async function listCrewJobs(fromIso: string, toIso: string): Promise<Crew
   const propertyIds = [...new Set(rows.map((r) => r.property_id).filter(Boolean))];
   // Permit posture rides along so the crew note can warn — never clear (§6B.3).
   let permits = new Map<string, { screen_status: string }>();
+  let permitLookupFailed = false;
   try {
     const p = await latestPermitsForProperties(propertyIds);
     permits = new Map([...p].map(([k, v]) => [k, { screen_status: v.screen_status }]));
-  } catch {
-    permits = new Map(); // no flag on file → no note; never a false "clear"
+  } catch (err) {
+    // A silent catch on a SAFETY surface reads as "no permit concern". It is
+    // not: the crew payload says UNKNOWN, and ops sees why (§1B, §4.3 no PII).
+    console.error('[crew] permit flag fetch failed:', err instanceof Error ? err.message : 'error');
+    permitLookupFailed = true;
   }
   return rows.map((r) => ({
     jobId: r.id,
@@ -1140,6 +1146,9 @@ export async function listCrewJobs(fromIso: string, toIso: string): Promise<Crew
     hazardPowerLines: r.property?.hazard_power_lines ?? false,
     hazardStructures: r.property?.hazard_structures ?? false,
     permitStatus: permits.get(r.property_id)?.screen_status ?? null,
+    // No screen on file is UNKNOWN — the three screen_status values are all
+    // warnings; there is no "screened and fine" value to fall back on.
+    permitScreenPending: permitLookupFailed || !permits.has(r.property_id),
     propertyId: r.property_id,
   }));
 }
