@@ -16,6 +16,7 @@ import { quoteCheck, deriveLeakagePct, type QuoteCheckInput } from '../ops/estim
 import { buildCrewPayload, sequenceRoute, type WorkOrderSource } from '../crew/workOrder.js';
 import { evaluateGate, buildAcknowledgment, type BriefingContent } from '../crew/briefingGate.js';
 import { etToday, etDayWindow } from '../lib/etDay.js';
+import { buildActionPlan, isSchedulable, type BreakdownReport, type KnownPart, type UnitStatus } from '../fleet/breakdown.js';
 import type { TtsClient } from '../voice/elevenlabsTts.js';
 import { scoreLead, type LeadQualityResult } from '../reception/leadQuality.js';
 import { integrationStatus } from '../env.js';
@@ -95,9 +96,19 @@ export interface DataSource {
   calendarEvents?(fromIso: string, toIso: string): Promise<unknown[]>;
   /** §6F crew surface: the day's jobs with the site facts a crew may see. */
   crewJobs?(fromIso: string, toIso: string): Promise<CrewJobSource[]>;
-  /** §6V.4 gated briefing acknowledgment + its payable time entry (§4.6). */
+  /** §6E fleet: units with their open-task counts. */
+  units?(): Promise<unknown[]>;
+  /** This unit's OWN parts history — the only source a suggestion may draw on. */
+  unitParts?(unitId: string): Promise<KnownPart[]>;
+  /** Open maintenance tasks on this unit — NOT a schedule check (see §1B note). */
+  unitOpenTaskCount?(unitId: string): Promise<number>;
+  /** Current status, or null when no such unit exists. */
+  unitStatus?(unitId: string): Promise<UnitStatus | null>;
+  recordBreakdown?(input: { unitId: string; newStatus: string; description: string; reportedBy: string; mediaRefs: string[] }): Promise<{ taskId: string }>;
+  closeMaintenanceTask?(input: { taskId: string; proofPhotoFile: string; completedBy: string }): Promise<void>;
   /** §6M.8: today's published tailgate briefing, or null if none. */
   todaysBriefing?(): Promise<{ id: string; body: string; standardRefs: string[] } | null>;
+  /** §6V.4 gated briefing acknowledgment + its payable time entry (§4.6). */
   recordBriefingAck?(input: {
     crewMemberId: string; itemIds: string[];
     startedAtIso: string; completedAtIso: string; payableMinutes: number;
@@ -701,6 +712,85 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       });
       if (source.emit) await source.emit('briefing.acknowledged', { crewMemberId, trainingEventId: saved.trainingEventId });
       return { status: 200, body: { unlocked: true, payableMinutes: ack.payableMinutes, ...saved } };
+    },
+
+    /** GET /api/fleet/units — the fleet with what each unit still owes (§6E). */
+    async fleetUnits(): Promise<ApiResult> {
+      if (!source.ready() || !source.units) return { status: 503, body: { error: 'db_not_configured' } };
+      const units = (await source.units()) as Array<{ status: string }>;
+      return {
+        status: 200,
+        body: {
+          units: units.map((u) => ({ ...u, schedulable: isSchedulable(u.status as never) })),
+          down: units.filter((u) => u.status === 'down').length,
+        },
+      };
+    },
+
+    /**
+     * POST /api/fleet/breakdown — the §6E field report. Marks the unit DOWN
+     * (scheduling stops assigning it) and returns an action plan. Arbo NEVER
+     * orders and holds no card (§6E2.3): the plan deep-links, a human buys.
+     */
+    async reportBreakdown(body: Record<string, unknown>): Promise<ApiResult> {
+      if (!source.ready() || !source.recordBreakdown || !source.unitParts) {
+        return { status: 503, body: { error: 'db_not_configured' } };
+      }
+      const unitId = String(body.unitId ?? '');
+      const description = String(body.description ?? '').trim();
+      const reportedBy = String(body.reportedBy ?? '');
+      if (!unitId || !description) return { status: 400, body: { error: 'bad_request' } };
+      const report: BreakdownReport = {
+        unitId,
+        reportedBy,
+        description,
+        mediaRefs: Array.isArray(body.mediaRefs) ? (body.mediaRefs as unknown[]).map(String) : [],
+        immobilized: body.immobilized === true,
+        atIso: new Date().toISOString(),
+      };
+      let parts: KnownPart[] = [];
+      try {
+        parts = await source.unitParts(unitId);
+      } catch {
+        // No parts history is not "no parts needed" — the plan says so below.
+        parts = [];
+      }
+      // The unit must exist before we write anything — otherwise the status
+      // update silently hits zero rows and the task insert dies on the FK.
+      const current = source.unitStatus ? await source.unitStatus(unitId) : null;
+      if (source.unitStatus && !current) return { status: 404, body: { error: 'unknown_unit' } };
+      if (current === 'retired') return { status: 409, body: { error: 'unit_retired' } };
+      let openTasks = 0;
+      try {
+        openTasks = source.unitOpenTaskCount ? await source.unitOpenTaskCount(unitId) : 0;
+      } catch { /* absence of the count is not a claim either way */ }
+      // 'unknown' is the truth today: no unit→job link exists in the schema.
+      // currentStatus is passed so a "still drivable" report can never
+      // un-ground a unit that is already DOWN.
+      const plan = buildActionPlan(report, parts, {
+        openTasks, assignment: 'unknown', currentStatus: current ?? 'up',
+      });
+      const saved = await source.recordBreakdown({
+        unitId, newStatus: plan.newStatus, description, reportedBy, mediaRefs: report.mediaRefs,
+      });
+      if (source.emit) await source.emit('equipment.failed', { unitId, taskId: saved.taskId, status: plan.newStatus });
+      return { status: 200, body: { ...plan, taskId: saved.taskId } };
+    },
+
+    /**
+     * POST /api/fleet/maintenance/:id/close — §6E2.4: a maintenance task can
+     * ONLY close with a photo of the serviced part. Never a checkbox.
+     */
+    async closeMaintenance(taskId: string, body: Record<string, unknown>): Promise<ApiResult> {
+      if (!source.ready() || !source.closeMaintenanceTask) return { status: 503, body: { error: 'db_not_configured' } };
+      const proofPhotoFile = String(body.proofPhotoFile ?? '').trim();
+      if (!taskId) return { status: 400, body: { error: 'bad_id' } };
+      if (!proofPhotoFile) return { status: 400, body: { error: 'photo_proof_required' } };
+      await source.closeMaintenanceTask({
+        taskId, proofPhotoFile, completedBy: String(body.completedBy ?? ''),
+      });
+      if (source.emit) await source.emit('maintenance.closed', { taskId });
+      return { status: 200, body: { ok: true } };
     },
 
     /** GET /api/agents/runs — §8A.6g audit visibility: what the agents did. */

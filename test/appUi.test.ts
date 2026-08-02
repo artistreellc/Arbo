@@ -53,6 +53,17 @@ describe('ARBOR app shell', () => {
     expect(html).not.toContain('innerHTML');
   });
 
+  it('the fleet surface names a dead feed instead of drawing all-units-up (§1B)', () => {
+    expect(html).toContain('Fleet status unknown');
+    expect(html).toContain('not a claim that everything runs');
+  });
+
+  it('the breakdown sheet never offers to order a part (§6E2.3)', () => {
+    expect(html).toContain('/api/fleet/breakdown');
+    expect(html).toContain('holds no card');
+    expect(html).not.toMatch(/order (the |this )?part|add to cart|checkout|buy now/i);
+  });
+
   it('uses the §9 cockpit tokens (violet primary, dark base, 48px+ targets)', () => {
     expect(html).toContain('#7C3AED'); // luminous purple accent
     expect(html).toContain('#0B0D10'); // near-black base

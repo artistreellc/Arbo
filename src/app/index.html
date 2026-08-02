@@ -218,11 +218,15 @@ nav button .ico{font-size:20px;line-height:1}
   background:var(--surface);border:1.5px solid var(--border);color:var(--canopy);font-size:14px;
   font-weight:900;letter-spacing:.06em;text-decoration:none;cursor:pointer;width:100%;margin-bottom:10px}
 /* Yard check (§6J2 — internal instrument) */
-#yard .field{margin-bottom:10px}
-#yard label{display:block;font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
-#yard input,#yard select{width:100%;min-height:50px;border:1px solid var(--border);border-radius:var(--r-md);
+#yard .field,#bd .field{margin-bottom:10px}
+#yard label,#bd label{display:block;font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+#yard input,#yard select,#bd input[type=text]{width:100%;min-height:50px;border:1px solid var(--border);border-radius:var(--r-md);
   background:var(--surface);color:var(--ink);font-size:17px;padding:0 12px;
   font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace}
+/* The "cannot be driven" switch: a real 48px+ target, label beside the box. */
+#bd .checkfield{display:flex;align-items:center;gap:12px;min-height:56px;margin-bottom:12px}
+#bd .checkfield span{font-size:16px;font-weight:700;color:var(--ink);text-transform:none;letter-spacing:0}
+#bd #bd-out{padding-bottom:96px}
 #yard .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .verdict{border-radius:var(--r-md);padding:14px;margin-top:14px;border:1.5px solid var(--border);background:var(--surface)}
 .verdict .vline{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:15px;
@@ -356,6 +360,23 @@ nav button .ico{font-size:20px;line-height:1}
   <button id="y-go" class="actbtn" style="width:100%">Run the number</button>
   <div id="y-out"></div>
   <div class="internal-tag">Internal instrument — never quoted to a customer (§6J2.5)</div>
+</div>
+
+<div id="bd" class="sheet">
+  <div class="sheet-head">
+    <button id="bd-close" aria-label="Close">&#10005;</button>
+    <div class="brand" style="font-size:18px">BREAKDOWN &mdash; <span id="bd-unit"></span></div>
+  </div>
+  <div class="field">
+    <label for="bd-desc">What happened?</label>
+    <input id="bd-desc" type="text" placeholder="Hydraulic hose blew on the chipper">
+  </div>
+  <label class="checkfield">
+    <input id="bd-down" type="checkbox" style="width:26px;height:26px;flex:none">
+    <span>It cannot be driven or run at all</span>
+  </label>
+  <button id="bd-go" class="actbtn" style="width:100%">File the report</button>
+  <div id="bd-out"></div>
 </div>
 
 <nav>
@@ -944,6 +965,102 @@ async function renderCalls() {
   }
 }
 
+// ---------- Fleet (§6E: units, DOWN status, breakdown reports) ----------
+const UNIT_STATUS = {
+  up: ['UP', 'b-cool'],
+  down: ['DOWN', 'b-emg'],
+  maintenance: ['NEEDS ATTENTION', 'b-warm'],
+};
+async function renderFleet(slot) {
+  slot.replaceChildren();
+  let f;
+  try {
+    f = await api('/api/fleet/units');
+  } catch (e) {
+    if (e.code === 401) return;
+    // §1B: a dead feed is named, never drawn as a confident "all trucks up".
+    slot.appendChild(el('div', 'panel-title', 'Fleet'));
+    slot.appendChild(state('Fleet status unknown', e.code === 503
+      ? 'Database not connected — Arbo cannot tell you which units are down.'
+      : 'Could not read the fleet. This is not a claim that everything runs.'));
+    return;
+  }
+  slot.appendChild(el('div', 'panel-title',
+    f.down > 0 ? 'Fleet — ' + f.down + ' unit(s) DOWN, not schedulable' : 'Fleet — all units schedulable'));
+  if (!f.units.length) {
+    slot.appendChild(state('No units on file', 'Add equipment to the fleet and it shows up here.'));
+    return;
+  }
+  for (const u of f.units) {
+    const c = el('div', 'card' + (u.status === 'down' ? ' emergency' : ''));
+    const top = el('div', 'toprow');
+    top.appendChild(el('div', 'who', u.name));
+    top.appendChild(el('div', 'when', u.kind || ''));
+    c.appendChild(top);
+    const b = el('div', 'badges');
+    const [label, cls] = UNIT_STATUS[u.status] || [String(u.status).toUpperCase(), 'b-src'];
+    b.appendChild(badge(label, cls));
+    if (!u.schedulable) b.appendChild(badge('NOT SCHEDULABLE', 'b-flag'));
+    if (u.openTasks > 0) b.appendChild(badge(u.openTasks + ' OPEN TASK' + (u.openTasks === 1 ? '' : 'S'), 'b-warm'));
+    c.appendChild(b);
+    const btn = el('button', 'actbtn', 'Report a breakdown');
+    btn.addEventListener('click', () => openBreakdown(u));
+    c.appendChild(btn);
+    slot.appendChild(c);
+  }
+}
+
+let BREAKDOWN_UNIT = null;
+function openBreakdown(u) {
+  BREAKDOWN_UNIT = u;
+  $('bd-unit').textContent = u.name;
+  $('bd-desc').value = '';
+  $('bd-down').checked = false;
+  $('bd-out').replaceChildren();
+  $('bd').classList.add('show');
+}
+$('bd-close').addEventListener('click', () => $('bd').classList.remove('show'));
+$('bd-go').addEventListener('click', async () => {
+  const out = $('bd-out');
+  out.replaceChildren();
+  const description = $('bd-desc').value.trim();
+  if (!BREAKDOWN_UNIT || !description) {
+    out.appendChild(state('Say what broke', 'A blank report tells nobody anything.'));
+    return;
+  }
+  $('bd-go').disabled = true;
+  let plan;
+  try {
+    plan = await api('/api/fleet/breakdown', {
+      method: 'POST',
+      body: { unitId: BREAKDOWN_UNIT.id, description, immobilized: $('bd-down').checked, reportedBy: 'owner' },
+    });
+  } catch (e) {
+    out.appendChild(state('Not filed', 'The report did not save (' + (e.message || 'error') + '). Nothing was changed.'));
+    $('bd-go').disabled = false;
+    return;
+  }
+  $('bd-go').disabled = false;
+  out.appendChild(el('div', 'panel-title', 'Unit is now ' + String(plan.newStatus).toUpperCase()));
+  for (const s of plan.steps) out.appendChild(el('div', 'scope', '• ' + s));
+  for (const u of plan.unknowns) {
+    const w = el('div', 'card loop-card urgent');
+    w.appendChild(el('div', 'loop-kind', '⚠ UNKNOWN'));
+    w.appendChild(el('div', 'scope', u));
+    out.appendChild(w);
+  }
+  for (const l of plan.supplierLinks) {
+    const a = el('a', '', l.label);
+    a.href = l.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+    const row = el('div', 'scope');
+    row.appendChild(a);
+    out.appendChild(row);
+  }
+  out.appendChild(el('div', 'internal-tag',
+    'Arbo never places the order and holds no card — you click, you buy (§6E2.3).'));
+  renderFollowUps();
+});
+
 // ---------- Follow-ups (§16–20 queue: ARBOR recommends, you approve) ----------
 const FU_LABEL = {
   estimate_follow_up: ['FOLLOW-UP', 'b-warm'],
@@ -973,6 +1090,11 @@ async function renderFollowUps() {
     loopsSlot.appendChild(el('div', 'panel-title', 'Open loops — silence is never success'));
     for (const o of qq.open) loopsSlot.appendChild(loopCard(o));
   }).catch(() => {});
+  // §6E fleet: a DOWN unit is a scheduling constraint, so it belongs in the
+  // Queue next to the other open loops.
+  const fleetSlot = el('div');
+  v.appendChild(fleetSlot);
+  renderFleet(fleetSlot);
   v.appendChild(el('div', 'panel-title', 'Recommended sends'));
   const note = el('div', 'zip-run');
   note.appendChild(document.createTextNode('Arbo recommends — nothing sends without you.'));

@@ -42,6 +42,12 @@ import {
   listCrewJobs,
   recordBriefingAck,
   todaysBriefing,
+  listUnits,
+  listUnitParts,
+  unitOpenTaskCount,
+  unitStatus,
+  recordBreakdown,
+  closeMaintenanceTask,
 } from './db/repositories.js';
 import { createCensusGeocoder } from './permitting/gis/geocode.js';
 import { createElevenLabsTts } from './voice/elevenlabsTts.js';
@@ -265,6 +271,12 @@ export function createLiveSource(): DataSource {
     crewJobs: (from, to) => listCrewJobs(from, to),
     recordBriefingAck: (input) => recordBriefingAck(input),
     todaysBriefing: () => todaysBriefing(),
+    units: () => listUnits(),
+    unitParts: (id) => listUnitParts(id),
+    unitOpenTaskCount: (id) => unitOpenTaskCount(id),
+    unitStatus: (id) => unitStatus(id),
+    recordBreakdown: (input) => recordBreakdown(input),
+    closeMaintenanceTask: (input) => closeMaintenanceTask(input),
   };
 }
 
@@ -449,6 +461,19 @@ export function createArborRequestHandler() {
       }
       if (req.method === 'POST' && url.pathname === '/api/crew/briefing/ack') {
         return send(...unpack(await api.ackBriefing((await readJson(req)) as Record<string, unknown>)));
+      }
+      // §6E fleet surface.
+      if (req.method === 'GET' && url.pathname === '/api/fleet/units') {
+        return send(...unpack(await api.fleetUnits()));
+      }
+      if (req.method === 'POST' && url.pathname === '/api/fleet/breakdown') {
+        return send(...unpack(await api.reportBreakdown((await readJson(req)) as Record<string, unknown>)));
+      }
+      {
+        const m = url.pathname.match(/^\/api\/fleet\/maintenance\/([^/]+)\/close$/);
+        if (req.method === 'POST' && m) {
+          return send(...unpack(await api.closeMaintenance(m[1]!, (await readJson(req)) as Record<string, unknown>)));
+        }
       }
       // §8A.6g: what the agents did, straight from the audit log.
       if (req.method === 'GET' && url.pathname === '/api/agents/runs') {

@@ -1201,3 +1201,123 @@ export async function todaysBriefing(): Promise<{ id: string; body: string; stan
   const refs = typeof raw === 'string' ? [] : raw.standardRefs ?? [];
   return { id: res.data.id as string, body: text, standardRefs: refs };
 }
+
+// ============================================================================
+// Fleet & equipment (§6E / §6E2). Unit records, parts logs, breakdown flow,
+// per-tool preventive maintenance. §6E2.3 governs: Arbo NEVER orders and
+// NEVER stores a card — these functions build lists and record facts.
+// ============================================================================
+export interface UnitRow {
+  id: string;
+  name: string;
+  kind: string;
+  vinOrSerial: string;
+  status: string;
+  heightInches: number | null;
+  weightLbsLoaded: number | null;
+  openTasks: number;
+}
+
+export async function listUnits(): Promise<UnitRow[]> {
+  const db = getDb();
+  const [units, tasks] = await Promise.all([
+    db.from('equipment_unit')
+      .select('id, name, kind, vin_or_serial, status, height_inches, weight_lbs_loaded')
+      .neq('status', 'retired')
+      .order('name', { ascending: true }),
+    db.from('maintenance_task').select('unit_id').eq('status', 'open'),
+  ]);
+  if (units.error) throw units.error;
+  if (tasks.error) throw tasks.error;
+  const openByUnit = new Map<string, number>();
+  for (const t of tasks.data ?? []) {
+    const id = t.unit_id as string | null;
+    if (id) openByUnit.set(id, (openByUnit.get(id) ?? 0) + 1);
+  }
+  return (units.data ?? []).map((u) => ({
+    id: u.id as string,
+    name: u.name as string,
+    kind: u.kind as string,
+    vinOrSerial: u.vin_or_serial as string,
+    status: u.status as string,
+    heightInches: u.height_inches as number | null,
+    weightLbsLoaded: u.weight_lbs_loaded as number | null,
+    openTasks: openByUnit.get(u.id as string) ?? 0,
+  }));
+}
+
+/** This unit's own parts history — the only source a suggestion may come from. */
+export async function listUnitParts(unitId: string): Promise<Array<{ partNumber: string; description: string; supplier: string | null; lastPrice: number | null }>> {
+  const db = getDb();
+  const res = await db.from('equipment_part')
+    .select('part_number, shared_fitment, supplier, last_price')
+    .eq('unit_id', unitId);
+  if (res.error) throw res.error;
+  return (res.data ?? []).map((p) => ({
+    partNumber: p.part_number as string,
+    description: (p.shared_fitment as string | null) ?? (p.part_number as string),
+    supplier: p.supplier as string | null,
+    lastPrice: p.last_price as number | null,
+  }));
+}
+
+/**
+ * How many maintenance tasks are already open on this unit. This is NOT a
+ * schedule check — nothing links a unit to a job yet, so the action plan
+ * reports that as an unknown rather than guessing (§1B).
+ */
+export async function unitOpenTaskCount(unitId: string): Promise<number> {
+  const db = getDb();
+  const res = await db.from('maintenance_task')
+    .select('id')
+    .eq('unit_id', unitId)
+    .eq('status', 'open');
+  if (res.error) throw res.error;
+  return (res.data ?? []).length;
+}
+
+/** This unit's current status, or null when there is no such unit. */
+export async function unitStatus(unitId: string): Promise<'up' | 'down' | 'maintenance' | 'retired' | null> {
+  const db = getDb();
+  const res = await db.from('equipment_unit').select('status').eq('id', unitId).maybeSingle();
+  if (res.error) throw res.error;
+  return (res.data?.status as 'up' | 'down' | 'maintenance' | 'retired' | undefined) ?? null;
+}
+
+/** Record the breakdown: set the unit's status and open a maintenance task. */
+export async function recordBreakdown(input: {
+  unitId: string; newStatus: string; description: string;
+  reportedBy: string; mediaRefs: string[];
+}): Promise<{ taskId: string }> {
+  const db = getDb();
+  const upd = await db.from('equipment_unit')
+    .update({ status: input.newStatus, updated_at: new Date().toISOString() })
+    .eq('id', input.unitId);
+  if (upd.error) throw upd.error;
+  const task = await db.from('maintenance_task').insert({
+    unit_id: input.unitId,
+    description: `FIELD REPORT: ${input.description}`,
+    status: 'open',
+    due_at: new Date().toISOString(),
+  }).select('id').single();
+  if (task.error) throw task.error;
+  return { taskId: task.data.id as string };
+}
+
+/**
+ * Close a maintenance task. The photo-proof law (§6E2.4) is enforced by a DB
+ * CHECK; this rejects earlier so the caller gets a clear reason, not a 500.
+ */
+export async function closeMaintenanceTask(input: {
+  taskId: string; proofPhotoFile: string; completedBy: string;
+}): Promise<void> {
+  if (!input.proofPhotoFile) throw new Error('photo_proof_required');
+  const db = getDb();
+  const res = await db.from('maintenance_task').update({
+    status: 'done',
+    proof_photo_file: input.proofPhotoFile,
+    completed_by: input.completedBy,
+    completed_at: new Date().toISOString(),
+  }).eq('id', input.taskId);
+  if (res.error) throw res.error;
+}
