@@ -43,7 +43,7 @@ export async function startAgentRun(params: {
     id,
     async finish(p) {
       if (!id) return;
-      await getDb()
+      const res = await getDb()
         .from('agent_run')
         .update({
           status: p.status,
@@ -55,6 +55,9 @@ export async function startAgentRun(params: {
           finished_at: new Date().toISOString(),
         })
         .eq('id', id);
+      // A dropped finish leaves the row stuck 'running' forever and the admin
+      // surface shows a phantom hung agent — say so (no PII in the message).
+      if (res.error) console.error(`[agents] agent_run finish failed for ${params.agent}: ${res.error.message}`);
     },
   };
 }

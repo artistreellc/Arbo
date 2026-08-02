@@ -33,11 +33,12 @@ async function raisedDecisionKeys(now: Date): Promise<Set<string>> {
   return out;
 }
 
-async function raiseUrgentLoops(api: Api, now: Date): Promise<number> {
+async function raiseUrgentLoops(api: Api, now: Date): Promise<number | 'unavailable'> {
   let raised = 0;
   try {
     const q = await api.queue();
-    if (q.status !== 200) return 0;
+    // A queue we could not READ is not a queue with nothing in it (§1B).
+    if (q.status !== 200) return 'unavailable';
     const open = (q.body as { open: NeedsDecision[] }).open;
     const seen = await raisedDecisionKeys(now);
     for (const item of open.filter((i) => i.severity === 'urgent')) {
@@ -48,8 +49,9 @@ async function raiseUrgentLoops(api: Api, now: Date): Promise<number> {
       if (ok) raised++;
     }
   } catch {
-    // The sweep never dies on one section; the section's absence is visible
-    // in the summary it DIDN'T contribute.
+    // The sweep never dies on one section — but the section reports its own
+    // blindness rather than contributing a confident zero.
+    return 'unavailable';
   }
   return raised;
 }
@@ -60,7 +62,7 @@ export interface SweepSummary {
   briefing: Awaited<ReturnType<typeof runOwnerBriefingAgent>> | { status: 'error' };
   weather: Awaited<ReturnType<typeof runWeatherAgent>> | { status: 'error' };
   booking: Awaited<ReturnType<typeof runBookingAgent>> | { status: 'error' };
-  urgentLoopsRaised: number;
+  urgentLoopsRaised: number | 'unavailable';
 }
 
 export async function runAgentSweep(api: Api, alerts: AlertsProvider, now = new Date()): Promise<SweepSummary> {
@@ -88,7 +90,18 @@ export function startAgentScheduler(api: Api, alerts: AlertsProvider): NodeJS.Ti
     running = true;
     try {
       const s = await runAgentSweep(api, alerts);
-      console.log(`[agents] sweep ok — urgent_loops_raised=${s.urgentLoopsRaised}`);
+      // The scheduled path has no HTTP response — this line is the ONLY
+      // operator signal, so it must never say "ok" over a degraded sweep.
+      const degraded = ([
+        ['permitting', s.permitting], ['briefing', s.briefing],
+        ['weather', s.weather], ['booking', s.booking],
+      ] as const).filter(([, a]) => a.status !== 'ok').map(([name]) => name);
+      const loops = s.urgentLoopsRaised;
+      if (degraded.length > 0 || loops === 'unavailable') {
+        console.error(`[agents] sweep DEGRADED — failed=[${degraded.join(',')}] urgent_loops=${loops}`);
+      } else {
+        console.log(`[agents] sweep ok — urgent_loops_raised=${loops}`);
+      }
     } catch (err) {
       console.error('[agents] sweep failed:', err instanceof Error ? err.message : 'error');
     } finally {
