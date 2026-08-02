@@ -1816,7 +1816,7 @@ export async function siteConditionForJob(jobId: string): Promise<{
 }
 
 export async function createChangeOrder(input: {
-  jobId: string; description: string; amount: number; agreedBy: string; agreedAtIso: string;
+  jobId: string; description: string; amount: number | null; agreedBy: string; agreedAtIso: string;
 }): Promise<{ id: string }> {
   const db = getDb();
   const res = await db.from('change_order').insert({

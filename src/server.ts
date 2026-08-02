@@ -588,6 +588,12 @@ export function createArborRequestHandler() {
           return send(...unpack(await api.approveChangeOrder(m[1]!)));
         }
       }
+      if (req.method === 'POST' && url.pathname === '/api/crew/arrival') {
+        return send(...unpack(await api.crewArrival((await readJson(req)) as Record<string, unknown>)));
+      }
+      if (req.method === 'POST' && url.pathname === '/api/crew/change-order') {
+        return send(...unpack(await api.crewChangeOrder((await readJson(req)) as Record<string, unknown>)));
+      }
       // §6M training loop.
       if (req.method === 'GET' && url.pathname === '/api/crew/quiz') {
         return send(...unpack(await api.crewQuiz(

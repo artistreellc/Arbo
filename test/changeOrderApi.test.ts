@@ -180,3 +180,48 @@ describe('billing actually collects the change orders (the leak this closes)', (
     expect(res.body).toMatchObject({ changesBilled: 0, changeOrderTotal: 850 });
   });
 });
+
+describe('crew-door versions — §8C keeps money off the crew surface', () => {
+  it('a crew change order is recorded with NO figure at all', async () => {
+    let written: { amount: number | null } | null = null;
+    const api = createApi(src({
+      createChangeOrder: async (i) => { written = i; return { id: CO }; },
+    }));
+    const res = await api.crewChangeOrder({
+      jobId: JOB, description: 'Second tree', agreedBy: 'Homeowner',
+      // Even if a client tried to send one, the crew path ignores it.
+      amount: 5000,
+    });
+    expect(res.status).toBe(200);
+    expect(written!.amount).toBeNull();
+    // Nothing money-shaped comes back either.
+    expect(JSON.stringify(res.body)).not.toMatch(/amount|price|total/i);
+  });
+
+  it('still refuses an agreement with nobody named', async () => {
+    const res = await createApi(src()).crewChangeOrder({ jobId: JOB, description: 'x', agreedBy: '' });
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: 'no_agreed_by' });
+  });
+
+  it('an unpriced crew order lands in the office queue, never on a bill', async () => {
+    const res = await createApi(src({
+      openChangeOrders: async () => [row({ id: 'crew1', amount: null, approved: true })],
+    })).money();
+    const b = res.body as { changeOrders: { unpriced: Array<{ id: string }>; billable: unknown[] } };
+    expect(b.changeOrders.unpriced.map((r) => r.id)).toEqual(['crew1']);
+    expect(b.changeOrders.billable).toEqual([]);
+  });
+
+  it('the ADMIN path still requires the agreed figure (§3 is not relaxed)', async () => {
+    const res = await createApi(src()).addChangeOrder(JOB, { description: 'x', agreedBy: 'y', amount: null });
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: 'no_amount' });
+  });
+
+  it('crew arrival routes through the same assessment', async () => {
+    const res = await createApi(src()).crewArrival({ jobId: JOB, photoFiles: [], documentedBy: 'c1' });
+    expect(res.status).toBe(200);
+    expect((res.body as { gaps: string[] }).gaps).toContain('no_photos');
+  });
+});

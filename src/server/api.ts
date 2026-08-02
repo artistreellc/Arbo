@@ -155,7 +155,7 @@ export interface DataSource {
   /** §6 site conditions + change orders. */
   recordSiteCondition?(input: SiteConditionRecord): Promise<{ id: string }>;
   siteCondition?(jobId: string): Promise<SiteConditionRecord | null>;
-  createChangeOrder?(input: { jobId: string; description: string; amount: number; agreedBy: string; agreedAtIso: string }): Promise<{ id: string }>;
+  createChangeOrder?(input: { jobId: string; description: string; amount: number | null; agreedBy: string; agreedAtIso: string }): Promise<{ id: string }>;
   openChangeOrders?(): Promise<ChangeOrderRow[]>;
   /** Approved + priced + uninvoiced changes for ONE job, for billing. */
   billableChangesForJob?(jobId: string): Promise<Array<{ id: string; amount: number }>>;
@@ -1420,6 +1420,42 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
         agreedBy: drafted.agreedBy, agreedAtIso: drafted.agreedAtIso,
       });
       if (source.emit) await source.emit('job.change_order.recorded', { jobId, changeOrderId: saved.id });
+      return { status: 200, body: { id: saved.id, approved: false, invoiced: false } };
+    },
+
+    /**
+     * POST /api/crew/arrival and /api/crew/change-order — the crew-door
+     * versions. Same writes, crew-scoped route, and the change order carries
+     * NO figure: §8C keeps money off the crew surface entirely, so the crew
+     * records that work was agreed and who agreed, and the office prices it.
+     */
+    async crewArrival(body: Record<string, unknown>): Promise<ApiResult> {
+      return this.recordArrival(String(body.jobId ?? ''), body);
+    },
+
+    async crewChangeOrder(body: Record<string, unknown>): Promise<ApiResult> {
+      if (!source.ready() || !source.createChangeOrder) return { status: 503, body: { error: 'db_not_configured' } };
+      const jobId = String(body.jobId ?? '');
+      if (!UUID_RE.test(jobId)) return { status: 400, body: { error: 'bad_job_id' } };
+      let drafted;
+      try {
+        drafted = draftChangeOrder({
+          jobId,
+          description: String(body.description ?? ''),
+          amount: null,
+          agreedBy: body.agreedBy ? String(body.agreedBy) : undefined,
+          agreedAtIso: String(body.agreedAtIso ?? new Date().toISOString()),
+        }, new Date().toISOString(), { allowUnpriced: true });
+      } catch (err) {
+        if (err instanceof ChangeOrderRejected) return { status: 400, body: { error: err.reason } };
+        throw err;
+      }
+      const saved = await source.createChangeOrder({
+        jobId: drafted.jobId, description: drafted.description, amount: null,
+        agreedBy: drafted.agreedBy, agreedAtIso: drafted.agreedAtIso,
+      });
+      if (source.emit) await source.emit('job.change_order.recorded', { jobId, changeOrderId: saved.id, source: 'crew' });
+      // No figure comes back either — nothing on this response may hint at money.
       return { status: 200, body: { id: saved.id, approved: false, invoiced: false } };
     },
 

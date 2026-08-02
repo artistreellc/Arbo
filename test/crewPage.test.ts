@@ -136,3 +136,30 @@ describe('clock-in question (§6M/§4.6) on the crew door', () => {
     expect(html).toMatch(/\.qopt\{[^}]*min-height:56px/);
   });
 });
+
+describe('arrival record + change order on the job card (§6)', () => {
+  const html = loadCrewHtml();
+
+  it('logs arrival against the job and shows the GAPS, not a confirmation', () => {
+    expect(html).toContain("'/api/crew/arrival'");
+    expect(html).toContain('gapline');
+    // The weaknesses render before the reassurance.
+    expect(html.indexOf('res.lines')).toBeLessThan(html.indexOf('res.defensible'));
+  });
+
+  it('the crew records THAT work was agreed and WHO agreed — never a figure (§8C)', () => {
+    expect(html).toContain("'/api/crew/change-order'");
+    expect(html).toContain('Who agreed to it?');
+    // No money crosses onto this surface at all. The office fills it in.
+    expect(html).not.toMatch(/amount/i);
+    expect(html).toContain('office fills the number in');
+  });
+
+  it('tells the crew it is not on the bill until the office confirms', () => {
+    expect(html).toContain('office to confirm before it goes on the bill');
+  });
+
+  it('keeps field-sized targets on the new job actions', () => {
+    expect(html).toMatch(/\.jobbtn\{[^}]*min-height:52px/);
+  });
+});

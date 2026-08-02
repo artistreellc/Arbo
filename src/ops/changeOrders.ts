@@ -91,7 +91,8 @@ export class ChangeOrderRejected extends Error {
 export interface DraftedChangeOrder {
   jobId: string;
   description: string;
-  amount: number;
+  /** Null only on a crew-filed order — the office supplies the figure. */
+  amount: number | null;
   agreedBy: string;
   agreedAtIso: string;
   /** ALWAYS false on creation — approval is a separate, human act. */
@@ -108,15 +109,28 @@ export interface DraftedChangeOrder {
  *   - who agreed, because "the customer said yes" with no name is not a record
  *   - a real, non-future timestamp
  */
-export function draftChangeOrder(input: ChangeOrderInput, nowIso: string): DraftedChangeOrder {
+export function draftChangeOrder(
+  input: ChangeOrderInput,
+  nowIso: string,
+  opts: { allowUnpriced?: boolean } = {},
+): DraftedChangeOrder {
   const description = input.description.trim();
   const agreedBy = (input.agreedBy ?? '').trim();
   if (!input.jobId) throw new ChangeOrderRejected('no_job');
   if (!description) throw new ChangeOrderRejected('no_description');
   // §3: Arbo does not price. A missing amount is a question for the human,
   // never a number this function invents.
-  if (input.amount === null || !Number.isFinite(input.amount)) throw new ChangeOrderRejected('no_amount');
-  if (input.amount <= 0) throw new ChangeOrderRejected('negative_amount');
+  // §8C: a CREW-filed change order carries no figure at all — the crew door
+  // shows no money, so it cannot collect any. The office prices it, and until
+  // then it sits in splitChangeOrders' `unpriced` bucket where it stays
+  // visible. An ADMIN-filed one must still carry the agreed amount: §3 means
+  // Arbo never invents a price, not that a price is optional forever.
+  if (!opts.allowUnpriced) {
+    if (input.amount === null || !Number.isFinite(input.amount)) throw new ChangeOrderRejected('no_amount');
+    if (input.amount <= 0) throw new ChangeOrderRejected('negative_amount');
+  } else if (input.amount !== null && (!Number.isFinite(input.amount) || input.amount <= 0)) {
+    throw new ChangeOrderRejected('negative_amount');
+  }
   if (!agreedBy) throw new ChangeOrderRejected('no_agreed_by');
 
   const agreed = Date.parse(input.agreedAtIso);
@@ -128,7 +142,7 @@ export function draftChangeOrder(input: ChangeOrderInput, nowIso: string): Draft
   return {
     jobId: input.jobId,
     description,
-    amount: input.amount,
+    amount: input.amount ?? null,
     agreedBy,
     agreedAtIso: input.agreedAtIso,
     approved: false,

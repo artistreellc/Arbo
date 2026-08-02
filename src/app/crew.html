@@ -67,6 +67,13 @@ main{padding:16px;max-width:640px;margin:0 auto}
   background:var(--surface-alt);color:var(--ink);border:1.5px solid var(--border);cursor:pointer}
 .qopt.picked{border-color:var(--forest);background:rgba(124,58,237,.16);color:#fff}
 .qopt:last-child{margin-bottom:0}
+.jobaction{margin-top:10px}
+.jobbtn{width:100%;min-height:52px;border-radius:var(--r-md);border:1.5px solid var(--border);
+  background:var(--surface-alt);color:var(--ink);font-size:15px;font-weight:800;cursor:pointer}
+.jobbtn.done{border-color:var(--ok);color:var(--ok)}
+.jobout{margin-top:8px}
+.gapline{font-size:14px;font-weight:700;color:var(--warning);line-height:1.4;margin-top:6px}
+.okline{font-size:14px;color:var(--muted);line-height:1.4;margin-top:6px}
 .qprogress{font-size:13px;font-weight:800;color:var(--muted);margin-bottom:10px}
 .shortfall{font-size:14px;font-weight:700;color:var(--warning);margin-bottom:10px;line-height:1.4}
 #quiz .scope{font-size:15px;color:var(--muted);line-height:1.5}
@@ -457,10 +464,93 @@ async function renderWork() {
     }
     if (wo.permitNote) c.appendChild(el('div', 'permit', wo.permitNote));
     if (wo.requiresBeforeAfterPhotos) {
-      c.appendChild(el('div', 'photos', '📷 Before + after photos required to close this job'));
+      c.appendChild(el('div', 'photos', '\ud83d\udcf7 Before + after photos required to close this job'));
     }
+    // §6 arrival record + change order. On the job card, because that is where
+    // the crew is standing when both things need doing.
+    c.appendChild(arrivalButton(wo.jobId));
+    c.appendChild(changeOrderButton(wo.jobId));
     v.appendChild(c);
   }
+}
+
+// ---- Arrival record (§6). The defence against "your crew did that". The
+// response tells the crew how strong the record is while they can still fix it.
+function arrivalButton(jobId) {
+  const wrap = el('div', 'jobaction');
+  const btn = el('button', 'jobbtn', '\ud83d\udcf7 Log arrival condition');
+  const out = el('div', 'jobout');
+  btn.addEventListener('click', async () => {
+    const notes = prompt('What did the site look like on arrival? Anything already damaged?');
+    if (notes === null) return;
+    btn.disabled = true;
+    try {
+      const res = await api('/api/crew/arrival', {
+        method: 'POST',
+        body: {
+          jobId,
+          arrivalIso: new Date().toISOString(),
+          // Photo refs come from the photo flow; an empty list is honest here
+          // and the server will say the record is weak because of it.
+          photoFiles: [],
+          preexistingNotes: notes.trim(),
+          documentedBy: CREW_ID,
+        },
+      });
+      out.replaceChildren();
+      btn.textContent = 'Arrival logged';
+      btn.className = 'jobbtn done';
+      // The gaps matter more than the confirmation — show them first.
+      for (const line of res.lines || []) out.appendChild(el('div', 'gapline', '\u26a0 ' + line));
+      if (res.defensible) out.appendChild(el('div', 'okline', 'Photos on file \u2014 this record can back you up.'));
+    } catch {
+      btn.disabled = false;
+      out.textContent = 'Could not log that. Try again.';
+    }
+  });
+  wrap.appendChild(btn);
+  wrap.appendChild(out);
+  return wrap;
+}
+
+// ---- Change order (§3/§4.5). The crew records what the CUSTOMER agreed to.
+// Arbo never fills in the number and never records assent with nobody named.
+function changeOrderButton(jobId) {
+  const wrap = el('div', 'jobaction');
+  const btn = el('button', 'jobbtn', '+ Extra work agreed');
+  const out = el('div', 'jobout');
+  btn.addEventListener('click', async () => {
+    const description = prompt('What extra work did the customer agree to?');
+    if (description === null || !description.trim()) return;
+    const agreedBy = prompt('Who agreed to it? (name)');
+    if (agreedBy === null) return;
+    btn.disabled = true;
+    out.replaceChildren();
+    try {
+      // The crew records THAT it was agreed and WHO agreed. No figures on this
+      // surface at all (§8C): the office fills the number in and approves.
+      await api('/api/crew/change-order', {
+        method: 'POST',
+        body: {
+          jobId,
+          description: description.trim(),
+          agreedBy: agreedBy.trim(),
+          agreedAtIso: new Date().toISOString(),
+        },
+      });
+      btn.textContent = 'Recorded \u2014 office will confirm';
+      btn.className = 'jobbtn done';
+      out.appendChild(el('div', 'okline', 'Logged for the office to confirm before it goes on the bill.'));
+    } catch (e) {
+      btn.disabled = false;
+      out.textContent = e.message === 'no_agreed_by'
+        ? 'Needs the name of whoever agreed to it.'
+        : 'Could not record that. Try again.';
+    }
+  });
+  wrap.appendChild(btn);
+  wrap.appendChild(out);
+  return wrap;
 }
 
 // ---- Near-miss filing (§6V). Deliberately OUTSIDE the briefing gate: a
