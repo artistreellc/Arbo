@@ -923,7 +923,12 @@ export interface LoopSnapshotRows {
     id: string; property_id: string | null; scheduled_slot: string | null;
     visited_at: string | null; outcome: string; updated_at: string;
   }>;
-  jobs: Array<{ id: string; property_id: string | null; scheduled_for: string | null; status: string }>;
+  jobs: Array<{
+    id: string; property_id: string | null; scheduled_for: string | null; status: string;
+    completed_at?: string | null;
+    /** undefined = the invoice check could not run (never "no invoice"). */
+    has_invoice?: boolean;
+  }>;
   leads: Array<{ id: string; created_at: string; status: string; qualification: Record<string, unknown> | null }>;
 }
 
@@ -939,7 +944,7 @@ export async function loadLoopSnapshot(): Promise<LoopSnapshotRows> {
   const wide = new Date(Date.now() - 180 * 86400_000).toISOString();
   const jobHorizon = new Date(Date.now() - 90 * 86400_000).toISOString();
   const leadSince = new Date(Date.now() - 45 * 86400_000).toISOString();
-  const [estimates, jobs, leads] = await Promise.all([
+  const [estimates, jobs, done, leads] = await Promise.all([
     db.from('estimate')
       .select('id, property_id, scheduled_slot, visited_at, outcome, updated_at')
       .in('outcome', ['pending', 'won'])
@@ -948,15 +953,47 @@ export async function loadLoopSnapshot(): Promise<LoopSnapshotRows> {
       .select('id, property_id, scheduled_for, status')
       .in('status', ['booked', 'in_progress'])
       .gte('scheduled_for', jobHorizon),
+    // Completed work — the money half of the loop. Deliberately on the WIDE
+    // horizon, not the 90-day job window: an unbilled job from five months ago
+    // is the WORST one, and it must never age quietly out of the queue (§1E).
+    db.from('job')
+      .select('id, property_id, scheduled_for, status, completed_at')
+      .eq('status', 'completed')
+      .gte('completed_at', wide),
     db.from('lead')
       .select('id, created_at, status, qualification')
       .eq('status', 'new')
       .gte('created_at', leadSince),
   ]);
-  for (const r of [estimates, jobs, leads]) if (r.error) throw r.error;
+  for (const r of [estimates, jobs, done, leads]) if (r.error) throw r.error;
+
+  // Which completed jobs already have an invoice. A FAILED read leaves
+  // has_invoice undefined so the rule stays silent (§1B) rather than
+  // reporting every finished job as unbilled.
+  const doneRows = (done.data ?? []) as Array<Record<string, unknown>>;
+  let invoiced: Set<string> | null = null;
+  if (doneRows.length > 0) {
+    const inv = await db.from('invoice')
+      .select('job_id')
+      .in('job_id', doneRows.map((j) => j.id as string));
+    if (!inv.error) invoiced = new Set((inv.data ?? []).map((r) => r.job_id as string));
+  } else {
+    invoiced = new Set();
+  }
+
   return {
     estimates: (estimates.data ?? []) as LoopSnapshotRows['estimates'],
-    jobs: (jobs.data ?? []) as LoopSnapshotRows['jobs'],
+    jobs: [
+      ...((jobs.data ?? []) as LoopSnapshotRows['jobs']),
+      ...doneRows.map((j) => ({
+        id: j.id as string,
+        property_id: (j.property_id as string | null) ?? null,
+        scheduled_for: (j.scheduled_for as string | null) ?? null,
+        status: j.status as string,
+        completed_at: (j.completed_at as string | null) ?? null,
+        has_invoice: invoiced ? invoiced.has(j.id as string) : undefined,
+      })),
+    ],
     leads: (leads.data ?? []) as LoopSnapshotRows['leads'],
   };
 }
@@ -1320,4 +1357,135 @@ export async function closeMaintenanceTask(input: {
     completed_at: new Date().toISOString(),
   }).eq('id', input.taskId);
   if (res.error) throw res.error;
+}
+
+// ---------------------------------------------------------------------------
+// §4.8 money loop. Arbo never sets a price: an invoice's amount comes from the
+// agreed figure on the job's estimate, and a job without one produces NO draft.
+// ---------------------------------------------------------------------------
+
+/** Completed jobs and whether each already carries an invoice. */
+export async function billableJobs(): Promise<Array<{
+  jobId: string; name?: string; completedAtIso: string | null;
+  agreedAmount: number | null; hasInvoice: boolean;
+}>> {
+  const db = getDb();
+  const horizon = new Date(Date.now() - 180 * 86400_000).toISOString();
+  const jobs = await db.from('job')
+    .select('id, completed_at, estimate_id, contact:contact_id(name)')
+    .eq('status', 'completed')
+    .gte('completed_at', horizon)
+    .order('completed_at', { ascending: true });
+  if (jobs.error) throw jobs.error;
+  const rows = (jobs.data ?? []) as Array<Record<string, unknown>>;
+  if (rows.length === 0) return [];
+
+  const estimateIds = rows.map((j) => j.estimate_id as string | null).filter((x): x is string => Boolean(x));
+  const [ests, invs] = await Promise.all([
+    estimateIds.length
+      ? db.from('estimate').select('id, agreed_amount').in('id', estimateIds)
+      : Promise.resolve({ data: [], error: null } as { data: unknown[]; error: null }),
+    db.from('invoice').select('job_id').in('job_id', rows.map((j) => j.id as string)),
+  ]);
+  if (ests.error) throw ests.error;
+  if (invs.error) throw invs.error;
+  const agreed = new Map<string, number | null>();
+  for (const e of (ests.data ?? []) as Array<Record<string, unknown>>) {
+    const v = e.agreed_amount;
+    agreed.set(e.id as string, v == null ? null : Number(v));
+  }
+  const invoiced = new Set(((invs.data ?? []) as Array<Record<string, unknown>>).map((r) => r.job_id as string));
+
+  return rows.map((j) => {
+    const contact = j.contact as { name?: string | null } | null;
+    const estId = j.estimate_id as string | null;
+    return {
+      jobId: j.id as string,
+      name: contact?.name ?? undefined,
+      completedAtIso: (j.completed_at as string | null) ?? null,
+      agreedAmount: estId ? agreed.get(estId) ?? null : null,
+      hasInvoice: invoiced.has(j.id as string),
+    };
+  });
+}
+
+/** Every unsettled invoice, with the contact facts the legal gates need. */
+export async function openInvoiceRows(): Promise<Array<{
+  id: string; jobId: string; name?: string; amount: number; lateFeePct: number;
+  netDays: number; status: 'draft' | 'sent' | 'paid' | 'overdue' | 'void';
+  sentAtIso: string | null; paidAtIso: string | null;
+  consentOnFile?: boolean; suppressed?: boolean;
+}>> {
+  const db = getDb();
+  const res = await db.from('invoice')
+    .select('id, job_id, amount, late_fee_pct, net_days, status, sent_at, paid_at, job:job_id(contact:contact_id(name, consent_at, opted_out_at))')
+    .in('status', ['draft', 'sent', 'overdue']);
+  if (res.error) throw res.error;
+  return ((res.data ?? []) as Array<Record<string, unknown>>).map((r) => {
+    const job = r.job as { contact?: { name?: string | null; consent_at?: string | null; opted_out_at?: string | null } | null } | null;
+    const c = job?.contact ?? null;
+    return {
+      id: r.id as string,
+      jobId: r.job_id as string,
+      name: c?.name ?? undefined,
+      amount: Number(r.amount),
+      lateFeePct: Number(r.late_fee_pct),
+      netDays: Number(r.net_days ?? 14),
+      status: r.status as 'draft' | 'sent' | 'paid' | 'overdue' | 'void',
+      sentAtIso: (r.sent_at as string | null) ?? null,
+      paidAtIso: (r.paid_at as string | null) ?? null,
+      consentOnFile: c ? Boolean(c.consent_at) : undefined,
+      suppressed: c ? Boolean(c.opted_out_at) : undefined,
+    };
+  });
+}
+
+/**
+ * Create the invoice for a job. The amount is passed in from the AGREED figure
+ * the caller read off the estimate — this function never derives one — and the
+ * late fee is clamped to the VA cap before the DB CHECK ever sees it.
+ */
+export async function createInvoice(input: {
+  jobId: string; amount: number; lateFeePct: number; netDays: number;
+}): Promise<{ id: string } | 'already_invoiced'> {
+  const db = getDb();
+  const res = await db.from('invoice').insert({
+    job_id: input.jobId,
+    amount: input.amount,
+    late_fee_pct: Math.min(input.lateFeePct, 5),
+    net_days: input.netDays,
+    status: 'draft',
+  }).select('id').single();
+  if (res.error) {
+    // 23505 = the one-live-invoice-per-job index caught a double submit. That
+    // is the constraint doing its job, not a server fault: say so plainly.
+    if (res.error.code === '23505') return 'already_invoiced';
+    throw res.error;
+  }
+  return { id: res.data.id as string };
+}
+
+/** Advance an invoice's status. Timestamps are stamped by the transition. */
+export async function setInvoiceStatus(
+  invoiceId: string,
+  status: 'sent' | 'paid' | 'void',
+): Promise<boolean> {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const existing = await db.from('invoice')
+    .select('id, sent_at, paid_at')
+    .eq('id', invoiceId)
+    .maybeSingle();
+  if (existing.error) throw existing.error;
+  if (!existing.data) return false; // no such invoice — the caller must not report success
+
+  const patch: Record<string, unknown> = { status, updated_at: now };
+  // The FIRST send starts the payment clock. Re-marking an invoice sent must
+  // never reset it — that would erase weeks of aging and make an overdue
+  // invoice look current.
+  if (status === 'sent' && !existing.data.sent_at) patch.sent_at = now;
+  if (status === 'paid' && !existing.data.paid_at) patch.paid_at = now;
+  const res = await db.from('invoice').update(patch).eq('id', invoiceId);
+  if (res.error) throw res.error;
+  return true;
 }

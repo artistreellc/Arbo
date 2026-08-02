@@ -16,10 +16,17 @@ import { quoteCheck, deriveLeakagePct, type QuoteCheckInput } from '../ops/estim
 import { buildCrewPayload, sequenceRoute, type WorkOrderSource } from '../crew/workOrder.js';
 import { evaluateGate, buildAcknowledgment, type BriefingContent } from '../crew/briefingGate.js';
 import { etToday, etDayWindow } from '../lib/etDay.js';
+import {
+  buildInvoiceDrafts, buildCollectionQueue, derivedStatus, daysOverdue, lateFeeOwed,
+  safeLateFeePct, DEFAULT_NET_DAYS, type InvoiceableJob, type OpenInvoice,
+} from '../ops/invoicing.js';
 import { buildActionPlan, isSchedulable, type BreakdownReport, type KnownPart, type UnitStatus } from '../fleet/breakdown.js';
 import type { TtsClient } from '../voice/elevenlabsTts.js';
 import { scoreLead, type LeadQualityResult } from '../reception/leadQuality.js';
 import { integrationStatus } from '../env.js';
+
+/** Postgres uuid shape. Non-UUID ids must be rejected BEFORE any write. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The §6B screen flag riding a lead — the property's latest permit track. */
 export interface ApiPermitFlag {
@@ -106,6 +113,13 @@ export interface DataSource {
   unitStatus?(unitId: string): Promise<UnitStatus | null>;
   recordBreakdown?(input: { unitId: string; newStatus: string; description: string; reportedBy: string; mediaRefs: string[] }): Promise<{ taskId: string }>;
   closeMaintenanceTask?(input: { taskId: string; proofPhotoFile: string; completedBy: string }): Promise<void>;
+  /** §4.8 money loop: completed work and whether it has been billed. */
+  billableJobs?(): Promise<InvoiceableJob[]>;
+  openInvoices?(): Promise<OpenInvoice[]>;
+  /** 'already_invoiced' when the one-live-invoice-per-job constraint fired. */
+  createInvoice?(input: { jobId: string; amount: number; lateFeePct: number; netDays: number }): Promise<{ id: string } | 'already_invoiced'>;
+  /** Returns false when no such invoice exists — never a silent no-op success. */
+  setInvoiceStatus?(invoiceId: string, status: 'sent' | 'paid' | 'void'): Promise<boolean>;
   /** §6M.8: today's published tailgate briefing, or null if none. */
   todaysBriefing?(): Promise<{ id: string; body: string; standardRefs: string[] } | null>;
   /** §6V.4 gated briefing acknowledgment + its payable time entry (§4.6). */
@@ -689,7 +703,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       if (completedMs <= startedMs) return { status: 400, body: { error: 'bad_times' } };
       // item_ids is uuid[]: a non-UUID here commits the paid time entry and
       // then fails the acknowledgment insert, which is the worst outcome.
-      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(content.id)) {
+      if (!UUID_RE.test(content.id)) {
         return { status: 400, body: { error: 'bad_item_id' } };
       }
       const gateState = {
@@ -790,6 +804,93 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
         taskId, proofPhotoFile, completedBy: String(body.completedBy ?? ''),
       });
       if (source.emit) await source.emit('maintenance.closed', { taskId });
+      return { status: 200, body: { ok: true } };
+    },
+
+    /**
+     * GET /api/money — the §4.8 money loop in one read: what should be billed,
+     * what is owed, and what Arbo could NOT work out. Arbo never sets a price,
+     * so a completed job with no agreed figure appears in `blocked` with the
+     * reason, not as an invented amount.
+     */
+    async money(): Promise<ApiResult> {
+      if (!source.ready() || !source.billableJobs || !source.openInvoices) {
+        return { status: 503, body: { error: 'db_not_configured' } };
+      }
+      const nowIso = new Date().toISOString();
+      const { legal } = loadAllConfig();
+      const [jobs, invoices] = await Promise.all([source.billableJobs(), source.openInvoices()]);
+      const { drafts, blocked } = buildInvoiceDrafts(jobs);
+      const queue = buildCollectionQueue(legal, invoices, new Date(nowIso));
+      return {
+        status: 200,
+        body: {
+          drafts,
+          blocked,
+          collections: queue.due,
+          suppressed: queue.suppressed,
+          unknown: queue.unknown,
+          invoices: invoices.map((inv) => ({
+            id: inv.id,
+            jobId: inv.jobId,
+            name: inv.name ?? null,
+            amount: inv.amount,
+            status: derivedStatus(inv, nowIso) ?? 'unknown',
+            daysOverdue: daysOverdue(inv, nowIso),
+            lateFeeOwed: lateFeeOwed(inv, nowIso),
+            lateFeePct: safeLateFeePct(inv.lateFeePct),
+          })),
+          checkedAtIso: nowIso,
+        },
+      };
+    },
+
+    /**
+     * POST /api/invoices — create the draft for a completed job. The amount is
+     * NOT accepted from the request: it is read from the job's agreed figure,
+     * so no client (and no agent) can talk Arbo into a price (§3).
+     */
+    async createInvoice(body: Record<string, unknown>): Promise<ApiResult> {
+      if (!source.ready() || !source.billableJobs || !source.createInvoice) {
+        return { status: 503, body: { error: 'db_not_configured' } };
+      }
+      const jobId = String(body.jobId ?? '');
+      if (!jobId) return { status: 400, body: { error: 'bad_request' } };
+      const job = (await source.billableJobs()).find((j) => j.jobId === jobId);
+      if (!job) return { status: 404, body: { error: 'unknown_job' } };
+      const { drafts, blocked } = buildInvoiceDrafts([job]);
+      const draft = drafts[0];
+      if (!draft) {
+        const why = blocked[0];
+        return { status: 409, body: { error: why?.reason ?? 'already_invoiced', line: why?.line ?? null } };
+      }
+      const created = await source.createInvoice({
+        jobId: draft.jobId, amount: draft.amount,
+        lateFeePct: draft.lateFeePct, netDays: draft.netDays ?? DEFAULT_NET_DAYS,
+      });
+      // A double submit loses the race at the DB, not at the customer's mailbox.
+      if (created === 'already_invoiced') {
+        return { status: 409, body: { error: 'already_invoiced', line: 'This job already has an invoice.' } };
+      }
+      if (source.emit) await source.emit('invoice.drafted', { invoiceId: created.id, jobId: draft.jobId });
+      return { status: 200, body: { id: created.id, amount: draft.amount, lateFeePct: draft.lateFeePct } };
+    },
+
+    /**
+     * POST /api/invoices/:id/status — Mike moves an invoice along. Only Mike:
+     * there is no path here an agent can reach, and 'paid' is a human fact.
+     */
+    async setInvoiceStatus(invoiceId: string, body: Record<string, unknown>): Promise<ApiResult> {
+      if (!source.ready() || !source.setInvoiceStatus) return { status: 503, body: { error: 'db_not_configured' } };
+      const status = String(body.status ?? '');
+      if (!invoiceId) return { status: 400, body: { error: 'bad_id' } };
+      if (!['sent', 'paid', 'void'].includes(status)) return { status: 400, body: { error: 'bad_status' } };
+      if (!UUID_RE.test(invoiceId)) return { status: 400, body: { error: 'bad_id' } };
+      // A write that touched nothing is not a success — reporting "paid" for an
+      // invoice that does not exist is exactly the kind of quiet lie §1B bans.
+      const changed = await source.setInvoiceStatus(invoiceId, status as 'sent' | 'paid' | 'void');
+      if (!changed) return { status: 404, body: { error: 'unknown_invoice' } };
+      if (source.emit) await source.emit('invoice.' + status, { invoiceId });
       return { status: 200, body: { ok: true } };
     },
 

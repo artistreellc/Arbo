@@ -46,6 +46,10 @@ import {
   listUnitParts,
   unitOpenTaskCount,
   unitStatus,
+  billableJobs,
+  openInvoiceRows,
+  createInvoice,
+  setInvoiceStatus,
   recordBreakdown,
   closeMaintenanceTask,
 } from './db/repositories.js';
@@ -252,7 +256,13 @@ export function createLiveSource(): DataSource {
             hasJobForProperty: bookedAfterWin,
           };
         }),
-        jobs: rows.jobs.map((j) => ({ id: j.id, scheduledIso: j.scheduled_for, status: j.status })),
+        jobs: rows.jobs.map((j) => ({
+          id: j.id,
+          scheduledIso: j.scheduled_for,
+          status: j.status,
+          completedAtIso: j.completed_at ?? null,
+          hasInvoice: j.has_invoice,
+        })),
         leads: rows.leads.map((l) => ({
           id: l.id,
           createdAtIso: l.created_at,
@@ -275,6 +285,11 @@ export function createLiveSource(): DataSource {
     unitParts: (id) => listUnitParts(id),
     unitOpenTaskCount: (id) => unitOpenTaskCount(id),
     unitStatus: (id) => unitStatus(id),
+    // §4.8 money loop.
+    billableJobs: () => billableJobs(),
+    openInvoices: () => openInvoiceRows(),
+    createInvoice: (input) => createInvoice(input),
+    setInvoiceStatus: (id, status) => setInvoiceStatus(id, status),
     recordBreakdown: (input) => recordBreakdown(input),
     closeMaintenanceTask: (input) => closeMaintenanceTask(input),
   };
@@ -473,6 +488,19 @@ export function createArborRequestHandler() {
         const m = url.pathname.match(/^\/api\/fleet\/maintenance\/([^/]+)\/close$/);
         if (req.method === 'POST' && m) {
           return send(...unpack(await api.closeMaintenance(m[1]!, (await readJson(req)) as Record<string, unknown>)));
+        }
+      }
+      // §4.8 money loop.
+      if (req.method === 'GET' && url.pathname === '/api/money') {
+        return send(...unpack(await api.money()));
+      }
+      if (req.method === 'POST' && url.pathname === '/api/invoices') {
+        return send(...unpack(await api.createInvoice((await readJson(req)) as Record<string, unknown>)));
+      }
+      {
+        const m = url.pathname.match(/^\/api\/invoices\/([^/]+)\/status$/);
+        if (req.method === 'POST' && m) {
+          return send(...unpack(await api.setInvoiceStatus(m[1]!, (await readJson(req)) as Record<string, unknown>)));
         }
       }
       // §8A.6g: what the agents did, straight from the audit log.

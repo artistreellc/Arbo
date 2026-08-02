@@ -10,6 +10,7 @@ import { runPermittingAgent } from './permittingAgent.js';
 import { runOwnerBriefingAgent } from './ownerBriefingAgent.js';
 import { runWeatherAgent } from './weatherAgent.js';
 import { runBookingAgent } from './bookingAgent.js';
+import { runCollectionsAgent } from './collectionsAgent.js';
 import type { NeedsDecision } from '../ops/loopCloser.js';
 import { emitSafe } from '../binder/eventBus.js';
 import { getDb, hasDb } from '../db/client.js';
@@ -62,6 +63,7 @@ export interface SweepSummary {
   briefing: Awaited<ReturnType<typeof runOwnerBriefingAgent>> | { status: 'error' };
   weather: Awaited<ReturnType<typeof runWeatherAgent>> | { status: 'error' };
   booking: Awaited<ReturnType<typeof runBookingAgent>> | { status: 'error' };
+  collections: Awaited<ReturnType<typeof runCollectionsAgent>> | { status: 'error' };
   urgentLoopsRaised: number | 'unavailable';
 }
 
@@ -69,14 +71,15 @@ export async function runAgentSweep(api: Api, alerts: AlertsProvider, now = new 
   const settle = async <T>(p: Promise<T>): Promise<T | { status: 'error' }> => {
     try { return await p; } catch { return { status: 'error' as const }; }
   };
-  const [permitting, briefing, weather, booking, urgentLoopsRaised] = await Promise.all([
+  const [permitting, briefing, weather, booking, collections, urgentLoopsRaised] = await Promise.all([
     settle(runPermittingAgent(now)),
     settle(runOwnerBriefingAgent(api, now)),
     settle(runWeatherAgent(alerts, now)),
     settle(runBookingAgent(now)),
+    settle(runCollectionsAgent(now)),
     raiseUrgentLoops(api, now),
   ]);
-  return { ranAtIso: now.toISOString(), permitting, briefing, weather, booking, urgentLoopsRaised };
+  return { ranAtIso: now.toISOString(), permitting, briefing, weather, booking, collections, urgentLoopsRaised };
 }
 
 /**
@@ -95,6 +98,7 @@ export function startAgentScheduler(api: Api, alerts: AlertsProvider): NodeJS.Ti
       const degraded = ([
         ['permitting', s.permitting], ['briefing', s.briefing],
         ['weather', s.weather], ['booking', s.booking],
+        ['collections', s.collections],
       ] as const).filter(([, a]) => a.status !== 'ok').map(([name]) => name);
       const loops = s.urgentLoopsRaised;
       if (degraded.length > 0 || loops === 'unavailable') {

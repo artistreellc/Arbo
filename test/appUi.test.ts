@@ -53,6 +53,22 @@ describe('ARBOR app shell', () => {
     expect(html).not.toContain('innerHTML');
   });
 
+  it('the money surface names a dead ledger instead of implying everything is paid (§1B)', () => {
+    expect(html).toContain('Ledger unavailable');
+    expect(html).toContain('not a claim that everything is paid');
+  });
+
+  it('a clean ledger reads differently from a section that never ran (§1B)', () => {
+    expect(html).toContain('Nothing owed, nothing unbilled');
+    expect(html).toContain('Arbo checked the ledger');
+  });
+
+  it('the money surface never threatens a customer (§4.8)', () => {
+    for (const forbidden of ['legal action', 'collections agency', 'lien', 'small claims', 'we will sue']) {
+      expect(html.toLowerCase(), `app copy threatened: "${forbidden}"`).not.toContain(forbidden);
+    }
+  });
+
   it('the fleet surface names a dead feed instead of drawing all-units-up (§1B)', () => {
     expect(html).toContain('Fleet status unknown');
     expect(html).toContain('not a claim that everything runs');

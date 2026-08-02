@@ -531,9 +531,11 @@ async function renderToday() {
   const loopTile = tile('–', 'open loops');
   const dueTile = tile('–', 'coming due');
   const agentTile = tile('–', 'agent runs');
+  const owedTile = tile('–', 'overdue');
   hud.appendChild(loopTile);
   hud.appendChild(dueTile);
   hud.appendChild(agentTile);
+  hud.appendChild(owedTile);
   if (s.redFlagCount) hud.appendChild(tile(s.redFlagCount, 'red flags', 'hot wide'));
   if (s.emergencies) hud.appendChild(tile(s.emergencies, 'emergencies', 'hot wide'));
   v.appendChild(hud);
@@ -566,6 +568,11 @@ async function renderToday() {
   }).catch(() => {});
   api('/api/agents/runs?limit=5').then((r) => {
     setTile(agentTile, r.runs.length, r.runs.some(x => x.status === 'error') ? 'warn' : 'ok-t');
+  }).catch(() => {});
+  api('/api/money').then((m) => {
+    // Unbilled work counts as money out the door just as much as unpaid ones.
+    const n = m.collections.length + m.drafts.length;
+    setTile(owedTile, n, n ? (m.collections.length ? 'hot' : 'warn') : 'ok-t');
   }).catch(() => {});
 
   if (s.zipRun && s.zipRun.length) {
@@ -624,6 +631,7 @@ const LOOP_LABEL = {
   estimate_went_quiet: 'Estimate went quiet',
   won_but_never_booked: 'Won — never booked',
   job_never_closed: 'Job never closed out',
+  work_done_never_billed: 'Work done — never billed',
   callback_still_open: 'Callback still open',
 };
 function loopCard(o) {
@@ -965,6 +973,124 @@ async function renderCalls() {
   }
 }
 
+// ---------- Money (§4.8: bill the work, chase what is owed) ----------
+const STAGE_LABEL = {
+  reminder: ['PAST DUE', 'b-warm'],
+  second_notice: ['SECOND NOTICE', 'b-hot'],
+  final_notice: ['FINAL — CALL THEM', 'b-emg'],
+};
+function money(n) {
+  return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+async function renderMoney(slot) {
+  slot.replaceChildren();
+  let m;
+  try {
+    m = await api('/api/money');
+  } catch (e) {
+    if (e.code === 401) return;
+    // §1B: a ledger Arbo could not read is NOT a ledger with nothing owed.
+    slot.appendChild(el('div', 'panel-title', 'Money'));
+    slot.appendChild(state('Ledger unavailable', e.code === 503
+      ? 'Database not connected — Arbo cannot tell you what is owed.'
+      : 'Could not read the invoices. This is not a claim that everything is paid.'));
+    return;
+  }
+
+  if (m.collections.length) {
+    slot.appendChild(el('div', 'panel-title', 'Owed — ' + m.collections.length + ' past due'));
+    for (const a of m.collections) {
+      const inv = m.invoices.find((i) => i.id === a.invoiceId);
+      const c = el('div', 'card' + (a.stage === 'final_notice' ? ' emergency' : ''));
+      const top = el('div', 'toprow');
+      top.appendChild(el('div', 'who', a.name || 'Unknown'));
+      top.appendChild(el('div', 'when', a.daysOverdue + 'd late'));
+      c.appendChild(top);
+      c.appendChild(el('div', 'scope', a.note));
+      const b = el('div', 'badges');
+      const [label, cls] = STAGE_LABEL[a.stage] || [a.stage.toUpperCase(), 'b-src'];
+      b.appendChild(badge(label, cls));
+      if (inv) {
+        b.appendChild(badge(money(inv.amount), 'b-src'));
+        if (inv.lateFeeOwed > 0) b.appendChild(badge('+' + money(inv.lateFeeOwed) + ' LATE FEE (' + inv.lateFeePct + '% CAP)', 'b-flag'));
+      }
+      c.appendChild(b);
+      if (inv) c.appendChild(paidButton(inv.id, slot));
+      slot.appendChild(c);
+    }
+  }
+
+  if (m.drafts.length) {
+    slot.appendChild(el('div', 'panel-title', 'Ready to bill — ' + m.drafts.length));
+    for (const d of m.drafts) {
+      const c = el('div', 'card');
+      const top = el('div', 'toprow');
+      top.appendChild(el('div', 'who', d.name || 'Unknown'));
+      top.appendChild(el('div', 'when', money(d.amount)));
+      c.appendChild(top);
+      c.appendChild(el('div', 'scope', 'Work is done and the agreed figure is on file. Net ' + d.netDays + ', late fee capped at ' + d.lateFeePct + '%.'));
+      const btn = el('button', 'actbtn', 'Draft the invoice');
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+          await api('/api/invoices', { method: 'POST', body: { jobId: d.jobId } });
+          btn.textContent = 'Drafted';
+          btn.className = 'actbtn done';
+          renderMoney(slot);
+        } catch { btn.disabled = false; }
+      });
+      c.appendChild(btn);
+      slot.appendChild(c);
+    }
+  }
+
+  if (m.blocked.length) {
+    slot.appendChild(el('div', 'panel-title', 'Cannot bill yet — ' + m.blocked.length));
+    for (const x of m.blocked) {
+      const c = el('div', 'card loop-card');
+      c.appendChild(el('div', 'loop-kind', x.name || 'Unknown'));
+      c.appendChild(el('div', 'scope', x.line));
+      slot.appendChild(c);
+    }
+  }
+
+  for (const u of m.unknown) {
+    const c = el('div', 'card loop-card urgent');
+    c.appendChild(el('div', 'loop-kind', '⚠ UNKNOWN'));
+    c.appendChild(el('div', 'scope', u.line));
+    slot.appendChild(c);
+  }
+
+  if (m.suppressed.length) {
+    const box = el('div', 'state');
+    box.appendChild(el('b', '', m.suppressed.length + ' held by the legal gate'));
+    box.appendChild(document.createTextNode('No consent on file or STOP on record — Arbo will not nudge these.'));
+    slot.appendChild(box);
+  }
+
+  // A clean ledger must LOOK different from a section that never ran (§1B).
+  if (!m.collections.length && !m.drafts.length && !m.blocked.length
+      && !m.unknown.length && !m.suppressed.length) {
+    slot.appendChild(el('div', 'panel-title', 'Money'));
+    slot.appendChild(state('Nothing owed, nothing unbilled',
+      'Arbo checked the ledger — every finished job is invoiced and nothing is past due.'));
+  }
+}
+
+function paidButton(invoiceId, slot) {
+  const btn = el('button', 'actbtn', 'Mark paid ✓');
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    try {
+      await api('/api/invoices/' + invoiceId + '/status', { method: 'POST', body: { status: 'paid' } });
+      btn.textContent = 'Recorded';
+      btn.className = 'actbtn done';
+      renderMoney(slot);
+    } catch { btn.disabled = false; }
+  });
+  return btn;
+}
+
 // ---------- Fleet (§6E: units, DOWN status, breakdown reports) ----------
 const UNIT_STATUS = {
   up: ['UP', 'b-cool'],
@@ -1090,6 +1216,10 @@ async function renderFollowUps() {
     loopsSlot.appendChild(el('div', 'panel-title', 'Open loops — silence is never success'));
     for (const o of qq.open) loopsSlot.appendChild(loopCard(o));
   }).catch(() => {});
+  // §4.8 money: unbilled work and unpaid invoices are open loops too.
+  const moneySlot = el('div');
+  v.appendChild(moneySlot);
+  renderMoney(moneySlot);
   // §6E fleet: a DOWN unit is a scheduling constraint, so it belongs in the
   // Queue next to the other open loops.
   const fleetSlot = el('div');

@@ -21,6 +21,10 @@ export interface LoopJob {
   id: string;
   scheduledIso: string | null;
   status: string; // booked / in_progress / completed / paid ...
+  /** When the work was finished, if it was. */
+  completedAtIso?: string | null;
+  /** Does an invoice exist for this job? Undefined = the check could not run. */
+  hasInvoice?: boolean;
 }
 
 export interface LoopLead {
@@ -41,6 +45,7 @@ export type NeedsDecisionKind =
   | 'estimate_went_quiet'    // visited, no outcome recorded
   | 'won_but_never_booked'   // outcome won, no job exists
   | 'job_never_closed'       // scheduled date passed, still 'booked'
+  | 'work_done_never_billed' // completed job with no invoice — money left on the table
   | 'callback_still_open';   // missed call / voicemail lead nobody called back
 
 export interface NeedsDecision {
@@ -64,6 +69,7 @@ export interface LoopCloserConfig {
   quietEstimateAfterH: number;   // visited, silence since
   unbookedWinAfterH: number;     // won, no job yet
   unclosedJobAfterH: number;     // past schedule, still booked
+  uninvoicedJobAfterH: number;   // work finished, nothing billed
   openCallbackAfterH: number;    // missed-call lead untouched
 }
 
@@ -71,6 +77,7 @@ export const defaultLoopConfig: LoopCloserConfig = {
   quietEstimateAfterH: 72,
   unbookedWinAfterH: 48,
   unclosedJobAfterH: 24,
+  uninvoicedJobAfterH: 48,
   openCallbackAfterH: 4,
 };
 
@@ -120,6 +127,23 @@ export function findOpenLoops(s: LoopSnapshot, cfg: LoopCloserConfig = defaultLo
           refTable: 'job',
           severity: 'attention',
           line: `Job was scheduled ${Math.floor(age / 24)}d ago and never marked done. Did it happen?`,
+          ageHours: age,
+        });
+      }
+    }
+    // Finished work that was never billed. `hasInvoice === undefined` means the
+    // invoice check could not run — that is not evidence of a bill (§1B), so
+    // the rule stays silent rather than accusing Mike of forgetting.
+    if (j.completedAtIso && j.hasInvoice === false) {
+      const age = hoursBetween(j.completedAtIso, s.nowIso);
+      if (age >= cfg.uninvoicedJobAfterH) {
+        out.push({
+          key: `work_done_never_billed:${j.id}`,
+          kind: 'work_done_never_billed',
+          refId: j.id,
+          refTable: 'job',
+          severity: 'urgent',
+          line: `Work finished ${Math.floor(age / 24)}d ago and still has no invoice — that job has not been billed.`,
           ageHours: age,
         });
       }
