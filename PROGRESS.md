@@ -305,3 +305,30 @@ healthy); `/api/brief` → 200 with a valid window. Dashboard env vars remain
 Mike's to fix/delete at leisure — well-formed env always wins over carried.
 Recommended (non-blocking): rotate the service-role key eventually, since it
 transited chat during setup.
+
+### Location intelligence + review loop (§5A #21–24, #29) — built 2026-08-02
+`locationIntel.ts` (pure engine, 16 new tests): §24 working-hours + master-
+switch law in code, 150 m/2-ping geofence visits, straight-line running-late
+assessment that degrades to the soft "running a little behind" draft (guard-
+checked) instead of inventing an ETA. Migration 0008 applied live:
+`location_ping` (72 h retention on the write path), `ops_setting`,
+`conversation_log`, `estimate.visited_at`. New key-gated routes:
+POST /api/location/{ping,tracking}, GET /api/location/{status,day},
+GET /api/review/backlog, POST /api/review/:id/reviewed. The voice bridge now
+appends every turn to conversation_log (best-effort — a dead log never drops
+a caller). App: Today-tab tracking pill + running-late banner with the
+send-it-yourself draft. Deploy-time reality, named honestly: pings need a
+sender (an iPhone Shortcut posting to /api/location/ping is the zero-app
+path); geofencing/visits work the moment pings flow. 268 tests green.
+
+### Secret rotation status (2026-08-02)
+ELEVENLABS_BRIDGE_SECRET rotated (ours to mint; ships in the deployment-
+carried config — nothing external used the old one yet). The two remaining
+hygiene items are dashboard-gated and NOT reachable from this environment's
+sanctioned tools (the Supabase MCP deliberately exposes no key management;
+the Vercel MCP has no env-var surface): (1) rotating the Supabase
+service_role key — verified still live; (2) deleting the three corrupt
+Vercel env vars — harmless since D46 shape-validation ignores them. Both are
+60-second dashboard clicks whenever Mike wants; D46 means neither blocks
+anything, and a rotated key ships into the carried config on the next
+deploy with one paste.
