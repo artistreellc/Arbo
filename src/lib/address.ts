@@ -71,9 +71,38 @@ export function resolveServiceCity(city: string | undefined | null): ServiceCity
   return CITY_LOOKUP.get(city.trim().toLowerCase()) ?? null;
 }
 
-/** True only for the four served cities — Suffolk (etc.) is false. */
+/** True only for the four CORE cities — the ones with a permit ruleset. */
 export function isServiceCity(city: string | undefined | null): boolean {
   return resolveServiceCity(city) !== null;
+}
+
+/**
+ * Cities Art-is-Tree CAN work but is not currently marketing in (owner, Mike,
+ * 2026-08-02: "we're just not advertising there for the season, too much work
+ * closer to home"). This is a MARKETING boundary, not a licensing one — the
+ * distinction matters because Arbo used to hard-REJECT these addresses at
+ * intake, which threw away a real lead for a job Mike would happily take.
+ *
+ * They are deliberately NOT ServiceCity: the four core cities each have a
+ * permit ruleset behind them, and screening a Suffolk property against
+ * Virginia Beach rules would produce a confident, wrong answer. Off-focus
+ * cities are accepted, flagged, and screened as NO RULESET (§1B).
+ */
+export const OFF_FOCUS_CITIES = ['Suffolk'] as const;
+export type OffFocusCity = (typeof OFF_FOCUS_CITIES)[number];
+
+const OFF_FOCUS_LOOKUP = new Map<string, OffFocusCity>(
+  OFF_FOCUS_CITIES.map((c) => [c.toLowerCase(), c]),
+);
+
+export function resolveOffFocusCity(city: string | undefined | null): OffFocusCity | null {
+  if (!city) return null;
+  return OFF_FOCUS_LOOKUP.get(city.trim().toLowerCase()) ?? null;
+}
+
+/** Core service city OR a city we can work but are not advertising in. */
+export function isWorkableCity(city: string | undefined | null): boolean {
+  return isServiceCity(city) || resolveOffFocusCity(city) !== null;
 }
 
 /**
@@ -114,6 +143,11 @@ export interface ParsedAddress {
   city: ServiceCity | null;
   zip: string | null;
   inServiceArea: boolean;
+  /**
+   * Set when the address is in a city we CAN work but are not marketing in.
+   * The caller must accept the lead and flag it — never reject it.
+   */
+  offFocusCity: OffFocusCity | null;
 }
 
 /**
@@ -129,11 +163,21 @@ export function parseAddress(raw: string, cityHint?: string): ParsedAddress {
       if (lower.includes(` ${c.toLowerCase()} `)) { city = c; break; }
     }
   }
+  // Off-focus detection runs whether or not a core city matched, so a Suffolk
+  // address is identified rather than falling through as simply "not ours".
+  let offFocus = resolveOffFocusCity(cityHint);
+  if (!city && !offFocus) {
+    const lower = ` ${raw.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ')} `;
+    for (const c of OFF_FOCUS_CITIES) {
+      if (lower.includes(` ${c.toLowerCase()} `)) { offFocus = c; break; }
+    }
+  }
   return {
     raw,
     normalized: normalizeAddress(raw),
     city,
     zip: extractZip(raw),
     inServiceArea: city !== null,
+    offFocusCity: offFocus,
   };
 }

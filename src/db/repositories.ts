@@ -3,10 +3,14 @@
 // address-based deduping of the property twin.
 
 import { getDb } from './client.js';
-import { parseAddress, type ServiceCity } from '../lib/address.js';
+import { parseAddress, type ServiceCity, type OffFocusCity } from '../lib/address.js';
 import type { PermitRecordInput, PermitLifecycle } from '../permitting/permitRecord.js';
 
-/** Thrown when an address is outside the four served cities (§2). */
+/**
+ * Thrown when an address is in no city Art-is-Tree works — NOT merely outside
+ * the current marketing focus. Suffolk is workable and off-focus; it is
+ * accepted and flagged, never thrown (owner ruling 2026-08-02).
+ */
 export class OutOfServiceAreaError extends Error {
   constructor(public readonly address: string) {
     super(`Address is outside the service area (VB / Norfolk / Chesapeake / Portsmouth): ${address}`);
@@ -27,7 +31,7 @@ export interface PropertyRow {
   id: string;
   address: string;
   normalized_address: string;
-  city: ServiceCity;
+  city: ServiceCity | OffFocusCity;
   zip: string | null;
   drive_folder_id: string | null;
 }
@@ -40,7 +44,10 @@ export interface PropertyRow {
  */
 export async function upsertProperty(input: UpsertPropertyInput): Promise<PropertyRow> {
   const parsed = parseAddress(input.address, input.city);
-  if (!parsed.inServiceArea || !parsed.city) throw new OutOfServiceAreaError(input.address);
+  // A city we can work is accepted even when we are not advertising there —
+  // rejecting it here silently binned a lead Mike would have taken.
+  const city = parsed.city ?? parsed.offFocusCity;
+  if (!city) throw new OutOfServiceAreaError(input.address);
 
   const db = getDb();
 
@@ -58,7 +65,7 @@ export async function upsertProperty(input: UpsertPropertyInput): Promise<Proper
     .insert({
       address: input.address,
       normalized_address: parsed.normalized,
-      city: parsed.city,
+      city,
       zip: input.zip ?? parsed.zip,
       lot_notes: input.lotNotes ?? null,
       hazard_power_lines: input.hazardPowerLines ?? false,

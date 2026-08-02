@@ -9,6 +9,7 @@
 // lead; see intakeScreen.ts for the honesty rules.
 
 import type { LeadSink } from './receptionist.js';
+import { isServiceCity, type ServiceCity } from '../lib/address.js';
 import { upsertProperty, createContact, linkContactToProperty, createLead, createPermit } from '../db/repositories.js';
 import { runIntakeScreen, summarize, type PermitScreenSummary } from '../permitting/intakeScreen.js';
 import type { GisProvider } from '../permitting/screening.js';
@@ -40,17 +41,28 @@ export function createLiveLeadSink(options: LiveLeadSinkOptions = {}): LeadSink 
         // contact = potentially new work = a fresh clearance cycle. A prior
         // approval stays on its job's own permit row; it never silently
         // extends to new work (fail-closed, §6B.3).
-        const outcome = await runIntakeScreen(
-          {
-            propertyId: property.id,
-            city: property.city,
-            address: property.address,
-            qualification: input.qualification,
-          },
-          options.gis,
-          createPermit,
-        );
-        permitScreen = summarize(outcome);
+        // A city with NO permit ruleset must not be screened against another
+        // city's rules — that produces a confident wrong answer, which is
+        // worse than no answer. Suffolk (workable, off marketing focus) lands
+        // here and is reported as unscreenable rather than screened (§1B).
+        if (!isServiceCity(property.city)) {
+          permitScreen = {
+            screened: false,
+            pendingReason: `No permit ruleset on file for ${property.city} — Arbo cannot screen this one. Verify with the city before any protected work.`,
+          };
+        } else {
+          const outcome = await runIntakeScreen(
+            {
+              propertyId: property.id,
+              city: property.city as ServiceCity,
+              address: property.address,
+              qualification: input.qualification,
+            },
+            options.gis,
+            createPermit,
+          );
+          permitScreen = summarize(outcome);
+        }
       }
 
       // A caller who phoned in has an established business relationship — capture
