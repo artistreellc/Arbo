@@ -56,6 +56,12 @@ export interface BridgeDeps {
   escalator?: Escalator;
   /** Secret WE minted; the ElevenLabs agent sends it as a Bearer token. */
   bridgeSecret: string | undefined;
+  /**
+   * §5A #29 review-loop sink: persist each turn for the human-in-the-loop
+   * backlog. Best-effort — a logging failure must NEVER drop a live call, so
+   * the bridge fires it and swallows errors.
+   */
+  logTurn?: (sessionKey: string, turn: { at: string; caller: string; reply: string; flags: string[] }) => Promise<void>;
   now?: () => number;
 }
 
@@ -136,6 +142,21 @@ export function createElevenLabsBridge(deps: BridgeDeps): ElevenLabsBridge {
       session.turns += 1;
 
       const turn = await session.receptionist.handleUserTurn(text);
+
+      if (deps.logTurn) {
+        const flags = [
+          `intent:${turn.intent}`,
+          ...(turn.emergency ? ['emergency'] : []),
+          ...(turn.guard.safe ? [] : turn.guard.violations.map((v) => `guard_blocked:${v.rule}`)),
+        ];
+        // awaited so serverless doesn't freeze the write mid-flight; failures
+        // are swallowed — the review log never costs a caller their reply.
+        try {
+          await deps.logTurn(key, { at: new Date(nowMs).toISOString(), caller: text, reply: turn.reply, flags });
+        } catch {
+          console.error('[voice] review log write failed'); // reason only, no PII (§4.3)
+        }
+      }
 
       const id = `arbor-${key}-${session.turns}`;
       const created = Math.floor(nowMs / 1000);

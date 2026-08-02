@@ -9,6 +9,7 @@ import { loadAllConfig } from '../config/loadConfig.js';
 import { buildMorningBrief, briefToSpeech, type MorningBrief, type StopInput } from '../ops/morningBrief.js';
 import { buildFollowUpQueue, buildSeasonalOutreach, type EstimateState, type JobState, type PastCustomer } from '../ops/followUps.js';
 import { flagStopsAtRisk, isWorkStopping, type AlertsProvider } from '../ops/stormWatch.js';
+import { assessRunningLate, detectVisits, withinWorkingHours, type LocationPing, type GeoStop } from '../ops/locationIntel.js';
 import type { TtsClient } from '../voice/elevenlabsTts.js';
 import { scoreLead, type LeadQualityResult } from '../reception/leadQuality.js';
 import { integrationStatus } from '../env.js';
@@ -53,6 +54,26 @@ export interface DataSource {
   recordReviewRequested?(jobId: string, atIso: string): Promise<void>;
   /** §19 seasonal outreach targets: past customers with consent facts. */
   pastCustomers?(): Promise<PastCustomer[]>;
+  /** §21–24 location intelligence (owner pings — never customer data). */
+  recordPing?(p: { lat: number; lng: number; accuracyM?: number }): Promise<void>;
+  pingsSince?(sinceIso: string): Promise<LocationPing[]>;
+  getTracking?(): Promise<boolean>;
+  setTracking?(on: boolean): Promise<void>;
+  /** Day's stops with geocoded coordinates (null when the geocoder had no confident match). */
+  geoStops?(fromIso: string, toIso: string): Promise<ApiGeoStop[]>;
+  markVisited?(estimateId: string, atIso: string): Promise<void>;
+  /** §29 review-loop backlog. */
+  conversations?(limit: number, unreviewedOnly: boolean): Promise<unknown[]>;
+  markReviewed?(conversationId: string): Promise<void>;
+}
+
+export interface ApiGeoStop {
+  id: string;
+  kind: 'estimate' | 'job';
+  timeIso: string | null;
+  name: string | null;
+  lat: number | null;
+  lng: number | null;
 }
 
 /** Optional live feeds beyond the database (weather + voice). */
@@ -258,6 +279,106 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
         );
       }
       return { status: 200, body: { alerts, atRisk } };
+    },
+
+    /**
+     * POST /api/location/ping — Mike's phone checks in. The §24 law runs
+     * HERE, before anything touches storage: master switch ON, working hours
+     * only. Refusals carry a named reason — never a silent drop.
+     */
+    async locationPing(body: { lat?: unknown; lng?: unknown; accuracyM?: unknown }, now = new Date()): Promise<ApiResult> {
+      if (!source.ready() || !source.recordPing || !source.getTracking) return { status: 503, body: { error: 'db_not_configured' } };
+      const lat = Number(body.lat);
+      const lng = Number(body.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+        return { status: 400, body: { error: 'bad_coordinates' } };
+      }
+      if (!(await source.getTracking())) return { status: 403, body: { error: 'tracking_off' } };
+      if (!withinWorkingHours(now)) return { status: 403, body: { error: 'after_hours' } };
+      const accuracyM = Number(body.accuracyM);
+      await source.recordPing({ lat, lng, ...(Number.isFinite(accuracyM) ? { accuracyM } : {}) });
+      return { status: 200, body: { ok: true } };
+    },
+
+    /** POST /api/location/tracking — the §24 master switch, clear ON/OFF. */
+    async locationTracking(on: unknown): Promise<ApiResult> {
+      if (!source.ready() || !source.setTracking) return { status: 503, body: { error: 'db_not_configured' } };
+      if (typeof on !== 'boolean') return { status: 400, body: { error: 'bad_toggle' } };
+      await source.setTracking(on);
+      return { status: 200, body: { tracking: on } };
+    },
+
+    /**
+     * GET /api/location/status — tracking state + the #23 running-late read
+     * against the next timed stop. recommendOnly always: ARBOR drafts, Mike
+     * sends.
+     */
+    async locationStatus(now = new Date()): Promise<ApiResult> {
+      if (!source.ready() || !source.getTracking || !source.pingsSince) return { status: 503, body: { error: 'db_not_configured' } };
+      const tracking = await source.getTracking();
+      const pings = tracking ? await source.pingsSince(new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString()) : [];
+      const latest = pings.length > 0 ? pings[pings.length - 1]! : null;
+      let next: GeoStop | null = null;
+      if (latest && source.geoStops) {
+        const from = new Date(now.getTime() - 30 * 60 * 1000).toISOString();
+        const to = new Date(now.getTime() + 12 * 60 * 60 * 1000).toISOString();
+        const upcoming = (await source.geoStops(from, to))
+          .filter((s) => s.timeIso && s.lat != null && s.lng != null)
+          .sort((a, b) => (a.timeIso ?? '').localeCompare(b.timeIso ?? ''));
+        const s = upcoming[0];
+        if (s) next = { id: s.id, kind: s.kind, lat: s.lat!, lng: s.lng!, timeIso: s.timeIso, ...(s.name ? { name: s.name } : {}) };
+      }
+      return {
+        status: 200,
+        body: {
+          tracking,
+          lastPingIso: latest?.atIso ?? null,
+          late: tracking ? assessRunningLate(latest, next, now) : { state: 'no_data', recommendOnly: true },
+        },
+      };
+    },
+
+    /**
+     * GET /api/location/day — #21: which estimate stops the pings actually
+     * reached. Tri-state honest per stop; confirmed visits are persisted so
+     * the follow-up engine anchors on the REAL visit, not the slot.
+     */
+    async locationDay(fromIso: string, toIso: string): Promise<ApiResult> {
+      if (!source.ready() || !source.pingsSince || !source.geoStops) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!fromIso || !toIso || Number.isNaN(Date.parse(fromIso)) || Number.isNaN(Date.parse(toIso))) {
+        return { status: 400, body: { error: 'bad_window' } };
+      }
+      const [stops, pings] = await Promise.all([source.geoStops(fromIso, toIso), source.pingsSince(fromIso)]);
+      const windowPings = pings.filter((p) => p.atIso <= toIso);
+      const located = stops.filter((s): s is ApiGeoStop & { lat: number; lng: number } => s.lat != null && s.lng != null);
+      const checks = detectVisits(
+        windowPings,
+        located.map((s) => ({ id: s.id, kind: s.kind, lat: s.lat, lng: s.lng, timeIso: s.timeIso })),
+      );
+      if (source.markVisited) {
+        for (const c of checks) {
+          const stop = located.find((s) => s.id === c.stopId);
+          if (c.visited === true && c.firstSeenIso && stop?.kind === 'estimate') {
+            await source.markVisited(c.stopId, c.firstSeenIso);
+          }
+        }
+      }
+      const unlocatable = stops.filter((s) => s.lat == null || s.lng == null).map((s) => ({ stopId: s.id, visited: 'no_data' as const }));
+      return { status: 200, body: { checks: [...checks, ...unlocatable], pingCount: windowPings.length } };
+    },
+
+    /** GET /api/review/backlog — §29: the logged conversations awaiting review. */
+    async reviewBacklog(limit = 20, unreviewedOnly = true): Promise<ApiResult> {
+      if (!source.ready() || !source.conversations) return { status: 503, body: { error: 'db_not_configured' } };
+      return { status: 200, body: { conversations: await source.conversations(limit, unreviewedOnly) } };
+    },
+
+    /** POST /api/review/:id/reviewed — Mike (or the chat analyst on his behalf) closes one out. */
+    async markReviewed(id: string): Promise<ApiResult> {
+      if (!source.ready() || !source.markReviewed) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!id) return { status: 400, body: { error: 'bad_id' } };
+      await source.markReviewed(id);
+      return { status: 200, body: { ok: true } };
     },
   };
 }

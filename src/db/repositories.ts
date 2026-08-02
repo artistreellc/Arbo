@@ -637,3 +637,117 @@ export async function listPastCustomers(): Promise<PastCustomerRow[]> {
   }
   return [...seen.values()];
 }
+
+// ---------------------------------------------------------------------------
+// Location intelligence (§5A #21–24). Pings are Mike's OWN phone — never
+// customer data — accepted only through the §24 gate in the API layer, and
+// kept 72 hours max: every insert purges anything older.
+// ---------------------------------------------------------------------------
+
+export async function recordLocationPing(input: { lat: number; lng: number; accuracyM?: number }): Promise<void> {
+  const db = getDb();
+  const ins = await db.from('location_ping').insert({ lat: input.lat, lng: input.lng, accuracy_m: input.accuracyM ?? null });
+  if (ins.error) throw ins.error;
+  // Retention is part of the §24 promise, so it rides the write path instead
+  // of trusting a cron that doesn't exist on serverless.
+  const cutoff = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+  await db.from('location_ping').delete().lt('at', cutoff);
+}
+
+export interface LocationPingRow {
+  lat: number;
+  lng: number;
+  accuracy_m: number | null;
+  at: string;
+}
+
+export async function listPingsSince(sinceIso: string): Promise<LocationPingRow[]> {
+  const db = getDb();
+  const res = await db.from('location_ping').select('lat, lng, accuracy_m, at').gte('at', sinceIso).order('at', { ascending: true }).limit(2000);
+  if (res.error) throw res.error;
+  return res.data as LocationPingRow[];
+}
+
+/** Tiny ops key-value store (today: the §24 tracking master switch). */
+export async function getOpsSetting<T>(key: string): Promise<T | null> {
+  const db = getDb();
+  const res = await db.from('ops_setting').select('value').eq('key', key).maybeSingle();
+  if (res.error) throw res.error;
+  return res.data ? ((res.data as { value: T }).value ?? null) : null;
+}
+
+export async function setOpsSetting(key: string, value: unknown): Promise<void> {
+  const db = getDb();
+  const res = await db.from('ops_setting').upsert({ key, value, updated_at: new Date().toISOString() });
+  if (res.error) throw res.error;
+}
+
+/** Geofence-confirmed arrival at an estimate stop (#21/#22). Idempotent: first arrival wins. */
+export async function markEstimateVisited(estimateId: string, atIso: string): Promise<void> {
+  const db = getDb();
+  const res = await db
+    .from('estimate')
+    .update({ visited: true, visited_at: atIso, updated_at: new Date().toISOString() })
+    .eq('id', estimateId)
+    .is('visited_at', null);
+  if (res.error) throw res.error;
+}
+
+// ---------------------------------------------------------------------------
+// Review loop (§5A #29): one conversation_log row per call session. The
+// transcript lives ONLY here (RLS-locked) — never in server logs (§4.3).
+// ---------------------------------------------------------------------------
+
+export interface ConversationTurn {
+  at: string;
+  caller: string;
+  reply: string;
+  /** Routing/guard facts worth reviewing: emergency, guard_blocked, intent. */
+  flags: string[];
+}
+
+export async function appendConversationTurn(sessionKey: string, channel: 'voice' | 'sms' | 'web', turn: ConversationTurn): Promise<void> {
+  const db = getDb();
+  const cur = await db.from('conversation_log').select('id, turns').eq('session_key', sessionKey).maybeSingle();
+  if (cur.error) throw cur.error;
+  if (!cur.data) {
+    const ins = await db.from('conversation_log').insert({ session_key: sessionKey, channel, turns: [turn], last_turn_at: turn.at });
+    if (ins.error) throw ins.error;
+    return;
+  }
+  const row = cur.data as { id: string; turns: ConversationTurn[] };
+  const upd = await db
+    .from('conversation_log')
+    .update({ turns: [...row.turns, turn], last_turn_at: turn.at })
+    .eq('id', row.id);
+  if (upd.error) throw upd.error;
+}
+
+export interface ConversationLogRow {
+  id: string;
+  session_key: string;
+  channel: string;
+  started_at: string;
+  last_turn_at: string;
+  turns: ConversationTurn[];
+  reviewed: boolean;
+}
+
+export async function listConversations(limit = 20, unreviewedOnly = false): Promise<ConversationLogRow[]> {
+  const db = getDb();
+  let q = db
+    .from('conversation_log')
+    .select('id, session_key, channel, started_at, last_turn_at, turns, reviewed')
+    .order('started_at', { ascending: false })
+    .limit(limit);
+  if (unreviewedOnly) q = q.eq('reviewed', false);
+  const res = await q;
+  if (res.error) throw res.error;
+  return res.data as unknown as ConversationLogRow[];
+}
+
+export async function markConversationReviewed(id: string): Promise<void> {
+  const db = getDb();
+  const res = await db.from('conversation_log').update({ reviewed: true }).eq('id', id);
+  if (res.error) throw res.error;
+}

@@ -134,6 +134,16 @@ nav button.active::after{content:"";width:24px;height:3px;border-radius:2px;back
 }
 .storm small{display:block;font-weight:600;opacity:.9;margin-top:4px}
 .storm-muted{color:var(--muted);font-size:13px;margin-bottom:12px}
+/* Location strip (§21–24): tracking switch + running-late banner */
+.loc-strip{display:flex;align-items:center;gap:10px;margin-bottom:14px;font-size:13px;color:var(--muted)}
+.loc-toggle{min-height:40px;border:1.5px solid var(--line);border-radius:999px;background:var(--card);
+  color:var(--muted);font-size:13px;font-weight:800;padding:0 16px;cursor:pointer}
+.loc-toggle.on{background:var(--forest);border-color:var(--forest);color:#fff}
+.late{background:#B45309;color:#fff;border-radius:var(--r-lg);padding:14px 16px;margin-bottom:16px;
+  font-weight:700;font-size:15px;line-height:1.35}
+.late small{display:block;font-weight:600;opacity:.95;margin-top:6px}
+.late .draft{background:rgba(255,255,255,.14);border-radius:var(--r-md);padding:10px 12px;margin-top:8px;
+  font-weight:600;font-size:13px}
 .actbtn{
   min-height:48px;border:0;border-radius:var(--r-md);background:var(--forest);color:#fff;
   font-size:15px;font-weight:800;padding:0 18px;cursor:pointer;margin-top:10px;
@@ -250,11 +260,46 @@ async function stormBanner() {
   }
 }
 
+// ---------- Location strip (§21–24: clear ON/OFF, recommend-only late cover) ----------
+async function locationStrip() {
+  let s;
+  try { s = await api('/api/location/status'); } catch (e) { return null; }
+  const wrap = el('div');
+  const strip = el('div', 'loc-strip');
+  const btn = el('button', 'loc-toggle' + (s.tracking ? ' on' : ''), s.tracking ? '📍 Tracking ON' : '📍 Tracking OFF');
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try { await api('/api/location/tracking', { method: 'POST', body: { on: !s.tracking } }); } catch (e) {}
+    renderToday();
+  };
+  strip.appendChild(btn);
+  strip.appendChild(el('span', '', s.tracking
+    ? (s.lastPingIso ? 'last check-in ' + fmtTime(s.lastPingIso) : 'waiting for the first check-in')
+    : 'work-hours only — never after hours'));
+  wrap.appendChild(strip);
+  // #23: running-late cover. ARBOR drafts, Mike sends — never automatic.
+  if (s.late && (s.late.state === 'late' || s.late.state === 'tight')) {
+    const box = el('div', 'late');
+    box.appendChild(document.createTextNode(s.late.state === 'late'
+      ? '⏱ Running behind for the next stop (~' + s.late.minutesBehind + ' min by distance).'
+      : '⏱ Next stop is tight — about ' + s.late.minutesBehind + ' min behind by distance.'));
+    if (s.late.draftMessage) {
+      box.appendChild(el('small', '', 'Suggested text to the customer (you send it):'));
+      box.appendChild(el('div', 'draft', s.late.draftMessage));
+    }
+    wrap.appendChild(box);
+  }
+  return wrap;
+}
+
 // ---------- Today (Morning Brief) ----------
 async function renderToday() {
   const v = $('view-today');
   v.replaceChildren();
   stormBanner().then((b) => { if (b) v.prepend(b); });
+  const locSlot = el('div');
+  v.appendChild(locSlot);
+  locationStrip().then((b) => { if (b) locSlot.appendChild(b); });
   const start = new Date(); start.setHours(0, 0, 0, 0);
   const end = new Date(start); end.setDate(end.getDate() + 1);
   let brief;

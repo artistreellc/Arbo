@@ -20,7 +20,16 @@ import {
   recordReviewRequested,
   latestHistoryForProperties,
   listPastCustomers,
+  recordLocationPing,
+  listPingsSince,
+  getOpsSetting,
+  setOpsSetting,
+  markEstimateVisited,
+  appendConversationTurn,
+  listConversations,
+  markConversationReviewed,
 } from './db/repositories.js';
+import { createCensusGeocoder } from './permitting/gis/geocode.js';
 import { createElevenLabsTts } from './voice/elevenlabsTts.js';
 import type { StopInput } from './ops/morningBrief.js';
 import type { EstimateState, JobState } from './ops/followUps.js';
@@ -140,6 +149,43 @@ export function createLiveSource(): DataSource {
     recordOutcome: (id, outcome) => updateEstimateOutcome(id, outcome),
     recordFollowUpSent: (id, at) => recordFollowUpSent(id, at),
     recordReviewRequested: (id, at) => recordReviewRequested(id, at),
+    // §21–24 location intelligence. The tracking switch defaults OFF — §24's
+    // "clear ON/OFF" means Mike turns it on, not a default.
+    recordPing: (p) => recordLocationPing(p),
+    async pingsSince(sinceIso) {
+      return (await listPingsSince(sinceIso)).map((r) => ({
+        lat: r.lat,
+        lng: r.lng,
+        ...(r.accuracy_m != null ? { accuracyM: r.accuracy_m } : {}),
+        atIso: r.at,
+      }));
+    },
+    getTracking: async () => (await getOpsSetting<{ on: boolean }>('location_tracking'))?.on === true,
+    setTracking: (on) => setOpsSetting('location_tracking', { on }),
+    async geoStops(fromIso, toIso) {
+      // Lazy per-stop geocoding via the free Census geocoder (D37). A stop
+      // that won't geocode confidently gets null coords — the API reports it
+      // as no_data instead of fencing the wrong point.
+      const geocoder = createCensusGeocoder((u: string) => fetch(u));
+      const rows = await listStopsBetween(fromIso, toIso);
+      return Promise.all(
+        rows.map(async (r) => {
+          let point: { lat: number; lng: number } | null = null;
+          if (r.address && r.city) {
+            try {
+              point = await geocoder.geocode(r.address, r.city);
+            } catch {
+              point = null;
+            }
+          }
+          return { id: r.id, kind: r.kind, timeIso: r.timeIso ?? null, name: r.name ?? null, lat: point?.lat ?? null, lng: point?.lng ?? null };
+        }),
+      );
+    },
+    markVisited: (id, at) => markEstimateVisited(id, at),
+    // §29 review loop.
+    conversations: (limit, unreviewedOnly) => listConversations(limit, unreviewedOnly),
+    markReviewed: (id) => markConversationReviewed(id),
   };
 }
 
@@ -185,6 +231,9 @@ export function createArborRequestHandler() {
     llm: createVoiceLlm(env.anthropic.apiKey),
     alerter: consoleAlerter,
     bridgeSecret: env.elevenlabs.bridgeSecret,
+    // §29: every voice turn lands in the review backlog (RLS-locked DB, never
+    // server logs). Only wired when the DB is — the bridge swallows failures.
+    ...(hasDb() ? { logTurn: (key: string, turn: Parameters<typeof appendConversationTurn>[2]) => appendConversationTurn(key, 'voice', turn) } : {}),
   });
 
   return async (req: IncomingMessage, res: ServerResponse) => {
@@ -244,6 +293,30 @@ export function createArborRequestHandler() {
         const m = url.pathname.match(/^\/api\/followups\/(estimate|review)\/([^/]+)\/sent$/);
         if (req.method === 'POST' && m) {
           return send(...unpack(await api.markFollowUpSent(m[1]!, m[2]!)));
+        }
+      }
+      // §21–24 location intelligence + §29 review loop (all behind the key gate).
+      if (req.method === 'POST' && url.pathname === '/api/location/ping') {
+        return send(...unpack(await api.locationPing((await readJson(req)) as Record<string, unknown>)));
+      }
+      if (req.method === 'POST' && url.pathname === '/api/location/tracking') {
+        const body = (await readJson(req)) as { on?: unknown };
+        return send(...unpack(await api.locationTracking(body.on)));
+      }
+      if (req.method === 'GET' && url.pathname === '/api/location/status') {
+        return send(...unpack(await api.locationStatus()));
+      }
+      if (req.method === 'GET' && url.pathname === '/api/location/day') {
+        return send(...unpack(await api.locationDay(url.searchParams.get('from') ?? '', url.searchParams.get('to') ?? '')));
+      }
+      if (req.method === 'GET' && url.pathname === '/api/review/backlog') {
+        const unreviewedOnly = url.searchParams.get('all') !== '1';
+        return send(...unpack(await api.reviewBacklog(Number(url.searchParams.get('limit') ?? 20), unreviewedOnly)));
+      }
+      {
+        const m = url.pathname.match(/^\/api\/review\/([^/]+)\/reviewed$/);
+        if (req.method === 'POST' && m) {
+          return send(...unpack(await api.markReviewed(m[1]!)));
         }
       }
       // ElevenLabs custom-LLM endpoint (the agent's Server URL points at
