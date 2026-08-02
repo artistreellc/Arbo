@@ -181,6 +181,20 @@ nav button .ico{font-size:22px;line-height:1}
 .routebtn{display:flex;align-items:center;justify-content:center;min-height:52px;border-radius:var(--r-md);
   background:var(--surface);border:1.5px solid var(--forest);color:var(--forest);font-size:15px;font-weight:900;
   text-decoration:none;margin-bottom:14px}
+
+/* Desktop (§9 is phone-first — but the app must hold up on a monitor too) */
+@media (min-width: 900px){
+  main{max-width:1080px;padding:24px 32px}
+  header .hrow{max-width:1080px;margin:0 auto;padding:0 16px}
+  .view.active{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  #view-today.active{display:block;max-width:680px;margin:0 auto}
+  .view .sect, .view .zip-run, .view .state{grid-column:1 / -1}
+  .card{margin-bottom:0}
+  nav{left:50%;transform:translateX(-50%);max-width:720px;border-radius:16px 16px 0 0;
+    border:1px solid var(--border);border-bottom:0;box-shadow:0 -2px 16px rgba(32,38,31,.08)}
+  .sheet{max-width:760px;left:50%;transform:translateX(-50%);border-left:1px solid var(--border);
+    border-right:1px solid var(--border)}
+}
 </style>
 </head>
 <body>
