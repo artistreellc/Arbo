@@ -396,3 +396,19 @@ every DB endpoint 500'd while presence-only /health stayed green. Fix:
 repo-root vercel.json sets git.deploymentEnabled=false (git pushes no longer
 deploy this project; the private file-tree upload remains the only deploy
 path, D41/D46), and the known-good build was redeployed on top.
+
+### The deep app shipped (§9/#36) — 2026-08-03 early hours
+After Mike's honest verdict on the thin 3-tab UI, the app grew into the
+brief's shape in one sitting: Book tab (every property + coming-due merged),
+the twin sheet ("know this customer instantly" — history, trees, permits,
+correspondence), tap-to-call-back with CALL BACK accents on
+missed/abandoned/voicemail leads, one-tap qualify/spam, Calls tab (§29
+backlog + mark-reviewed), Route-the-day button, then a §9 design pass
+(warm paper palette, native serif display type, calmed badges — the
+self-containment test correctly rejected an external font) and a desktop
+layout (Mike reviews on a monitor). Deployed + verified live:
+dpl_7j7LrtvWDfmQZQ2fU7DgFi8ciUym — and the report confirms Mike attached
+arborgrow.app to the project: the app now serves on his own domain.
+Still open from §9/6B: permit packet builder + tree-labeling map, photos
+in the twin, installable PWA wrapper, spoken-brief button (needs the
+ElevenLabs key).
