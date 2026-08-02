@@ -1,11 +1,12 @@
 # Deploys main to Railway via `railway up` (D43) — no Railway GitHub App
-# needed: the action pushes the checkout up itself, authenticated by a Railway
+# needed: CI pushes the checkout up itself, authenticated by a Railway
 # PROJECT token. Until the RAILWAY_TOKEN secret exists the job skips green, so
 # pushes never go red over missing deploy credentials.
 #
-# One-time setup: Railway dashboard → project `arbor` → Settings → Tokens →
-# create a project token, then GitHub → Settings → Secrets and variables →
-# Actions → new secret RAILWAY_TOKEN.
+# The official @railway/cli from npm is invoked directly (D49): the previous
+# third-party wrapper action broke upstream — its Docker image piped Railway's
+# install script into plain `sh`, which chokes on the script's bash-only
+# syntax. Fewer moving parts we don't control.
 
 name: Deploy to Railway
 
@@ -30,8 +31,13 @@ jobs:
         if: env.RAILWAY_TOKEN == ''
         run: echo "RAILWAY_TOKEN not configured — add it in repo Settings → Secrets → Actions to enable deploys."
 
+      - uses: actions/setup-node@v4
+        if: env.RAILWAY_TOKEN != ''
+        with:
+          node-version: 22
+
       - name: Deploy to Railway
         if: env.RAILWAY_TOKEN != ''
-        uses: jzeuzs/action-railway@v1.1.4
-        with:
-          railway_token: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          npm install -g @railway/cli
+          railway up --service arbor-server --detach
