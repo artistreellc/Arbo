@@ -185,13 +185,65 @@ nav button .ico{font-size:22px;line-height:1}
   background:var(--surface);border:1.5px solid var(--forest);color:var(--forest);font-size:15px;font-weight:900;
   text-decoration:none;margin-bottom:14px}
 
+/* ---- §9 HUD instruments: mission control, not a feed ---- */
+.hud{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.tile{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);
+  padding:10px 12px 8px;box-shadow:var(--shadow-card);position:relative;overflow:hidden;
+}
+.tile b{display:block;font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  font-size:28px;font-weight:800;line-height:1.05;color:var(--ink)}
+.tile span{display:block;font-size:10px;font-weight:900;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--muted);margin-top:3px}
+.tile.accent b{color:var(--canopy)}
+.tile.hot{border-color:var(--emergency)}
+.tile.hot b{color:var(--emergency)}
+.tile.warn{border-color:var(--warning)}
+.tile.warn b{color:var(--warning)}
+.tile.ok-t b{color:var(--ok)}
+.tile::after{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--forest);opacity:.6}
+.tile.hot::after{background:var(--emergency)}
+.tile.warn::after{background:var(--warning)}
+.hud .wide{grid-column:1 / -1}
+.panel-title{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:900;
+  letter-spacing:.16em;color:var(--canopy);text-transform:uppercase;margin:18px 0 8px}
+.panel-title::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--border),transparent)}
+.loop-card{border-left:4px solid var(--warning)}
+.loop-card.urgent{border-left-color:var(--emergency)}
+.loop-kind{font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+.loop-card.urgent .loop-kind{color:var(--emergency)}
+.hudbtn{display:flex;align-items:center;justify-content:center;min-height:50px;border-radius:var(--r-md);
+  background:var(--surface);border:1.5px solid var(--border);color:var(--canopy);font-size:14px;
+  font-weight:900;letter-spacing:.06em;text-decoration:none;cursor:pointer;width:100%;margin-bottom:10px}
+/* Yard check (§6J2 — internal instrument) */
+#yard .field{margin-bottom:10px}
+#yard label{display:block;font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+#yard input,#yard select{width:100%;min-height:50px;border:1px solid var(--border);border-radius:var(--r-md);
+  background:var(--surface);color:var(--ink);font-size:17px;padding:0 12px;
+  font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace}
+#yard .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.verdict{border-radius:var(--r-md);padding:14px;margin-top:14px;border:1.5px solid var(--border);background:var(--surface)}
+.verdict .vline{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:15px;
+  display:flex;justify-content:space-between;padding:3px 0}
+.verdict .vhead{font-size:20px;font-weight:900;letter-spacing:.08em;margin-bottom:8px}
+.verdict.v-on{border-color:var(--ok)}.verdict.v-on .vhead{color:var(--ok)}
+.verdict.v-below{border-color:var(--warning)}.verdict.v-below .vhead{color:var(--warning)}
+.verdict.v-lose{border-color:var(--emergency)}.verdict.v-lose .vhead{color:var(--emergency)}
+.verdict .drv{font-size:13px;color:var(--muted);margin-top:8px;line-height:1.5}
+.internal-tag{font-size:10px;font-weight:900;letter-spacing:.14em;color:var(--muted);
+  text-transform:uppercase;margin-top:10px;opacity:.8}
+
 /* Desktop (§9 is phone-first — but the app must hold up on a monitor too) */
 @media (min-width: 900px){
   main{max-width:1080px;padding:24px 32px}
   header .hrow{max-width:1080px;margin:0 auto;padding:0 16px}
   .view.active{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
-  #view-today.active{display:block;max-width:680px;margin:0 auto}
-  .view .sect, .view .zip-run, .view .state{grid-column:1 / -1}
+  #view-today.active{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  #view-today .hud{grid-column:1 / -1;grid-template-columns:repeat(6,1fr)}
+  #view-today .hud .wide{grid-column:span 2}
+  .view .sect, .view .zip-run, .view .state, .view .panel-title,
+  .view .storm, .view .storm-muted, .view .routebtn, .view .hudbtn{grid-column:1 / -1}
+  #view-today > div:first-child{grid-column:1 / -1}
   .card{margin-bottom:0}
   nav{left:50%;transform:translateX(-50%);max-width:720px;border-radius:16px 16px 0 0;
     border:1px solid var(--border);border-bottom:0;box-shadow:0 -2px 16px rgba(0,0,0,.5)}
@@ -234,6 +286,36 @@ nav button .ico{font-size:22px;line-height:1}
     <div id="twin-title"></div>
   </div>
   <div id="twin-body"></div>
+</div>
+
+<div id="yard" class="sheet">
+  <div class="sheet-head">
+    <button id="yard-close" aria-label="Close">&#10005;</button>
+    <div id="twin-title-yard" class="brand" style="font-size:18px">YARD CHECK</div>
+  </div>
+  <div class="field">
+    <label for="y-type">Job type</label>
+    <select id="y-type">
+      <option value="removal">Removal ($1,000/hr target)</option>
+      <option value="pruning">Pruning ($700/hr target)</option>
+      <option value="other">Other</option>
+    </select>
+  </div>
+  <div class="grid2">
+    <div class="field"><label for="y-hours">Truck-to-truck hrs</label><input id="y-hours" type="number" step="0.25" inputmode="decimal" placeholder="4"></div>
+    <div class="field"><label for="y-crew">Crew size</label><input id="y-crew" type="number" inputmode="numeric" placeholder="5"></div>
+  </div>
+  <div class="grid2">
+    <div class="field"><label for="y-price">Quote $</label><input id="y-price" type="number" inputmode="decimal" placeholder="4500"></div>
+    <div class="field"><label for="y-labor">Loaded $/man-hr</label><input id="y-labor" type="number" inputmode="decimal" placeholder="45"></div>
+  </div>
+  <div class="grid2">
+    <div class="field"><label for="y-equip">Equipment $ (opt.)</label><input id="y-equip" type="number" inputmode="decimal"></div>
+    <div class="field"><label for="y-dump">Dump fees $ (opt.)</label><input id="y-dump" type="number" inputmode="decimal"></div>
+  </div>
+  <button id="y-go" class="actbtn" style="width:100%">Run the number</button>
+  <div id="y-out"></div>
+  <div class="internal-tag">Internal instrument — never quoted to a customer (§6J2.5)</div>
 </div>
 
 <nav>
@@ -373,20 +455,54 @@ async function renderToday() {
     return;
   }
   const s = brief.summary;
-  const chips = el('div', 'chips');
-  const chip = (label, n, alert) => {
-    const c = el('span', 'chip' + (alert && n > 0 ? ' alert' : ''));
-    c.appendChild(el('b', '', String(n)));
-    c.appendChild(document.createTextNode(label));
-    return c;
+  // §9 HUD: the day as instruments — one glance, biggest number wins.
+  const hud = el('div', 'hud');
+  const tile = (n, label, cls) => {
+    const t = el('div', 'tile' + (cls ? ' ' + cls : ''));
+    t.appendChild(el('b', '', String(n)));
+    t.appendChild(el('span', '', label));
+    return t;
   };
-  chips.appendChild(chip('stops', s.totalStops));
-  if (s.jobs) chips.appendChild(chip('jobs', s.jobs));
-  if (s.estimates) chips.appendChild(chip('estimates', s.estimates));
-  if (s.firstTimers) chips.appendChild(chip('first-timers', s.firstTimers));
-  if (s.redFlagCount) chips.appendChild(chip('red flags', s.redFlagCount, true));
-  if (s.emergencies) chips.appendChild(chip('emergencies', s.emergencies, true));
-  v.appendChild(chips);
+  hud.appendChild(tile(s.totalStops, 'stops', 'accent'));
+  hud.appendChild(tile(s.jobs || 0, 'jobs'));
+  hud.appendChild(tile(s.estimates || 0, 'estimates'));
+  const loopTile = tile('–', 'open loops');
+  const dueTile = tile('–', 'coming due');
+  const agentTile = tile('–', 'agent runs');
+  hud.appendChild(loopTile);
+  hud.appendChild(dueTile);
+  hud.appendChild(agentTile);
+  if (s.redFlagCount) hud.appendChild(tile(s.redFlagCount, 'red flags', 'hot wide'));
+  if (s.emergencies) hud.appendChild(tile(s.emergencies, 'emergencies', 'hot wide'));
+  v.appendChild(hud);
+  const yardBtn = el('button', 'hudbtn', '⚙ Yard check — run a number');
+  yardBtn.addEventListener('click', openYard);
+  v.appendChild(yardBtn);
+  const loopsPanel = el('div');
+  v.appendChild(loopsPanel);
+  const setTile = (t, n, cls) => {
+    t.querySelector('b').textContent = String(n);
+    if (cls) t.classList.add(cls);
+  };
+  // Each instrument fills independently; a dead feed shows '–', never a fake 0.
+  api('/api/queue').then((q) => {
+    setTile(loopTile, q.open.length, q.open.some(o => o.severity === 'urgent') ? 'hot' : (q.open.length ? 'warn' : 'ok-t'));
+    if (q.open.length) {
+      loopsPanel.appendChild(el('div', 'panel-title', 'Open loops — silence is never success'));
+      for (const o of q.open.slice(0, 3)) loopsPanel.appendChild(loopCard(o));
+      if (q.open.length > 3) {
+        const more = el('button', 'hudbtn', 'All ' + q.open.length + ' open loops →');
+        more.addEventListener('click', () => switchTab('followups'));
+        loopsPanel.appendChild(more);
+      }
+    }
+  }).catch(() => {});
+  api('/api/properties').then((p) => {
+    setTile(dueTile, (p.comingDue || []).length, (p.comingDue || []).length ? 'warn' : 'ok-t');
+  }).catch(() => {});
+  api('/api/agents/runs?limit=5').then((r) => {
+    setTile(agentTile, r.runs.length, r.runs.some(x => x.status === 'error') ? 'warn' : 'ok-t');
+  }).catch(() => {});
 
   if (s.zipRun && s.zipRun.length) {
     const zr = el('div', 'zip-run');
@@ -399,6 +515,7 @@ async function renderToday() {
     v.appendChild(state('Nothing on the books today', 'New bookings land here automatically.'));
     return;
   }
+  v.appendChild(el('div', 'panel-title', "Today's run"));
   // §9 route view: the whole day, one tap, in the maps app you already use.
   {
     const addrs = brief.stops.map(s => s.address + ', ' + s.city + ', VA').filter(Boolean);
@@ -437,6 +554,60 @@ async function renderToday() {
     v.appendChild(c);
   }
 }
+
+// ---------- Open loops (§1E backup brain: what the day left behind) ----------
+const LOOP_LABEL = {
+  estimate_went_quiet: 'Estimate went quiet',
+  won_but_never_booked: 'Won — never booked',
+  job_never_closed: 'Job never closed out',
+  callback_still_open: 'Callback still open',
+};
+function loopCard(o) {
+  const c = el('div', 'card loop-card' + (o.severity === 'urgent' ? ' urgent' : ''));
+  c.appendChild(el('div', 'loop-kind', (o.severity === 'urgent' ? '⚠ ' : '') + (LOOP_LABEL[o.kind] || o.kind)));
+  c.appendChild(el('div', 'scope', o.line));
+  return c;
+}
+
+// ---------- Yard check (§6J2: the pricing instrument, internal only) ----------
+function openYard() { $('yard').classList.add('show'); }
+$('yard-close').addEventListener('click', () => $('yard').classList.remove('show'));
+$('y-go').addEventListener('click', async () => {
+  const out = $('y-out');
+  out.replaceChildren();
+  const num = (id) => { const x = Number($(id).value); return Number.isFinite(x) && $(id).value !== '' ? x : undefined; };
+  const body = {
+    jobType: $('y-type').value,
+    truckToTruckHours: num('y-hours'),
+    crewSize: num('y-crew'),
+    quotedPrice: num('y-price'),
+    loadedLaborPerManHour: num('y-labor'),
+    equipmentCost: num('y-equip'),
+    dumpFees: num('y-dump'),
+  };
+  let r;
+  try {
+    r = await api('/api/estimating/check', { method: 'POST', body });
+  } catch (e) {
+    out.appendChild(el('div', 'errline', e.code === 400 ? 'Fill in hours, crew, quote, and labor rate.' : 'Could not run the check — try again.'));
+    return;
+  }
+  const box = el('div', 'verdict ' + (r.verdict === 'ON_TARGET' ? 'v-on' : r.verdict === 'BELOW_TARGET' ? 'v-below' : 'v-lose'));
+  box.appendChild(el('div', 'vhead', r.verdict === 'ON_TARGET' ? '✓ ON TARGET' : r.verdict === 'BELOW_TARGET' ? '△ BELOW TARGET' : '✕ LOSES MONEY'));
+  const line = (k, val) => {
+    const d = el('div', 'vline');
+    d.appendChild(el('span', '', k));
+    d.appendChild(el('span', '', val));
+    return d;
+  };
+  box.appendChild(line('effective rate', '$' + Math.round(r.effectiveRatePerHr) + '/hr vs $' + r.targetRatePerHr));
+  box.appendChild(line('all-in cost', '$' + Math.round(r.allInCost)));
+  box.appendChild(line('margin', '$' + Math.round(r.margin)));
+  box.appendChild(line('day at this pace', '$' + Math.round(r.dayFloorEquivalent)));
+  box.appendChild(line('leakage load', '$' + Math.round(r.leakageLoad) + (r.leakageBasis === 'derived' ? ' (from actuals)' : ' (8% default)')));
+  if (r.drivers.length) box.appendChild(el('div', 'drv', r.drivers.join(' · ')));
+  out.appendChild(box);
+});
 
 // ---------- Leads ----------
 async function renderLeads() {
@@ -704,6 +875,15 @@ async function renderFollowUps() {
       : 'Could not load follow-ups. Pull refresh to retry.'));
     return;
   }
+  // §1E open loops lead the Queue: the things the day silently dropped.
+  const loopsSlot = el('div');
+  v.appendChild(loopsSlot);
+  api('/api/queue').then((qq) => {
+    if (!qq.open.length) return;
+    loopsSlot.appendChild(el('div', 'panel-title', 'Open loops — silence is never success'));
+    for (const o of qq.open) loopsSlot.appendChild(loopCard(o));
+  }).catch(() => {});
+  v.appendChild(el('div', 'panel-title', 'Recommended sends'));
   const note = el('div', 'zip-run');
   note.appendChild(document.createTextNode('Arbo recommends — nothing sends without you.'));
   v.appendChild(note);
