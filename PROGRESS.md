@@ -357,3 +357,26 @@ live: /health 200 db:true; /api/forecast 200 `{"due":[],"basis":"general
 growth cycles — recommend a look, never a diagnosis"}` (empty until tree
 service dates accumulate — by design); /api/followups 200 with both
 honesty flags false. The centerpiece is live; it compounds from here.
+
+### Phase 5 live: inbox monitor + calendar sync running on a schedule (2026-08-02)
+First backfill sweep (14-day window) executed per docs/OPS_SWEEP.md:
+40 lead-inbox threads → 36 leads (1 flagged out-of-area, never dropped),
+24 deduped contacts, 4 non-lead reports labeled; 0 new city mails;
+calendar → 8 booked jobs upserted (keyed on calendar_event_id), 5 events
+skipped-and-counted, payment-reminder color respected. DB: lead 1→37,
+contact 0→24, job 0→8, property 0→10. Hourly Routine
+`trig_01YcQqopGmrwJMfwEEtuA3L9` now re-runs the sweep (2-day windows,
+self-binding to the ops session; PII never in chat, counts only; its prompt
+self-checks connector availability and reports honestly if a firing lacks
+tools). Rule-review note from run 1: short name+phone calendar events may
+be estimate visits — the estimate/job title heuristic in OPS_SWEEP.md
+deserves tightening once Mike confirms his conventions.
+
+### Railway deploy path fixed (2026-08-02)
+Mike added RAILWAY_TOKEN; every run then failed INSIDE the vendor action
+(jzeuzs/action-railway: its Docker image pipes Railway's installer into
+plain `sh`; the script's bash-only substitution dies, exit 2 — before our
+code runs). deploy-railway.yml now installs the official @railway/cli and
+runs `railway up --service arbor-server --detach` directly (D49-in-D43
+spirit: fewer third-party moving parts). Run #17 green on GitHub;
+Railway-side build verification via /health follows.
