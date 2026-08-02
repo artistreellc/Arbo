@@ -415,6 +415,7 @@ const FU_LABEL = {
   review_request: ['REVIEW ASK', 'b-cool'],
   no_show_saver: ['NO-SHOW SAVE', 'b-hot'],
   seasonal_outreach: ['SEASONAL', 'b-src'],
+  growth_outreach: ['COMING DUE', 'b-repeat'],
 };
 async function renderFollowUps() {
   const v = $('view-followups');
@@ -448,18 +449,21 @@ async function renderFollowUps() {
     if (a.includeProofOfInsurance) b.appendChild(badge('+ PROOF OF INSURANCE', 'b-verify'));
     c.appendChild(b);
     // "I sent it" — the only way the cadence advances (ARBOR never marks its
-    // own recommendations done).
-    const kind = a.type === 'review_request' ? 'review' : 'estimate';
-    const btn = el('button', 'actbtn', 'Mark sent ✓');
-    btn.addEventListener('click', async () => {
-      btn.disabled = true;
-      try {
-        await api('/api/followups/' + kind + '/' + a.targetId + '/sent', { method: 'POST', body: {} });
-        btn.textContent = 'Recorded';
-        btn.className = 'actbtn done';
-      } catch { btn.disabled = false; }
-    });
-    c.appendChild(btn);
+    // own recommendations done). Only estimate/review items have a cadence to
+    // advance; seasonal + growth nudges are one-shot suggestions.
+    if (a.type === 'estimate_follow_up' || a.type === 'no_show_saver' || a.type === 'review_request') {
+      const kind = a.type === 'review_request' ? 'review' : 'estimate';
+      const btn = el('button', 'actbtn', 'Mark sent ✓');
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+          await api('/api/followups/' + kind + '/' + a.targetId + '/sent', { method: 'POST', body: {} });
+          btn.textContent = 'Recorded';
+          btn.className = 'actbtn done';
+        } catch { btn.disabled = false; }
+      });
+      c.appendChild(btn);
+    }
     v.appendChild(c);
   }
   if (q.suppressed.length) {

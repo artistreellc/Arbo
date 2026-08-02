@@ -10,6 +10,7 @@ import { buildMorningBrief, briefToSpeech, type MorningBrief, type StopInput } f
 import { buildFollowUpQueue, buildSeasonalOutreach, type EstimateState, type JobState, type PastCustomer } from '../ops/followUps.js';
 import { flagStopsAtRisk, isWorkStopping, type AlertsProvider } from '../ops/stormWatch.js';
 import { assessRunningLate, detectVisits, withinWorkingHours, type LocationPing, type GeoStop } from '../ops/locationIntel.js';
+import { buildDueProperties, buildGrowthOutreach, type GrowthTarget } from '../ops/growthForecast.js';
 import type { TtsClient } from '../voice/elevenlabsTts.js';
 import { scoreLead, type LeadQualityResult } from '../reception/leadQuality.js';
 import { integrationStatus } from '../env.js';
@@ -65,6 +66,9 @@ export interface DataSource {
   /** §29 review-loop backlog. */
   conversations?(limit: number, unreviewedOnly: boolean): Promise<unknown[]>;
   markReviewed?(conversationId: string): Promise<void>;
+  /** §6 predictive layer: the twin's trees with service history + contact consent facts. */
+  growthTargets?(): Promise<GrowthTarget[]>;
+  saveTreeForecast?(treeId: string, dueFromIso: string): Promise<void>;
 }
 
 export interface ApiGeoStop {
@@ -196,6 +200,18 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       // §19 — pre-storm nudges join the queue only when real weather is coming.
       // A dead feed just omits them (honest: absence of nudges is not a claim),
       // flagged so the app can say so.
+      // §6 growth outreach: due properties join the queue through the same
+      // gates. Auxiliary like seasonal — a failure omits nudges and says so.
+      let growthUnavailable = false;
+      if (source.growthTargets) {
+        try {
+          const growth = buildGrowthOutreach(legal, await source.growthTargets(), now);
+          queue.due.push(...growth.due);
+          queue.suppressed.push(...growth.suppressed);
+        } catch {
+          growthUnavailable = true;
+        }
+      }
       let seasonalUnavailable = false;
       if (extras.alerts && source.pastCustomers) {
         try {
@@ -215,7 +231,29 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
           seasonalUnavailable = true;
         }
       }
-      return { status: 200, body: { ...queue, seasonalUnavailable } };
+      return { status: 200, body: { ...queue, seasonalUnavailable, growthUnavailable } };
+    },
+
+    /**
+     * GET /api/forecast — §6: every property with a tree in its due/overdue
+     * window, worst first. Computing here also writes each due tree's
+     * next_due_forecast back to the twin (the Phase-1 column, filled at last).
+     */
+    async forecast(now = new Date()): Promise<ApiResult> {
+      if (!source.ready() || !source.growthTargets) return { status: 503, body: { error: 'db_not_configured' } };
+      const due = buildDueProperties(await source.growthTargets(), now);
+      if (source.saveTreeForecast) {
+        for (const p of due) {
+          for (const f of p.forecasts) {
+            try {
+              await source.saveTreeForecast(f.treeId, f.dueFromIso.slice(0, 10));
+            } catch {
+              // Write-through is bookkeeping; the forecast answer stands without it.
+            }
+          }
+        }
+      }
+      return { status: 200, body: { due, basis: 'general growth cycles — recommend a look, never a diagnosis' } };
     },
 
     /** GET /api/brief/audio — the §3.17 SPOKEN brief (MP3). 503 until the TTS key lands. */

@@ -751,3 +751,85 @@ export async function markConversationReviewed(id: string): Promise<void> {
   const res = await db.from('conversation_log').update({ reviewed: true }).eq('id', id);
   if (res.error) throw res.error;
 }
+
+// ---------------------------------------------------------------------------
+// §6 Predictive Property Intelligence: the twin's trees with real service
+// history, plus the property's best contact (from its latest completed job)
+// with the §4 consent facts the outreach gate needs.
+// ---------------------------------------------------------------------------
+
+export interface GrowthTargetRow {
+  propertyId: string;
+  address: string;
+  city: string | null;
+  contactId: string | null;
+  name: string | null;
+  consentSource: string | null;
+  optedOut: boolean | null;
+  trees: Array<{ id: string; species: string | null; size: string | null; last_service_date: string | null }>;
+}
+
+export async function listGrowthTargets(): Promise<GrowthTargetRow[]> {
+  const db = getDb();
+  const trees = await db
+    .from('tree')
+    .select('id, species, size, last_service_date, property:property_id (id, address, city)')
+    .not('last_service_date', 'is', null)
+    .limit(2000);
+  if (trees.error) throw trees.error;
+  type TreeRow = {
+    id: string;
+    species: string | null;
+    size: string | null;
+    last_service_date: string | null;
+    property: { id: string; address: string; city: string | null } | null;
+  };
+  const byProperty = new Map<string, GrowthTargetRow>();
+  for (const t of trees.data as unknown as TreeRow[]) {
+    if (!t.property) continue;
+    let row = byProperty.get(t.property.id);
+    if (!row) {
+      row = {
+        propertyId: t.property.id,
+        address: t.property.address,
+        city: t.property.city,
+        contactId: null,
+        name: null,
+        consentSource: null,
+        optedOut: null,
+        trees: [],
+      };
+      byProperty.set(t.property.id, row);
+    }
+    row.trees.push({ id: t.id, species: t.species, size: t.size, last_service_date: t.last_service_date });
+  }
+  if (byProperty.size === 0) return [];
+  // Best contact per property: whoever the latest completed/paid job was for.
+  const jobs = await db
+    .from('job')
+    .select('property_id, completed_at, contact:contact_id (id, name, consent_source, opted_out)')
+    .in('property_id', [...byProperty.keys()])
+    .in('status', ['completed', 'paid'])
+    .order('completed_at', { ascending: false, nullsFirst: false });
+  if (jobs.error) throw jobs.error;
+  type JobRow = {
+    property_id: string;
+    contact: { id: string; name: string | null; consent_source: string | null; opted_out: boolean } | null;
+  };
+  for (const j of jobs.data as unknown as JobRow[]) {
+    const row = byProperty.get(j.property_id);
+    if (!row || row.contactId || !j.contact) continue;
+    row.contactId = j.contact.id;
+    row.name = j.contact.name;
+    row.consentSource = j.contact.consent_source;
+    row.optedOut = j.contact.opted_out;
+  }
+  return [...byProperty.values()];
+}
+
+/** Write-through of the computed forecast into the Phase-1 column (D12 closes here). */
+export async function setTreeForecast(treeId: string, dueFromDate: string): Promise<void> {
+  const db = getDb();
+  const res = await db.from('tree').update({ next_due_forecast: dueFromDate, updated_at: new Date().toISOString() }).eq('id', treeId);
+  if (res.error) throw res.error;
+}

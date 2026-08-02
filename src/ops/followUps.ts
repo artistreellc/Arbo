@@ -52,7 +52,7 @@ export interface JobState {
   suppressed?: boolean;
 }
 
-export type FollowUpType = 'estimate_follow_up' | 'review_request' | 'no_show_saver' | 'seasonal_outreach';
+export type FollowUpType = 'estimate_follow_up' | 'review_request' | 'no_show_saver' | 'seasonal_outreach' | 'growth_outreach';
 
 export interface FollowUpAction {
   type: FollowUpType;

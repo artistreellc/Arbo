@@ -28,6 +28,8 @@ import {
   appendConversationTurn,
   listConversations,
   markConversationReviewed,
+  listGrowthTargets,
+  setTreeForecast,
 } from './db/repositories.js';
 import { createCensusGeocoder } from './permitting/gis/geocode.js';
 import { createElevenLabsTts } from './voice/elevenlabsTts.js';
@@ -186,6 +188,20 @@ export function createLiveSource(): DataSource {
     // §29 review loop.
     conversations: (limit, unreviewedOnly) => listConversations(limit, unreviewedOnly),
     markReviewed: (id) => markConversationReviewed(id),
+    // §6 predictive layer over the twin.
+    async growthTargets() {
+      return (await listGrowthTargets()).map((r) => ({
+        propertyId: r.propertyId,
+        address: r.address,
+        city: r.city,
+        contactId: r.contactId,
+        ...(r.name != null ? { name: r.name } : {}),
+        consentOnFile: r.consentSource !== null,
+        suppressed: r.optedOut ?? false,
+        trees: r.trees.map((t) => ({ id: t.id, species: t.species, size: t.size, lastServiceIso: t.last_service_date })),
+      }));
+    },
+    saveTreeForecast: (id, dueFrom) => setTreeForecast(id, dueFrom),
   };
 }
 
@@ -308,6 +324,9 @@ export function createArborRequestHandler() {
       }
       if (req.method === 'GET' && url.pathname === '/api/location/day') {
         return send(...unpack(await api.locationDay(url.searchParams.get('from') ?? '', url.searchParams.get('to') ?? '')));
+      }
+      if (req.method === 'GET' && url.pathname === '/api/forecast') {
+        return send(...unpack(await api.forecast()));
       }
       if (req.method === 'GET' && url.pathname === '/api/review/backlog') {
         const unreviewedOnly = url.searchParams.get('all') !== '1';
