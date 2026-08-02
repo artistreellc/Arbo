@@ -3,7 +3,7 @@
 // have gone quiet. It never sends anything and it never sets a price.
 //
 // Four laws this module carries, all as CODE and not prose:
-//   §3  Arbo NEVER prices. An invoice amount is the figure the CUSTOMER already
+//   §3  Arbo NEVER prices. (OWNER RULING R3 — docs/OWNER_RULINGS.md.) An invoice amount is the figure the CUSTOMER already
 //       agreed to on the signed estimate. No agreed figure on file → NO draft,
 //       and the reason is named. Arbo does not "estimate" what to bill.
 //   §4.8 The late fee is capped at 5%. Virginia makes the 20% figure that

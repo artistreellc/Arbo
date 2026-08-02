@@ -44,8 +44,9 @@ export interface PropertyRow {
  */
 export async function upsertProperty(input: UpsertPropertyInput): Promise<PropertyRow> {
   const parsed = parseAddress(input.address, input.city);
-  // A city we can work is accepted even when we are not advertising there —
-  // rejecting it here silently binned a lead Mike would have taken.
+  // OWNER RULING R1 (docs/OWNER_RULINGS.md): a city we can work is accepted
+  // even when we are not advertising there. Rejecting it here silently binned
+  // a lead Mike would have taken. Do not restore the hard reject.
   const city = parsed.city ?? parsed.offFocusCity;
   if (!city) throw new OutOfServiceAreaError(input.address);
 

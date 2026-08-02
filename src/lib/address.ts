@@ -83,6 +83,10 @@ export function isServiceCity(city: string | undefined | null): boolean {
  * distinction matters because Arbo used to hard-REJECT these addresses at
  * intake, which threw away a real lead for a job Mike would happily take.
  *
+ * OWNER RULING R1 — see docs/OWNER_RULINGS.md. DO NOT "fix" this by adding
+ * Suffolk to SERVICE_CITIES or by making serviceCityForZip resolve a Suffolk
+ * ZIP: both would let Suffolk inherit another city's permit rules.
+ *
  * They are deliberately NOT ServiceCity: the four core cities each have a
  * permit ruleset behind them, and screening a Suffolk property against
  * Virginia Beach rules would produce a confident, wrong answer. Off-focus

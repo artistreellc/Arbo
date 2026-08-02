@@ -41,6 +41,7 @@ export function createLiveLeadSink(options: LiveLeadSinkOptions = {}): LeadSink 
         // contact = potentially new work = a fresh clearance cycle. A prior
         // approval stays on its job's own permit row; it never silently
         // extends to new work (fail-closed, §6B.3).
+        // OWNER RULING R1 (docs/OWNER_RULINGS.md).
         // A city with NO permit ruleset must not be screened against another
         // city's rules — that produces a confident wrong answer, which is
         // worse than no answer. Suffolk (workable, off marketing focus) lands

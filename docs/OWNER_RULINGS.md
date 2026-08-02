@@ -1,0 +1,135 @@
+# Owner rulings — DO NOT "FIX" THESE
+
+Mike owns this business. Several things in this codebase look wrong to a
+reader who only has the brief, and are right because of how Art-is-Tree
+actually operates. Every one of them below was a real correction: the code
+did the "obvious" thing, and the obvious thing was costing money or effort.
+
+**If you are auditing and something here looks like a bug: read the ruling
+first, then ask Mike. Do not revert it.** A ruling is only superseded by Mike
+saying so, and the new ruling gets appended here with a date.
+
+Each entry names the file(s) that carry the rule, so a grep from the code
+lands here.
+
+---
+
+## R1 — Suffolk is a MARKETING boundary, not a licensing one
+**Ruling: 2026-08-02.** Mike: *"we're just not advertising there for the
+season, too much work closer to home."*
+
+**Why it looks wrong:** the app is built around four cities — Virginia Beach,
+Norfolk, Chesapeake, Portsmouth — and Suffolk sits outside them.
+
+**What was actually wrong:** the four-city area was being enforced as a HARD
+LIMIT. `upsertProperty` threw `OutOfServiceAreaError` on a Suffolk address,
+so the lead was binned at intake. Not flagged, not queued — gone. For work
+Mike would happily take.
+
+**The rule now:** Suffolk is *workable* and *off marketing focus*. It is
+accepted, flagged, and never auto-rejected. It is deliberately NOT promoted
+to a core service city, because each core city has a permit ruleset behind
+it and screening a Suffolk property against Virginia Beach rules would give a
+confident wrong answer on a compliance surface. Off-focus cities report
+"no permit ruleset on file — verify with the city" instead.
+
+**Do not:** add Suffolk to `SERVICE_CITIES`, or make `serviceCityForZip`
+resolve a Suffolk ZIP. Both would let Suffolk inherit another city's permit
+rules through the back door.
+
+*Carried by:* `src/lib/address.ts` (`OFF_FOCUS_CITIES`), `src/db/repositories.ts`
+(`upsertProperty`), `src/reception/leadSink.ts`, migration `0015`.
+
+---
+
+## R2 — The calendar IS Google Calendar. Do not rebuild it.
+**Ruling: 2026-08-02, given twice.** Mike: *"You take the Google Calendar and
+plant it into the app simple / Why do you make everything insanely
+complicated."*
+
+**Why it looks wrong:** the app has a `calendar_event` mirror in the database
+and a `GET /api/calendar` endpoint, so a reader assumes the UI should render
+from the mirror. An `<iframe>` looks lazy.
+
+**What was actually wrong:** I built a custom week-grid off the mirror. Mike
+did not want a second calendar to maintain; he wanted his calendar, in the
+app.
+
+**The rule now:** the Calendar tab is an `<iframe>` of Google Calendar. Mike
+reads AND edits in Google's real UI. Arbo never writes to Google. The mirror
+still exists because the agents and the Morning Brief read it — it is not a
+user surface.
+
+**Do not:** replace the iframe with a rendered view "for consistency".
+
+*Carried by:* `src/app/index.html` (Calendar tab), `test/appUi.test.ts`.
+
+---
+
+## R3 — Arbo never sets a price. The number always originates with a human.
+**Standing rule (§3), reinforced by how the money loop is built.**
+
+**Why it looks wrong:** `POST /api/invoices` ignores an `amount` in the
+request body, and a completed job with no `agreed_amount` refuses to produce
+an invoice draft. Looks like a missing feature.
+
+**The rule now:** the invoice amount is copied verbatim from
+`estimate.agreed_amount`, which a human types after the signed estimate. No
+agreed figure → no draft, and the reason is shown. The crew door carries no
+money at all: a crew-filed change order has NO amount, and the office prices
+it.
+
+**Do not:** "helpfully" derive a price from the yard-check estimator, from
+past jobs, or from OCR. Summing figures a human already agreed to is fine —
+that is arithmetic. Producing a new number is not.
+
+*Carried by:* `src/ops/invoicing.ts`, `src/ops/changeOrders.ts`,
+`src/server/api.ts` (`createInvoice`, `crewChangeOrder`).
+
+---
+
+## R4 — Mike handles the leads. Arbo does not ingest them yet.
+**Ruling: 2026-08-02.** Mike: *"I already took care of this you need to not
+[store] anything until you've watched the system for a week or 2."*
+
+**Why it looks wrong:** `docs/OPS_SWEEP.md` describes a sweep that ingests
+leads, and the classifier is fully built.
+
+**The rule now:** scheduled sweeps run READ-ONLY. They scan and report issues
+— unmatched lead sources, calendar drift, data-integrity problems — and write
+nothing. No lead rows, no Gmail labels, no calendar edits. The classifier
+work continues, because the point is that the app can SEE every channel; the
+storing comes later, on Mike's word.
+
+**Do not:** re-enable ingestion because the runbook's Step A says to.
+
+---
+
+## R5 — Opus is the brain
+**Owner decision (§8A.2), re-affirmed.** Agents run on `claude-opus-5`. Do not
+downgrade an agent to a cheaper model for cost reasons; that is Mike's call,
+not an optimisation to make quietly.
+
+*Carried by:* `src/agents/*` (`modelUsed`), verified in `agent_run`.
+
+---
+
+## R6 — AR is iOS-first: RealityKit + ARKit + LiDAR
+**Ruling: 2026-08-02 (D51).** Resolves the brief's own §6B.4i vs §6T.4
+conflict. Both camera tools build on Apple's stack for real depth occlusion.
+Crew AR phones are iPhone 12 Pro+. The Expo/React Native surface remains the
+cross-platform app for everything non-AR. Android AR waits.
+
+---
+
+## Open — Mike has not ruled yet
+
+- **Friday questionnaire length: 10 or 15 questions.** Built PARAMETERISED
+  (`defaultQuestionnaireConfig.questionCount`) so either answer is a config
+  change, not a rewrite.
+- **Doc-scan tool** (`docs/DOC_SCAN_TOOL_SPEC.md`). Proceeding on two stated
+  defaults unless Mike says otherwise: OCR *proposes* the total on the confirm
+  screen and never writes it (so Arbo cannot price from a photo), and a
+  scanned address matching no existing property is HELD for Mike to match
+  rather than creating a possibly-duplicate twin. See
+  `docs/DOC_SCAN_RECONCILIATION.md`.
