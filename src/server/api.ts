@@ -88,6 +88,8 @@ export interface DataSource {
   agentRuns?(limit: number): Promise<unknown[]>;
   /** §8A.6b: fire-and-forget event emission (must never break a write). */
   emit?(type: string, payload: Record<string, unknown>): Promise<boolean>;
+  /** §3.22: Mike's Google Calendar, mirrored — the app's calendar surface. */
+  calendarEvents?(fromIso: string, toIso: string): Promise<unknown[]>;
 }
 
 export interface ApiGeoStop {
@@ -558,6 +560,27 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       });
       if (source.emit) await source.emit('leakage.logged', { id: created.id, kind });
       return { status: 200, body: { ok: true, id: created.id } };
+    },
+
+    /**
+     * GET /api/calendar?from=ISO&to=ISO — THE CALENDAR. These are Mike's own
+     * Google Calendar events (mirrored hourly, his manual moves win — §3.22);
+     * Arbo never creates a calendar of its own and never writes to his.
+     */
+    async calendar(fromIso: string, toIso: string): Promise<ApiResult> {
+      if (!source.ready() || !source.calendarEvents) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!fromIso || !toIso || Number.isNaN(Date.parse(fromIso)) || Number.isNaN(Date.parse(toIso))) {
+        return { status: 400, body: { error: 'bad_window' } };
+      }
+      return {
+        status: 200,
+        body: {
+          events: await source.calendarEvents(fromIso, toIso),
+          calendarId: 'artistreeofvirginia@gmail.com',
+          source: 'google_calendar_mirror',
+          readOnly: true,
+        },
+      };
     },
 
     /** GET /api/agents/runs — §8A.6g audit visibility: what the agents did. */

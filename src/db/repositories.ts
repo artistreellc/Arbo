@@ -1032,3 +1032,61 @@ export async function listAgentRuns(limit = 20): Promise<unknown[]> {
   if (res.error) throw res.error;
   return res.data ?? [];
 }
+
+// ============================================================================
+// Calendar surface (§3.22 / §6M2.3) — the app shows MIKE'S Google Calendar,
+// not a schedule of its own. These rows are the mirror the hourly sweep keeps
+// in step with Google (his manual moves win, always); each carries its
+// calendar_event_id so the app can deep-link straight into the real event.
+// ============================================================================
+export interface CalendarEventRow {
+  id: string;
+  kind: 'estimate' | 'job';
+  timeIso: string | null;
+  name: string | null;
+  address: string | null;
+  city: string | null;
+  zip: string | null;
+  scope: string | null;
+  status: string | null;
+  propertyId: string | null;
+  calendarEventId: string | null;
+}
+
+export async function listCalendarEvents(fromIso: string, toIso: string): Promise<CalendarEventRow[]> {
+  const db = getDb();
+  const [est, jobs] = await Promise.all([
+    db.from('estimate')
+      .select('id, scheduled_slot, outcome, property_id, property:property_id(address, city, zip), contact:contact_id(name)')
+      .gte('scheduled_slot', fromIso).lt('scheduled_slot', toIso),
+    db.from('job')
+      .select('id, scheduled_for, status, materials, calendar_event_id, property_id, property:property_id(address, city, zip), contact:contact_id(name)')
+      .gte('scheduled_for', fromIso).lt('scheduled_for', toIso),
+  ]);
+  if (est.error) throw est.error;
+  if (jobs.error) throw jobs.error;
+  type Joined = {
+    id: string; scheduled_slot?: string; scheduled_for?: string;
+    outcome?: string; status?: string; materials?: string | null;
+    calendar_event_id?: string | null; property_id: string | null;
+    property: { address: string; city: string; zip: string | null } | null;
+    contact: { name: string | null } | null;
+  };
+  const map = (r: Joined, kind: 'estimate' | 'job'): CalendarEventRow => ({
+    id: r.id,
+    kind,
+    timeIso: r.scheduled_slot ?? r.scheduled_for ?? null,
+    name: r.contact?.name ?? null,
+    address: r.property?.address ?? null,
+    city: r.property?.city ?? null,
+    zip: r.property?.zip ?? null,
+    scope: r.materials ?? null,
+    status: r.status ?? r.outcome ?? null,
+    propertyId: r.property_id,
+    calendarEventId: r.calendar_event_id ?? null,
+  });
+  return [
+    ...((est.data ?? []) as unknown as Joined[]).map((r) => map(r, 'estimate')),
+    ...((jobs.data ?? []) as unknown as Joined[]).map((r) => map(r, 'job')),
+  ].sort((a, b) => String(a.timeIso ?? '').localeCompare(String(b.timeIso ?? '')));
+}

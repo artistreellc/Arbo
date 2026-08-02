@@ -38,6 +38,7 @@ import {
   leakageWindow,
   createLeakageEvent,
   listAgentRuns,
+  listCalendarEvents,
 } from './db/repositories.js';
 import { createCensusGeocoder } from './permitting/gis/geocode.js';
 import { createElevenLabsTts } from './voice/elevenlabsTts.js';
@@ -257,6 +258,7 @@ export function createLiveSource(): DataSource {
     // §8A.6g audit surface + §8A.6b bus.
     agentRuns: (limit) => listAgentRuns(limit),
     emit: (type, payload) => emitSafe(type, payload, 'server'),
+    calendarEvents: (from, to) => listCalendarEvents(from, to),
   };
 }
 
@@ -421,6 +423,10 @@ export function createArborRequestHandler() {
       // §6J2.4 leakage line: log a repair/damage event from the field.
       if (req.method === 'POST' && url.pathname === '/api/leakage') {
         return send(...unpack(await api.logLeakage((await readJson(req)) as Record<string, unknown>)));
+      }
+      // THE CALENDAR — Mike's Google Calendar, mirrored and read-only.
+      if (req.method === 'GET' && url.pathname === '/api/calendar') {
+        return send(...unpack(await api.calendar(url.searchParams.get('from') ?? '', url.searchParams.get('to') ?? '')));
       }
       // §8A.6g: what the agents did, straight from the audit log.
       if (req.method === 'GET' && url.pathname === '/api/agents/runs') {

@@ -106,13 +106,15 @@ nav{
   border-top:1px solid var(--border);padding-bottom:env(safe-area-inset-bottom);z-index:10;
 }
 nav button{
-  flex:1;min-height:56px;border:0;background:none;font-size:15px;font-weight:700;
+  flex:1 1 0;min-width:0;min-height:56px;border:0;background:none;font-size:12px;font-weight:700;
   color:var(--muted);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0;
 }
+nav button .navpill span:last-child,nav button{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 nav button.active{color:#fff}
 nav button.active .navpill{background:var(--forest);color:#fff}
-nav button .navpill{display:flex;flex-direction:column;align-items:center;gap:2px;border-radius:12px;padding:6px 14px;color:var(--muted)}
-nav button .ico{font-size:22px;line-height:1}
+nav button .navpill{display:flex;flex-direction:column;align-items:center;gap:2px;border-radius:12px;padding:6px 8px;color:var(--muted);max-width:100%}
+nav button .ico{font-size:20px;line-height:1}
+@media (min-width:420px){nav button{font-size:14px}nav button .navpill{padding:6px 12px}}
 
 
 /* Key overlay */
@@ -233,6 +235,31 @@ nav button .ico{font-size:22px;line-height:1}
 .internal-tag{font-size:10px;font-weight:900;letter-spacing:.14em;color:var(--muted);
   text-transform:uppercase;margin-top:10px;opacity:.8}
 
+/* ---- Calendar (§3.22): Mike's Google Calendar, in the app ---- */
+.cal-head{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.cal-head button{min-width:48px;min-height:48px;border:1px solid var(--border);border-radius:var(--r-md);
+  background:var(--surface);color:var(--canopy);font-size:20px;font-weight:800;cursor:pointer}
+.cal-range{flex:1;font-size:15px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ink)}
+.cal-src{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);
+  margin-bottom:12px}
+.cal-day{margin-bottom:14px}
+.cal-daylabel{display:flex;align-items:baseline;gap:8px;font-size:13px;font-weight:900;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted);padding:6px 0;border-bottom:1px solid var(--border);margin-bottom:8px}
+.cal-day.today .cal-daylabel{color:var(--canopy)}
+.cal-day.today .cal-daylabel::after{content:'TODAY';font-size:10px;background:var(--forest);color:#fff;
+  border-radius:var(--r-sm);padding:2px 6px;letter-spacing:.1em}
+.cal-empty{font-size:14px;color:var(--muted);opacity:.7;padding:4px 0 10px}
+.cal-ev{display:flex;gap:12px;align-items:flex-start;background:var(--surface);border:1px solid var(--border);
+  border-left:4px solid var(--forest);border-radius:var(--r-md);padding:12px 14px;margin-bottom:8px;
+  cursor:pointer;box-shadow:var(--shadow-card)}
+.cal-ev.est{border-left-color:var(--canopy)}
+.cal-ev .t{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:15px;font-weight:800;
+  color:var(--canopy);white-space:nowrap;min-width:78px}
+.cal-ev .body{flex:1;min-width:0}
+.cal-ev .who{font-size:16px;font-weight:800;line-height:1.25}
+.cal-ev .where{font-size:14px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis}
+.cal-ev .gcal{color:var(--info);font-size:12px;font-weight:800;text-decoration:none;white-space:nowrap}
+
 /* Desktop (§9 is phone-first — but the app must hold up on a monitor too) */
 @media (min-width: 900px){
   main{max-width:1080px;padding:24px 32px}
@@ -286,6 +313,7 @@ nav button .ico{font-size:22px;line-height:1}
 <main>
   <div id="view-today" class="view active"></div>
   <div id="view-leads" class="view"></div>
+  <div id="view-cal" class="view"></div>
   <div id="view-book" class="view"></div>
   <div id="view-followups" class="view"></div>
   <div id="view-calls" class="view"></div>
@@ -332,6 +360,7 @@ nav button .ico{font-size:22px;line-height:1}
 <nav>
   <button id="tab-today" class="active"><span class="navpill"><span class="ico">&#9728;</span>Today</span></button>
   <button id="tab-leads"><span class="navpill"><span class="ico">&#9993;</span>Leads</span></button>
+  <button id="tab-cal"><span class="navpill"><span class="ico">&#128197;</span>Calendar</span></button>
   <button id="tab-book"><span class="navpill"><span class="ico">&#127794;</span>Book</span></button>
   <button id="tab-followups"><span class="navpill"><span class="ico">&#8634;</span>Queue</span></button>
   <button id="tab-calls"><span class="navpill"><span class="ico">&#9742;</span>Calls</span></button>
@@ -689,6 +718,86 @@ async function renderLeads() {
   }
 }
 
+// ---------- Calendar (§3.22): MIKE'S Google Calendar, rendered in the app.
+// Arbo has no calendar of its own and never writes to his — this mirrors the
+// Art-is-Tree calendar and deep-links every event back to the real thing.
+let calWeekOffset = 0;
+const DAY_FMT = { weekday: 'short', month: 'short', day: 'numeric' };
+function weekStart(offsetWeeks) {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - d.getDay() + offsetWeeks * 7); // Sunday-start
+  return d;
+}
+async function renderCalendar() {
+  const v = $('view-cal');
+  v.replaceChildren();
+  const start = weekStart(calWeekOffset);
+  const end = new Date(start); end.setDate(end.getDate() + 7);
+
+  const head = el('div', 'cal-head');
+  const prev = el('button', '', '\u2039');
+  const next = el('button', '', '\u203A');
+  const today = el('button', '', '\u25CF');
+  prev.title = 'Previous week'; next.title = 'Next week'; today.title = 'This week';
+  prev.onclick = () => { calWeekOffset--; renderCalendar(); };
+  next.onclick = () => { calWeekOffset++; renderCalendar(); };
+  today.onclick = () => { calWeekOffset = 0; renderCalendar(); };
+  const rangeLabel = start.toLocaleDateString([], { month: 'long', day: 'numeric' }) + ' \u2013 ' +
+    new Date(end.getTime() - 86400000).toLocaleDateString([], { month: 'long', day: 'numeric' });
+  head.appendChild(prev);
+  head.appendChild(el('div', 'cal-range', rangeLabel));
+  head.appendChild(today);
+  head.appendChild(next);
+  v.appendChild(head);
+  v.appendChild(el('div', 'cal-src', '\u25CF Your Google Calendar \u2014 Art-is-Tree'));
+
+  let data;
+  try {
+    data = await api('/api/calendar?from=' + start.toISOString() + '&to=' + end.toISOString());
+  } catch (e) {
+    if (e.code === 401) return showKeywall();
+    v.appendChild(state('Calendar unavailable', e.code === 503
+      ? 'Database not connected \u2014 your calendar shows the moment it is.'
+      : 'Could not load the calendar. Pull refresh to retry.'));
+    return;
+  }
+  const byDay = new Map();
+  for (const ev of data.events) {
+    if (!ev.timeIso) continue;
+    const key = new Date(ev.timeIso).toDateString();
+    byDay.set(key, [...(byDay.get(key) || []), ev]);
+  }
+  const todayKey = new Date().toDateString();
+  for (let i = 0; i < 7; i++) {
+    const day = new Date(start); day.setDate(day.getDate() + i);
+    const key = day.toDateString();
+    const box = el('div', 'cal-day' + (key === todayKey ? ' today' : ''));
+    box.appendChild(el('div', 'cal-daylabel', day.toLocaleDateString([], DAY_FMT)));
+    const evs = byDay.get(key) || [];
+    if (!evs.length) box.appendChild(el('div', 'cal-empty', 'Open'));
+    for (const ev of evs) {
+      const row = el('div', 'cal-ev' + (ev.kind === 'estimate' ? ' est' : ''));
+      row.appendChild(el('div', 't', fmtTime(ev.timeIso)));
+      const body = el('div', 'body');
+      body.appendChild(el('div', 'who', (ev.name || 'Unnamed') + (ev.kind === 'estimate' ? ' \u00b7 estimate' : '')));
+      if (ev.address) body.appendChild(el('div', 'where', ev.address + (ev.city ? ', ' + ev.city : '')));
+      if (ev.scope) body.appendChild(el('div', 'where', ev.scope));
+      row.appendChild(body);
+      if (ev.calendarEventId) {
+        const g = el('a', 'gcal', 'Google \u2197');
+        g.href = 'https://calendar.google.com/calendar/u/0/r/eventedit/' + ev.calendarEventId;
+        g.target = '_blank'; g.rel = 'noopener';
+        g.addEventListener('click', (e) => e.stopPropagation());
+        row.appendChild(g);
+      }
+      if (ev.propertyId) row.addEventListener('click', () => openTwin(ev.propertyId, ev.address || 'Property'));
+      box.appendChild(row);
+    }
+    v.appendChild(box);
+  }
+}
+
 // ---------- The Book (§6/#36: every property, tap into its twin) ----------
 async function renderBook() {
   const v = $('view-book');
@@ -961,16 +1070,16 @@ $('keygo').addEventListener('click', async () => {
 $('keyinput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('keygo').click(); });
 
 function switchTab(which) {
-  for (const t of ['today', 'leads', 'book', 'followups', 'calls']) {
+  for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls']) {
     $('view-' + t).classList.toggle('active', which === t);
     $('tab-' + t).classList.toggle('active', which === t);
   }
 }
-for (const t of ['today', 'leads', 'book', 'followups', 'calls']) {
+for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls']) {
   $('tab-' + t).addEventListener('click', () => switchTab(t));
 }
 
-function refreshAll() { renderToday(); renderLeads(); renderBook(); renderFollowUps(); renderCalls(); }
+function refreshAll() { renderToday(); renderLeads(); renderCalendar(); renderBook(); renderFollowUps(); renderCalls(); }
 $('refresh').addEventListener('click', refreshAll);
 
 $('dateline').textContent = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
