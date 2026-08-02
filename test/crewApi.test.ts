@@ -131,3 +131,83 @@ describe('gated briefing over the API (§6V.4 / §4.6)', () => {
     expect(recorded!.payableMinutes).toBeLessThanOrEqual(15);
   });
 });
+
+describe('GET /api/crew/reference (§6U) — the handler cannot overstate itself', () => {
+  const entry = (over: Record<string, unknown> = {}) => ({
+    id: 'e1', techniqueName: 'Natural crotch rigging', skillLevel: 5,
+    howTo: 'Run the line over a strong union.', pros: ['No hardware'], cons: ['Friction'],
+    wontWorkWhen: 'Included bark in the union.', sourceLink: null,
+    standardRefs: ['Z133 §8.1'], published: true, ...over,
+  });
+  const libSource = (over: Partial<DataSource> = {}): DataSource => ({
+    ready: () => true,
+    stopsBetween: async () => [],
+    newLeads: async () => [],
+    referenceEntries: async () => [entry()],
+    ...over,
+  });
+  const UUID = '11111111-1111-4111-8111-111111111111';
+
+  it('returns published entries with their clause citations', async () => {
+    const res = await createApi(libSource()).crewReference('rigging', '');
+    expect(res.status).toBe(200);
+    const body = res.body as { entries: Array<{ standardRefs: string[] }> };
+    expect(body.entries).toHaveLength(1);
+    expect(body.entries[0]!.standardRefs).toEqual(['Z133 §8.1']);
+  });
+
+  it('holds an unvetted draft back and COUNTS it (§4.7/§1B)', async () => {
+    const api = createApi(libSource({
+      referenceEntries: async () => [entry(), entry({ id: 'e2', published: false })],
+    }));
+    const body = (await api.crewReference('rigging', '')).body as
+      { entries: unknown[]; unpublishedHeld: number };
+    expect(body.entries).toHaveLength(1);
+    expect(body.unpublishedHeld).toBe(1);
+  });
+
+  it('reports skillKnown=false when the level could not be resolved', async () => {
+    // No crew id at all, a non-UUID crew code, a member with no level on file,
+    // and a failed read are all the SAME fact: nothing was checked. Claiming
+    // otherwise turns "unchecked" into "nothing is above your level".
+    const api = createApi(libSource({ crewSkillLevel: async () => 3 }));
+    for (const id of ['', 'CREW-7']) {
+      expect((await api.crewReference('', id)).body).toMatchObject({ skillKnown: false });
+    }
+    const noLevel = createApi(libSource({ crewSkillLevel: async () => null }));
+    expect((await noLevel.crewReference('', UUID)).body).toMatchObject({ skillKnown: false });
+    const broken = createApi(libSource({ crewSkillLevel: async () => { throw new Error('down'); } }));
+    expect((await broken.crewReference('', UUID)).body).toMatchObject({ skillKnown: false });
+  });
+
+  it('an unresolved level never HIDES an entry — it only drops the flag', async () => {
+    const broken = createApi(libSource({ crewSkillLevel: async () => { throw new Error('down'); } }));
+    const body = (await broken.crewReference('rigging', UUID)).body as
+      { entries: Array<{ aboveSkillLevel: boolean }>; skillKnown: boolean };
+    expect(body.entries).toHaveLength(1);
+    expect(body.entries[0]!.aboveSkillLevel).toBe(false);
+    expect(body.skillKnown).toBe(false);
+  });
+
+  it('flags an entry above a KNOWN level', async () => {
+    const api = createApi(libSource({ crewSkillLevel: async () => 2 }));
+    const body = (await api.crewReference('rigging', UUID)).body as
+      { entries: Array<{ aboveSkillLevel: boolean }>; skillKnown: boolean };
+    expect(body.skillKnown).toBe(true);
+    expect(body.entries[0]!.aboveSkillLevel).toBe(true);
+  });
+
+  it('says 503 rather than an empty library when the DB is not configured (§1B)', async () => {
+    const res = await createApi({ ready: () => false, stopsBetween: async () => [], newLeads: async () => [] })
+      .crewReference('rigging', '');
+    expect(res.status).toBe(503);
+  });
+
+  it('never emits money or customer contact on the crew surface (§8C)', async () => {
+    const res = await createApi(libSource()).crewReference('rigging', '');
+    const json = JSON.stringify(res.body).toLowerCase();
+    for (const term of ['price', 'amount', 'invoice', 'phone', 'email']) {
+      expect(json, `crew reference payload leaked "${term}"`).not.toContain(term);
+    }
+  });
+});

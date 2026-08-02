@@ -137,6 +137,72 @@ describe('clock-in question (§6M/§4.6) on the crew door', () => {
   });
 });
 
+describe('reference library on the crew door (§6U)', () => {
+  const html = loadCrewHtml();
+
+  it('searches the crew-scoped library endpoint', () => {
+    expect(html).toContain("'/api/crew/reference?q='");
+    expect(html).toContain('How do I');
+  });
+
+  it('is OUTSIDE the briefing gate — reachable before the day starts', () => {
+    // renderLibrary() runs on boot, not from renderWork(). Somebody who needs
+    // to look a technique up is already standing at the trunk.
+    expect(html).toMatch(/renderLibrary\(\);\s*\n\s*renderNearMiss\(\);/);
+    expect(html).not.toMatch(/GATE\.unlocked[\s\S]{0,200}renderLibrary/);
+  });
+
+  it('cites the clause and never promises the standard itself (§6U.3)', () => {
+    expect(html).toContain('never reprints the standard');
+    expect(html).toContain('verify on site');
+  });
+
+  it('a library it could not read is NEVER drawn as an empty one (§1B)', () => {
+    expect(html).toContain('Library unavailable');
+    expect(html).toContain('That is NOT "nothing on file"');
+  });
+
+  it('separates "nothing matched" from "nothing is in here" (§1B)', () => {
+    expect(html).toContain('Nothing published matches that');
+    expect(html).toContain('Nothing is published in the library yet');
+  });
+
+  it('names entries held back for want of a human sign-off (§4.7)', () => {
+    expect(html).toContain('not yet signed off by a person');
+  });
+
+  it('a technique with no recorded limits is shown as incomplete, not as safe', () => {
+    expect(html).toContain('e.limitsWarning');
+    expect(html).toContain('When this does NOT work');
+    // The absence renders in the loud box, same as a real limit would.
+    expect(html).toMatch(/lib-limits[\s\S]{0,120}limitsWarning/);
+  });
+
+  it('an unknown skill level is stated, never treated as a sign-off', () => {
+    expect(html).toContain('could not read your signed-off level');
+    expect(html).toContain('That is not a sign-off');
+    expect(html).toContain('do not run it until the office signs you off');
+  });
+
+  it('says when the search words were too short to actually search on (§1B)', () => {
+    expect(html).toContain('too short to search on');
+    expect(html).toContain('this is the whole library, not matches');
+  });
+
+  it('will not build an href out of anything but http(s)', () => {
+    // The rest of the page is XSS-safe because it only ever sets textContent.
+    // An href is the one exception, so a stored source link is filtered.
+    expect(html).toMatch(/\/\^https\?:\\\/\\\/\/i\.test\(e\.sourceLink\)/);
+    // And a rejected link is named, not silently dropped (§1B).
+    expect(html).toContain('not a link Arbo will open');
+  });
+
+  it('keeps field-sized targets on the lookup', () => {
+    expect(html).toMatch(/#lib-q\{[^}]*min-height:56px/);
+    expect(html).toMatch(/#lib-go\{[^}]*min-height:56px/);
+  });
+});
+
 describe('arrival record + change order on the job card (§6)', () => {
   const html = loadCrewHtml();
 

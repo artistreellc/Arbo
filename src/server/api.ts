@@ -30,6 +30,7 @@ import {
 import { toCrewFacing, gradeSubmission, type GradableItem } from '../training/grading.js';
 import { buildTrainingBoard, type CrewProfileRow, type GateCompletionRow } from '../training/board.js';
 import { buildAreaReport, buildCampaignReport, type AreaJobFact, type CampaignFact } from '../ops/areaPerformance.js';
+import { searchLibrary, type ReferenceEntry } from '../reference/library.js';
 import {
   assessArrival, draftChangeOrder, splitChangeOrders, ChangeOrderRejected,
   type SiteConditionRecord, type ChangeOrderRow,
@@ -149,6 +150,9 @@ export interface DataSource {
   trainingPool?(): Promise<TrainingItemRef[]>;
   /** Full rows INCLUDING the answer key. Server-side only — never serialised. */
   trainingItems?(ids: string[]): Promise<GradableItem[]>;
+  /** §6U reference library. */
+  referenceEntries?(): Promise<ReferenceEntry[]>;
+  crewSkillLevel?(crewMemberId: string): Promise<number | null>;
   /** §6D/§6N.3 area + campaign performance facts. */
   areaJobFacts?(sinceIso: string): Promise<AreaJobFact[]>;
   campaignFacts?(): Promise<CampaignFact[]>;
@@ -1499,6 +1503,38 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
         status: 200,
         body: { ...areaReport, campaigns, campaignsKnown, windowDays: window, checkedAtIso: new Date().toISOString() },
       };
+    },
+
+    /**
+     * GET /api/crew/reference — §6U. Crew-scoped: only PUBLISHED entries, only
+     * clause citations, and a technique with no recorded limits carries a
+     * warning rather than reading as universally safe.
+     */
+    async crewReference(text: string, crewMemberId: string): Promise<ApiResult> {
+      if (!source.ready() || !source.referenceEntries) return { status: 503, body: { error: 'db_not_configured' } };
+
+      // skillKnown is false whenever the level could NOT be resolved — a bad
+      // crew code, a member with no level on file, or a failed read all land
+      // here. Reporting it as known would turn "nothing was checked" into
+      // "nothing is above your level", which is the §1B lie this whole app
+      // exists to avoid. An unknown level never HIDES an entry; it only drops
+      // the flag.
+      let readerSkillLevel: number | undefined;
+      let skillKnown = false;
+      if (crewMemberId && UUID_RE.test(crewMemberId) && source.crewSkillLevel) {
+        try {
+          const level = await source.crewSkillLevel(crewMemberId);
+          if (level != null) { readerSkillLevel = level; skillKnown = true; }
+        } catch {
+          // Left unknown on purpose — see above.
+        }
+      }
+
+      const result = searchLibrary(await source.referenceEntries(), {
+        text: text || undefined,
+        readerSkillLevel,
+      });
+      return { status: 200, body: { ...result, skillKnown } };
     },
 
     /** GET /api/agents/runs — §8A.6g audit visibility: what the agents did. */

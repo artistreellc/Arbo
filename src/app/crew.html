@@ -123,6 +123,34 @@ main{padding:16px;max-width:640px;margin:0 auto}
   border-radius:999px;background:var(--surface);color:var(--muted);font-size:12px;font-weight:800;
   padding:0 14px;cursor:pointer}
 #whoami .signed{margin-bottom:0}
+/* Reference library (§6U). A crew member holding a saw in one hand gets big
+   targets and short lines. Limits are styled LOUDER than the how-to, because
+   the paragraph that keeps someone out of a bad cut is the one that matters. */
+#library{margin-top:28px}
+#lib-card{border:1px solid var(--border);border-radius:14px;padding:16px;background:var(--surface)}
+#lib-card .why{color:var(--muted);font-size:14px;line-height:1.5;margin-bottom:12px}
+#lib-q{width:100%;min-height:56px;border:1px solid var(--border);border-radius:12px;
+  background:var(--surface-alt);color:var(--ink);font-size:17px;padding:0 14px;font-family:inherit}
+#lib-go{width:100%;min-height:56px;margin-top:12px;border:0;border-radius:12px;
+  background:var(--forest);color:#fff;font-size:17px;font-weight:800;cursor:pointer}
+#lib-go:disabled{opacity:.55}
+#lib-out{margin-top:12px}
+.lib-note{font-size:14px;color:var(--muted);line-height:1.5;margin-bottom:10px}
+.lib-warn{font-size:15px;font-weight:700;color:var(--warning);line-height:1.5;margin-bottom:10px}
+.lib-entry{border:1px solid var(--border);border-left:4px solid var(--forest);border-radius:var(--r-md);
+  padding:14px;margin-top:12px;background:var(--surface-alt)}
+.lib-name{font-size:18px;font-weight:900;line-height:1.3}
+.lib-above{display:inline-block;margin-top:8px;padding:8px 12px;border-radius:var(--r-md);
+  background:#2A1D06;border:1px solid var(--warning);color:#FFD9A0;font-size:14px;font-weight:800;line-height:1.4}
+.lib-how{font-size:16px;line-height:1.55;margin-top:10px;white-space:pre-wrap}
+.lib-sub{font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--muted);margin-top:12px;margin-bottom:4px}
+.lib-li{font-size:15px;line-height:1.5;padding-left:14px;text-indent:-14px}
+.lib-limits{background:#2A0E0C;border:1.5px solid var(--emergency);color:#FFB3AE;
+  border-radius:var(--r-md);padding:12px;margin-top:12px;font-size:15px;font-weight:700;line-height:1.5}
+.lib-clause{font-size:13px;color:var(--muted);font-weight:700;letter-spacing:.04em;margin-top:12px;line-height:1.5}
+.lib-src{display:inline-block;margin-top:10px;color:var(--info);font-size:14px;font-weight:700}
+
 /* Near-miss filing. Deliberately plain and always reachable — a report that
    takes effort is a report that never happens. */
 #nearmiss{margin-top:28px}
@@ -148,6 +176,7 @@ main{padding:16px;max-width:640px;margin:0 auto}
   <div id="gate-slot"></div>
   <div id="quiz"></div>
   <div id="work"></div>
+  <div id="library"></div>
   <div id="nearmiss"></div>
 </main>
 
@@ -553,6 +582,137 @@ function changeOrderButton(jobId) {
   return wrap;
 }
 
+// ---- Reference library (§6U). "How do I do X", answered under the tree.
+// OUTSIDE the briefing gate on purpose: the moment somebody needs to look a
+// technique up is the moment they are already standing at the trunk.
+//
+// Two laws render here rather than living in a doc:
+//   §6U.3 Arbo cites the clause, never the standard's text. What comes back is
+//         a pointer plus "verify on site" — never something to work from.
+//   §1B   A technique with no recorded limits is shown as INCOMPLETE, and a
+//         library Arbo cannot read is NEVER drawn as an empty one.
+function renderLibrary() {
+  const box = $('library');
+  box.replaceChildren();
+  box.appendChild(el('div', 'panel-title', 'How do I…'));
+  const card = el('div');
+  card.id = 'lib-card';
+  card.appendChild(el('div', 'why',
+    'Look up a technique. Arbo gives you the method and the clause to check — '
+    + 'it never reprints the standard, so the book on the truck is still the book.'));
+  const input = document.createElement('input');
+  input.id = 'lib-q';
+  input.placeholder = 'e.g. rigging a heavy limb';
+  input.autocomplete = 'off';
+  card.appendChild(input);
+  const btn = el('button', '', 'Look it up');
+  btn.id = 'lib-go';
+  card.appendChild(btn);
+  const out = el('div');
+  out.id = 'lib-out';
+  card.appendChild(out);
+  box.appendChild(card);
+
+  const run = () => libSearch(input.value.trim(), out, btn);
+  btn.addEventListener('click', run);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') run(); });
+}
+
+async function libSearch(q, out, btn) {
+  out.replaceChildren();
+  btn.disabled = true;
+  let res;
+  try {
+    res = await api('/api/crew/reference?q=' + encodeURIComponent(q)
+      + '&crewMemberId=' + encodeURIComponent(CREW_ID));
+  } catch (e) {
+    // §1B: a library Arbo could not read is not an empty library. Say which
+    // one this is, so nobody concludes there is no guidance on file.
+    out.appendChild(el('div', 'lib-warn', e.code === 503
+      ? 'Library unavailable right now. That is NOT "nothing on file" — ask the office.'
+      : 'Could not search the library. That is NOT "nothing on file" — ask the office.'));
+    btn.disabled = false;
+    return;
+  }
+  btn.disabled = false;
+  const entries = res.entries || [];
+
+  // Everything Arbo could not do goes ABOVE the answers, never underneath.
+  if (res.queryTooShort) {
+    out.appendChild(el('div', 'lib-warn',
+      'Those words were too short to search on — this is the whole library, not matches. Try a longer word.'));
+  }
+  if (res.unpublishedHeld > 0) {
+    out.appendChild(el('div', 'lib-note',
+      res.unpublishedHeld + ' more entr' + (res.unpublishedHeld === 1 ? 'y is' : 'ies are')
+      + ' written but not yet signed off by a person, so they are held back. Ask the office if you need one.'));
+  }
+  if (res.refsDropped > 0) {
+    out.appendChild(el('div', 'lib-note',
+      res.refsDropped + ' reference(s) were withheld for not being a clause citation. Check the book on site.'));
+  }
+  if (res.skillKnown === false) {
+    out.appendChild(el('div', 'lib-note',
+      'Arbo could not read your signed-off level, so nothing below is flagged as above it. That is not a sign-off.'));
+  }
+
+  if (!entries.length) {
+    // "Your words did not match" is an ordinary outcome. "There is nothing in
+    // here at all" is a hole in the library, and reads as the louder one.
+    out.appendChild(res.noMatch
+      ? el('div', 'lib-note', 'Nothing published matches that. Try a different word — and tell the office what you were after.')
+      : el('div', 'lib-warn', 'Nothing is published in the library yet. Ask somebody; do not work it out on the tree.'));
+    return;
+  }
+
+  for (const e of entries) out.appendChild(libEntry(e));
+}
+
+function libEntry(e) {
+  const c = el('div', 'lib-entry');
+  c.appendChild(el('div', 'lib-name', e.techniqueName));
+  if (e.aboveSkillLevel) {
+    c.appendChild(el('div', 'lib-above',
+      '⚠ Above your signed-off level — read it, but do not run it until the office signs you off.'));
+  }
+  c.appendChild(el('div', 'lib-how', e.howTo));
+
+  if ((e.pros || []).length) {
+    c.appendChild(el('div', 'lib-sub', 'Good for'));
+    for (const p of e.pros) c.appendChild(el('div', 'lib-li', '• ' + p));
+  }
+  if ((e.cons || []).length) {
+    c.appendChild(el('div', 'lib-sub', 'Downsides'));
+    for (const p of e.cons) c.appendChild(el('div', 'lib-li', '• ' + p));
+  }
+
+  // The limits are the point of the entry, so they render loudest — and their
+  // ABSENCE renders just as loudly (§1B). A blank here is a gap, not a green light.
+  if (e.wontWorkWhen) {
+    c.appendChild(el('div', 'lib-limits', 'When this does NOT work: ' + e.wontWorkWhen));
+  } else if (e.limitsWarning) {
+    c.appendChild(el('div', 'lib-limits', '⚠ ' + e.limitsWarning));
+  }
+
+  if ((e.standardRefs || []).length) {
+    c.appendChild(el('div', 'lib-clause', 'Per ' + e.standardRefs.join(' · ') + ' — verify on site.'));
+  }
+  // Only ever an http(s) link. textContent makes the rest of this page
+  // XSS-safe by construction, but an href is the one place a stored
+  // 'javascript:' string would still run — so it is filtered, not trusted.
+  if (e.sourceLink && /^https?:\/\//i.test(e.sourceLink)) {
+    const a = el('a', 'lib-src', 'Open the source →');
+    a.href = e.sourceLink;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    c.appendChild(a);
+  } else if (e.sourceLink) {
+    // Not silently dropped: a source Arbo will not open is still a source.
+    c.appendChild(el('div', 'lib-note', 'A source is on file but not a link Arbo will open — ask the office for it.'));
+  }
+  return c;
+}
+
 // ---- Near-miss filing (§6V). Deliberately OUTSIDE the briefing gate: a
 // near miss must be reportable at any moment, including before the day has
 // started. Nothing here records blame, because nothing anywhere in Arbo does.
@@ -655,6 +815,7 @@ function renderWhoAmI() {
 $('dateline').textContent = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
 if (renderWhoAmI()) {
   renderWork();
+  renderLibrary();
   renderNearMiss();
   api('/api/crew/briefing').then(renderGate).catch(() => {
     $('gate-slot').appendChild(el('div', 'state', 'No briefing published for today yet — check with the office.'));

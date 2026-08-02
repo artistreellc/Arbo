@@ -59,6 +59,8 @@ import {
   trainingItemsByIds,
   pendingLessonDrafts,
   crewWithProfiles,
+  referenceEntries,
+  crewSkillLevel,
   areaJobFacts,
   campaignFacts,
   recordSiteCondition,
@@ -330,6 +332,8 @@ export function createLiveSource(): DataSource {
     trainingItems: (ids) => trainingItemsByIds(ids),
     pendingDrafts: () => pendingLessonDrafts(),
     crewProfiles: () => crewWithProfiles(),
+    referenceEntries: () => referenceEntries(),
+    crewSkillLevel: (id) => crewSkillLevel(id),
     areaJobFacts: (since) => areaJobFacts(since),
     campaignFacts: () => campaignFacts(),
     // §6 site conditions + change orders.
@@ -587,6 +591,12 @@ export function createArborRequestHandler() {
         if (req.method === 'POST' && m) {
           return send(...unpack(await api.approveChangeOrder(m[1]!)));
         }
+      }
+      if (req.method === 'GET' && url.pathname === '/api/crew/reference') {
+        return send(...unpack(await api.crewReference(
+          url.searchParams.get('q') ?? '',
+          url.searchParams.get('crewMemberId') ?? '',
+        )));
       }
       if (req.method === 'POST' && url.pathname === '/api/crew/arrival') {
         return send(...unpack(await api.crewArrival((await readJson(req)) as Record<string, unknown>)));

@@ -1973,3 +1973,38 @@ export async function campaignFacts(): Promise<Array<{
     };
   });
 }
+
+/** §6U reference library. Published state is returned so the caller counts held drafts. */
+export async function referenceEntries(): Promise<Array<{
+  id: string; techniqueName: string; skillLevel: number; howTo: string;
+  pros: string[]; cons: string[]; wontWorkWhen: string | null;
+  sourceLink: string | null; standardRefs: string[]; published: boolean;
+}>> {
+  const db = getDb();
+  const res = await db.from('reference_entry')
+    .select('id, technique_name, skill_level, how_to, pros, cons, wont_work_when, source_link, standard_refs, published');
+  if (res.error) throw res.error;
+  return (res.data ?? []).map((r) => ({
+    id: r.id as string,
+    techniqueName: r.technique_name as string,
+    skillLevel: Number(r.skill_level),
+    howTo: r.how_to as string,
+    pros: (r.pros as string[] | null) ?? [],
+    cons: (r.cons as string[] | null) ?? [],
+    wontWorkWhen: (r.wont_work_when as string | null) ?? null,
+    sourceLink: (r.source_link as string | null) ?? null,
+    standardRefs: (r.standard_refs as string[] | null) ?? [],
+    published: r.published as boolean,
+  }));
+}
+
+/** A crew member's competency level, for the above-your-level flag. */
+export async function crewSkillLevel(crewMemberId: string): Promise<number | null> {
+  const db = getDb();
+  const res = await db.from('crew_member')
+    .select('competency_level')
+    .eq('id', crewMemberId)
+    .maybeSingle();
+  if (res.error) throw res.error;
+  return res.data ? Number(res.data.competency_level) : null;
+}
