@@ -14,9 +14,9 @@
 // submissions (lead-form spam arrives from anywhere) are flagged, never
 // silently dropped: §3.7 bias — anything ambiguous stays visible for review.
 
-import { resolveServiceCity, serviceCityForZip, extractZip, type ServiceCity } from '../lib/address.js';
+import { resolveServiceCity, serviceCityForZip, extractZip, parseAddress, type ServiceCity } from '../lib/address.js';
 
-export type LeadMailProvider = 'google_ads_lead_form' | 'callrail_call' | 'callrail_web_form' | 'lsa_call' | 'home_advisor' | 'yelp';
+export type LeadMailProvider = 'google_ads_lead_form' | 'callrail_call' | 'callrail_web_form' | 'lsa_call' | 'home_advisor' | 'yelp' | 'form_submit';
 
 export interface LeadMailInput {
   from: string;
@@ -52,6 +52,8 @@ export interface ExtractedLead {
    * auto-booked as a tree job.
    */
   serviceOffScope?: boolean;
+  /** The form's own urgency answer, verbatim ("Within a week", "Emergency"). */
+  urgency?: string;
 }
 
 export interface LeadMailResult {
@@ -283,6 +285,56 @@ function parseYelp(input: LeadMailInput): LeadMailResult {
   };
 }
 
+/**
+ * FormSubmit — the website contact page (artistreevabeach.com). Observed
+ * fields: name, phone, email, address, serviceNeeded, urgency, message.
+ *
+ * It gives a street address but NO city and NO zip, so the city is whatever
+ * parseAddress can find inside the address string — often nothing. That is
+ * left UNKNOWN and flagged for review rather than assumed local (§1B): the
+ * form is on a public website and anyone can fill it in.
+ */
+function parseFormSubmit(input: LeadMailInput): LeadMailResult {
+  // FormSubmit renders a two-column table; flattened to text the label and
+  // value sit either on one line or on consecutive lines. Accept both.
+  const field = (label: string): string | undefined => {
+    const m = input.body.match(new RegExp(`(?:^|\\n)\\s*${label}\\s*[:\\n]?\\s*(.+)`, 'i'));
+    const v = m?.[1]?.trim();
+    return v && v.toLowerCase() !== 'value' ? v : undefined;
+  };
+  const name = field('name') ?? input.subject.match(/New estimate request from\s+(.+?)(?:\s+[—-]|$)/i)?.[1]?.trim();
+  const phone = field('phone');
+  const email = field('email');
+  const address = field('address');
+  const service = field('serviceNeeded') ?? input.subject.match(/[—-]\s*(.+)$/)?.[1]?.trim();
+  const urgency = field('urgency');
+  const message = field('message');
+
+  // The address line rarely names a city; parseAddress finds one only when it
+  // is actually written there.
+  const parsed = address ? parseAddress(address) : null;
+  const serviceCity = parsed?.city ?? undefined;
+  const zip = parsed?.zip ?? undefined;
+
+  return {
+    isLeadNotification: true,
+    provider: 'form_submit',
+    lead: {
+      name, phone, email, address, zip,
+      city: serviceCity,
+      serviceCity,
+      source: 'Website form',
+      serviceRequested: service,
+      serviceOffScope: offScope(service),
+      urgency,
+      details: [service, urgency ? `Urgency: ${urgency}` : null, message].filter(Boolean).join(' — '),
+    },
+    // No city on the wire: UNKNOWN, not local. A public form takes submissions
+    // from anywhere, which is exactly how the out-of-area spam arrived before.
+    inServiceArea: serviceCity ? true : null,
+  };
+}
+
 export function classifyLeadMail(input: LeadMailInput): LeadMailResult {
   const from = input.from.toLowerCase();
 
@@ -305,6 +357,9 @@ export function classifyLeadMail(input: LeadMailInput): LeadMailResult {
     || from.includes('localservices-noreply@google.com');
   if (isLsaSender && /potential customer/i.test(input.subject)) {
     return parseLsaRequest(input);
+  }
+  if (from.includes('submissions@formsubmit.co') && /New estimate request from/i.test(input.subject)) {
+    return parseFormSubmit(input);
   }
   // HomeAdvisor: marketing mail also comes from homeadvisor.com, so anchor on
   // the lead sender AND the Opportunity subject shape.

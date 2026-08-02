@@ -78,9 +78,16 @@ this document is the spec.
    - Weekly/monthly summaries, "recommendations auto-applied", any
      `learn@callrail.com` marketing → **not a lead**. Label processed, no row.
 
-   > **Still unhandled as of 2026-08-02:** FormSubmit
-   > (`submissions@formsubmit.co`, "New estimate request from …") — the
-   > website contact page. Leave unlabeled and report until a rule exists.
+   - `submissions@formsubmit.co` + subject `New estimate request from <name>
+     — <service>` → **form_submit**, the website contact page. Table fields:
+     name / phone / email / address / serviceNeeded / urgency / message. It
+     gives a street but NO city and NO zip, so `inServiceArea` is UNKNOWN
+     unless the address string itself names a city — a public form takes
+     submissions from anywhere, which is how the out-of-area spam arrived.
+
+   > **All known lead channels now have a rule.** If a lead-shaped message
+   > matches none of them, that is a NEW channel: leave it unlabeled and
+   > report it, exactly as HomeAdvisor, Yelp and FormSubmit were caught.
 3. Ingest (Supabase `execute_sql`, parameter-safe quoting):
    - Contact: match `select id from contact where phones @> array['<E164ish>']`;
      else insert (`name`, `phones`, `consent_source` = `'inbound_call'` for
