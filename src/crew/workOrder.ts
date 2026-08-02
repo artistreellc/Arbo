@@ -57,7 +57,11 @@ export function buildCrewPayload(src: WorkOrderSource): CrewPayload {
         ? 'PERMIT REVIEW NEEDED — check with the office before cutting.'
         : src.permitStatus === 'NO_OVERLAY_VERIFY'
           ? 'No overlay found — still VERIFY with the city before protected work.'
-          : null;
+          // No screen on file (or the lookup failed) is UNKNOWN — on a safety
+          // surface, silence reads as "no concern", which it never is (§6B.3).
+          : src.permitScreenPending
+            ? 'PERMIT STATUS UNKNOWN — no screen on file. Check with the office before protected work.'
+            : null;
 
   return {
     jobId: src.jobId,

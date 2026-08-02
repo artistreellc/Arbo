@@ -41,6 +41,7 @@ import {
   listCalendarEvents,
   listCrewJobs,
   recordBriefingAck,
+  todaysBriefing,
 } from './db/repositories.js';
 import { createCensusGeocoder } from './permitting/gis/geocode.js';
 import { createElevenLabsTts } from './voice/elevenlabsTts.js';
@@ -52,7 +53,7 @@ import { env } from './env.js';
 import { createVoiceLlm } from './voice/anthropicLlm.js';
 import { createElevenLabsBridge, type BridgeRequestBody } from './voice/elevenlabsBridge.js';
 import type { Alerter } from './reception/receptionist.js';
-import { loadAppHtml } from './server/appPage.js';
+import { loadAppHtml, loadCrewHtml } from './server/appPage.js';
 import { emitSafe } from './binder/eventBus.js';
 import { runAgentSweep, startAgentScheduler } from './agents/sweep.js';
 
@@ -263,6 +264,7 @@ export function createLiveSource(): DataSource {
     calendarEvents: (from, to) => listCalendarEvents(from, to),
     crewJobs: (from, to) => listCrewJobs(from, to),
     recordBriefingAck: (input) => recordBriefingAck(input),
+    todaysBriefing: () => todaysBriefing(),
   };
 }
 
@@ -332,6 +334,12 @@ export function createArborRequestHandler() {
       return !hasDb();
     };
     try {
+      // §8C.1 the CREW door. Separate surface, separate shell — a crew phone
+      // never loads the admin cockpit.
+      if (req.method === 'GET' && (url.pathname === '/crew' || url.pathname === '/crew/')) {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+        return res.end(loadCrewHtml());
+      }
       if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/app')) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
         return res.end(loadAppHtml());
@@ -435,6 +443,9 @@ export function createArborRequestHandler() {
       // §6F crew surface — payload is admin-data-free by construction.
       if (req.method === 'GET' && url.pathname === '/api/crew/workorders') {
         return send(...unpack(await api.crewWorkOrders(url.searchParams.get('date') ?? '', url.searchParams.get('briefingId'))));
+      }
+      if (req.method === 'GET' && url.pathname === '/api/crew/briefing') {
+        return send(...unpack(await api.crewBriefing()));
       }
       if (req.method === 'POST' && url.pathname === '/api/crew/briefing/ack') {
         return send(...unpack(await api.ackBriefing((await readJson(req)) as Record<string, unknown>)));

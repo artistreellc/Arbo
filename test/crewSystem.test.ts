@@ -105,3 +105,20 @@ describe('crew work order (§6F/§8C) — admin data excluded by construction', 
     expect(ordered.map((o) => o.routeOrder)).toEqual([1, 2, 3]);
   });
 });
+
+describe('permit UNKNOWN (§6B.3) — silence on a safety surface is not "fine"', () => {
+  it('says UNKNOWN when no screen is on file', () => {
+    const p = buildCrewPayload(src({ permitStatus: null, permitScreenPending: true }));
+    expect(p.permitNote).toMatch(/UNKNOWN/);
+    expect(p.permitNote).toMatch(/check with the office/i);
+  });
+
+  it('a real screen result always outranks the unknown note', () => {
+    const p = buildCrewPayload(src({ permitStatus: 'PERMIT_LIKELY', permitScreenPending: true }));
+    expect(p.permitNote).toMatch(/PERMIT LIKELY/);
+  });
+
+  it('stays silent only when a screen exists and found nothing pending', () => {
+    expect(buildCrewPayload(src({ permitStatus: null, permitScreenPending: false })).permitNote).toBeNull();
+  });
+});

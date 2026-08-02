@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B0D10">
+<title>Arbo Crew — Art-is-Tree</title>
+<style>
+/* §8C.1: one app, two doors. This is the CREW door. Nothing on this page can
+   reach Mike's half — the server payload has no slot for price, tracking, or
+   customer contact, and this page never asks for any. §9 cockpit palette. */
+:root{
+  --forest:#7C3AED; --canopy:#A78BFA; --ink:#E9ECF1; --surface:#15181D;
+  --surface-alt:#0B0D10; --border:#2A2F37; --muted:#98A0AC;
+  --emergency:#FF5A52; --warning:#FFB020; --ok:#37C98B; --info:#5AA9FF;
+  --r-md:10px; --r-lg:16px;
+  --shadow-card:inset 0 1px 0 rgba(255,255,255,.03),0 2px 10px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:17px;line-height:1.4;color:var(--ink);background:var(--surface-alt);
+  padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+header{background:var(--surface-alt);border-bottom:1px solid var(--border);
+  box-shadow:0 1px 0 rgba(124,58,237,.45);padding:14px 16px 12px;
+  padding-top:calc(14px + env(safe-area-inset-top));position:sticky;top:0;z-index:10}
+.brand{font-size:23px;font-weight:900;letter-spacing:.12em}
+.brand small{color:var(--canopy);font-weight:600;font-size:14px;margin-left:8px;letter-spacing:.04em}
+#dateline{font-size:14px;color:var(--muted);margin-top:2px}
+main{padding:16px;max-width:640px;margin:0 auto}
+.panel-title{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:900;
+  letter-spacing:.16em;color:var(--canopy);text-transform:uppercase;margin:18px 0 10px}
+.panel-title::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--border),transparent)}
+
+/* The gate (§6V.4) — the day stays locked until all three land. */
+#gate{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+  padding:16px;margin-bottom:16px;box-shadow:var(--shadow-card)}
+#gate.locked{border-color:var(--warning)}
+#gate.unlocked{border-color:var(--ok)}
+.gate-head{font-size:13px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--warning);margin-bottom:10px}
+#gate.unlocked .gate-head{color:var(--ok)}
+#brief-body{max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r-md);
+  padding:14px;background:var(--surface-alt);font-size:16px;line-height:1.55}
+#brief-body p{margin-bottom:10px}
+#brief-body .clause{font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.06em}
+.ackrow{display:flex;align-items:center;gap:12px;margin-top:14px;min-height:48px}
+.ackrow input{width:26px;height:26px;accent-color:var(--forest);flex:none}
+.ackrow label{font-size:15px;font-weight:700}
+.gate-status{font-size:13px;color:var(--muted);margin-top:8px;min-height:20px}
+#gobtn{width:100%;min-height:60px;margin-top:14px;border:0;border-radius:var(--r-md);
+  background:var(--surface-alt);color:var(--muted);border:1.5px solid var(--border);
+  font-size:19px;font-weight:900;letter-spacing:.14em;cursor:not-allowed}
+#gobtn.ready{background:linear-gradient(180deg,#8B5CF6,#6D28D9);color:#fff;border:0;cursor:pointer;
+  box-shadow:0 4px 18px rgba(124,58,237,.4)}
+#gobtn.done{background:var(--surface);color:var(--ok);border:1.5px solid var(--ok);cursor:default}
+
+/* Work orders */
+.wo{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--forest);
+  border-radius:var(--r-md);padding:16px;margin-bottom:12px;box-shadow:var(--shadow-card)}
+.wo .top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:6px}
+.wo .num{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;
+  border-radius:50%;background:var(--forest);color:#fff;font-size:15px;font-weight:800;flex:none}
+.wo .when{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:16px;
+  font-weight:800;color:var(--canopy);white-space:nowrap}
+.wo .addr{font-size:18px;font-weight:800;line-height:1.3;margin:2px 0}
+.wo .addr a{color:var(--info);text-decoration:none}
+.wo .scope{font-size:15px;color:var(--muted);margin-top:6px}
+.hz{display:flex;align-items:flex-start;gap:8px;background:#2A1D06;border:1px solid var(--warning);
+  color:#FFD9A0;border-radius:var(--r-md);padding:10px 12px;margin-top:10px;font-size:14px;font-weight:700}
+.hz.power{background:#2A0E0C;border-color:var(--emergency);color:#FFB3AE}
+.permit{background:#1D1530;border:1.5px solid var(--forest);color:#D6C7FF;border-radius:var(--r-md);
+  padding:10px 12px;margin-top:10px;font-size:14px;font-weight:700}
+.photos{font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);margin-top:10px}
+.locked-note{text-align:center;padding:36px 20px;color:var(--muted);font-size:16px;
+  background:var(--surface);border:1px dashed var(--border);border-radius:var(--r-lg)}
+.state{text-align:center;padding:40px 24px;color:var(--muted);
+  background:var(--surface);border:1px dashed var(--border);border-radius:var(--r-lg)}
+.state b{display:block;font-size:19px;color:var(--ink);margin-bottom:8px}
+.errline{color:#FF9B95;font-weight:600;margin-top:10px}
+#whoami{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+  padding:16px;margin-bottom:16px;box-shadow:var(--shadow-card)}
+#whoami h2{font-size:15px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--canopy);margin-bottom:6px}
+#whoami p{font-size:15px;color:var(--muted);margin-bottom:12px}
+#whoami input{width:100%;min-height:56px;border:1px solid var(--border);border-radius:var(--r-md);
+  background:var(--surface-alt);color:var(--ink);padding:0 14px;font-size:17px;margin-bottom:10px;
+  font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace}
+#whoami button{width:100%;min-height:52px;border:0;border-radius:var(--r-md);
+  background:linear-gradient(180deg,#8B5CF6,#6D28D9);color:#fff;font-size:16px;font-weight:800;cursor:pointer}
+.signed{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  font-size:13px;color:var(--muted);margin-bottom:14px}
+#whoami .signed button{width:auto;flex:none;min-height:40px;border:1px solid var(--border);
+  border-radius:999px;background:var(--surface);color:var(--muted);font-size:12px;font-weight:800;
+  padding:0 14px;cursor:pointer}
+#whoami .signed{margin-bottom:0}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">ARBO<small>Crew</small></div>
+  <div id="dateline"></div>
+</header>
+<main>
+  <div id="whoami"></div>
+  <div id="gate-slot"></div>
+  <div id="work"></div>
+</main>
+
+<script>
+'use strict';
+// All server text is rendered via textContent — XSS-safe by construction.
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+};
+let KEY = localStorage.getItem('arboCrewKey') || '';
+let CREW_ID = localStorage.getItem('arboCrewId') || '';
+async function api(path, opts) {
+  const res = await fetch(path, {
+    method: (opts && opts.method) || 'GET',
+    headers: Object.assign({ 'content-type': 'application/json' }, KEY ? { 'x-arbor-key': KEY } : {}),
+    body: opts && opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(body.error || 'error'), { code: res.status });
+  return body;
+}
+function fmtTime(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+// ---- The gate (§6V.4). Three conditions; the SERVER decides, not this page.
+const GATE = {
+  content: null,
+  startedAt: new Date().toISOString(),
+  scrolled: false,
+  checked: false,
+  openedMs: Date.now(),
+  unlocked: false,
+};
+
+function renderGate(brief) {
+  GATE.content = brief;
+  const slot = $('gate-slot');
+  slot.replaceChildren();
+  const box = el('div', 'locked');
+  box.id = 'gate';
+  box.appendChild(el('div', 'gate-head', 'Morning safety briefing — required'));
+
+  const body = el('div');
+  body.id = 'brief-body';
+  for (const para of brief.body.split('\n').filter(Boolean)) body.appendChild(el('p', '', para));
+  if (brief.standardRefs && brief.standardRefs.length) {
+    body.appendChild(el('div', 'clause', 'Per ' + brief.standardRefs.join(' · ') + ' — verify on site.'));
+  }
+  body.addEventListener('scroll', () => {
+    if (body.scrollTop + body.clientHeight >= body.scrollHeight - 4) { GATE.scrolled = true; refreshGate(); }
+  });
+  box.appendChild(body);
+
+  const row = el('div', 'ackrow');
+  const cb = document.createElement('input');
+  cb.type = 'checkbox'; cb.id = 'ackbox';
+  cb.addEventListener('change', () => { GATE.checked = cb.checked; refreshGate(); });
+  const lab = el('label', '', 'I read this briefing and understand it.');
+  lab.htmlFor = 'ackbox';
+  row.appendChild(cb); row.appendChild(lab);
+  box.appendChild(row);
+
+  box.appendChild(el('div', 'gate-status', ''))
+    .setAttribute('id', 'gate-status');
+
+  const go = el('button', '', 'GO');
+  go.id = 'gobtn';
+  go.disabled = true;
+  go.addEventListener('click', submitGate);
+  box.appendChild(go);
+  slot.appendChild(box);
+
+  // If the content is short the scroll event never fires — a body that needs
+  // no scrolling counts as scrolled the moment it is on screen.
+  if (body.scrollHeight <= body.clientHeight + 4) GATE.scrolled = true;
+  refreshGate();
+  setInterval(refreshGate, 1000);
+}
+
+function secondsOnScreen() { return Math.floor((Date.now() - GATE.openedMs) / 1000); }
+
+function refreshGate() {
+  if (GATE.unlocked) return;
+  const need = [];
+  if (!GATE.scrolled) need.push('scroll to the bottom');
+  if (!GATE.checked) need.push('tick the box');
+  const required = GATE.requiredSeconds || 10;
+  const left = required - secondsOnScreen();
+  if (left > 0) need.push('read for ' + left + 's more');
+  const status = $('gate-status');
+  if (status) status.textContent = need.length ? 'Still needed: ' + need.join(' · ') : 'Ready — press GO.';
+  const go = $('gobtn');
+  if (go) {
+    const ready = need.length === 0;
+    go.disabled = !ready;
+    go.className = ready ? 'ready' : '';
+  }
+}
+
+async function submitGate() {
+  const go = $('gobtn');
+  go.disabled = true;
+  try {
+    const res = await api('/api/crew/briefing/ack', {
+      method: 'POST',
+      body: {
+        crewMemberId: CREW_ID,
+        content: GATE.content,
+        state: { scrolledToBottom: GATE.scrolled, checkboxTicked: GATE.checked, secondsOnScreen: secondsOnScreen() },
+        startedAtIso: GATE.startedAt,
+        completedAtIso: new Date().toISOString(),
+      },
+    });
+    if (!res.unlocked) {
+      // The server is the authority — if it says not yet, the day stays locked.
+      GATE.requiredSeconds = res.requiredSeconds || 10;
+      $('gate-status').textContent = 'Still needed: ' + (res.missing || []).join(' · ');
+      refreshGate();
+      return;
+    }
+    GATE.unlocked = true;
+    $('gate').className = 'unlocked';
+    document.querySelector('.gate-head').textContent = 'Briefing acknowledged — logged';
+    go.textContent = 'DAY UNLOCKED ✓';
+    go.className = 'done';
+    renderWork();
+  } catch (e) {
+    go.disabled = false;
+    // Name the real reason instead of a generic retry (§1B: never bluff).
+    $('gate-status').textContent = e.code === 400
+      ? 'That sign-off was rejected — check your crew code with the office.'
+      : e.code === 503
+        ? 'Cannot reach the office right now. Your day is not blocked — call it in.'
+        : 'Could not record that — try once more.';
+  }
+}
+
+// ---- Work orders (§6F). Rendered ONLY after the gate passes.
+async function renderWork() {
+  const v = $('work');
+  v.replaceChildren();
+  if (!GATE.unlocked) {
+    v.appendChild(el('div', 'locked-note', 'Your work orders unlock after the safety briefing.'));
+    return;
+  }
+  v.appendChild(el('div', 'panel-title', "Today's work orders"));
+  let data;
+  try {
+    data = await api('/api/crew/workorders');
+  } catch (e) {
+    v.appendChild(el('div', 'state', 'Could not load your work orders. Pull to refresh.'));
+    return;
+  }
+  if (!data.workOrders.length) {
+    const s = el('div', 'state');
+    s.appendChild(el('b', '', 'Nothing scheduled'));
+    s.appendChild(document.createTextNode('Check with the office.'));
+    v.appendChild(s);
+    return;
+  }
+  for (const wo of data.workOrders) {
+    const c = el('div', 'wo');
+    const top = el('div', 'top');
+    const left = el('div');
+    left.appendChild(el('span', 'num', String(wo.routeOrder)));
+    top.appendChild(left);
+    top.appendChild(el('div', 'when', fmtTime(wo.timeIso)));
+    c.appendChild(top);
+    const addr = el('div', 'addr');
+    const a = el('a', '', wo.address + (wo.city ? ', ' + wo.city : ''));
+    a.href = 'https://maps.google.com/?q=' + encodeURIComponent(wo.address + ', ' + wo.city + ', VA');
+    a.target = '_blank'; a.rel = 'noopener';
+    addr.appendChild(a);
+    c.appendChild(addr);
+    if (wo.scope) c.appendChild(el('div', 'scope', wo.scope));
+    for (const h of wo.hazards || []) {
+      c.appendChild(el('div', 'hz' + (h.indexOf('POWER') === 0 ? ' power' : ''), '⚠ ' + h));
+    }
+    if (wo.permitNote) c.appendChild(el('div', 'permit', wo.permitNote));
+    if (wo.requiresBeforeAfterPhotos) {
+      c.appendChild(el('div', 'photos', '📷 Before + after photos required to close this job'));
+    }
+    v.appendChild(c);
+  }
+}
+
+// ---- Identity. The acknowledgment IS the OSHA record, so it must name a
+// real person: without an identity this page asks rather than filing an
+// anonymous sign-off. (Replaced by the §8C Supabase login when that lands.)
+function renderWhoAmI() {
+  const box = $('whoami');
+  box.replaceChildren();
+  if (CREW_ID) {
+    const row = el('div', 'signed');
+    row.appendChild(el('span', '', 'Signed in \u00b7 ' + CREW_ID.slice(0, 8)));
+    const out = el('button', '', 'Not you?');
+    out.addEventListener('click', () => {
+      localStorage.removeItem('arboCrewId');
+      CREW_ID = '';
+      location.reload();
+    });
+    row.appendChild(out);
+    box.appendChild(row);
+    return true;
+  }
+  const h = el('h2', '', 'Who is on this phone?');
+  const p = el('p', '', 'Your briefing sign-off is a safety record — it has to have your name on it. Enter the crew code the office gave you.');
+  const input = document.createElement('input');
+  input.id = 'crewcode';
+  input.placeholder = 'Crew code';
+  input.autocomplete = 'off';
+  const go = el('button', '', 'Start my day');
+  const err = el('div', 'errline', '');
+  go.addEventListener('click', () => {
+    const v = input.value.trim();
+    if (!v) { err.textContent = 'Enter the code from the office.'; return; }
+    localStorage.setItem('arboCrewId', v);
+    location.reload();
+  });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') go.click(); });
+  box.appendChild(h); box.appendChild(p); box.appendChild(input); box.appendChild(go); box.appendChild(err);
+  return false;
+}
+
+$('dateline').textContent = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+if (renderWhoAmI()) {
+  renderWork();
+  api('/api/crew/briefing').then(renderGate).catch(() => {
+    $('gate-slot').appendChild(el('div', 'state', 'No briefing published for today yet — check with the office.'));
+  });
+}
+</script>
+</body>
+</html>

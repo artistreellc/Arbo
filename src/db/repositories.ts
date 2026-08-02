@@ -1183,3 +1183,21 @@ export async function recordBriefingAck(input: {
   if (evt.error) throw evt.error;
   return { trainingEventId: evt.data.id as string, timeEntryId: time.data.id as string };
 }
+
+/** Today's published tailgate briefing (§6M.8). Null when none is published. */
+export async function todaysBriefing(): Promise<{ id: string; body: string; standardRefs: string[] } | null> {
+  const db = getDb();
+  const res = await db.from('training_item')
+    .select('id, body, topic')
+    .eq('type', 'tailgate_brief')
+    .eq('published', true)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (res.error) throw res.error;
+  if (!res.data) return null;
+  const raw = res.data.body as { text?: string; standardRefs?: string[] } | string;
+  const text = typeof raw === 'string' ? raw : raw.text ?? '';
+  const refs = typeof raw === 'string' ? [] : raw.standardRefs ?? [];
+  return { id: res.data.id as string, body: text, standardRefs: refs };
+}

@@ -96,6 +96,8 @@ export interface DataSource {
   /** §6F crew surface: the day's jobs with the site facts a crew may see. */
   crewJobs?(fromIso: string, toIso: string): Promise<CrewJobSource[]>;
   /** §6V.4 gated briefing acknowledgment + its payable time entry (§4.6). */
+  /** §6M.8: today's published tailgate briefing, or null if none. */
+  todaysBriefing?(): Promise<{ id: string; body: string; standardRefs: string[] } | null>;
   recordBriefingAck?(input: {
     crewMemberId: string; itemIds: string[];
     startedAtIso: string; completedAtIso: string; payableMinutes: number;
@@ -639,6 +641,18 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
         status: 200,
         body: { date: day, workOrders: sequenceRoute(sources).map(buildCrewPayload) },
       };
+    },
+
+    /**
+     * GET /api/crew/briefing — today's published tailgate briefing (§6M.8).
+     * Standards are cited BY CLAUSE, never reproduced (§6U.3). 404 when the
+     * office hasn't published one — the crew is told, never given a blank.
+     */
+    async crewBriefing(): Promise<ApiResult> {
+      if (!source.ready() || !source.todaysBriefing) return { status: 503, body: { error: 'db_not_configured' } };
+      const brief = await source.todaysBriefing();
+      if (!brief) return { status: 404, body: { error: 'no_briefing_published' } };
+      return { status: 200, body: brief };
     },
 
     /**
