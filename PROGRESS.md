@@ -350,3 +350,10 @@ Growth nudges join /api/followups through the same §4 gates as seasonal
 honesty on twin-read failure. Also fixed: Mark-sent button now only renders
 on cadence-bearing queue items. The layer compounds automatically: every
 completed job that records tree service dates feeds next season's queue.
+
+### §6 deploy verification (2026-08-02)
+Deployment `dpl_8ZrZNonS2NE2UpNpRQnhUc9sC3me` READY on production. Verified
+live: /health 200 db:true; /api/forecast 200 `{"due":[],"basis":"general
+growth cycles — recommend a look, never a diagnosis"}` (empty until tree
+service dates accumulate — by design); /api/followups 200 with both
+honesty flags false. The centerpiece is live; it compounds from here.
