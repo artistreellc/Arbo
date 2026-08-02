@@ -1766,3 +1766,125 @@ export async function gateCompletionsSince(sinceIso: string): Promise<Array<{
     completedAtIso: (r.completed_at as string | null) ?? null,
   }));
 }
+
+// ---------------------------------------------------------------------------
+// §6 site conditions + change orders. Arbo records what a human agreed to; it
+// never prices a change and never approves one.
+// ---------------------------------------------------------------------------
+
+export async function recordSiteCondition(input: {
+  jobId: string; arrivalIso: string; photoFiles: string[];
+  preexistingNotes?: string; groundCondition?: string; craneDecision?: string; documentedBy?: string;
+}): Promise<{ id: string }> {
+  const db = getDb();
+  const res = await db.from('site_condition_record').insert({
+    job_id: input.jobId,
+    arrival_timestamp: input.arrivalIso,
+    photo_files: input.photoFiles,
+    preexisting_notes: input.preexistingNotes ?? null,
+    ground_condition: input.groundCondition ?? null,
+    crane_decision: input.craneDecision ?? null,
+    documented_by: input.documentedBy ?? null,
+  }).select('id').single();
+  if (res.error) throw res.error;
+  return { id: res.data.id as string };
+}
+
+/** The arrival record for a job, or null when nobody documented one. */
+export async function siteConditionForJob(jobId: string): Promise<{
+  jobId: string; arrivalIso: string; photoFiles: string[];
+  preexistingNotes?: string; groundCondition?: string; craneDecision?: string; documentedBy?: string;
+} | null> {
+  const db = getDb();
+  const res = await db.from('site_condition_record')
+    .select('job_id, arrival_timestamp, photo_files, preexisting_notes, ground_condition, crane_decision, documented_by')
+    .eq('job_id', jobId)
+    .order('arrival_timestamp', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (res.error) throw res.error;
+  if (!res.data) return null;
+  return {
+    jobId: res.data.job_id as string,
+    arrivalIso: res.data.arrival_timestamp as string,
+    photoFiles: (res.data.photo_files as string[] | null) ?? [],
+    preexistingNotes: (res.data.preexisting_notes as string | null) ?? undefined,
+    groundCondition: (res.data.ground_condition as string | null) ?? undefined,
+    craneDecision: (res.data.crane_decision as string | null) ?? undefined,
+    documentedBy: (res.data.documented_by as string | null) ?? undefined,
+  };
+}
+
+export async function createChangeOrder(input: {
+  jobId: string; description: string; amount: number; agreedBy: string; agreedAtIso: string;
+}): Promise<{ id: string }> {
+  const db = getDb();
+  const res = await db.from('change_order').insert({
+    job_id: input.jobId,
+    description: input.description,
+    amount: input.amount,
+    agreed_by: input.agreedBy,
+    agreed_at: input.agreedAtIso,
+    // Approval and billing are separate human acts — never set here.
+    approved: false,
+    invoiced: false,
+  }).select('id').single();
+  if (res.error) throw res.error;
+  return { id: res.data.id as string };
+}
+
+/** Every change order not yet invoiced, across open jobs. */
+export async function openChangeOrders(): Promise<Array<{
+  id: string; jobId: string; description: string; amount: number | null;
+  approved: boolean; invoiced: boolean; agreedAtIso: string;
+}>> {
+  const db = getDb();
+  const res = await db.from('change_order')
+    .select('id, job_id, description, amount, approved, invoiced, agreed_at')
+    .eq('invoiced', false)
+    .order('agreed_at', { ascending: true });
+  if (res.error) throw res.error;
+  return (res.data ?? []).map((r) => ({
+    id: r.id as string,
+    jobId: r.job_id as string,
+    description: r.description as string,
+    amount: r.amount === null ? null : Number(r.amount),
+    approved: r.approved as boolean,
+    invoiced: r.invoiced as boolean,
+    agreedAtIso: r.agreed_at as string,
+  }));
+}
+
+/** Mike approves a change order. Returns false when there is no such row. */
+export async function approveChangeOrder(id: string): Promise<boolean> {
+  const db = getDb();
+  const res = await db.from('change_order')
+    .update({ approved: true })
+    .eq('id', id)
+    .eq('invoiced', false)
+    .select('id');
+  if (res.error) throw res.error;
+  return (res.data ?? []).length > 0;
+}
+
+/** Approved, priced, uninvoiced change orders for ONE job. */
+export async function billableChangeOrdersForJob(jobId: string): Promise<Array<{ id: string; amount: number }>> {
+  const db = getDb();
+  const res = await db.from('change_order')
+    .select('id, amount')
+    .eq('job_id', jobId)
+    .eq('approved', true)
+    .eq('invoiced', false);
+  if (res.error) throw res.error;
+  return (res.data ?? [])
+    .filter((r) => r.amount !== null && Number(r.amount) > 0)
+    .map((r) => ({ id: r.id as string, amount: Number(r.amount) }));
+}
+
+/** Mark change orders billed. Called only after the invoice row exists. */
+export async function markChangeOrdersInvoiced(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const db = getDb();
+  const res = await db.from('change_order').update({ invoiced: true }).in('id', ids);
+  if (res.error) throw res.error;
+}

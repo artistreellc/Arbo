@@ -59,6 +59,13 @@ import {
   trainingItemsByIds,
   pendingLessonDrafts,
   crewWithProfiles,
+  recordSiteCondition,
+  siteConditionForJob,
+  createChangeOrder,
+  openChangeOrders,
+  approveChangeOrder,
+  billableChangeOrdersForJob,
+  markChangeOrdersInvoiced,
   gateCompletionsSince,
   publishLesson,
   trainingProfile,
@@ -321,6 +328,14 @@ export function createLiveSource(): DataSource {
     trainingItems: (ids) => trainingItemsByIds(ids),
     pendingDrafts: () => pendingLessonDrafts(),
     crewProfiles: () => crewWithProfiles(),
+    // §6 site conditions + change orders.
+    recordSiteCondition: (input) => recordSiteCondition(input),
+    siteCondition: (jobId) => siteConditionForJob(jobId),
+    createChangeOrder: (input) => createChangeOrder(input),
+    openChangeOrders: () => openChangeOrders(),
+    approveChangeOrder: (id) => approveChangeOrder(id),
+    billableChangesForJob: (jobId) => billableChangeOrdersForJob(jobId),
+    markChangesInvoiced: (ids) => markChangeOrdersInvoiced(ids),
     gateCompletionsSince: (iso) => gateCompletionsSince(iso),
     publishLesson: (id, by) => publishLesson(id, by),
     trainingProfile: (id) => trainingProfile(id),
@@ -545,6 +560,25 @@ export function createArborRequestHandler() {
       }
       if (req.method === 'POST' && url.pathname === '/api/crew/near-miss') {
         return send(...unpack(await api.reportNearMiss((await readJson(req)) as Record<string, unknown>)));
+      }
+      // §6 site conditions + change orders.
+      {
+        const m = url.pathname.match(/^\/api\/jobs\/([^/]+)\/arrival$/);
+        if (req.method === 'POST' && m) {
+          return send(...unpack(await api.recordArrival(m[1]!, (await readJson(req)) as Record<string, unknown>)));
+        }
+      }
+      {
+        const m = url.pathname.match(/^\/api\/jobs\/([^/]+)\/change-order$/);
+        if (req.method === 'POST' && m) {
+          return send(...unpack(await api.addChangeOrder(m[1]!, (await readJson(req)) as Record<string, unknown>)));
+        }
+      }
+      {
+        const m = url.pathname.match(/^\/api\/change-orders\/([^/]+)\/approve$/);
+        if (req.method === 'POST' && m) {
+          return send(...unpack(await api.approveChangeOrder(m[1]!)));
+        }
       }
       // §6M training loop.
       if (req.method === 'GET' && url.pathname === '/api/crew/quiz') {

@@ -29,6 +29,10 @@ import {
 } from '../training/questionnaire.js';
 import { toCrewFacing, gradeSubmission, type GradableItem } from '../training/grading.js';
 import { buildTrainingBoard, type CrewProfileRow, type GateCompletionRow } from '../training/board.js';
+import {
+  assessArrival, draftChangeOrder, splitChangeOrders, ChangeOrderRejected,
+  type SiteConditionRecord, type ChangeOrderRow,
+} from '../ops/changeOrders.js';
 import { buildActionPlan, isSchedulable, type BreakdownReport, type KnownPart, type UnitStatus } from '../fleet/breakdown.js';
 import type { TtsClient } from '../voice/elevenlabsTts.js';
 import { scoreLead, type LeadQualityResult } from '../reception/leadQuality.js';
@@ -144,6 +148,15 @@ export interface DataSource {
   trainingPool?(): Promise<TrainingItemRef[]>;
   /** Full rows INCLUDING the answer key. Server-side only — never serialised. */
   trainingItems?(ids: string[]): Promise<GradableItem[]>;
+  /** §6 site conditions + change orders. */
+  recordSiteCondition?(input: SiteConditionRecord): Promise<{ id: string }>;
+  siteCondition?(jobId: string): Promise<SiteConditionRecord | null>;
+  createChangeOrder?(input: { jobId: string; description: string; amount: number; agreedBy: string; agreedAtIso: string }): Promise<{ id: string }>;
+  openChangeOrders?(): Promise<ChangeOrderRow[]>;
+  /** Approved + priced + uninvoiced changes for ONE job, for billing. */
+  billableChangesForJob?(jobId: string): Promise<Array<{ id: string; amount: number }>>;
+  markChangesInvoiced?(ids: string[]): Promise<void>;
+  approveChangeOrder?(id: string): Promise<boolean>;
   /** §6M.5 training board. */
   crewProfiles?(): Promise<CrewProfileRow[]>;
   gateCompletionsSince?(sinceIso: string): Promise<GateCompletionRow[]>;
@@ -858,6 +871,21 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       const { legal } = loadAllConfig();
       const [jobs, invoices] = await Promise.all([source.billableJobs(), source.openInvoices()]);
       const { drafts, blocked } = buildInvoiceDrafts(jobs);
+
+      // §6 change orders are money already agreed to. They belong in the money
+      // read or they quietly go unbilled — the exact leak §1E exists to catch.
+      let changes = { billable: [] as ChangeOrderRow[], unpriced: [] as ChangeOrderRow[], awaitingApproval: [] as ChangeOrderRow[], billableTotal: null as number | null };
+      let changeOrdersKnown = true;
+      if (source.openChangeOrders) {
+        try {
+          changes = splitChangeOrders(await source.openChangeOrders());
+        } catch {
+          // A change-order read that failed is not "no extra work to bill".
+          changeOrdersKnown = false;
+        }
+      } else {
+        changeOrdersKnown = false;
+      }
       const queue = buildCollectionQueue(legal, invoices, new Date(nowIso));
       return {
         status: 200,
@@ -877,6 +905,9 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
             lateFeeOwed: lateFeeOwed(inv, nowIso),
             lateFeePct: safeLateFeePct(inv.lateFeePct),
           })),
+          changeOrders: changes,
+          // §1B: false means Arbo could not read them, NOT that there are none.
+          changeOrdersKnown,
           checkedAtIso: nowIso,
         },
       };
@@ -901,16 +932,58 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
         const why = blocked[0];
         return { status: 409, body: { error: why?.reason ?? 'already_invoiced', line: why?.line ?? null } };
       }
+      // Approved change orders are money the customer already agreed to. If
+      // they are not added here they show as "billable" forever and never get
+      // billed — the leak this whole module exists to close. Every figure is
+      // still a human's: §3 is about ORIGIN, and summing agreed numbers is
+      // arithmetic, not pricing.
+      let changeIds: string[] = [];
+      let changeTotal = 0;
+      if (source.billableChangesForJob) {
+        try {
+          const changes = await source.billableChangesForJob(draft.jobId);
+          changeIds = changes.map((c) => c.id);
+          changeTotal = Math.round(changes.reduce((sum, c) => sum + c.amount, 0) * 100) / 100;
+        } catch {
+          // Better to bill the base job than to bill nothing. The unbilled
+          // changes stay visible in /api/money, which is where they belong.
+          changeIds = [];
+          changeTotal = 0;
+        }
+      }
+
       const created = await source.createInvoice({
-        jobId: draft.jobId, amount: draft.amount,
+        jobId: draft.jobId, amount: Math.round((draft.amount + changeTotal) * 100) / 100,
         lateFeePct: draft.lateFeePct, netDays: draft.netDays ?? DEFAULT_NET_DAYS,
       });
       // A double submit loses the race at the DB, not at the customer's mailbox.
       if (created === 'already_invoiced') {
         return { status: 409, body: { error: 'already_invoiced', line: 'This job already has an invoice.' } };
       }
+      // Mark the changes billed only AFTER the invoice row exists. The other
+      // order would strand agreed work as invoiced-but-never-billed.
+      let changesBilled = changeIds.length;
+      if (changeIds.length && source.markChangesInvoiced) {
+        try {
+          await source.markChangesInvoiced(changeIds);
+        } catch {
+          // The invoice carries the money; the flags did not stick. Say so
+          // rather than letting the same change ride a second invoice later.
+          changesBilled = 0;
+        }
+      }
       if (source.emit) await source.emit('invoice.drafted', { invoiceId: created.id, jobId: draft.jobId });
-      return { status: 200, body: { id: created.id, amount: draft.amount, lateFeePct: draft.lateFeePct } };
+      return {
+        status: 200,
+        body: {
+          id: created.id,
+          amount: Math.round((draft.amount + changeTotal) * 100) / 100,
+          baseAmount: draft.amount,
+          changeOrderTotal: changeTotal,
+          changesBilled,
+          lateFeePct: draft.lateFeePct,
+        },
+      };
     },
 
     /**
@@ -1287,6 +1360,74 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       if (!ok) return { status: 409, body: { error: 'not_publishable' } };
       if (source.emit) await source.emit('training.item.published', { itemId, vettedBy });
       return { status: 200, body: { ok: true, vettedBy } };
+    },
+
+    /**
+     * POST /api/jobs/:id/arrival — the §6 arrival record. This is the defence
+     * against "your crew did that", so the response NAMES what is missing
+     * rather than confirming the site was fine (Arbo cannot know that).
+     */
+    async recordArrival(jobId: string, body: Record<string, unknown>): Promise<ApiResult> {
+      if (!source.ready() || !source.recordSiteCondition) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!UUID_RE.test(jobId)) return { status: 400, body: { error: 'bad_job_id' } };
+      const record: SiteConditionRecord = {
+        jobId,
+        arrivalIso: String(body.arrivalIso ?? new Date().toISOString()),
+        photoFiles: Array.isArray(body.photoFiles) ? (body.photoFiles as unknown[]).map(String) : [],
+        preexistingNotes: body.preexistingNotes ? String(body.preexistingNotes) : undefined,
+        groundCondition: body.groundCondition ? String(body.groundCondition) : undefined,
+        craneDecision: body.craneDecision ? String(body.craneDecision) : undefined,
+        documentedBy: body.documentedBy ? String(body.documentedBy) : undefined,
+      };
+      if (!Number.isFinite(Date.parse(record.arrivalIso))) return { status: 400, body: { error: 'bad_time' } };
+      const saved = await source.recordSiteCondition(record);
+      const assessment = assessArrival(record);
+      if (source.emit) await source.emit('site.arrival.documented', { jobId, photos: record.photoFiles.length });
+      // The gaps ride back on the success response: filing a weak record is
+      // still filing, but the crew should be told it is weak while they are
+      // still standing on the lot.
+      return { status: 200, body: { id: saved.id, ...assessment } };
+    },
+
+    /**
+     * POST /api/jobs/:id/change-order — §3 holds: the amount is what the
+     * CUSTOMER agreed to, supplied by a human. Arbo never prices a change and
+     * never approves one.
+     */
+    async addChangeOrder(jobId: string, body: Record<string, unknown>): Promise<ApiResult> {
+      if (!source.ready() || !source.createChangeOrder) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!UUID_RE.test(jobId)) return { status: 400, body: { error: 'bad_job_id' } };
+      const rawAmount = body.amount;
+      let drafted;
+      try {
+        drafted = draftChangeOrder({
+          jobId,
+          description: String(body.description ?? ''),
+          amount: rawAmount === null || rawAmount === undefined || rawAmount === '' ? null : Number(rawAmount),
+          agreedBy: body.agreedBy ? String(body.agreedBy) : undefined,
+          agreedAtIso: String(body.agreedAtIso ?? new Date().toISOString()),
+        }, new Date().toISOString());
+      } catch (err) {
+        if (err instanceof ChangeOrderRejected) return { status: 400, body: { error: err.reason } };
+        throw err;
+      }
+      const saved = await source.createChangeOrder({
+        jobId: drafted.jobId, description: drafted.description, amount: drafted.amount,
+        agreedBy: drafted.agreedBy, agreedAtIso: drafted.agreedAtIso,
+      });
+      if (source.emit) await source.emit('job.change_order.recorded', { jobId, changeOrderId: saved.id });
+      return { status: 200, body: { id: saved.id, approved: false, invoiced: false } };
+    },
+
+    /** POST /api/change-orders/:id/approve — Mike approves. Only Mike. */
+    async approveChangeOrder(id: string): Promise<ApiResult> {
+      if (!source.ready() || !source.approveChangeOrder) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!UUID_RE.test(id)) return { status: 400, body: { error: 'bad_id' } };
+      const ok = await source.approveChangeOrder(id);
+      // Already invoiced or gone: never report a fresh approval that did not happen.
+      if (!ok) return { status: 409, body: { error: 'not_approvable' } };
+      if (source.emit) await source.emit('job.change_order.approved', { changeOrderId: id });
+      return { status: 200, body: { ok: true } };
     },
 
     /** GET /api/agents/runs — §8A.6g audit visibility: what the agents did. */
