@@ -387,3 +387,12 @@ are green again; the Railway path lights up the day a repository secret
 named exactly RAILWAY_TOKEN exists (Settings → Secrets and variables →
 Actions → Repository secrets). Until then Vercel remains the live
 production path, unaffected throughout.
+
+### Incident: git-connect clobbered production (2026-08-02, resolved)
+The Vercel project got linked to GitHub (new arbor-git-main domain), so doc
+pushes started triggering git builds that took over production WITHOUT the
+deployment-carried config — leaving only the corrupt dashboard env vars, so
+every DB endpoint 500'd while presence-only /health stayed green. Fix:
+repo-root vercel.json sets git.deploymentEnabled=false (git pushes no longer
+deploy this project; the private file-tree upload remains the only deploy
+path, D41/D46), and the known-good build was redeployed on top.
