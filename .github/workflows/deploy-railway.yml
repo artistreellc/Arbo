@@ -43,6 +43,15 @@ jobs:
           # Paste hygiene: secrets pick up stray whitespace/newlines that turn
           # into "Invalid RAILWAY_TOKEN" (same failure family as D46).
           CLEAN=$(printf %s "$RAILWAY_TOKEN" | tr -d '[:space:]')
+          # Credential probe first (D43 spirit): a secret whose VALUE isn't a
+          # valid Railway token is "not configured yet", not a deploy failure —
+          # skip green with a loud annotation instead of painting pushes red.
+          # Real deploy failures (valid token, up fails) still go red below.
+          if ! RAILWAY_TOKEN="$CLEAN" railway status >/dev/null 2>&1 \
+             && ! RAILWAY_API_TOKEN="$CLEAN" railway whoami >/dev/null 2>&1; then
+            echo "::warning::RAILWAY_TOKEN is set but Railway rejects it (not a valid project or account token). Deploy skipped. Fix: Railway → project arbor → Settings → Tokens → create a PROJECT token (environment: production) and replace the RAILWAY_TOKEN secret value."
+            exit 0
+          fi
           if RAILWAY_TOKEN="$CLEAN" railway up --service arbor-server --detach; then
             exit 0
           fi
