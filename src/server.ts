@@ -54,6 +54,11 @@ import {
   listActiveCrew,
   listCertifications,
   recentNearMisses,
+  createLessonDraftFromNearMiss,
+  publishedTrainingItems,
+  trainingProfile,
+  saveTrainingProfile,
+  recordGateCompletion,
   recordBreakdown,
   closeMaintenanceTask,
 } from './db/repositories.js';
@@ -305,6 +310,12 @@ export function createLiveSource(): DataSource {
         ['first_aid', 'cpr', 'aerial_rescue', 'tree_rescue', 'cdl', 'other'].includes(c.type),
     ),
     recentNearMisses: (since) => recentNearMisses(since),
+    // §6M training loop.
+    createLessonDraft: (input) => createLessonDraftFromNearMiss(input),
+    trainingPool: () => publishedTrainingItems(),
+    trainingProfile: (id) => trainingProfile(id),
+    saveTrainingProfile: (id, p) => saveTrainingProfile(id, p),
+    recordGate: (input) => recordGateCompletion(input),
     recordBreakdown: (input) => recordBreakdown(input),
     closeMaintenanceTask: (input) => closeMaintenanceTask(input),
   };
@@ -524,6 +535,16 @@ export function createArborRequestHandler() {
       }
       if (req.method === 'POST' && url.pathname === '/api/crew/near-miss') {
         return send(...unpack(await api.reportNearMiss((await readJson(req)) as Record<string, unknown>)));
+      }
+      // §6M training loop.
+      if (req.method === 'GET' && url.pathname === '/api/crew/quiz') {
+        return send(...unpack(await api.crewQuiz(
+          url.searchParams.get('crewMemberId') ?? '',
+          url.searchParams.get('context') ?? 'micro_lesson',
+        )));
+      }
+      if (req.method === 'POST' && url.pathname === '/api/crew/quiz/complete') {
+        return send(...unpack(await api.completeQuiz((await readJson(req)) as Record<string, unknown>)));
       }
       // §8A.6g: what the agents did, straight from the audit log.
       if (req.method === 'GET' && url.pathname === '/api/agents/runs') {

@@ -22,6 +22,11 @@ import {
 } from '../ops/invoicing.js';
 import { fileNearMiss, NearMissRejected, type NearMissReport } from '../safety/nearMiss.js';
 import { findCertProblems, type CertRow, type CrewMemberRef } from '../safety/certifications.js';
+import { buildLessonDraft } from '../training/fromNearMiss.js';
+import {
+  selectQuestionnaire, buildGateCompletion, updateProfile, GateRejected,
+  defaultQuestionnaireConfig, type TrainingItemRef, type TrainingProfile, type GateContext,
+} from '../training/questionnaire.js';
 import { buildActionPlan, isSchedulable, type BreakdownReport, type KnownPart, type UnitStatus } from '../fleet/breakdown.js';
 import type { TtsClient } from '../voice/elevenlabsTts.js';
 import { scoreLead, type LeadQualityResult } from '../reception/leadQuality.js';
@@ -130,6 +135,17 @@ export interface DataSource {
   activeCrew?(): Promise<CrewMemberRef[]>;
   certifications?(): Promise<CertRow[]>;
   recentNearMisses?(sinceDate: string): Promise<unknown[]>;
+  /** §6M training loop. */
+  createLessonDraft?(input: {
+    nearMissId: string; topic: string; body: unknown; difficulty: number; vetterNotes: string[];
+  }): Promise<{ id: string }>;
+  trainingPool?(): Promise<TrainingItemRef[]>;
+  trainingProfile?(crewMemberId: string): Promise<TrainingProfile>;
+  saveTrainingProfile?(crewMemberId: string, profile: TrainingProfile): Promise<void>;
+  recordGate?(input: {
+    crewMemberId: string; context: string; itemIds: string[];
+    startedAtIso: string; completedAtIso: string; payableMinutes: number; score: number | null;
+  }): Promise<{ trainingEventId: string; timeEntryId: string }>;
   /** §6M.8: today's published tailgate briefing, or null if none. */
   todaysBriefing?(): Promise<{ id: string; body: string; standardRefs: string[] } | null>;
   /** §6V.4 gated briefing acknowledgment + its payable time entry (§4.6). */
@@ -956,7 +972,30 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
           nearMissId: saved.id, hazardCategory: filed.hazardCategory,
         });
       }
-      return { status: 200, body: { id: saved.id, hazardCategory: filed.hazardCategory, blameless: true } };
+      // §6M: the incident becomes a lesson. A DRAFT — §4.7 forbids publishing
+      // life-safety content without a named human vetter, and nothing here
+      // supplies one. Failure to draft must never lose the near miss itself.
+      let lessonDraftId: string | null = null;
+      if (source.createLessonDraft) {
+        try {
+          const draft = buildLessonDraft({
+            id: saved.id, description: filed.description,
+            hazardCategory: filed.hazardCategory, occurredOn: filed.occurredOn,
+          });
+          const made = await source.createLessonDraft({
+            nearMissId: saved.id, topic: draft.topic, body: draft.body,
+            difficulty: draft.difficulty, vetterNotes: draft.vetterNotes,
+          });
+          lessonDraftId = made.id;
+        } catch {
+          // The report is filed and that is what matters. The safety board
+          // still counts this one as "no lesson yet", which is the truth.
+        }
+      }
+      return {
+        status: 200,
+        body: { id: saved.id, hazardCategory: filed.hazardCategory, blameless: true, lessonDraftId },
+      };
     },
 
     /**
@@ -1003,6 +1042,121 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
           // board is guesswork and the UI must say so (§1B).
           blindSpots,
           checkedAtIso: new Date().toISOString(),
+        },
+      };
+    },
+
+    /**
+     * GET /api/crew/quiz — the §6M gate set for one crew member. Weighted to
+     * the topics they are weak on, and to the ones Arbo has NEVER tested them
+     * on, because untested is a gap and not a pass (§1B).
+     */
+    async crewQuiz(crewMemberId: string, context: string): Promise<ApiResult> {
+      if (!source.ready() || !source.trainingPool) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!UUID_RE.test(crewMemberId)) return { status: 400, body: { error: 'bad_crew_id' } };
+      const ctx = ['clock_in_gate', 'clock_out_gate', 'friday_questionnaire', 'micro_lesson'].includes(context)
+        ? (context as GateContext) : null;
+      if (!ctx) return { status: 400, body: { error: 'bad_context' } };
+
+      const pool = await source.trainingPool();
+      let profile: TrainingProfile = {};
+      let profileKnown = true;
+      try {
+        profile = source.trainingProfile ? await source.trainingProfile(crewMemberId) : {};
+      } catch {
+        // An unreadable profile is not a clean slate: without it every topic
+        // looks untested, which is the SAFE direction, but say so.
+        profileKnown = false;
+      }
+      // A clock-in gate is one item; the Friday questionnaire is the full set.
+      const count = ctx === 'friday_questionnaire' ? defaultQuestionnaireConfig.questionCount : 1;
+      const sel = selectQuestionnaire(pool, profile, { ...defaultQuestionnaireConfig, questionCount: count });
+      return {
+        status: 200,
+        body: { ...sel, context: ctx, profileKnown, poolSize: pool.length },
+      };
+    },
+
+    /**
+     * POST /api/crew/quiz/complete — record a finished gate. §4.6: this ALWAYS
+     * writes payable time. There is no branch that records a completion
+     * without the pay.
+     */
+    async completeQuiz(body: Record<string, unknown>): Promise<ApiResult> {
+      if (!source.ready() || !source.recordGate) return { status: 503, body: { error: 'db_not_configured' } };
+      const crewMemberId = String(body.crewMemberId ?? '');
+      if (!UUID_RE.test(crewMemberId)) return { status: 400, body: { error: 'bad_crew_id' } };
+      const itemIds = Array.isArray(body.itemIds) ? (body.itemIds as unknown[]).map(String) : [];
+      // item_ids is uuid[]: a non-UUID commits the PAID time and then fails
+      // the event insert — the cycle-4 lesson, applied here before it repeats.
+      if (itemIds.some((id) => !UUID_RE.test(id))) return { status: 400, body: { error: 'bad_item_id' } };
+
+      let completion;
+      try {
+        completion = buildGateCompletion({
+          crewMemberId,
+          context: String(body.context ?? 'micro_lesson') as GateContext,
+          itemIds,
+          startedAtIso: String(body.startedAtIso ?? ''),
+          completedAtIso: String(body.completedAtIso ?? ''),
+          correct: Number(body.correct ?? 0),
+          answered: Number(body.answered ?? 0),
+        });
+      } catch (err) {
+        if (err instanceof GateRejected) return { status: 400, body: { error: err.reason } };
+        throw err;
+      }
+
+      let saved;
+      try {
+        saved = await source.recordGate({
+          crewMemberId: completion.crewMemberId, context: completion.context,
+          itemIds: completion.itemIds, startedAtIso: completion.startedAtIso,
+          completedAtIso: completion.completedAtIso,
+          payableMinutes: completion.payableMinutes, score: completion.score,
+        });
+      } catch (err) {
+        // time_entry_ack_once (migration 0011) makes a retry on flaky field
+        // signal a no-op instead of a duplicate PAID row. Report that as the
+        // success it is, not as a 500 that invites another retry.
+        if ((err as { code?: string }).code === '23505') {
+          return { status: 200, body: { duplicate: true, payableMinutes: completion.payableMinutes } };
+        }
+        throw err;
+      }
+
+      // Profile update is a nice-to-have; the PAY is not. A failure here must
+      // never roll back a recorded, compensated completion.
+      let profileUpdated = false;
+      const claimed = (body.topicScores ?? null) as Record<string, number> | null;
+      if (claimed && source.trainingProfile && source.saveTrainingProfile) {
+        try {
+          // A client must not be able to claim mastery of a topic it was never
+          // asked about — that would let anyone quiz themselves out of the
+          // weak-topic targeting. Only topics actually represented in THIS
+          // submission's items count.
+          const pool = source.trainingPool ? await source.trainingPool() : [];
+          const askedTopics = new Set(
+            pool.filter((i) => completion.itemIds.includes(i.id)).map((i) => i.topic),
+          );
+          const scoped = Object.fromEntries(
+            Object.entries(claimed).filter(([topic]) => askedTopics.has(topic)),
+          );
+          if (Object.keys(scoped).length) {
+            const prior = await source.trainingProfile(crewMemberId);
+            await source.saveTrainingProfile(crewMemberId, updateProfile(prior, scoped));
+            profileUpdated = true;
+          }
+        } catch { /* named in the response below, never silently assumed */ }
+      }
+
+      return {
+        status: 200,
+        body: {
+          ...saved,
+          payableMinutes: completion.payableMinutes,
+          score: completion.score,
+          profileUpdated,
         },
       };
     },

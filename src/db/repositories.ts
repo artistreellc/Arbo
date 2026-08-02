@@ -1557,3 +1557,113 @@ export async function recentNearMisses(sinceDate: string): Promise<Array<{
     hasTrainingItem: Boolean(r.generated_training_item_id),
   }));
 }
+
+// ---------------------------------------------------------------------------
+// §6M training loop. Every item Arbo generates is a DRAFT: the DB CHECK
+// (training_item_vetted_before_publish) refuses to publish without a named
+// human vetter, and nothing here ever supplies one.
+// ---------------------------------------------------------------------------
+
+/** Create the lesson draft generated from a near miss, and link it back. */
+export async function createLessonDraftFromNearMiss(input: {
+  nearMissId: string; topic: string; body: unknown; difficulty: number; vetterNotes: string[];
+}): Promise<{ id: string }> {
+  const db = getDb();
+  const item = await db.from('training_item').insert({
+    type: 'lesson',
+    topic: input.topic,
+    body: { ...(input.body as Record<string, unknown>), vetterNotes: input.vetterNotes },
+    difficulty: input.difficulty,
+    source: 'event_generated',
+    origin_near_miss_id: input.nearMissId,
+    // A lesson born from one crew's incident must never be used to score them.
+    exclude_from_scoring: true,
+    published: false,
+  }).select('id').single();
+  if (item.error) throw item.error;
+  const id = item.data.id as string;
+  // Close the loop the safety board counts: the near miss now HAS a lesson.
+  const link = await db.from('near_miss')
+    .update({ generated_training_item_id: id })
+    .eq('id', input.nearMissId);
+  if (link.error) throw link.error;
+  return { id };
+}
+
+/** Published, vetted items — the only pool a crew member may be asked from. */
+export async function publishedTrainingItems(): Promise<Array<{
+  id: string; topic: string; difficulty: number; published: boolean; excludeFromScoring: boolean;
+}>> {
+  const db = getDb();
+  const res = await db.from('training_item')
+    .select('id, topic, difficulty, published, exclude_from_scoring')
+    .eq('published', true);
+  if (res.error) throw res.error;
+  return (res.data ?? []).map((r) => ({
+    id: r.id as string,
+    topic: r.topic as string,
+    difficulty: Number(r.difficulty),
+    published: r.published as boolean,
+    excludeFromScoring: r.exclude_from_scoring as boolean,
+  }));
+}
+
+/** A crew member's rolling weak/strong topic profile (§6M.5). */
+export async function trainingProfile(crewMemberId: string): Promise<{ scores?: Record<string, number> }> {
+  const db = getDb();
+  const res = await db.from('crew_member')
+    .select('training_profile')
+    .eq('id', crewMemberId)
+    .maybeSingle();
+  if (res.error) throw res.error;
+  const p = res.data?.training_profile as { scores?: Record<string, number> } | null;
+  return p ?? {};
+}
+
+/**
+ * Record a completed gate: the training event AND its payable time entry.
+ * The time entry is written FIRST so a failure cannot leave a completion on
+ * record with the pay missing (§4.6 — the pay is the point).
+ */
+export async function recordGateCompletion(input: {
+  crewMemberId: string; context: string; itemIds: string[];
+  startedAtIso: string; completedAtIso: string; payableMinutes: number;
+  score: number | null; topicScores?: Record<string, number>;
+}): Promise<{ trainingEventId: string; timeEntryId: string }> {
+  const db = getDb();
+  const time = await db.from('time_entry').insert({
+    crew_member_id: input.crewMemberId,
+    kind: 'training',
+    started_at: input.startedAtIso,
+    ended_at: input.completedAtIso,
+    minutes: input.payableMinutes,
+    payable: true,
+    source: input.context,
+  }).select('id').single();
+  if (time.error) throw time.error;
+
+  const ev = await db.from('training_event').insert({
+    crew_member_id: input.crewMemberId,
+    item_ids: input.itemIds,
+    context: input.context,
+    score: input.score,
+    started_at: input.startedAtIso,
+    completed_at: input.completedAtIso,
+    time_entry_id: time.data.id as string,
+  }).select('id').single();
+  if (ev.error) throw ev.error;
+
+  return { trainingEventId: ev.data.id as string, timeEntryId: time.data.id as string };
+}
+
+/** Persist the updated weak/strong profile after a scored gate. */
+export async function saveTrainingProfile(
+  crewMemberId: string,
+  profile: { scores?: Record<string, number> },
+): Promise<void> {
+  const db = getDb();
+  const res = await db.from('crew_member')
+    .update({ training_profile: profile, updated_at: new Date().toISOString() })
+    .eq('id', crewMemberId);
+  if (res.error) throw res.error;
+}
