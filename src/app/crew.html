@@ -67,6 +67,8 @@ main{padding:16px;max-width:640px;margin:0 auto}
   background:var(--surface-alt);color:var(--ink);border:1.5px solid var(--border);cursor:pointer}
 .qopt.picked{border-color:var(--forest);background:rgba(124,58,237,.16);color:#fff}
 .qopt:last-child{margin-bottom:0}
+.qprogress{font-size:13px;font-weight:800;color:var(--muted);margin-bottom:10px}
+.shortfall{font-size:14px;font-weight:700;color:var(--warning);margin-bottom:10px;line-height:1.4}
 #quiz .scope{font-size:15px;color:var(--muted);line-height:1.5}
 .gate-go{width:100%;min-height:56px;margin-top:4px;border:0;border-radius:var(--r-md);
   background:linear-gradient(180deg,#8B5CF6,#6D28D9);color:#fff;
@@ -286,24 +288,36 @@ async function submitGate() {
 // ---- Clock-in question (§6M/§4.6). One item, drawn from the topics this
 // crew member is weakest on. The answer key never reaches this phone: the
 // server grades and tells us what the score was.
-const QUIZ = { startedAt: null, items: [], answers: {}, done: false };
+const QUIZ = { startedAt: null, items: [], answers: {}, done: false, context: 'clock_in_gate' };
 
-async function renderQuiz() {
+/** Friday in Hampton Roads, not in whatever zone this phone thinks it is. */
+function isFridayEt() {
+  return new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short' })
+    .format(new Date()) === 'Fri';
+}
+
+const QUIZ_TITLE = {
+  clock_in_gate: 'Question before you roll',
+  friday_questionnaire: "Friday check \u2014 this week's questions",
+};
+
+async function renderQuiz(context) {
+  const ctx = context || (isFridayEt() ? 'friday_questionnaire' : 'clock_in_gate');
   const v = $('quiz');
   v.replaceChildren();
   if (!GATE.unlocked || QUIZ.done) return;
   let q;
   try {
-    q = await api('/api/crew/quiz?context=clock_in_gate&crewMemberId=' + encodeURIComponent(CREW_ID));
+    q = await api('/api/crew/quiz?context=' + ctx + '&crewMemberId=' + encodeURIComponent(CREW_ID));
   } catch (e) {
     // Never let a broken quiz silently skip the gate — say what happened.
     v.appendChild(el('div', 'state', e.code === 503
-      ? 'Cannot reach the office for today\'s question. Not your fault — carry on.'
-      : 'Today\'s question did not load. Tell the office; do not skip it quietly.'));
+      ? 'Cannot reach the office for today\'s questions. Not your fault \u2014 carry on.'
+      : 'Today\'s questions did not load. Tell the office; do not skip it quietly.'));
     return;
   }
   if (!q.itemsLoaded) {
-    v.appendChild(el('div', 'state', 'Today\'s question could not be loaded. This is not "no question" — tell the office.'));
+    v.appendChild(el('div', 'state', 'Today\'s questions could not be loaded. This is not "no questions" \u2014 tell the office.'));
     return;
   }
   if (!q.items.length) return;
@@ -311,14 +325,30 @@ async function renderQuiz() {
   QUIZ.startedAt = new Date().toISOString();
   QUIZ.items = q.items;
   QUIZ.answers = {};
+  QUIZ.context = ctx;
 
-  v.appendChild(el('div', 'panel-title', 'Question before you roll'));
-  const note = el('div', 'paynote', 'This is paid time \u2014 it is on the clock.');
-  v.appendChild(note);
+  v.appendChild(el('div', 'panel-title', QUIZ_TITLE[ctx] || 'Questions'));
+  v.appendChild(el('div', 'paynote', 'This is paid time \u2014 it is on the clock.'));
 
-  for (const item of q.items) {
+  // §1B: a short pool must not be dressed up as a full questionnaire.
+  if (q.shortfall > 0) {
+    v.appendChild(el('div', 'shortfall',
+      'Only ' + q.items.length + ' question(s) available \u2014 the office has not published enough yet. This is not a short week.'));
+  }
+
+  const progress = el('div', 'qprogress');
+  v.appendChild(progress);
+  const answerable = q.items.filter((i) => !i.readOnly).length;
+  const updateProgress = () => {
+    const done = Object.keys(QUIZ.answers).length;
+    progress.textContent = answerable ? done + ' of ' + answerable + ' answered' : 'Nothing to answer \u2014 read and submit.';
+    const go = $('quiz-go');
+    if (go) go.disabled = done < answerable;
+  };
+
+  q.items.forEach((item, n) => {
     const card = el('div', 'card');
-    card.appendChild(el('div', 'qtopic', item.topic));
+    card.appendChild(el('div', 'qtopic', (q.items.length > 1 ? (n + 1) + '. ' : '') + item.topic));
     card.appendChild(el('div', 'qprompt', item.prompt));
     if (item.readOnly) {
       card.appendChild(el('div', 'scope', 'Read this one \u2014 there is nothing to answer.'));
@@ -329,20 +359,20 @@ async function renderQuiz() {
           QUIZ.answers[item.id] = idx;
           [...card.querySelectorAll('.qopt')].forEach((x) => x.classList.remove('picked'));
           b.classList.add('picked');
-          $('quiz-go').disabled = false;
+          updateProgress();
         });
         card.appendChild(b);
       });
     }
     v.appendChild(card);
-  }
+  });
 
   const go = el('button', 'gate-go', 'Submit');
   go.id = 'quiz-go';
-  go.disabled = q.items.some((i) => !i.readOnly);
   go.addEventListener('click', submitQuiz);
   v.appendChild(go);
   v.appendChild(el('div', 'errline', ''));
+  updateProgress();
 }
 
 async function submitQuiz() {
@@ -354,7 +384,7 @@ async function submitQuiz() {
       method: 'POST',
       body: {
         crewMemberId: CREW_ID,
-        context: 'clock_in_gate',
+        context: QUIZ.context,
         itemIds: QUIZ.items.map((i) => i.id),
         answers: QUIZ.answers,
         startedAtIso: QUIZ.startedAt,
@@ -376,7 +406,7 @@ async function submitQuiz() {
   // Show the pay. §4.6 is only real to a crew member if they can see it.
   box.appendChild(el('div', 'qprompt', res.payableMinutes + ' min paid \u2014 on the clock.'));
   if (res.gradedOk === false) {
-    box.appendChild(el('div', 'scope', 'Your answer was recorded, but Arbo could not score it right now.'));
+    box.appendChild(el('div', 'scope', 'Your answers were recorded, but Arbo could not score them right now.'));
   } else if (res.score !== null && res.score !== undefined) {
     box.appendChild(el('div', 'scope', res.correct + ' of ' + res.answered + ' correct.'));
   }

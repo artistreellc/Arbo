@@ -58,6 +58,8 @@ import {
   publishedTrainingItems,
   trainingItemsByIds,
   pendingLessonDrafts,
+  crewWithProfiles,
+  gateCompletionsSince,
   publishLesson,
   trainingProfile,
   saveTrainingProfile,
@@ -318,6 +320,8 @@ export function createLiveSource(): DataSource {
     trainingPool: () => publishedTrainingItems(),
     trainingItems: (ids) => trainingItemsByIds(ids),
     pendingDrafts: () => pendingLessonDrafts(),
+    crewProfiles: () => crewWithProfiles(),
+    gateCompletionsSince: (iso) => gateCompletionsSince(iso),
     publishLesson: (id, by) => publishLesson(id, by),
     trainingProfile: (id) => trainingProfile(id),
     saveTrainingProfile: (id, p) => saveTrainingProfile(id, p),
@@ -553,6 +557,9 @@ export function createArborRequestHandler() {
         return send(...unpack(await api.completeQuiz((await readJson(req)) as Record<string, unknown>)));
       }
       // §4.7 vetting queue.
+      if (req.method === 'GET' && url.pathname === '/api/training/board') {
+        return send(...unpack(await api.trainingBoard()));
+      }
       if (req.method === 'GET' && url.pathname === '/api/training/drafts') {
         return send(...unpack(await api.trainingDrafts()));
       }

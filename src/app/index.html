@@ -1054,6 +1054,67 @@ async function renderSafety(slot) {
   }
 }
 
+// ---------- Training board (§6M.5: weak, untested, strong are three states) ----------
+async function renderTrainingBoard(slot) {
+  slot.replaceChildren();
+  let b;
+  try {
+    b = await api('/api/training/board');
+  } catch (e) {
+    if (e.code === 401) return;
+    slot.appendChild(el('div', 'panel-title', 'Crew training'));
+    slot.appendChild(state('Training board unavailable', e.code === 503
+      ? 'Database not connected — Arbo cannot show who is weak on what.'
+      : 'Could not read the training board. This is not a claim that everyone is current.'));
+    return;
+  }
+  if (!b.rows.length && !b.blindSpots.length) return;
+
+  slot.appendChild(el('div', 'panel-title',
+    b.owingThisWeek.length
+      ? 'Crew training — ' + b.owingThisWeek.length + ' owe this week'
+      : 'Crew training'));
+
+  // Blind spots FIRST: what the board cannot see outranks what it can (§1B).
+  for (const spot of b.blindSpots) {
+    const w = el('div', 'card loop-card urgent');
+    w.appendChild(el('div', 'loop-kind', '⚠ CANNOT SEE'));
+    w.appendChild(el('div', 'scope', spot));
+    slot.appendChild(w);
+  }
+
+  for (const r of b.rows) {
+    const c = el('div', 'card' + (r.neverTested ? ' emergency' : ''));
+    const top = el('div', 'toprow');
+    top.appendChild(el('div', 'who', r.name));
+    top.appendChild(el('div', 'when', r.role));
+    c.appendChild(top);
+
+    const badges = el('div', 'badges');
+    if (r.neverTested) badges.appendChild(badge('NEVER TESTED', 'b-emg'));
+    if (r.completedThisWeek === null) badges.appendChild(badge('WEEK UNKNOWN', 'b-flag'));
+    else if (r.completedThisWeek) badges.appendChild(badge('WEEK DONE', 'b-cool'));
+    else badges.appendChild(badge('OWES THIS WEEK', 'b-warm'));
+    c.appendChild(badges);
+
+    if (r.weakTopics.length) {
+      c.appendChild(el('div', 'scope', 'Weak: ' + r.weakTopics
+        .map((w) => w.topic + ' (' + Math.round(w.score * 100) + '%)').join(' · ')));
+    }
+    if (r.untestedTopics.length) {
+      // Deliberately NOT phrased as a pass. Never asked is our gap, not his.
+      const u = el('div', 'scope');
+      u.style.color = 'var(--warning)';
+      u.textContent = 'Never asked about: ' + r.untestedTopics.join(' · ');
+      c.appendChild(u);
+    }
+    if (r.strongTopics.length) {
+      c.appendChild(el('div', 'scope', 'Strong: ' + r.strongTopics.join(' · ')));
+    }
+    slot.appendChild(c);
+  }
+}
+
 // ---------- Vetting queue (§4.7: a human publishes, never Arbo) ----------
 async function renderVetting(slot) {
   slot.replaceChildren();
@@ -1364,6 +1425,10 @@ async function renderFollowUps() {
   const safetySlot = el('div');
   v.appendChild(safetySlot);
   renderSafety(safetySlot);
+  // §6M.5: a man nobody has ever tested is an open loop too.
+  const trainSlot = el('div');
+  v.appendChild(trainSlot);
+  renderTrainingBoard(trainSlot);
   // §4.7: a safety lesson waiting on Mike's name is an open loop too.
   const vetSlot = el('div');
   v.appendChild(vetSlot);

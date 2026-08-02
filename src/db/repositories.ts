@@ -1732,3 +1732,37 @@ export async function publishLesson(itemId: string, vettedBy: string): Promise<b
   if (res.error) throw res.error;
   return (res.data ?? []).length > 0;
 }
+
+/** Active crew with their rolling weak/strong topic profiles (§6M.5). */
+export async function crewWithProfiles(): Promise<Array<{
+  id: string; name: string; role: string; scores: Record<string, number>;
+}>> {
+  const db = getDb();
+  const res = await db.from('crew_member')
+    .select('id, name, role, training_profile')
+    .eq('active', true)
+    .order('name', { ascending: true });
+  if (res.error) throw res.error;
+  return (res.data ?? []).map((r) => ({
+    id: r.id as string,
+    name: r.name as string,
+    role: r.role as string,
+    scores: ((r.training_profile as { scores?: Record<string, number> } | null)?.scores) ?? {},
+  }));
+}
+
+/** Completed training gates since an instant — drives "who has not done it". */
+export async function gateCompletionsSince(sinceIso: string): Promise<Array<{
+  crewMemberId: string; context: string; completedAtIso: string | null;
+}>> {
+  const db = getDb();
+  const res = await db.from('training_event')
+    .select('crew_member_id, context, completed_at')
+    .gte('started_at', sinceIso);
+  if (res.error) throw res.error;
+  return (res.data ?? []).map((r) => ({
+    crewMemberId: r.crew_member_id as string,
+    context: r.context as string,
+    completedAtIso: (r.completed_at as string | null) ?? null,
+  }));
+}

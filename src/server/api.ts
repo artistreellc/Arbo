@@ -15,7 +15,7 @@ import { findOpenLoops, type LoopSnapshot } from '../ops/loopCloser.js';
 import { quoteCheck, deriveLeakagePct, type QuoteCheckInput } from '../ops/estimating.js';
 import { buildCrewPayload, sequenceRoute, type WorkOrderSource } from '../crew/workOrder.js';
 import { evaluateGate, buildAcknowledgment, type BriefingContent } from '../crew/briefingGate.js';
-import { etToday, etDayWindow } from '../lib/etDay.js';
+import { etToday, etDayWindow, etWeekStart } from '../lib/etDay.js';
 import {
   buildInvoiceDrafts, buildCollectionQueue, derivedStatus, daysOverdue, lateFeeOwed,
   safeLateFeePct, DEFAULT_NET_DAYS, type InvoiceableJob, type OpenInvoice,
@@ -28,6 +28,7 @@ import {
   defaultQuestionnaireConfig, type TrainingItemRef, type TrainingProfile, type GateContext,
 } from '../training/questionnaire.js';
 import { toCrewFacing, gradeSubmission, type GradableItem } from '../training/grading.js';
+import { buildTrainingBoard, type CrewProfileRow, type GateCompletionRow } from '../training/board.js';
 import { buildActionPlan, isSchedulable, type BreakdownReport, type KnownPart, type UnitStatus } from '../fleet/breakdown.js';
 import type { TtsClient } from '../voice/elevenlabsTts.js';
 import { scoreLead, type LeadQualityResult } from '../reception/leadQuality.js';
@@ -143,6 +144,9 @@ export interface DataSource {
   trainingPool?(): Promise<TrainingItemRef[]>;
   /** Full rows INCLUDING the answer key. Server-side only — never serialised. */
   trainingItems?(ids: string[]): Promise<GradableItem[]>;
+  /** §6M.5 training board. */
+  crewProfiles?(): Promise<CrewProfileRow[]>;
+  gateCompletionsSince?(sinceIso: string): Promise<GateCompletionRow[]>;
   /** §4.7 vetting queue: drafts awaiting a named human. */
   pendingDrafts?(): Promise<Array<{ id: string; topic: string; body: Record<string, unknown>; createdAt: string; originNearMissId: string | null }>>;
   /** Returns false when the draft is gone or already published. */
@@ -1028,12 +1032,17 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       }
 
       let nearMisses: unknown[] = [];
+      // null = we could not read the log. A 0 here would say "every incident
+      // has a lesson", which is the opposite of what a dead feed means (§1B).
+      let nearMissesWithoutLesson: number | null = null;
       if (!source.recentNearMisses) {
         blindSpots.push('near_miss: no source wired');
       } else {
         try {
           const since = new Date(Date.parse(`${todayEt}T00:00:00Z`) - 90 * 86400_000).toISOString().slice(0, 10);
           nearMisses = await source.recentNearMisses(since);
+          nearMissesWithoutLesson = (nearMisses as Array<{ hasTrainingItem?: boolean }>)
+            .filter((n) => n.hasTrainingItem === false).length;
         } catch {
           blindSpots.push('near_miss: could not read the incident log');
         }
@@ -1045,6 +1054,9 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
           certProblems,
           aerialBlocked: [...new Set(certProblems.filter((f) => f.blocksAerialWork).map((f) => f.crewMemberId))],
           nearMisses,
+          // §6M: the loop only closes when an incident becomes a lesson. This
+          // is the count that says whether it is closing — null when unknown.
+          nearMissesWithoutLesson,
           // Empty is the ONLY all-clear. A populated list means part of this
           // board is guesswork and the UI must say so (§1B).
           blindSpots,
@@ -1195,6 +1207,52 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
           // pass that failed outright.
           ungradable: graded.ungradable,
           gradedOk,
+        },
+      };
+    },
+
+    /**
+     * GET /api/training/board — §6M.5. Who is weak on what, who has never been
+     * asked, and who owes this week's questionnaire. An untested topic is a
+     * gap in OUR record, never a pass.
+     */
+    async trainingBoard(): Promise<ApiResult> {
+      if (!source.ready() || !source.crewProfiles) return { status: 503, body: { error: 'db_not_configured' } };
+      const crew = await source.crewProfiles();
+
+      // The pool defines what "untested" can even mean. Without it, untested
+      // would silently narrow to "among topics he has already seen".
+      let poolTopics: string[] = [];
+      const extraBlindSpots: string[] = [];
+      try {
+        poolTopics = source.trainingPool ? [...new Set((await source.trainingPool()).map((i) => i.topic))] : [];
+      } catch {
+        extraBlindSpots.push('Training pool could not be read — the untested list is incomplete, not empty.');
+      }
+
+      // Computed ONCE: two calls could straddle a week boundary and report a
+      // window that does not match the completions actually queried.
+      const weekStart = etWeekStart();
+
+      // null means the read FAILED, which the board renders as UNKNOWN.
+      let completions: GateCompletionRow[] | null = null;
+      if (!source.gateCompletionsSince) {
+        extraBlindSpots.push('Weekly completions: no source wired.');
+      } else {
+        try {
+          completions = await source.gateCompletionsSince(weekStart.toISOString());
+        } catch {
+          completions = null;
+        }
+      }
+
+      const board = buildTrainingBoard({ crew, poolTopics, completions });
+      return {
+        status: 200,
+        body: {
+          ...board,
+          blindSpots: [...board.blindSpots, ...extraBlindSpots],
+          weekStartIso: weekStart.toISOString(),
         },
       };
     },

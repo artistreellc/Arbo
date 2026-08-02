@@ -64,6 +64,19 @@ describe('ARBOR app shell', () => {
     expect(html).toContain('not a claim that everyone is current');
   });
 
+  it('the training board never shows an untested topic as a pass (§1B/§6M.5)', () => {
+    expect(html).toContain('/api/training/board');
+    expect(html).toContain('Never asked about');
+    expect(html).toContain('NEVER TESTED');
+    // An unreadable weekly feed is UNKNOWN, not "nobody owes anything".
+    expect(html).toContain('WEEK UNKNOWN');
+  });
+
+  it('a dead training board is named, not drawn as a current crew (§1B)', () => {
+    expect(html).toContain('Training board unavailable');
+    expect(html).toContain('not a claim that everyone is current');
+  });
+
   it('the vetting queue demands a named human before publishing (§4.7)', () => {
     expect(html).toContain('/api/training/drafts');
     expect(html).toContain('cannot publish without your name on it');

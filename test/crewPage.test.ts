@@ -98,13 +98,24 @@ describe('crew near-miss filing (§6V) — blameless and always reachable', () =
 describe('clock-in question (§6M/§4.6) on the crew door', () => {
   const html = loadCrewHtml();
 
-  it('asks the server for the question and posts answers, never a score', () => {
-    expect(html).toContain('/api/crew/quiz?context=clock_in_gate');
+  it('asks the server for the questions and posts answers, never a score', () => {
+    expect(html).toContain("'/api/crew/quiz?context=' + ctx");
     expect(html).toContain('/api/crew/quiz/complete');
     // The phone sends WHICH option it picked. It never asserts correctness —
     // the server grades against a key this page has never seen.
     expect(html).toContain('answers: QUIZ.answers');
     expect(html).not.toMatch(/correct:\s*\d/);
+  });
+
+  it('picks the Friday questionnaire by the Hampton Roads day, not UTC', () => {
+    expect(html).toContain("timeZone: 'America/New_York', weekday: 'short'");
+    expect(html).toContain('friday_questionnaire');
+    expect(html).toContain('clock_in_gate');
+  });
+
+  it('shows progress and never dresses a short pool up as a full quiz (§1B)', () => {
+    expect(html).toContain('answered');
+    expect(html).toContain('This is not a short week');
   });
 
   it('shows the crew that the time is paid (§4.6)', () => {
@@ -114,7 +125,7 @@ describe('clock-in question (§6M/§4.6) on the crew door', () => {
 
   it('a quiz that fails to load says so instead of silently skipping', () => {
     expect(html).toContain('do not skip it quietly');
-    expect(html).toContain('not "no question"');
+    expect(html).toContain('not "no questions"');
   });
 
   it('the question only renders after the briefing gate unlocks', () => {

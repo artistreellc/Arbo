@@ -53,3 +53,26 @@ export function etDayWindow(dayLabel: string): { startUtc: Date; endUtc: Date; d
 export function etTomorrowWindow(now: Date): { startUtc: Date; endUtc: Date; dayLabel: string } {
   return etDayWindow(etDateOffset(now, 1));
 }
+
+/**
+ * The Monday 00:00 ET that starts the CURRENT week, as UTC. The training board
+ * asks "who owes this week's questionnaire", and a UTC week boundary would
+ * roll over at 8pm Sunday ET — marking Monday-morning crew as already owing.
+ */
+export function etWeekStart(now = new Date()): Date {
+  const label = etToday(now);
+  // Weekday in ET, not in the server's zone.
+  const dow = new Intl.DateTimeFormat('en-US', { timeZone: ET, weekday: 'short' })
+    .format(now);
+  const order = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const idx = order.indexOf(dow);
+  const back = idx < 0 ? 0 : idx;
+  const monday = etDateOffset(new Date(Date.parse(`${label}T12:00:00Z`)), -back);
+  return etDayWindow(monday).startUtc;
+}
+
+/** True when it is Friday in Hampton Roads — the questionnaire's day. */
+export function isEtFriday(now = new Date()): boolean {
+  return new Intl.DateTimeFormat('en-US', { timeZone: ET, weekday: 'short' })
+    .format(now) === 'Fri';
+}
