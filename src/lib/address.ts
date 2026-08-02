@@ -76,6 +76,32 @@ export function isServiceCity(city: string | undefined | null): boolean {
   return resolveServiceCity(city) !== null;
 }
 
+/**
+ * ZIP → served city, for lead sources that give a ZIP and no city (the CallRail
+ * web form is one). Ranges are the USPS assignments for the four served cities;
+ * anything outside them resolves to null, which the caller must treat as
+ * UNKNOWN and flag for review — never as "not our area" and never as a guess
+ * (§1B, §3.7). Suffolk (234xx-adjacent 23432-23439, 23315…) is deliberately
+ * absent: Arbo holds no Suffolk license and must never imply it does.
+ */
+const ZIP_RANGES: Array<{ city: ServiceCity; from: number; to: number }> = [
+  { city: 'Virginia Beach', from: 23450, to: 23467 },
+  { city: 'Virginia Beach', from: 23471, to: 23471 },
+  { city: 'Virginia Beach', from: 23479, to: 23479 },
+  { city: 'Norfolk', from: 23501, to: 23529 },
+  { city: 'Norfolk', from: 23541, to: 23541 },
+  { city: 'Norfolk', from: 23551, to: 23551 },
+  { city: 'Chesapeake', from: 23320, to: 23328 },
+  { city: 'Portsmouth', from: 23701, to: 23709 },
+];
+
+export function serviceCityForZip(zip: string | undefined | null): ServiceCity | null {
+  if (!zip) return null;
+  const n = Number(zip.trim().slice(0, 5));
+  if (!Number.isInteger(n)) return null;
+  return ZIP_RANGES.find((r) => n >= r.from && n <= r.to)?.city ?? null;
+}
+
 /** Best-effort 5-digit ZIP extraction (drives route clustering, §5 #10). */
 export function extractZip(raw: string): string | null {
   const m = raw.match(/\b(\d{5})(?:-\d{4})?\b/);

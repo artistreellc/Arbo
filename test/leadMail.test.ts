@@ -138,6 +138,161 @@ describe('lead-mail classifier (§5A #12) — real provider formats', () => {
   });
 });
 
+// Both formats below are the REAL 2026-08-02 messages, trimmed. They were
+// invisible to the classifier until then: the web-form alert had no branch at
+// all, and the LSA rule matched a sender address Google does not actually use.
+const WEB_FORM_BODY = `CallRail
+
+Hey, Art-is-Tree LLC (VA) received a raw form submission!
+
+Source Details:
+Form URL: https://www.tree-services.pro/
+Source: Tree Service Pros
+Referrer Domain: https://www.treeleadstoday.com/
+Campaign: TSP National Lead Gen Facebook
+
+Form Contents:
+Name:: Stephen Kennedy
+Email:: kencas1@cox.net
+Phone Number:: (757) 408-1124
+Zip Code:: 23454
+Service Requested:: Tree Trimming & Pruning - tree is in backyard needs trimming / Address: 2620 Meckley Court`;
+
+const LSA_BODY = `Local Services By
+Google<https://c.gle/xxx>
+Your Customer ID: 555-015-9684
+
+New event
+
+Potential Customer sent you a message
+
+1000 works if possible
+Name is Dave
+9276 Buckman Ave
+253-590-3328
+
+To connect with this customer
+
+Reply to this email Or Respond to this lead in the app`;
+
+describe('CallRail WEB FORM (§5A #12) — the alert that had no branch', () => {
+  const r = classifyLeadMail({
+    from: 'no-reply@callrail.com',
+    subject: 'Form Submission Alert for Art-is-Tree LLC (VA)',
+    body: WEB_FORM_BODY,
+  });
+
+  it('is recognised as a lead', () => {
+    expect(r.isLeadNotification).toBe(true);
+    expect(r.provider).toBe('callrail_web_form');
+  });
+
+  it('pulls every field the double-colon layout carries', () => {
+    expect(r.lead.name).toBe('Stephen Kennedy');
+    expect(r.lead.phone).toBe('(757) 408-1124');
+    expect(r.lead.email).toBe('kencas1@cox.net');
+    expect(r.lead.zip).toBe('23454');
+    expect(r.lead.source).toBe('Tree Service Pros');
+  });
+
+  it('splits the street address out of the service-request free text', () => {
+    expect(r.lead.address).toBe('2620 Meckley Court');
+    expect(r.lead.details).toBe('Tree Trimming & Pruning - tree is in backyard needs trimming');
+    expect(r.lead.details).not.toMatch(/Address:/);
+  });
+
+  it('resolves the city from the ZIP when the form gives no city', () => {
+    expect(r.lead.serviceCity).toBe('Virginia Beach');
+    expect(r.inServiceArea).toBe(true);
+  });
+
+  it('an out-of-area ZIP is flagged for review, and an absent one is UNKNOWN', () => {
+    const far = classifyLeadMail({
+      from: 'no-reply@callrail.com',
+      subject: 'Form Submission Alert for Art-is-Tree LLC (VA)',
+      body: WEB_FORM_BODY.replace('23454', '90210'),
+    });
+    expect(far.inServiceArea).toBe(false);
+    expect(far.isLeadNotification).toBe(true); // flagged, never dropped (§3.7)
+
+    const none = classifyLeadMail({
+      from: 'no-reply@callrail.com',
+      subject: 'Form Submission Alert for Art-is-Tree LLC (VA)',
+      body: WEB_FORM_BODY.replace('Zip Code:: 23454', ''),
+    });
+    expect(none.inServiceArea).toBeNull();
+  });
+
+  it('never claims Suffolk — a Suffolk ZIP does not resolve to a served city', () => {
+    const suffolk = classifyLeadMail({
+      from: 'no-reply@callrail.com',
+      subject: 'Form Submission Alert for Art-is-Tree LLC (VA)',
+      body: WEB_FORM_BODY.replace('23454', '23434'),
+    });
+    expect(suffolk.lead.serviceCity).toBeUndefined();
+    expect(suffolk.inServiceArea).toBe(false);
+  });
+
+  it('the CallRail monthly summary is still not a lead', () => {
+    const s = classifyLeadMail({
+      from: 'no-reply@callrail.com',
+      subject: "Art-is-Tree LLC's Monthly Summary for 7/1/26-7/31/26",
+      body: 'CallRail Art-is-Tree LLC Monthly Report',
+    });
+    expect(s.isLeadNotification).toBe(false);
+  });
+});
+
+describe('Google LSA (§5A #12) — the sender address the old rule never matched', () => {
+  const r = classifyLeadMail({
+    from: 'customer-request-6487787313@awexpress.google.com',
+    subject: "Potential Customer's new request",
+    body: LSA_BODY,
+  });
+
+  it('recognises the per-lead awexpress sender', () => {
+    expect(r.isLeadNotification).toBe(true);
+    expect(r.provider).toBe('lsa_call');
+    expect(r.lead.source).toBe('LSA');
+  });
+
+  it('keeps the customer\'s own words — the budget lives in them', () => {
+    expect(r.lead.details).toMatch(/1000 works if possible/);
+  });
+
+  it('extracts the hand-typed name, phone, and street', () => {
+    expect(r.lead.name).toBe('Dave');
+    expect(r.lead.phone).toBe('253-590-3328');
+    expect(r.lead.address).toBe('9276 Buckman Ave');
+  });
+
+  it('never mistakes a budget line for a street address', () => {
+    // "1000 works if possible" starts with a number; only a real street
+    // suffix may qualify, or the address stays undefined.
+    expect(r.lead.address).not.toMatch(/works if possible/);
+    const noStreet = classifyLeadMail({
+      from: 'customer-request-1@awexpress.google.com',
+      subject: "Potential Customer's new request",
+      body: LSA_BODY.replace('9276 Buckman Ave\n', ''),
+    });
+    expect(noStreet.lead.address).toBeUndefined();
+  });
+
+  it('does not CLAIM in-area when no location is on the wire (§1B)', () => {
+    expect(r.inServiceArea).toBeNull();
+  });
+
+  it('still accepts the older localservices-noreply sender', () => {
+    const old = classifyLeadMail({
+      from: 'localservices-noreply@google.com',
+      subject: 'New call from a potential customer',
+      body: 'New event',
+    });
+    expect(old.isLeadNotification).toBe(true);
+    expect(old.provider).toBe('lsa_call');
+  });
+});
+
 describe('follow-up engine (§5A #16–20) — recommend-only, legally gated', () => {
   const legal = loadLegal();
   // A "now" squarely inside quiet hours: 15:00 EDT on a Wednesday.

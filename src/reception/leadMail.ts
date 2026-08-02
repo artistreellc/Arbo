@@ -14,9 +14,9 @@
 // submissions (lead-form spam arrives from anywhere) are flagged, never
 // silently dropped: §3.7 bias — anything ambiguous stays visible for review.
 
-import { resolveServiceCity, type ServiceCity } from '../lib/address.js';
+import { resolveServiceCity, serviceCityForZip, extractZip, type ServiceCity } from '../lib/address.js';
 
-export type LeadMailProvider = 'google_ads_lead_form' | 'callrail_call' | 'lsa_call';
+export type LeadMailProvider = 'google_ads_lead_form' | 'callrail_call' | 'callrail_web_form' | 'lsa_call';
 
 export interface LeadMailInput {
   from: string;
@@ -39,6 +39,9 @@ export interface ExtractedLead {
   isRepeatCaller?: boolean;
   /** CallRail "Tagged as <label>" (e.g. "Schedule booked"). */
   taggedAs?: string;
+  /** Web-form ZIP — sometimes the ONLY location signal the form carries. */
+  zip?: string;
+  email?: string;
 }
 
 export interface LeadMailResult {
@@ -112,6 +115,95 @@ function parseCallRail(input: LeadMailInput): LeadMailResult {
   };
 }
 
+/**
+ * CallRail WEB FORM alert — a different animal from the call alert and a
+ * different subject line, which is why it was invisible until 2026-08-02.
+ * Real observed shape (plaintext), note the DOUBLE colons:
+ *   Source: Tree Service Pros / Campaign: <name> / Form URL: <url>
+ *   Name:: <name> / Email:: <email> / Phone Number:: <phone>
+ *   Zip Code:: <zip> / Service Requested:: <scope> [/ Address: <street>]
+ * The form gives a ZIP and often a street, but NO city — so the city is
+ * resolved from the ZIP, and an unrecognized ZIP stays UNKNOWN for review
+ * rather than being called out-of-area.
+ */
+function parseCallRailWebForm(input: LeadMailInput): LeadMailResult {
+  const field = (label: string): string | undefined => {
+    const m = input.body.match(new RegExp(`^${label}::?\\s*(.+)$`, 'im'));
+    const v = m?.[1]?.trim();
+    return v && v !== 'N/A' ? v : undefined;
+  };
+  const name = field('Name');
+  const email = field('Email');
+  const phone = field('Phone Number');
+  const zip = field('Zip Code') ?? undefined;
+  const requested = field('Service Requested');
+  // The form crams the street address into the free-text service field:
+  // "<scope> / Address: <street>". Split it rather than losing the address.
+  const addrMatch = requested?.match(/\/\s*Address:\s*(.+)$/i);
+  const address = addrMatch?.[1]?.trim();
+  const details = addrMatch ? requested!.slice(0, addrMatch.index).replace(/\s*\/\s*$/, '').trim() : requested;
+  const source = field('Source') ?? field('Campaign');
+  const serviceCity = serviceCityForZip(zip) ?? undefined;
+  return {
+    isLeadNotification: true,
+    provider: 'callrail_web_form',
+    lead: {
+      name, email, phone, zip, address, details, source,
+      city: serviceCity, serviceCity,
+    },
+    // A ZIP we do not recognize is UNKNOWN, not out-of-area: national lead-gen
+    // forms send from everywhere, and §3.7 says flag for review, never drop.
+    inServiceArea: zip ? (serviceCity !== undefined ? true : false) : null,
+  };
+}
+
+/**
+ * Google Local Services (LSA) customer request. The REAL sender is a per-lead
+ * address `customer-request-<digits>@awexpress.google.com` — NOT the
+ * `localservices-noreply@` address the original rule expected, which is why
+ * every LSA lead was invisible until 2026-08-02. The customer's own words sit
+ * between the headline and "To connect with this customer", and they routinely
+ * contain the name, street, and phone typed by hand.
+ */
+function parseLsaRequest(input: LeadMailInput): LeadMailResult {
+  const block = input.body.match(
+    /(?:sent you a message|new request|You received this)\s*\n+([\s\S]*?)\n\s*To connect with this customer/i,
+  )?.[1];
+  const lines = (block ?? '')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l && !/^</.test(l));
+  const joined = lines.join('\n');
+  // "Name is Dave" is the observed hand-typed shape; fall back to nothing
+  // rather than guessing which line is a name.
+  const name = joined.match(/\bName is\s+([A-Za-z][A-Za-z.'-]*(?:\s+[A-Za-z][A-Za-z.'-]*)?)/i)?.[1]?.trim();
+  const phone = joined.match(/\b(\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/)?.[0]?.trim();
+  // A street line must actually look like a street. "1000 works if possible"
+  // starts with a number too — guessing there would put a budget note in the
+  // address field and route a crew to nowhere (§1B: no address beats a wrong
+  // one). Requires a house number AND a real street suffix.
+  const STREET_SUFFIX = /\b(ave|avenue|st|street|rd|road|dr|drive|ln|lane|ct|court|blvd|boulevard|way|cir|circle|pl|place|ter|terrace|trl|trail|pkwy|parkway|hwy|highway|loop|run|walk|pt|point|cres|crescent)\b\.?$/i;
+  const address = lines.find((l) => /^\d+\s+[A-Za-z]/.test(l) && STREET_SUFFIX.test(l));
+  const zip = extractZip(joined) ?? undefined;
+  const serviceCity = serviceCityForZip(zip) ?? undefined;
+  return {
+    isLeadNotification: true,
+    provider: 'lsa_call',
+    lead: {
+      source: 'LSA',
+      name, phone, address, zip,
+      city: serviceCity,
+      serviceCity,
+      // The customer's own words are the most valuable thing in the mail —
+      // they often carry the budget and the scope. Never discard them.
+      details: joined || undefined,
+    },
+    // LSA is geo-targeted by Google, but Arbo has no city on the wire, so it
+    // must not CLAIM in-area. Unknown stays unknown (§1B).
+    inServiceArea: serviceCity !== undefined ? true : null,
+  };
+}
+
 export function classifyLeadMail(input: LeadMailInput): LeadMailResult {
   const from = input.from.toLowerCase();
 
@@ -123,8 +215,17 @@ export function classifyLeadMail(input: LeadMailInput): LeadMailResult {
   if (from.includes('no-reply@callrail.com') && /^Call from .+ for Art.?is.?Tree/i.test(input.subject)) {
     return parseCallRail(input);
   }
-  if (from.includes('localservices-noreply@google.com') && /new (call|message|lead) from a potential customer/i.test(input.subject)) {
-    return { isLeadNotification: true, provider: 'lsa_call', lead: { source: 'LSA' }, inServiceArea: null };
+  // CallRail web-form alert. Distinct subject from the call alert; the monthly
+  // summary ("Monthly Summary for …") must NOT match, so anchor on the shape.
+  if (from.includes('no-reply@callrail.com') && /^Form Submission Alert for Art.?is.?Tree/i.test(input.subject)) {
+    return parseCallRailWebForm(input);
+  }
+  // LSA sends from a per-lead address; the old localservices-noreply@ rule
+  // matched nothing in the real inbox. Both senders are accepted now.
+  const isLsaSender = /customer-request-\d+@awexpress\.google\.com/.test(from)
+    || from.includes('localservices-noreply@google.com');
+  if (isLsaSender && /potential customer/i.test(input.subject)) {
+    return parseLsaRequest(input);
   }
   return NOT_A_LEAD;
 }

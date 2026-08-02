@@ -29,7 +29,15 @@ this document is the spec.
 ## Step A — Lead inbox sweep (§5A #12/#13)
 
 1. Search Gmail (label id for `ARBOR/processed` is `Label_3`):
-   `{from:ads-account-noreply@google.com from:no-reply@callrail.com from:localservices-noreply@google.com} newer_than:2d -label:Label_3`
+   `{from:ads-account-noreply@google.com from:no-reply@callrail.com from:localservices-noreply@google.com from:awexpress.google.com} newer_than:2d -label:Label_3`
+
+   > **2026-08-02 — this query used to miss real leads.** LSA does NOT send
+   > from `localservices-noreply@`; every LSA lead arrives from a per-lead
+   > address `customer-request-<digits>@awexpress.google.com`, so the sweep
+   > never saw one. The CallRail WEB FORM alert has its own subject line and
+   > had no rule at all. Both are covered below. If a sender appears that
+   > matches no rule here, it is NOT a non-lead — leave it unlabeled and
+   > report it, exactly as the run that caught this one did.
 2. Classify each thread by sender + subject (leadMail.ts rules):
    - `ads-account-noreply@google.com` + subject `Lead form response received`
      → **google_ads_lead_form**. Read body; extract labeled plaintext fields
@@ -40,8 +48,22 @@ this document is the spec.
      Tracker (TSP/TLT/…) = Mike's source tag; name+phone from subject/body;
      `New Caller` vs `Nth call` = first-timer signal. Subject `TXT from …` →
      source `text`.
-   - `localservices-noreply@google.com` + `new call/message/lead from a
-     potential customer` → **lsa**.
+   - `no-reply@callrail.com` + subject `Form Submission Alert for Art-is-Tree`
+     → **callrail_web_form** (a WEB FORM, not a call). Plaintext body uses
+     DOUBLE colons: `Name::` / `Email::` / `Phone Number::` / `Zip Code::` /
+     `Service Requested::`. The street address is jammed into the service
+     field as `<scope> / Address: <street>` — split it. The form carries NO
+     city: resolve it from the ZIP (`serviceCityForZip`). An unrecognized ZIP
+     is a REVIEW flag, never a silent drop; an absent ZIP is UNKNOWN.
+   - `customer-request-<digits>@awexpress.google.com` (or the legacy
+     `localservices-noreply@google.com`) + subject containing `Potential
+     Customer` → **lsa**. The customer's hand-typed words sit between the
+     headline and `To connect with this customer` and routinely carry the
+     budget, name, street, and phone — KEEP the whole block as details, it is
+     the most valuable thing in the mail. A line starting with digits is only
+     an address if it ends in a real street suffix ("1000 works if possible"
+     is a budget, not a street). LSA gives no city on the wire, so
+     `inServiceArea` stays UNKNOWN unless a ZIP resolves it.
    - Weekly/monthly summaries, "recommendations auto-applied", any
      `learn@callrail.com` marketing → **not a lead**. Label processed, no row.
 3. Ingest (Supabase `execute_sql`, parameter-safe quoting):
