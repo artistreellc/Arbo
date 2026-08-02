@@ -211,3 +211,100 @@ describe('GET /api/crew/reference (§6U) — the handler cannot overstate itself
     }
   });
 });
+
+describe('reference library authoring (§4.7) — nothing reaches a phone unsigned', () => {
+  const drafted: Array<Record<string, unknown>> = [];
+  const authoringSource = (over: Partial<DataSource> = {}): DataSource => ({
+    ready: () => true,
+    stopsBetween: async () => [],
+    newLeads: async () => [],
+    createReferenceEntry: async (input) => { drafted.push(input as Record<string, unknown>); return 'new-id'; },
+    publishReferenceEntry: async () => true,
+    draftReferenceEntries: async () => [],
+    ...over,
+  });
+  const UUID = '11111111-1111-4111-8111-111111111111';
+
+  it('a new entry is a DRAFT, and the response says it is still invisible', async () => {
+    drafted.length = 0;
+    const res = await createApi(authoringSource()).createReferenceEntry({
+      techniqueName: 'Speed line', howTo: 'Tension a line to a remote anchor.',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ published: false });
+    expect((res.body as { line: string }).line).toContain('until somebody signs it off');
+    // published is never a field a caller can set.
+    expect(drafted[0]).not.toHaveProperty('published');
+  });
+
+  it('drops prose masquerading as a citation at the WRITE boundary (§6U.3)', async () => {
+    drafted.length = 0;
+    const res = await createApi(authoringSource()).createReferenceEntry({
+      techniqueName: 'Speed line', howTo: 'x',
+      standardRefs: ['Z133 §8.1', 'Employers shall ensure that each employee is trained in the hazards'],
+    });
+    expect(res.body).toMatchObject({ refsDropped: 1 });
+    expect(drafted[0]!.standardRefs).toEqual(['Z133 §8.1']);
+  });
+
+  it('says when an entry went in with no limits recorded (§1B)', async () => {
+    const api = createApi(authoringSource());
+    expect((await api.createReferenceEntry({ techniqueName: 'a', howTo: 'b' })).body)
+      .toMatchObject({ limitsMissing: true });
+    expect((await api.createReferenceEntry({ techniqueName: 'a', howTo: 'b', wontWorkWhen: 'Included bark.' })).body)
+      .toMatchObject({ limitsMissing: false });
+  });
+
+  it('refuses a source link that is not http(s)', async () => {
+    const res = await createApi(authoringSource()).createReferenceEntry({
+      techniqueName: 'a', howTo: 'b', sourceLink: 'javascript:alert(1)',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: 'bad_source_link' });
+  });
+
+  it('clamps the skill level instead of storing nonsense', async () => {
+    drafted.length = 0;
+    const api = createApi(authoringSource());
+    await api.createReferenceEntry({ techniqueName: 'a', howTo: 'b', skillLevel: 99 });
+    await api.createReferenceEntry({ techniqueName: 'a', howTo: 'b', skillLevel: -4 });
+    await api.createReferenceEntry({ techniqueName: 'a', howTo: 'b', skillLevel: 'banana' });
+    expect(drafted.map((d) => d.skillLevel)).toEqual([10, 1, 1]);
+  });
+
+  it('will not publish without a named human (§4.7)', async () => {
+    const res = await createApi(authoringSource()).publishReferenceEntry(UUID, {});
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: 'vetter_required' });
+  });
+
+  it('does not report a fresh publish over an already-published entry', async () => {
+    const res = await createApi(authoringSource({ publishReferenceEntry: async () => false }))
+      .publishReferenceEntry(UUID, { vettedBy: 'Mike' });
+    expect(res.status).toBe(409);
+  });
+
+  it('the vetting queue names what is MISSING before anyone signs off (§1B)', async () => {
+    const api = createApi(authoringSource({
+      draftReferenceEntries: async () => [{
+        id: 'd1', techniqueName: 'Speed line', skillLevel: 6, howTo: 'x',
+        pros: [], cons: [], wontWorkWhen: null, sourceLink: null,
+        standardRefs: ['not a clause, just some prose about it'], createdAt: '2026-08-01T00:00:00Z',
+      }],
+    }));
+    const body = (await api.referenceDrafts()).body as
+      { drafts: Array<{ gaps: string[]; standardRefs: string[]; refsDropped: number }> };
+    const d = body.drafts[0]!;
+    expect(d.gaps.some((g) => g.includes('No limits recorded'))).toBe(true);
+    expect(d.gaps.some((g) => g.includes('No clause citation'))).toBe(true);
+    expect(d.gaps.some((g) => g.includes('not clause citations'))).toBe(true);
+    expect(d.standardRefs).toEqual([]);
+    expect(d.refsDropped).toBe(1);
+  });
+
+  it('says 503 rather than an empty queue when the DB is not configured (§1B)', async () => {
+    const dead = createApi({ ready: () => false, stopsBetween: async () => [], newLeads: async () => [] });
+    expect((await dead.referenceDrafts()).status).toBe(503);
+    expect((await dead.createReferenceEntry({ techniqueName: 'a', howTo: 'b' })).status).toBe(503);
+  });
+});

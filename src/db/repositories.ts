@@ -1998,6 +1998,85 @@ export async function referenceEntries(): Promise<Array<{
   }));
 }
 
+/**
+ * Reference entries waiting on a human vetter (§4.7). The read path holds
+ * these back and only COUNTS them; this is the screen that clears them.
+ */
+export async function draftReferenceEntries(): Promise<Array<{
+  id: string; techniqueName: string; skillLevel: number; howTo: string;
+  pros: string[]; cons: string[]; wontWorkWhen: string | null;
+  sourceLink: string | null; standardRefs: string[]; createdAt: string;
+}>> {
+  const db = getDb();
+  const res = await db.from('reference_entry')
+    .select('id, technique_name, skill_level, how_to, pros, cons, wont_work_when, source_link, standard_refs, created_at')
+    .eq('published', false)
+    .order('created_at', { ascending: true });
+  if (res.error) throw res.error;
+  return (res.data ?? []).map((r) => ({
+    id: r.id as string,
+    techniqueName: r.technique_name as string,
+    skillLevel: Number(r.skill_level),
+    howTo: r.how_to as string,
+    pros: (r.pros as string[] | null) ?? [],
+    cons: (r.cons as string[] | null) ?? [],
+    wontWorkWhen: (r.wont_work_when as string | null) ?? null,
+    sourceLink: (r.source_link as string | null) ?? null,
+    standardRefs: (r.standard_refs as string[] | null) ?? [],
+    createdAt: r.created_at as string,
+  }));
+}
+
+/**
+ * Write a reference entry. ALWAYS as a draft — `published` is never accepted
+ * from a caller, because the only way into the crew's hands is through a named
+ * human (§4.7). Returns the new id.
+ */
+export async function createReferenceEntry(input: {
+  techniqueName: string; skillLevel: number; howTo: string;
+  pros: string[]; cons: string[]; wontWorkWhen: string | null;
+  sourceLink: string | null; standardRefs: string[];
+}): Promise<string> {
+  const db = getDb();
+  const res = await db.from('reference_entry')
+    .insert({
+      technique_name: input.techniqueName,
+      skill_level: input.skillLevel,
+      how_to: input.howTo,
+      pros: input.pros,
+      cons: input.cons,
+      wont_work_when: input.wontWorkWhen,
+      source_link: input.sourceLink,
+      standard_refs: input.standardRefs,
+      published: false,
+    })
+    .select('id')
+    .single();
+  if (res.error) throw res.error;
+  return (res.data as { id: string }).id;
+}
+
+/**
+ * Publish a vetted reference entry. Same shape as publishLesson and for the
+ * same reason: the DB CHECK is the floor, not the gate the user meets.
+ */
+export async function publishReferenceEntry(id: string, vettedBy: string): Promise<boolean> {
+  if (!vettedBy.trim()) throw new Error('vetter_required');
+  const db = getDb();
+  const res = await db.from('reference_entry')
+    .update({
+      published: true,
+      vetted_by: vettedBy.trim(),
+      vetted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .eq('published', false)
+    .select('id');
+  if (res.error) throw res.error;
+  return (res.data ?? []).length > 0;
+}
+
 /** A crew member's competency level, for the above-your-level flag. */
 export async function crewSkillLevel(crewMemberId: string): Promise<number | null> {
   const db = getDb();

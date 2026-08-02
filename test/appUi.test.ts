@@ -136,6 +136,34 @@ describe('ARBOR app shell', () => {
     expect(html).toContain('not "no campaigns running"');
   });
 
+  it('is the only place the §6U library can be written, and it writes drafts', () => {
+    expect(html).toContain('/api/reference/drafts');
+    expect(html).toContain("api('/api/reference'");
+    expect(html).toContain('Write a new entry');
+    // §6U.3 stated where the entry is actually typed, not only in the API.
+    expect(html).toContain('never paste the standard text');
+  });
+
+  it('a library entry cannot publish without a name on it (§4.7)', () => {
+    expect(html).toContain("'/api/reference/' + draft.id + '/publish'");
+    expect(html).toContain('cannot publish without your name on it');
+  });
+
+  it('shows a draft\'s GAPS before the publish button (§1B)', () => {
+    // Scoped to the library desk — 'Vet & publish' also appears in the lesson
+    // queue further up the file.
+    const desk = html.slice(html.indexOf('async function renderLibraryQueue'),
+      html.indexOf('function libraryComposer'));
+    expect(desk).toContain('draft.gaps');
+    expect(desk.indexOf('draft.gaps')).toBeLessThan(desk.indexOf("'Vet & publish'"));
+    expect(html).toContain('No limits recorded — the crew will see a warning in their place.');
+  });
+
+  it('a dead library queue is named, not drawn as an empty one (§1B)', () => {
+    expect(html).toContain('Library queue unavailable');
+    expect(html).toContain('not a claim that nothing is waiting');
+  });
+
   it('uses the §9 cockpit tokens (violet primary, dark base, 48px+ targets)', () => {
     expect(html).toContain('#7C3AED'); // luminous purple accent
     expect(html).toContain('#0B0D10'); // near-black base

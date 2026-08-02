@@ -30,7 +30,7 @@ import {
 import { toCrewFacing, gradeSubmission, type GradableItem } from '../training/grading.js';
 import { buildTrainingBoard, type CrewProfileRow, type GateCompletionRow } from '../training/board.js';
 import { buildAreaReport, buildCampaignReport, type AreaJobFact, type CampaignFact } from '../ops/areaPerformance.js';
-import { searchLibrary, type ReferenceEntry } from '../reference/library.js';
+import { searchLibrary, sanitiseRefs, type ReferenceEntry } from '../reference/library.js';
 import {
   assessArrival, draftChangeOrder, splitChangeOrders, ChangeOrderRejected,
   type SiteConditionRecord, type ChangeOrderRow,
@@ -153,6 +153,9 @@ export interface DataSource {
   /** §6U reference library. */
   referenceEntries?(): Promise<ReferenceEntry[]>;
   crewSkillLevel?(crewMemberId: string): Promise<number | null>;
+  draftReferenceEntries?(): Promise<Array<Omit<ReferenceEntry, 'published'> & { createdAt: string }>>;
+  createReferenceEntry?(input: Omit<ReferenceEntry, 'id' | 'published'>): Promise<string>;
+  publishReferenceEntry?(id: string, vettedBy: string): Promise<boolean>;
   /** §6D/§6N.3 area + campaign performance facts. */
   areaJobFacts?(sinceIso: string): Promise<AreaJobFact[]>;
   campaignFacts?(): Promise<CampaignFact[]>;
@@ -1535,6 +1538,97 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
         readerSkillLevel,
       });
       return { status: 200, body: { ...result, skillKnown } };
+    },
+
+    /**
+     * GET /api/reference/drafts — §4.7 vetting queue for the library. The crew
+     * read path counts these and shows none of them; this is where they clear.
+     * Each draft carries what is MISSING, so a vetter is not putting their name
+     * on an entry whose limits nobody wrote down.
+     */
+    async referenceDrafts(): Promise<ApiResult> {
+      if (!source.ready() || !source.draftReferenceEntries) return { status: 503, body: { error: 'db_not_configured' } };
+      const rows = await source.draftReferenceEntries();
+      const drafts = rows.map((d) => {
+        const { refs, dropped } = sanitiseRefs(d.standardRefs);
+        const gaps: string[] = [];
+        // §1B at the vetting desk: name the holes before somebody signs it off.
+        if (!d.wontWorkWhen?.trim()) gaps.push('No limits recorded — nobody has written down when this does NOT work.');
+        if (!refs.length) gaps.push('No clause citation on file — the crew gets no standard to check against.');
+        if (dropped > 0) gaps.push(dropped + ' reference(s) are not clause citations and will not be shown (§6U.3).');
+        return { ...d, standardRefs: refs, refsDropped: dropped, gaps };
+      });
+      return { status: 200, body: { drafts, count: drafts.length } };
+    },
+
+    /**
+     * POST /api/reference — write a library entry. It lands as a DRAFT, always:
+     * `published` is not a field a caller may set, because the only route to a
+     * crew phone is through a named human (§4.7).
+     */
+    async createReferenceEntry(body: Record<string, unknown>): Promise<ApiResult> {
+      if (!source.ready() || !source.createReferenceEntry) return { status: 503, body: { error: 'db_not_configured' } };
+      const techniqueName = String(body.techniqueName ?? '').trim();
+      const howTo = String(body.howTo ?? '').trim();
+      if (!techniqueName || !howTo) {
+        return { status: 400, body: { error: 'name_and_howto_required' } };
+      }
+      const list = (v: unknown): string[] => (Array.isArray(v) ? v : [])
+        .map((x) => String(x).trim()).filter(Boolean);
+      // §6U.3 enforced at the WRITE boundary too — prose never reaches the row,
+      // so it can never be read back as a citation.
+      const { refs, dropped } = sanitiseRefs(list(body.standardRefs));
+      const rawLevel = Number(body.skillLevel);
+      const skillLevel = Number.isFinite(rawLevel) ? Math.min(10, Math.max(1, Math.floor(rawLevel))) : 1;
+      const wontWorkWhen = String(body.wontWorkWhen ?? '').trim() || null;
+      const sourceLink = String(body.sourceLink ?? '').trim() || null;
+      if (sourceLink && !/^https?:\/\//i.test(sourceLink)) {
+        return { status: 400, body: { error: 'bad_source_link', line: 'A source link has to be an http(s) address.' } };
+      }
+
+      const id = await source.createReferenceEntry({
+        techniqueName, skillLevel, howTo,
+        pros: list(body.pros), cons: list(body.cons),
+        wontWorkWhen, sourceLink, standardRefs: refs,
+      });
+      if (source.emit) await source.emit('reference.entry.drafted', { id });
+      return {
+        status: 201,
+        body: {
+          id,
+          published: false,
+          refsDropped: dropped,
+          // Saying "saved" without saying "and still invisible" would be the
+          // §1B failure on the authoring side.
+          line: 'Saved as a draft. It stays off the crew phones until somebody signs it off by name.',
+          limitsMissing: wontWorkWhen === null,
+        },
+      };
+    },
+
+    /**
+     * POST /api/reference/:id/publish — §4.7. A named human, every time. Arbo
+     * flags a missing-limits entry but does NOT refuse it: whether an entry is
+     * complete enough to publish is the vetter's judgement, not Arbo's.
+     */
+    async publishReferenceEntry(id: string, body: Record<string, unknown>): Promise<ApiResult> {
+      if (!source.ready() || !source.publishReferenceEntry) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!UUID_RE.test(id)) return { status: 400, body: { error: 'bad_id' } };
+      const vettedBy = String(body.vettedBy ?? '').trim();
+      if (!vettedBy) {
+        return {
+          status: 400,
+          body: {
+            error: 'vetter_required',
+            line: 'Life-safety content cannot publish without a named human vetter (§4.7).',
+          },
+        };
+      }
+      const ok = await source.publishReferenceEntry(id, vettedBy);
+      // Already published or gone — do not report a fresh publish over the top.
+      if (!ok) return { status: 409, body: { error: 'not_publishable' } };
+      if (source.emit) await source.emit('reference.entry.published', { id, vettedBy });
+      return { status: 200, body: { ok: true, vettedBy } };
     },
 
     /** GET /api/agents/runs — §8A.6g audit visibility: what the agents did. */

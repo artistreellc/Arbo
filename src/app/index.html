@@ -217,6 +217,13 @@ nav button .ico{font-size:20px;line-height:1}
 .hudbtn{display:flex;align-items:center;justify-content:center;min-height:50px;border-radius:var(--r-md);
   background:var(--surface);border:1.5px solid var(--border);color:var(--canopy);font-size:14px;
   font-weight:900;letter-spacing:.06em;text-decoration:none;cursor:pointer;width:100%;margin-bottom:10px}
+/* §6U library desk. The vetting card and the composer both live in .card, so
+   their fields are styled here rather than inheriting the yard-check rules. */
+.card .field{margin-bottom:10px}
+.card .field input[type=text],.card .field textarea{width:100%;min-height:50px;
+  border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface-alt);
+  color:var(--ink);font-size:16px;padding:12px;font-family:inherit;display:block}
+.card .field textarea{min-height:76px;resize:vertical;line-height:1.45}
 /* Yard check (§6J2 — internal instrument) */
 #yard .field,#bd .field{margin-bottom:10px}
 #yard label,#bd label{display:block;font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
@@ -1284,6 +1291,152 @@ async function renderVetting(slot) {
   }
 }
 
+// ---------- Reference library (§6U): write it here, sign it off here ----------
+// The crew door READS this library. Nothing reaches a crew phone from here
+// without a name attached (§4.7), and Arbo never writes an entry itself.
+function renderLibraryDesk(slot) {
+  slot.replaceChildren();
+  slot.appendChild(el('div', 'panel-title', 'Reference library'));
+  // Queue and composer are separate slots on purpose: refreshing the queue
+  // after a save must not wipe the confirmation the composer just printed.
+  const queueSlot = el('div');
+  slot.appendChild(queueSlot);
+  slot.appendChild(libraryComposer(queueSlot));
+  renderLibraryQueue(queueSlot);
+}
+
+async function renderLibraryQueue(slot) {
+  slot.replaceChildren();
+  let d;
+  try {
+    d = await api('/api/reference/drafts');
+  } catch (e) {
+    if (e.code === 401) return;
+    // §1B: a queue Arbo could not read is not an empty queue.
+    slot.appendChild(state('Library queue unavailable', e.code === 503
+      ? 'Database not connected — Arbo cannot show what is waiting to be vetted.'
+      : 'Could not read the library drafts. This is not a claim that nothing is waiting.'));
+    return;
+  }
+
+  for (const draft of (d.drafts || [])) {
+    const c = el('div', 'card loop-card');
+    c.appendChild(el('div', 'loop-kind', draft.techniqueName));
+    c.appendChild(el('div', 'scope', draft.howTo));
+    if (draft.wontWorkWhen) c.appendChild(el('div', 'scope', 'Limits: ' + draft.wontWorkWhen));
+    if ((draft.standardRefs || []).length) {
+      c.appendChild(el('div', 'scope', 'Per ' + draft.standardRefs.join(' · ')));
+    }
+    // The holes come BEFORE the publish button, every time. A vetter should
+    // have to look at what is missing before their name goes on it.
+    for (const gap of (draft.gaps || [])) {
+      const w = el('div', 'scope');
+      w.style.color = 'var(--warning)';
+      w.textContent = '⚠ ' + gap;
+      c.appendChild(w);
+    }
+    const row = el('div', 'field');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'Your name — required to publish';
+    row.appendChild(input);
+    c.appendChild(row);
+    const btn = el('button', 'actbtn', 'Vet & publish');
+    const err = el('div', 'errline', '');
+    btn.addEventListener('click', async () => {
+      const vettedBy = input.value.trim();
+      if (!vettedBy) {
+        err.textContent = 'Life-safety content cannot publish without your name on it.';
+        return;
+      }
+      btn.disabled = true;
+      try {
+        await api('/api/reference/' + draft.id + '/publish', { method: 'POST', body: { vettedBy } });
+        renderLibraryQueue(slot);
+      } catch (ex) {
+        btn.disabled = false;
+        err.textContent = ex.code === 409
+          ? 'Already published — nothing to do.'
+          : 'Could not publish that. Nothing was changed.';
+      }
+    });
+    c.appendChild(btn);
+    c.appendChild(err);
+    slot.appendChild(c);
+  }
+}
+
+function libraryComposer(queueSlot) {
+  const c = el('div', 'card');
+  c.appendChild(el('div', 'loop-kind', 'Write a new entry'));
+  c.appendChild(el('div', 'scope',
+    'Cite the clause — never paste the standard text (§6U.3). Anything that is not a clause reference is dropped.'));
+
+  const fields = {};
+  const add = (key, placeholder, multiline) => {
+    const row = el('div', 'field');
+    const n = document.createElement(multiline ? 'textarea' : 'input');
+    if (!multiline) n.type = 'text';
+    n.placeholder = placeholder;
+    row.appendChild(n);
+    c.appendChild(row);
+    fields[key] = n;
+  };
+  add('techniqueName', 'Technique name');
+  add('howTo', 'How to do it', true);
+  add('wontWorkWhen', 'When this does NOT work — the limits', true);
+  add('pros', 'Good for (one per line)', true);
+  add('cons', 'Downsides (one per line)', true);
+  add('standardRefs', 'Clause citations, comma separated — e.g. Z133 §8.1');
+  add('skillLevel', 'Skill level 1–10');
+  add('sourceLink', 'Source link (https://…) — optional');
+
+  const btn = el('button', 'actbtn', 'Save as draft');
+  const out = el('div', 'errline', '');
+  btn.addEventListener('click', async () => {
+    const lines = (v) => v.split('\n').map((x) => x.trim()).filter(Boolean);
+    btn.disabled = true;
+    out.style.color = '';
+    try {
+      const res = await api('/api/reference', {
+        method: 'POST',
+        body: {
+          techniqueName: fields.techniqueName.value.trim(),
+          howTo: fields.howTo.value.trim(),
+          wontWorkWhen: fields.wontWorkWhen.value.trim(),
+          pros: lines(fields.pros.value),
+          cons: lines(fields.cons.value),
+          standardRefs: fields.standardRefs.value.split(',').map((x) => x.trim()).filter(Boolean),
+          skillLevel: Number(fields.skillLevel.value) || 1,
+          sourceLink: fields.sourceLink.value.trim(),
+        },
+      });
+      // Never just "saved" — say that it is still invisible to the crew, and
+      // say what got dropped on the way in.
+      let line = res.line;
+      if (res.refsDropped > 0) line += ' ' + res.refsDropped + ' citation(s) were dropped for not being a clause reference.';
+      if (res.limitsMissing) line += ' No limits recorded — the crew will see a warning in their place.';
+      out.style.color = 'var(--ok)';
+      out.textContent = line;
+      // Clear the form so the next entry does not inherit this one's text —
+      // a half-copied entry in a safety library is worse than a blank one.
+      for (const n of Object.values(fields)) n.value = '';
+      btn.disabled = false;
+      renderLibraryQueue(queueSlot);
+    } catch (e) {
+      btn.disabled = false;
+      out.textContent = e.message === 'name_and_howto_required'
+        ? 'It needs a technique name and a how-to.'
+        : e.message === 'bad_source_link'
+          ? 'A source link has to be an http(s) address.'
+          : 'Could not save that. Nothing was written.';
+    }
+  });
+  c.appendChild(btn);
+  c.appendChild(out);
+  return c;
+}
+
 // ---------- Money (§4.8: bill the work, chase what is owed) ----------
 const STAGE_LABEL = {
   reminder: ['PAST DUE', 'b-warm'],
@@ -1539,6 +1692,11 @@ async function renderFollowUps() {
   const vetSlot = el('div');
   v.appendChild(vetSlot);
   renderVetting(vetSlot);
+  // §6U: an entry the crew cannot see because nobody signed it off is an open
+  // loop too — and this is the only place the library can be written at all.
+  const libSlot = el('div');
+  v.appendChild(libSlot);
+  renderLibraryDesk(libSlot);
   // §4.8 money: unbilled work and unpaid invoices are open loops too.
   const moneySlot = el('div');
   v.appendChild(moneySlot);

@@ -61,6 +61,9 @@ import {
   crewWithProfiles,
   referenceEntries,
   crewSkillLevel,
+  draftReferenceEntries,
+  createReferenceEntry,
+  publishReferenceEntry,
   areaJobFacts,
   campaignFacts,
   recordSiteCondition,
@@ -334,6 +337,9 @@ export function createLiveSource(): DataSource {
     crewProfiles: () => crewWithProfiles(),
     referenceEntries: () => referenceEntries(),
     crewSkillLevel: (id) => crewSkillLevel(id),
+    draftReferenceEntries: () => draftReferenceEntries(),
+    createReferenceEntry: (input) => createReferenceEntry(input),
+    publishReferenceEntry: (id, vettedBy) => publishReferenceEntry(id, vettedBy),
     areaJobFacts: (since) => areaJobFacts(since),
     campaignFacts: () => campaignFacts(),
     // §6 site conditions + change orders.
@@ -625,6 +631,19 @@ export function createArborRequestHandler() {
         const m = url.pathname.match(/^\/api\/training\/drafts\/([^/]+)\/publish$/);
         if (req.method === 'POST' && m) {
           return send(...unpack(await api.publishLesson(m[1]!, (await readJson(req)) as Record<string, unknown>)));
+        }
+      }
+      // §6U library authoring — drafts in, named human out.
+      if (req.method === 'GET' && url.pathname === '/api/reference/drafts') {
+        return send(...unpack(await api.referenceDrafts()));
+      }
+      if (req.method === 'POST' && url.pathname === '/api/reference') {
+        return send(...unpack(await api.createReferenceEntry((await readJson(req)) as Record<string, unknown>)));
+      }
+      {
+        const m = url.pathname.match(/^\/api\/reference\/([^/]+)\/publish$/);
+        if (req.method === 'POST' && m) {
+          return send(...unpack(await api.publishReferenceEntry(m[1]!, (await readJson(req)) as Record<string, unknown>)));
         }
       }
       // §8A.6g: what the agents did, straight from the audit log.
