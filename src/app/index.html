@@ -136,7 +136,7 @@ nav button.active::after{content:"";width:24px;height:3px;border-radius:2px;back
 .storm-muted{color:var(--muted);font-size:13px;margin-bottom:12px}
 /* Location strip (§21–24): tracking switch + running-late banner */
 .loc-strip{display:flex;align-items:center;gap:10px;margin-bottom:14px;font-size:13px;color:var(--muted)}
-.loc-toggle{min-height:40px;border:1.5px solid var(--line);border-radius:999px;background:var(--card);
+.loc-toggle{min-height:40px;border:1.5px solid var(--border);border-radius:999px;background:var(--surface);
   color:var(--muted);font-size:13px;font-weight:800;padding:0 16px;cursor:pointer}
 .loc-toggle.on{background:var(--forest);border-color:var(--forest);color:#fff}
 .late{background:#B45309;color:#fff;border-radius:var(--r-lg);padding:14px 16px;margin-bottom:16px;
@@ -155,27 +155,27 @@ nav button.active::after{content:"";width:24px;height:3px;border-radius:2px;back
 .callbtn{flex:1;display:flex;align-items:center;justify-content:center;min-height:48px;
   border-radius:var(--r-md);background:var(--forest);color:#fff;font-size:15px;font-weight:800;
   text-decoration:none}
-.minibtn{min-height:48px;min-width:64px;border:1.5px solid var(--line);border-radius:var(--r-md);
-  background:var(--card);color:var(--ink);font-size:14px;font-weight:800;cursor:pointer;padding:0 12px}
+.minibtn{min-height:48px;min-width:64px;border:1.5px solid var(--border);border-radius:var(--r-md);
+  background:var(--surface);color:var(--ink);font-size:14px;font-weight:800;cursor:pointer;padding:0 12px}
 .minibtn.ok{color:var(--ok);border-color:var(--ok)}
 .minibtn.bad{color:#B4231F;border-color:#D9A6A4}
 .card.dismissed{opacity:.35}
 /* Property twin sheet (§9: the know-this-customer-instantly screen) */
-.sheet{position:fixed;inset:0;background:var(--bg);z-index:60;display:none;overflow-y:auto;
+.sheet{position:fixed;inset:0;background:var(--surface-alt);z-index:60;display:none;overflow-y:auto;
   padding:0 16px calc(24px + env(safe-area-inset-bottom))}
 .sheet.show{display:block}
-.sheet-head{position:sticky;top:0;background:var(--bg);display:flex;align-items:center;gap:12px;
+.sheet-head{position:sticky;top:0;background:var(--surface-alt);display:flex;align-items:center;gap:12px;
   padding:14px 0;z-index:61}
-.sheet-head button{min-width:48px;min-height:48px;border:1.5px solid var(--line);border-radius:var(--r-md);
-  background:var(--card);font-size:18px;cursor:pointer}
+.sheet-head button{min-width:48px;min-height:48px;border:1.5px solid var(--border);border-radius:var(--r-md);
+  background:var(--surface);font-size:18px;cursor:pointer}
 #twin-title{font-size:18px;font-weight:900;line-height:1.2}
 .sect{margin:18px 0 8px;font-size:13px;font-weight:900;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
-.tl{border-left:3px solid var(--line);margin-left:6px;padding-left:14px}
+.tl{border-left:3px solid var(--border);margin-left:6px;padding-left:14px}
 .tl .card{margin-bottom:10px}
 .due-note{background:#FFF7E8;border:1.5px solid #E8C87A;border-radius:var(--r-md);padding:10px 12px;
   font-weight:700;font-size:14px;margin-top:8px}
 .routebtn{display:flex;align-items:center;justify-content:center;min-height:52px;border-radius:var(--r-md);
-  background:var(--card);border:1.5px solid var(--forest);color:var(--forest);font-size:15px;font-weight:900;
+  background:var(--surface);border:1.5px solid var(--forest);color:var(--forest);font-size:15px;font-weight:900;
   text-decoration:none;margin-bottom:14px}
 </style>
 </head>
