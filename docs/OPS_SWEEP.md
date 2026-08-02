@@ -1,0 +1,105 @@
+# ARBOR Ops Sweep — runbook (Phase 5: live inbox monitor + calendar sync)
+
+Executed by a Claude session in the ARBOR ops environment on a schedule
+(hourly Routine) using the environment's authorized connectors: **Gmail MCP**,
+**Google Calendar MCP**, **Supabase MCP** (project `wdpyysgxmwvvoyveihum`).
+This is the deploy-time substitute for in-app Google credentials (O3): same
+outcomes, zero new secrets. If the sweep ever moves in-app (service account),
+this document is the spec.
+
+## Law (non-negotiable, every run)
+
+- **§4.3 — customer PII stays in the RLS-locked DB.** Names, phones,
+  addresses, emails, transcripts NEVER appear in chat output, reports,
+  commit messages, or the repo. Reports carry **counts and thread/row ids
+  only**.
+- **Read-only outward.** The sweep NEVER sends/replies to email, never
+  creates/modifies/deletes calendar events, never contacts a customer.
+  Recommend-only is law (§5B) — the app surfaces what the sweep ingests.
+- **Never drop, always flag.** Anything ambiguous is ingested with an honest
+  flag (`status='new'` + `qualification.reviewReason`) or skipped **and
+  counted as skipped** — silent drops are forbidden (§3.7).
+- **Classifier rules are code** — `src/reception/leadMail.ts` and
+  `src/permitting/permitMail.ts` are the authority. This document summarizes
+  them; when in doubt, read the source. Never loosen a sender/subject rule
+  from inside a run.
+- Run the mechanical work in ONE subagent per firing to keep the ops session
+  lean; the subagent returns counts only.
+
+## Step A — Lead inbox sweep (§5A #12/#13)
+
+1. Search Gmail (label id for `ARBOR/processed` is `Label_3`):
+   `{from:ads-account-noreply@google.com from:no-reply@callrail.com from:localservices-noreply@google.com} newer_than:2d -label:Label_3`
+2. Classify each thread by sender + subject (leadMail.ts rules):
+   - `ads-account-noreply@google.com` + subject `Lead form response received`
+     → **google_ads_lead_form**. Read body; extract labeled plaintext fields
+     (`First name`/`Last name`/`Phone number`/`City`/`Street address`/`Brief
+     description…`/`Campaign`).
+   - `no-reply@callrail.com` + subject `Call/Voicemail/Missed call/Abandoned
+     call/TXT from … via <TRACKER> for Art-is-Tree` → **callrail** event.
+     Tracker (TSP/TLT/…) = Mike's source tag; name+phone from subject/body;
+     `New Caller` vs `Nth call` = first-timer signal. Subject `TXT from …` →
+     source `text`.
+   - `localservices-noreply@google.com` + `new call/message/lead from a
+     potential customer` → **lsa**.
+   - Weekly/monthly summaries, "recommendations auto-applied", any
+     `learn@callrail.com` marketing → **not a lead**. Label processed, no row.
+3. Ingest (Supabase `execute_sql`, parameter-safe quoting):
+   - Contact: match `select id from contact where phones @> array['<E164ish>']`;
+     else insert (`name`, `phones`, `consent_source` = `'inbound_call'` for
+     calls/texts or `'lead_form'` for forms, `consent_at = now()`,
+     `is_first_timer` from the New-Caller signal when known).
+   - Lead dedupe: skip if `select 1 from lead where qualification->>'gmailThread' = '<threadId>'`.
+   - Insert lead: `source` ∈ `call` (calls/voicemails/LSA calls), `text`
+     (TXT), `other` (web/lead forms); `details` = short human line (tracker,
+     duration, form description); `qualification` jsonb MUST include
+     `{"gmailThread":"<id>","provider":"<provider>"}` plus extracted facts;
+     `status='new'`.
+   - **Out-of-area / spam-shaped lead forms** (city that doesn't resolve to
+     VB/Norfolk/Chesapeake/Portsmouth): still insert, `status='new'`,
+     `qualification.reviewReason='out_of_area_form'` — flagged, never
+     silently dropped, never auto-qualified.
+   - Property: only when a street address parses confidently to a service
+     city — use the same normalization law as the app (unique
+     `normalized_address`); when unsure, leave `property_id` null. Never
+     store an out-of-area property (DB CHECK will refuse; that refusal is
+     correct — catch it and leave the lead property-less).
+4. Label every classified thread `ARBOR/processed` (Label_3) — leads AND
+   non-leads — so the next run's query excludes them.
+
+## Step B — City/permit mail sweep (§5A #35)
+
+1. Search: `{from:vbgov.com from:norfolk.gov from:cityofchesapeake.net from:portsmouthva.gov} newer_than:2d -label:Label_3`
+2. Classify per permitMail.ts: domain → city; Accela refs
+   (`YYYY-DSC-######`, `YYYY-UTIL-#####`, `J##-######-RPA`); kind ∈
+   ppr_review / cbpa_case / intake_request / duplicate_warning / payment /
+   other_city_mail.
+3. Dedupe on `gmail_thread_id`; insert into `permit_correspondence`
+   (city, kind, case_ref, subject, address_text, gmail_thread_id,
+   received_at). Label processed.
+
+## Step C — Calendar → schedule sync (O3 outcome)
+
+1. List the primary Google Calendar's events, window **now → +14 days**.
+2. Skip: colorId `11` (payment reminders — Mike's convention, D21/D34),
+   all-day events with no address, anything already synced.
+3. For each event: address from location/title/description; parse city; ONLY
+   proceed when it resolves to a service city — otherwise count as skipped.
+   Kind: title containing estimate/est/quote/look → `estimate`; else `job`.
+4. Upsert keyed on `calendar_event_id` (both tables have the column):
+   - estimate: `scheduled_slot` = event start; property via
+     address-normalized upsert; contact by name/phone when present in the
+     event text.
+   - job: `scheduled_for` = event start; `status='booked'`; `color_code` =
+     event colorId.
+   Update the stored start time when the event moved. NEVER delete rows for
+   vanished events — flag counts in the report instead (a calendar read
+   failure must not wipe the schedule).
+
+## Report format (end of every run)
+
+One short block, counts only, e.g.:
+`sweep: 12 threads (7 leads in, 2 flagged out-of-area, 3 non-lead), 0 city
+mails, calendar: 5 upserts (3 est / 2 job), 2 skipped (no address). Errors: none.`
+If a step fails, say which and why (no PII) — a failed step is reported,
+never papered over.
