@@ -30,6 +30,10 @@ export interface ApiLead {
   status: string;
   createdAt: string;
   name: string | null;
+  /** First phone on file — powers the app's tap-to-call-back (§3 speed-to-lead). */
+  phone: string | null;
+  /** Missed/abandoned calls and voicemails: the leads most at risk of going cold. */
+  needsCallback: boolean;
   city: string | null;
   zip: string | null;
   isFirstTimer: boolean | null;
@@ -69,6 +73,10 @@ export interface DataSource {
   /** §6 predictive layer: the twin's trees with service history + contact consent facts. */
   growthTargets?(): Promise<GrowthTarget[]>;
   saveTreeForecast?(treeId: string, dueFromIso: string): Promise<void>;
+  /** The Book (#36): browse every property; open one to its full twin. */
+  properties?(): Promise<unknown[]>;
+  propertyTwin?(id: string): Promise<unknown | null>;
+  setLeadStatus?(leadId: string, status: 'new' | 'qualified' | 'spam' | 'converted' | 'lost'): Promise<void>;
 }
 
 export interface ApiGeoStop {
@@ -95,6 +103,7 @@ export interface ApiLeadInput {
   status: string;
   createdAt: string;
   name: string | null;
+  phone: string | null;
   propertyId: string | null;
   city: string | null;
   zip: string | null;
@@ -160,6 +169,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       const rows = await source.newLeads(limit);
       const leads: ApiLead[] = rows.map((r) => {
         const q = r.qualification ?? {};
+        const needsCallback = ['missed', 'abandoned', 'voicemail'].includes(String(q['kind'] ?? ''));
         return {
           id: r.id,
           source: r.source,
@@ -168,6 +178,8 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
           status: r.status,
           createdAt: r.createdAt,
           name: r.name,
+          phone: r.phone,
+          needsCallback,
           city: r.city,
           zip: r.zip,
           isFirstTimer: r.isFirstTimer,
@@ -409,6 +421,48 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
     async reviewBacklog(limit = 20, unreviewedOnly = true): Promise<ApiResult> {
       if (!source.ready() || !source.conversations) return { status: 503, body: { error: 'db_not_configured' } };
       return { status: 200, body: { conversations: await source.conversations(limit, unreviewedOnly) } };
+    },
+
+    /**
+     * GET /api/properties — the Book: every property, with the §6 coming-due
+     * read merged on so the money list and the property list are one surface.
+     */
+    async properties(now = new Date()): Promise<ApiResult> {
+      if (!source.ready() || !source.properties) return { status: 503, body: { error: 'db_not_configured' } };
+      const list = await source.properties();
+      let due: ReturnType<typeof buildDueProperties> = [];
+      if (source.growthTargets) {
+        try {
+          due = buildDueProperties(await source.growthTargets(), now);
+        } catch {
+          // Forecast read failure never hides the Book itself.
+        }
+      }
+      const dueById = new Map(due.map((d) => [d.propertyId, d]));
+      const properties = (list as Array<{ id: string }>).map((p) => ({
+        ...p,
+        due: dueById.get(p.id) ? { state: dueById.get(p.id)!.state, note: dueById.get(p.id)!.note } : null,
+      }));
+      return { status: 200, body: { properties, comingDue: due } };
+    },
+
+    /** GET /api/properties/:id — one property's full twin. */
+    async propertyTwin(id: string): Promise<ApiResult> {
+      if (!source.ready() || !source.propertyTwin) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!id) return { status: 400, body: { error: 'bad_id' } };
+      const twin = await source.propertyTwin(id);
+      if (!twin) return { status: 404, body: { error: 'not_found' } };
+      return { status: 200, body: twin };
+    },
+
+    /** POST /api/leads/:id/status — Mike's qualify/spam/converted/lost tap. */
+    async setLeadStatus(id: string, status: string): Promise<ApiResult> {
+      if (!source.ready() || !source.setLeadStatus) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!id || !['new', 'qualified', 'spam', 'converted', 'lost'].includes(status)) {
+        return { status: 400, body: { error: 'bad_status' } };
+      }
+      await source.setLeadStatus(id, status as 'new' | 'qualified' | 'spam' | 'converted' | 'lost');
+      return { status: 200, body: { ok: true } };
     },
 
     /** POST /api/review/:id/reviewed — Mike (or the chat analyst on his behalf) closes one out. */

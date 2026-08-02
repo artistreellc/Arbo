@@ -833,3 +833,82 @@ export async function setTreeForecast(treeId: string, dueFromDate: string): Prom
   const res = await db.from('tree').update({ next_due_forecast: dueFromDate, updated_at: new Date().toISOString() }).eq('id', treeId);
   if (res.error) throw res.error;
 }
+
+// ---------------------------------------------------------------------------
+// The Book (§6 twin surface, #36): every property ARBOR has ever touched,
+// openable to its full twin — history, trees, permits, what's coming due.
+// ---------------------------------------------------------------------------
+
+export interface PropertyListRow {
+  id: string;
+  address: string;
+  city: string;
+  zip: string | null;
+  hazard_power_lines: boolean;
+  hazard_structures: boolean;
+  trees: Array<{ count: number }>;
+  jobs: Array<{ count: number }>;
+  estimates: Array<{ count: number }>;
+}
+
+export async function listProperties(limit = 200): Promise<PropertyListRow[]> {
+  const db = getDb();
+  const res = await db
+    .from('property')
+    .select('id, address, city, zip, hazard_power_lines, hazard_structures, trees:tree(count), jobs:job(count), estimates:estimate(count)')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (res.error) throw res.error;
+  return res.data as unknown as PropertyListRow[];
+}
+
+export interface PropertyTwinRow {
+  property: {
+    id: string;
+    address: string;
+    city: string;
+    zip: string | null;
+    lot_notes: string | null;
+    hazard_power_lines: boolean;
+    hazard_structures: boolean;
+  };
+  trees: Array<{ id: string; species: string | null; size: string | null; location_on_lot: string | null; last_service_date: string | null; next_due_forecast: string | null }>;
+  jobs: Array<{ id: string; status: string; scheduled_for: string | null; completed_at: string | null; materials: string | null; contact: { name: string | null } | null }>;
+  estimates: Array<{ id: string; scheduled_slot: string | null; outcome: string | null; contact: { name: string | null } | null }>;
+  permits: Array<{ id: string; city: string; screen_status: string; in_rpa: boolean; status: string; created_at: string }>;
+  correspondence: Array<{ id: string; city: string; kind: string; case_ref: string | null; subject: string | null; received_at: string | null }>;
+}
+
+export async function getPropertyTwin(propertyId: string): Promise<PropertyTwinRow | null> {
+  const db = getDb();
+  const prop = await db
+    .from('property')
+    .select('id, address, city, zip, lot_notes, hazard_power_lines, hazard_structures')
+    .eq('id', propertyId)
+    .maybeSingle();
+  if (prop.error) throw prop.error;
+  if (!prop.data) return null;
+  const [trees, jobs, estimates, permits, corr] = await Promise.all([
+    db.from('tree').select('id, species, size, location_on_lot, last_service_date, next_due_forecast').eq('property_id', propertyId),
+    db.from('job').select('id, status, scheduled_for, completed_at, materials, contact:contact_id(name)').eq('property_id', propertyId).order('scheduled_for', { ascending: false }).limit(20),
+    db.from('estimate').select('id, scheduled_slot, outcome, contact:contact_id(name)').eq('property_id', propertyId).order('scheduled_slot', { ascending: false }).limit(20),
+    db.from('permit').select('id, city, screen_status, in_rpa, status, created_at').eq('property_id', propertyId).order('created_at', { ascending: false }),
+    db.from('permit_correspondence').select('id, city, kind, case_ref, subject, received_at').eq('property_id', propertyId).order('received_at', { ascending: false }),
+  ]);
+  for (const r of [trees, jobs, estimates, permits, corr]) if (r.error) throw r.error;
+  return {
+    property: prop.data as PropertyTwinRow['property'],
+    trees: trees.data as PropertyTwinRow['trees'],
+    jobs: jobs.data as unknown as PropertyTwinRow['jobs'],
+    estimates: estimates.data as unknown as PropertyTwinRow['estimates'],
+    permits: permits.data as PropertyTwinRow['permits'],
+    correspondence: corr.data as PropertyTwinRow['correspondence'],
+  };
+}
+
+/** Mike's tap on a lead: qualified / spam / converted / lost (DB CHECK validates). */
+export async function updateLeadStatus(leadId: string, status: 'new' | 'qualified' | 'spam' | 'converted' | 'lost'): Promise<void> {
+  const db = getDb();
+  const res = await db.from('lead').update({ status, updated_at: new Date().toISOString() }).eq('id', leadId);
+  if (res.error) throw res.error;
+}

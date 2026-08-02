@@ -53,6 +53,7 @@ describe('repeat-customer memory line (§5A #27) via /api/leads', () => {
     isEmergency: false,
     status: 'new',
     createdAt: '2026-07-29T12:00:00Z',
+    phone: null,
     name: 'Testy',
     propertyId: 'p1',
     city: 'Norfolk',

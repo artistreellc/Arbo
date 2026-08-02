@@ -150,6 +150,33 @@ nav button.active::after{content:"";width:24px;height:3px;border-radius:2px;back
 }
 .actbtn:disabled{opacity:.5}
 .actbtn.done{background:var(--surface-alt);color:var(--ok);border:1.5px solid var(--ok)}
+/* Lead action row (§9: one-tap, glove-sized) */
+.actions{display:flex;gap:8px;margin-top:10px}
+.callbtn{flex:1;display:flex;align-items:center;justify-content:center;min-height:48px;
+  border-radius:var(--r-md);background:var(--forest);color:#fff;font-size:15px;font-weight:800;
+  text-decoration:none}
+.minibtn{min-height:48px;min-width:64px;border:1.5px solid var(--line);border-radius:var(--r-md);
+  background:var(--card);color:var(--ink);font-size:14px;font-weight:800;cursor:pointer;padding:0 12px}
+.minibtn.ok{color:var(--ok);border-color:var(--ok)}
+.minibtn.bad{color:#B4231F;border-color:#D9A6A4}
+.card.dismissed{opacity:.35}
+/* Property twin sheet (§9: the know-this-customer-instantly screen) */
+.sheet{position:fixed;inset:0;background:var(--bg);z-index:60;display:none;overflow-y:auto;
+  padding:0 16px calc(24px + env(safe-area-inset-bottom))}
+.sheet.show{display:block}
+.sheet-head{position:sticky;top:0;background:var(--bg);display:flex;align-items:center;gap:12px;
+  padding:14px 0;z-index:61}
+.sheet-head button{min-width:48px;min-height:48px;border:1.5px solid var(--line);border-radius:var(--r-md);
+  background:var(--card);font-size:18px;cursor:pointer}
+#twin-title{font-size:18px;font-weight:900;line-height:1.2}
+.sect{margin:18px 0 8px;font-size:13px;font-weight:900;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
+.tl{border-left:3px solid var(--line);margin-left:6px;padding-left:14px}
+.tl .card{margin-bottom:10px}
+.due-note{background:#FFF7E8;border:1.5px solid #E8C87A;border-radius:var(--r-md);padding:10px 12px;
+  font-weight:700;font-size:14px;margin-top:8px}
+.routebtn{display:flex;align-items:center;justify-content:center;min-height:52px;border-radius:var(--r-md);
+  background:var(--card);border:1.5px solid var(--forest);color:var(--forest);font-size:15px;font-weight:900;
+  text-decoration:none;margin-bottom:14px}
 </style>
 </head>
 <body>
@@ -175,13 +202,25 @@ nav button.active::after{content:"";width:24px;height:3px;border-radius:2px;back
 <main>
   <div id="view-today" class="view active"></div>
   <div id="view-leads" class="view"></div>
+  <div id="view-book" class="view"></div>
   <div id="view-followups" class="view"></div>
+  <div id="view-calls" class="view"></div>
 </main>
+
+<div id="twin" class="sheet">
+  <div class="sheet-head">
+    <button id="twin-close" aria-label="Close">&#10005;</button>
+    <div id="twin-title"></div>
+  </div>
+  <div id="twin-body"></div>
+</div>
 
 <nav>
   <button id="tab-today" class="active"><span class="ico">&#9728;</span>Today</button>
   <button id="tab-leads"><span class="ico">&#9993;</span>Leads</button>
-  <button id="tab-followups"><span class="ico">&#8634;</span>Follow-ups</button>
+  <button id="tab-book"><span class="ico">&#127794;</span>Book</button>
+  <button id="tab-followups"><span class="ico">&#8634;</span>Queue</button>
+  <button id="tab-calls"><span class="ico">&#9742;</span>Calls</button>
 </nav>
 
 <script>
@@ -339,6 +378,19 @@ async function renderToday() {
     v.appendChild(state('Nothing on the books today', 'New bookings land here automatically.'));
     return;
   }
+  // §9 route view: the whole day, one tap, in the maps app you already use.
+  {
+    const addrs = brief.stops.map(s => s.address + ', ' + s.city + ', VA').filter(Boolean);
+    if (addrs.length) {
+      const r = el('a', 'routebtn', '🗺 Route the day (' + addrs.length + ' stops)');
+      const dest = encodeURIComponent(addrs[addrs.length - 1]);
+      const wps = addrs.slice(0, -1).map(encodeURIComponent).join('|');
+      r.href = 'https://www.google.com/maps/dir/?api=1&destination=' + dest + (wps ? '&waypoints=' + wps : '');
+      r.target = '_blank';
+      r.rel = 'noopener';
+      v.appendChild(r);
+    }
+  }
   for (const stop of brief.stops) {
     const c = el('div', 'card' + (stop.redFlags.length ? ' emergency' : ''));
     const top = el('div', 'toprow');
@@ -385,7 +437,8 @@ async function renderLeads() {
   }
   const rank = { hot: 0, warm: 1, cool: 2 };
   const leads = [...data.leads].sort((a, b) =>
-    (b.isEmergency - a.isEmergency) || (rank[a.quality.priority] - rank[b.quality.priority]) ||
+    (b.isEmergency - a.isEmergency) || (b.needsCallback - a.needsCallback) ||
+    (rank[a.quality.priority] - rank[b.quality.priority]) ||
     (new Date(b.createdAt) - new Date(a.createdAt)));
   for (const lead of leads) {
     const c = el('div', 'card' + (lead.isEmergency ? ' emergency' : ''));
@@ -398,6 +451,7 @@ async function renderLeads() {
     if (lead.details) c.appendChild(el('div', 'scope', lead.details));
     const b = el('div', 'badges');
     if (lead.isEmergency) b.appendChild(badge('EMERGENCY', 'b-emg'));
+    if (lead.needsCallback) b.appendChild(badge('CALL BACK', 'b-hot'));
     b.appendChild(badge(lead.quality.priority.toUpperCase(), 'b-' + lead.quality.priority));
     const pb = permitBadge(lead);
     if (pb) b.appendChild(pb);
@@ -405,6 +459,206 @@ async function renderLeads() {
     if (lead.isFirstTimer === false) b.appendChild(badge('REPEAT', 'b-repeat'));
     if (lead.source) b.appendChild(badge(lead.source.toUpperCase(), 'b-src'));
     c.appendChild(b);
+    // §9 one-tap actions: call the human back, or file the lead. ARBOR never
+    // calls anyone itself — the phone app does, with Mike's thumb on it.
+    const row = el('div', 'actions');
+    if (lead.phone) {
+      const call = el('a', 'callbtn', '📞 Call back');
+      call.href = 'tel:' + lead.phone;
+      row.appendChild(call);
+    }
+    const mark = (label, cls, status) => {
+      const btn = el('button', 'minibtn ' + cls, label);
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+          await api('/api/leads/' + lead.id + '/status', { method: 'POST', body: { status } });
+          c.classList.add('dismissed');
+        } catch { btn.disabled = false; }
+      });
+      return btn;
+    };
+    row.appendChild(mark('✓', 'ok', 'qualified'));
+    row.appendChild(mark('✗', 'bad', 'spam'));
+    c.appendChild(row);
+    v.appendChild(c);
+  }
+}
+
+// ---------- The Book (§6/#36: every property, tap into its twin) ----------
+async function renderBook() {
+  const v = $('view-book');
+  v.replaceChildren();
+  let data;
+  try {
+    data = await api('/api/properties');
+  } catch (e) {
+    if (e.code === 401) return showKeywall();
+    v.appendChild(state('The Book is empty', e.code === 503
+      ? 'Database not connected — properties appear the moment it is.'
+      : 'Could not load properties. Pull refresh to retry.'));
+    return;
+  }
+  if (data.comingDue && data.comingDue.length) {
+    v.appendChild(el('div', 'sect', 'Coming due — worth a look'));
+    for (const d of data.comingDue) {
+      const c = el('div', 'card');
+      const top = el('div', 'toprow');
+      top.appendChild(el('div', 'who', d.address));
+      c.appendChild(top);
+      if (d.city) c.appendChild(el('div', 'addr', d.city));
+      c.appendChild(el('div', 'due-note', d.note));
+      const b = el('div', 'badges');
+      b.appendChild(badge(d.state === 'overdue' ? 'OVERDUE' : 'DUE NOW', d.state === 'overdue' ? 'b-hot' : 'b-warm'));
+      c.appendChild(b);
+      c.addEventListener('click', () => openTwin(d.propertyId, d.address));
+      v.appendChild(c);
+    }
+  }
+  v.appendChild(el('div', 'sect', 'All properties'));
+  if (!data.properties.length) {
+    v.appendChild(state('No properties yet', 'Every address ARBOR touches opens a living profile here.'));
+    return;
+  }
+  const count = (arr) => (arr && arr[0] ? arr[0].count : 0);
+  for (const p of data.properties) {
+    const c = el('div', 'card');
+    const top = el('div', 'toprow');
+    top.appendChild(el('div', 'who', p.address));
+    c.appendChild(top);
+    c.appendChild(el('div', 'addr', p.city + (p.zip ? ' · ' + p.zip : '')));
+    const b = el('div', 'badges');
+    b.appendChild(badge(count(p.jobs) + ' JOBS · ' + count(p.estimates) + ' EST · ' + count(p.trees) + ' TREES', 'b-src'));
+    if (p.due) b.appendChild(badge(p.due.state === 'overdue' ? 'OVERDUE' : 'COMING DUE', p.due.state === 'overdue' ? 'b-hot' : 'b-warm'));
+    if (p.hazard_power_lines) b.appendChild(badge('POWER LINES', 'b-flag'));
+    if (p.hazard_structures) b.appendChild(badge('STRUCTURES', 'b-flag'));
+    c.appendChild(b);
+    c.addEventListener('click', () => openTwin(p.id, p.address));
+    v.appendChild(c);
+  }
+}
+
+// The twin sheet: history, trees, permits, coming-due — "know this customer
+// instantly" (§9), one tap from anywhere.
+async function openTwin(id, title) {
+  $('twin-title').textContent = title || 'Property';
+  const body = $('twin-body');
+  body.replaceChildren();
+  $('twin').classList.add('show');
+  let t;
+  try {
+    t = await api('/api/properties/' + id);
+  } catch (e) {
+    body.appendChild(state('Could not load this property', 'Pull refresh and try again.'));
+    return;
+  }
+  const p = t.property;
+  const meta = el('div', 'addr', p.city + (p.zip ? ' · ' + p.zip : ''));
+  body.appendChild(meta);
+  if (p.hazard_power_lines || p.hazard_structures) {
+    const b = el('div', 'badges');
+    if (p.hazard_power_lines) b.appendChild(badge('POWER LINES', 'b-flag'));
+    if (p.hazard_structures) b.appendChild(badge('STRUCTURES', 'b-flag'));
+    body.appendChild(b);
+  }
+  if (t.permits.length) {
+    body.appendChild(el('div', 'sect', 'Permit screens (never a bare "clear")'));
+    for (const pr of t.permits) {
+      const c = el('div', 'card');
+      const b = el('div', 'badges');
+      if (pr.screen_status === 'PERMIT_LIKELY') b.appendChild(badge('PERMIT LIKELY', 'b-permit-likely'));
+      else if (pr.screen_status === 'REVIEW_NEEDED') b.appendChild(badge('REVIEW NEEDED', 'b-review'));
+      else b.appendChild(badge('NO OVERLAY — VERIFY W/ CITY', 'b-verify'));
+      if (pr.in_rpa) b.appendChild(badge('IN RPA', 'b-hot'));
+      b.appendChild(badge(pr.status.replace(/_/g, ' ').toUpperCase(), 'b-src'));
+      c.appendChild(b);
+      body.appendChild(c);
+    }
+  }
+  body.appendChild(el('div', 'sect', 'Trees on the lot'));
+  if (!t.trees.length) body.appendChild(state('No trees recorded yet', 'Trees land here as estimates and jobs record them.'));
+  for (const tr of t.trees) {
+    const c = el('div', 'card');
+    c.appendChild(el('div', 'who', (tr.species || 'Species unknown') + (tr.size ? ' · ' + tr.size : '')));
+    if (tr.location_on_lot) c.appendChild(el('div', 'addr', tr.location_on_lot));
+    if (tr.last_service_date) c.appendChild(el('div', 'scope', 'Last serviced ' + tr.last_service_date));
+    if (tr.next_due_forecast) c.appendChild(el('div', 'due-note', 'Typically ready for another look around ' + tr.next_due_forecast));
+    body.appendChild(c);
+  }
+  body.appendChild(el('div', 'sect', 'History'));
+  const tl = el('div', 'tl');
+  const items = [
+    ...t.jobs.map(j => ({ when: j.completed_at || j.scheduled_for, line: 'Job — ' + j.status + (j.materials ? ' · ' + j.materials : ''), who: j.contact && j.contact.name })),
+    ...t.estimates.map(es => ({ when: es.scheduled_slot, line: 'Estimate — ' + (es.outcome || 'pending'), who: es.contact && es.contact.name })),
+  ].sort((a, b) => String(b.when || '').localeCompare(String(a.when || '')));
+  if (!items.length) tl.appendChild(state('No visits yet', 'Jobs and estimates stack up here.'));
+  for (const it of items) {
+    const c = el('div', 'card');
+    c.appendChild(el('div', 'who', it.line));
+    c.appendChild(el('div', 'addr', (it.when ? new Date(it.when).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : 'unscheduled') + (it.who ? ' · ' + it.who : '')));
+    tl.appendChild(c);
+  }
+  body.appendChild(tl);
+  if (t.correspondence.length) {
+    body.appendChild(el('div', 'sect', 'City correspondence'));
+    for (const co of t.correspondence) {
+      const c = el('div', 'card');
+      c.appendChild(el('div', 'who', co.city + ' — ' + co.kind.replace(/_/g, ' ')));
+      if (co.case_ref) c.appendChild(el('div', 'addr', co.case_ref));
+      if (co.subject) c.appendChild(el('div', 'scope', co.subject));
+      body.appendChild(c);
+    }
+  }
+}
+$('twin-close').addEventListener('click', () => $('twin').classList.remove('show'));
+
+// ---------- Calls (§29 review loop: every conversation, your verdict) ----------
+async function renderCalls() {
+  const v = $('view-calls');
+  v.replaceChildren();
+  let data;
+  try {
+    data = await api('/api/review/backlog?all=1&limit=20');
+  } catch (e) {
+    if (e.code === 401) return showKeywall();
+    v.appendChild(state('No calls logged yet', e.code === 503
+      ? 'Database not connected — calls log here the moment it is.'
+      : 'Could not load the call log. Pull refresh to retry.'));
+    return;
+  }
+  if (!data.conversations.length) {
+    v.appendChild(state('No calls yet', 'Every receptionist conversation lands here for your review.'));
+    return;
+  }
+  for (const conv of data.conversations) {
+    const flags = [...new Set((conv.turns || []).flatMap(t => t.flags || []))];
+    const c = el('div', 'card' + (flags.includes('emergency') ? ' emergency' : ''));
+    const top = el('div', 'toprow');
+    top.appendChild(el('div', 'who', new Date(conv.started_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })));
+    top.appendChild(el('div', 'when', (conv.turns || []).length + ' turns'));
+    c.appendChild(top);
+    const b = el('div', 'badges');
+    if (flags.includes('emergency')) b.appendChild(badge('EMERGENCY', 'b-emg'));
+    if (flags.some(f => f.startsWith('guard_blocked'))) b.appendChild(badge('GUARD BLOCKED A REPLY', 'b-review'));
+    b.appendChild(badge(conv.channel.toUpperCase(), 'b-src'));
+    if (conv.reviewed) b.appendChild(badge('REVIEWED', 'b-cool'));
+    c.appendChild(b);
+    for (const turn of (conv.turns || []).slice(0, 6)) {
+      c.appendChild(el('div', 'scope', '👤 ' + turn.caller));
+      c.appendChild(el('div', 'addr', '🌳 ' + turn.reply));
+    }
+    if (!conv.reviewed) {
+      const btn = el('button', 'actbtn', 'Mark reviewed ✓');
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+          await api('/api/review/' + conv.id + '/reviewed', { method: 'POST', body: {} });
+          btn.textContent = 'Reviewed';
+          btn.className = 'actbtn done';
+        } catch { btn.disabled = false; }
+      });
+      c.appendChild(btn);
+    }
     v.appendChild(c);
   }
 }
@@ -494,16 +748,16 @@ $('keygo').addEventListener('click', async () => {
 $('keyinput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('keygo').click(); });
 
 function switchTab(which) {
-  for (const t of ['today', 'leads', 'followups']) {
+  for (const t of ['today', 'leads', 'book', 'followups', 'calls']) {
     $('view-' + t).classList.toggle('active', which === t);
     $('tab-' + t).classList.toggle('active', which === t);
   }
 }
-$('tab-today').addEventListener('click', () => switchTab('today'));
-$('tab-leads').addEventListener('click', () => switchTab('leads'));
-$('tab-followups').addEventListener('click', () => switchTab('followups'));
+for (const t of ['today', 'leads', 'book', 'followups', 'calls']) {
+  $('tab-' + t).addEventListener('click', () => switchTab(t));
+}
 
-function refreshAll() { renderToday(); renderLeads(); renderFollowUps(); }
+function refreshAll() { renderToday(); renderLeads(); renderBook(); renderFollowUps(); renderCalls(); }
 $('refresh').addEventListener('click', refreshAll);
 
 $('dateline').textContent = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });

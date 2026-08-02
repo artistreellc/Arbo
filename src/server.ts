@@ -30,6 +30,9 @@ import {
   markConversationReviewed,
   listGrowthTargets,
   setTreeForecast,
+  listProperties,
+  getPropertyTwin,
+  updateLeadStatus,
 } from './db/repositories.js';
 import { createCensusGeocoder } from './permitting/gis/geocode.js';
 import { createElevenLabsTts } from './voice/elevenlabsTts.js';
@@ -97,6 +100,7 @@ export function createLiveSource(): DataSource {
           status: r.status,
           createdAt: r.created_at,
           name: r.contact?.name ?? null,
+          phone: r.contact?.phones?.[0] ?? null,
           propertyId: r.property?.id ?? null,
           city: r.property?.city ?? null,
           zip: r.property?.zip ?? null,
@@ -202,6 +206,10 @@ export function createLiveSource(): DataSource {
       }));
     },
     saveTreeForecast: (id, dueFrom) => setTreeForecast(id, dueFrom),
+    // The Book (#36).
+    properties: () => listProperties(),
+    propertyTwin: (id) => getPropertyTwin(id),
+    setLeadStatus: (id, status) => updateLeadStatus(id, status),
   };
 }
 
@@ -327,6 +335,22 @@ export function createArborRequestHandler() {
       }
       if (req.method === 'GET' && url.pathname === '/api/forecast') {
         return send(...unpack(await api.forecast()));
+      }
+      if (req.method === 'GET' && url.pathname === '/api/properties') {
+        return send(...unpack(await api.properties()));
+      }
+      {
+        const m = url.pathname.match(/^\/api\/properties\/([^/]+)$/);
+        if (req.method === 'GET' && m) {
+          return send(...unpack(await api.propertyTwin(m[1]!)));
+        }
+      }
+      {
+        const m = url.pathname.match(/^\/api\/leads\/([^/]+)\/status$/);
+        if (req.method === 'POST' && m) {
+          const body = (await readJson(req)) as { status?: string };
+          return send(...unpack(await api.setLeadStatus(m[1]!, body.status ?? '')));
+        }
       }
       if (req.method === 'GET' && url.pathname === '/api/review/backlog') {
         const unreviewedOnly = url.searchParams.get('all') !== '1';
