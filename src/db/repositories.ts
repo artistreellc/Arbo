@@ -1090,3 +1090,87 @@ export async function listCalendarEvents(fromIso: string, toIso: string): Promis
     ...((jobs.data ?? []) as unknown as Joined[]).map((r) => map(r, 'job')),
   ].sort((a, b) => String(a.timeIso ?? '').localeCompare(String(b.timeIso ?? '')));
 }
+
+// ============================================================================
+// Crew surface (§6F) — the work orders a crew member may see, and the gated
+// briefing acknowledgment. Reads stay crew-safe: this returns the job facts
+// buildCrewPayload() is allowed to expose, nothing more.
+// ============================================================================
+export interface CrewJobRow {
+  jobId: string;
+  scheduledFor: string | null;
+  address: string;
+  city: string;
+  scope: string | null;
+  hazardPowerLines: boolean;
+  hazardStructures: boolean;
+  permitStatus: string | null;
+  propertyId: string;
+}
+
+/** Jobs booked inside a window, with the site facts the crew needs. */
+export async function listCrewJobs(fromIso: string, toIso: string): Promise<CrewJobRow[]> {
+  const db = getDb();
+  const res = await db.from('job')
+    .select('id, scheduled_for, materials, property_id, property:property_id(address, city, hazard_power_lines, hazard_structures)')
+    .gte('scheduled_for', fromIso).lt('scheduled_for', toIso)
+    .in('status', ['booked', 'in_progress'])
+    .order('scheduled_for', { ascending: true });
+  if (res.error) throw res.error;
+  type Row = {
+    id: string; scheduled_for: string | null; materials: string | null; property_id: string;
+    property: { address: string; city: string; hazard_power_lines: boolean; hazard_structures: boolean } | null;
+  };
+  const rows = (res.data ?? []) as unknown as Row[];
+  const propertyIds = [...new Set(rows.map((r) => r.property_id).filter(Boolean))];
+  // Permit posture rides along so the crew note can warn — never clear (§6B.3).
+  let permits = new Map<string, { screen_status: string }>();
+  try {
+    const p = await latestPermitsForProperties(propertyIds);
+    permits = new Map([...p].map(([k, v]) => [k, { screen_status: v.screen_status }]));
+  } catch {
+    permits = new Map(); // no flag on file → no note; never a false "clear"
+  }
+  return rows.map((r) => ({
+    jobId: r.id,
+    scheduledFor: r.scheduled_for,
+    address: r.property?.address ?? '',
+    city: r.property?.city ?? '',
+    scope: r.materials,
+    hazardPowerLines: r.property?.hazard_power_lines ?? false,
+    hazardStructures: r.property?.hazard_structures ?? false,
+    permitStatus: permits.get(r.property_id)?.screen_status ?? null,
+    propertyId: r.property_id,
+  }));
+}
+
+/** Record a gated-briefing acknowledgment + its PAYABLE time entry (§4.6). */
+export async function recordBriefingAck(input: {
+  crewMemberId: string; itemIds: string[];
+  startedAtIso: string; completedAtIso: string; payableMinutes: number;
+}): Promise<{ trainingEventId: string; timeEntryId: string }> {
+  const db = getDb();
+  // Time first: if the event write fails, the crew member is still PAID for
+  // the minutes they spent. Wage law is not contingent on our bookkeeping.
+  const time = await db.from('time_entry').insert({
+    crew_member_id: input.crewMemberId,
+    kind: 'briefing',
+    started_at: input.startedAtIso,
+    ended_at: input.completedAtIso,
+    minutes: input.payableMinutes,
+    payable: true,
+    source: 'tailgate_ack',
+  }).select('id').single();
+  if (time.error) throw time.error;
+
+  const evt = await db.from('training_event').insert({
+    crew_member_id: input.crewMemberId,
+    item_ids: input.itemIds,
+    context: 'tailgate_ack',
+    started_at: input.startedAtIso,
+    completed_at: input.completedAtIso,
+    time_entry_id: time.data.id,
+  }).select('id').single();
+  if (evt.error) throw evt.error;
+  return { trainingEventId: evt.data.id as string, timeEntryId: time.data.id as string };
+}

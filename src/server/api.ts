@@ -13,6 +13,8 @@ import { assessRunningLate, detectVisits, withinWorkingHours, type LocationPing,
 import { buildDueProperties, buildGrowthOutreach, type GrowthTarget } from '../ops/growthForecast.js';
 import { findOpenLoops, type LoopSnapshot } from '../ops/loopCloser.js';
 import { quoteCheck, deriveLeakagePct, type QuoteCheckInput } from '../ops/estimating.js';
+import { buildCrewPayload, sequenceRoute, type WorkOrderSource } from '../crew/workOrder.js';
+import { evaluateGate, buildAcknowledgment, type BriefingContent } from '../crew/briefingGate.js';
 import type { TtsClient } from '../voice/elevenlabsTts.js';
 import { scoreLead, type LeadQualityResult } from '../reception/leadQuality.js';
 import { integrationStatus } from '../env.js';
@@ -90,6 +92,26 @@ export interface DataSource {
   emit?(type: string, payload: Record<string, unknown>): Promise<boolean>;
   /** §3.22: Mike's Google Calendar, mirrored — the app's calendar surface. */
   calendarEvents?(fromIso: string, toIso: string): Promise<unknown[]>;
+  /** §6F crew surface: the day's jobs with the site facts a crew may see. */
+  crewJobs?(fromIso: string, toIso: string): Promise<CrewJobSource[]>;
+  /** §6V.4 gated briefing acknowledgment + its payable time entry (§4.6). */
+  recordBriefingAck?(input: {
+    crewMemberId: string; itemIds: string[];
+    startedAtIso: string; completedAtIso: string; payableMinutes: number;
+  }): Promise<{ trainingEventId: string; timeEntryId: string }>;
+}
+
+/** What the crew work-order builder needs from storage. */
+export interface CrewJobSource {
+  jobId: string;
+  scheduledFor: string | null;
+  address: string;
+  city: string;
+  scope: string | null;
+  hazardPowerLines: boolean;
+  hazardStructures: boolean;
+  permitStatus: string | null;
+  propertyId: string;
 }
 
 export interface ApiGeoStop {
@@ -581,6 +603,75 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
           readOnly: true,
         },
       };
+    },
+
+    /**
+     * GET /api/crew/workorders?date=YYYY-MM-DD — the §6F crew day. The payload
+     * is built by buildCrewPayload(), which has NO slot for price, tracking,
+     * or customer contact: admin data is excluded by construction, not by
+     * remembering to filter it (§8C.1).
+     */
+    async crewWorkOrders(dateIso: string, briefingId: string | null = null): Promise<ApiResult> {
+      if (!source.ready() || !source.crewJobs) return { status: 503, body: { error: 'db_not_configured' } };
+      const day = dateIso && /^\d{4}-\d{2}-\d{2}$/.test(dateIso) ? dateIso : new Date().toISOString().slice(0, 10);
+      const from = `${day}T00:00:00.000Z`;
+      const to = new Date(Date.parse(from) + 86400_000).toISOString();
+      const rows = await source.crewJobs(from, to);
+      const sources: WorkOrderSource[] = rows.map((r, i) => ({
+        jobId: r.jobId,
+        routeOrder: i + 1,
+        address: r.address,
+        city: r.city,
+        timeIso: r.scheduledFor,
+        scope: r.scope,
+        hazardPowerLines: r.hazardPowerLines,
+        hazardStructures: r.hazardStructures,
+        permitStatus: (['PERMIT_LIKELY', 'REVIEW_NEEDED', 'NO_OVERLAY_VERIFY'] as const)
+          .find((s) => s === r.permitStatus) ?? null,
+        photoRefs: [],
+        briefingId,
+      }));
+      return {
+        status: 200,
+        body: { date: day, workOrders: sequenceRoute(sources).map(buildCrewPayload) },
+      };
+    },
+
+    /**
+     * POST /api/crew/briefing/ack — the §6V.4 gate. All three conditions or
+     * the day stays locked; a passing gate ALWAYS writes payable time (§4.6).
+     */
+    async ackBriefing(body: Record<string, unknown>): Promise<ApiResult> {
+      if (!source.ready() || !source.recordBriefingAck) return { status: 503, body: { error: 'db_not_configured' } };
+      const crewMemberId = String(body.crewMemberId ?? '');
+      const content = body.content as BriefingContent | undefined;
+      const state = body.state as { scrolledToBottom?: boolean; checkboxTicked?: boolean; secondsOnScreen?: number } | undefined;
+      const startedAtIso = String(body.startedAtIso ?? '');
+      const completedAtIso = String(body.completedAtIso ?? '');
+      if (!crewMemberId || !content?.id || !content?.body || !state) return { status: 400, body: { error: 'bad_request' } };
+      if (Number.isNaN(Date.parse(startedAtIso)) || Number.isNaN(Date.parse(completedAtIso))) {
+        return { status: 400, body: { error: 'bad_times' } };
+      }
+      const gateState = {
+        scrolledToBottom: state.scrolledToBottom === true,
+        checkboxTicked: state.checkboxTicked === true,
+        secondsOnScreen: Number(state.secondsOnScreen ?? 0),
+      };
+      const verdict = evaluateGate(content, gateState);
+      if (!verdict.unlocked) {
+        // Not an error — the honest answer is "not yet, and here's what's left".
+        return { status: 200, body: { unlocked: false, missing: verdict.missing, requiredSeconds: verdict.requiredSeconds } };
+      }
+      const ack = buildAcknowledgment({ content, state: gateState, crewMemberId, startedAtIso, completedAtIso });
+      const saved = await source.recordBriefingAck({
+        crewMemberId: ack.crewMemberId,
+        itemIds: ack.itemIds,
+        startedAtIso: ack.startedAtIso,
+        completedAtIso: ack.completedAtIso,
+        payableMinutes: ack.payableMinutes,
+      });
+      if (source.emit) await source.emit('briefing.acknowledged', { crewMemberId, trainingEventId: saved.trainingEventId });
+      return { status: 200, body: { unlocked: true, payableMinutes: ack.payableMinutes, ...saved } };
     },
 
     /** GET /api/agents/runs — §8A.6g audit visibility: what the agents did. */

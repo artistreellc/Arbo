@@ -39,6 +39,8 @@ import {
   createLeakageEvent,
   listAgentRuns,
   listCalendarEvents,
+  listCrewJobs,
+  recordBriefingAck,
 } from './db/repositories.js';
 import { createCensusGeocoder } from './permitting/gis/geocode.js';
 import { createElevenLabsTts } from './voice/elevenlabsTts.js';
@@ -259,6 +261,8 @@ export function createLiveSource(): DataSource {
     agentRuns: (limit) => listAgentRuns(limit),
     emit: (type, payload) => emitSafe(type, payload, 'server'),
     calendarEvents: (from, to) => listCalendarEvents(from, to),
+    crewJobs: (from, to) => listCrewJobs(from, to),
+    recordBriefingAck: (input) => recordBriefingAck(input),
   };
 }
 
@@ -427,6 +431,13 @@ export function createArborRequestHandler() {
       // THE CALENDAR — Mike's Google Calendar, mirrored and read-only.
       if (req.method === 'GET' && url.pathname === '/api/calendar') {
         return send(...unpack(await api.calendar(url.searchParams.get('from') ?? '', url.searchParams.get('to') ?? '')));
+      }
+      // §6F crew surface — payload is admin-data-free by construction.
+      if (req.method === 'GET' && url.pathname === '/api/crew/workorders') {
+        return send(...unpack(await api.crewWorkOrders(url.searchParams.get('date') ?? '', url.searchParams.get('briefingId'))));
+      }
+      if (req.method === 'POST' && url.pathname === '/api/crew/briefing/ack') {
+        return send(...unpack(await api.ackBriefing((await readJson(req)) as Record<string, unknown>)));
       }
       // §8A.6g: what the agents did, straight from the audit log.
       if (req.method === 'GET' && url.pathname === '/api/agents/runs') {
