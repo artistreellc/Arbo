@@ -16,7 +16,7 @@
 
 import { resolveServiceCity, serviceCityForZip, extractZip, type ServiceCity } from '../lib/address.js';
 
-export type LeadMailProvider = 'google_ads_lead_form' | 'callrail_call' | 'callrail_web_form' | 'lsa_call';
+export type LeadMailProvider = 'google_ads_lead_form' | 'callrail_call' | 'callrail_web_form' | 'lsa_call' | 'home_advisor' | 'yelp';
 
 export interface LeadMailInput {
   from: string;
@@ -42,6 +42,16 @@ export interface ExtractedLead {
   /** Web-form ZIP — sometimes the ONLY location signal the form carries. */
   zip?: string;
   email?: string;
+  /** The marketplace's own reference, so Mike can find it in their app. */
+  externalRef?: string;
+  /** What the customer asked for, as the marketplace worded it. */
+  serviceRequested?: string;
+  /**
+   * True when the requested service is clearly NOT tree work (lawn mowing,
+   * snow, gutters...). Flagged for review, never auto-dropped (§3.7) and never
+   * auto-booked as a tree job.
+   */
+  serviceOffScope?: boolean;
 }
 
 export interface LeadMailResult {
@@ -204,6 +214,75 @@ function parseLsaRequest(input: LeadMailInput): LeadMailResult {
   };
 }
 
+/** Services that are plainly not tree care. Conservative on purpose. */
+const OFF_SCOPE = /\b(lawn ?(mowing|care)?|mow(ing)?|landscap(e|ing)|snow|gutter|pressure ?wash|fence|deck|roof|pest control|handyman|plumb|hvac|junk removal)\b/i;
+/** Tree words that override an off-scope hit — "tree and lawn" is still ours. */
+const TREE_WORK = /\b(tree|stump|limb|branch|prun(e|ing)|trim(ming)?|canopy|arborist|removal)\b/i;
+
+function offScope(service: string | undefined): boolean {
+  if (!service) return false;
+  return OFF_SCOPE.test(service) && !TREE_WORK.test(service);
+}
+
+/**
+ * HomeAdvisor "New Opportunity" notification. Carries the service, the city,
+ * and HomeAdvisor's own lead number — but NO customer name or phone: those
+ * live behind "View all details" in their app. So the lead Arbo files points
+ * Mike there rather than pretending it has contact details it does not.
+ */
+function parseHomeAdvisor(input: LeadMailInput): LeadMailResult {
+  const service = input.subject.match(/New Opportunity:\s*(.+)$/i)?.[1]?.trim();
+  const cityRaw =
+    input.body.match(/A homeowner in\s+([A-Za-z .'-]+?)\s+needs a pro/i)?.[1]?.trim()
+    ?? input.body.match(/^([A-Za-z .'-]+),\s*VA\b/m)?.[1]?.trim();
+  const ref = input.body.match(/Lead\s*#:?\s*(\d+)/i)?.[1];
+  const serviceCity = cityRaw ? resolveServiceCity(cityRaw) ?? undefined : undefined;
+  return {
+    isLeadNotification: true,
+    provider: 'home_advisor',
+    lead: {
+      source: 'HomeAdvisor',
+      city: cityRaw || undefined,
+      serviceCity,
+      serviceRequested: service,
+      serviceOffScope: offScope(service),
+      externalRef: ref,
+      details: [service, ref ? `HomeAdvisor lead #${ref}` : null, 'Contact details are in the HomeAdvisor app.']
+        .filter(Boolean).join(' — '),
+    },
+    inServiceArea: cityRaw ? serviceCity !== undefined : null,
+  };
+}
+
+/**
+ * Yelp message. Sender is a per-thread reply address, so the domain is the
+ * only stable part. Carries "Job Requested" and "Postal Code" plus the
+ * customer's own words — and routinely arrives for services Art-is-Tree does
+ * not do, which is why the off-scope flag matters here most.
+ */
+function parseYelp(input: LeadMailInput): LeadMailResult {
+  const name = input.subject.match(/^Message from\s+(.+?)\s+for\s+Art.?is.?Tree/i)?.[1]?.trim();
+  const service = input.body.match(/Job Requested\s*\n?\s*(.+)/i)?.[1]?.trim();
+  const zip = input.body.match(/Postal Code\s*\n?\s*(\d{5})/i)?.[1];
+  const serviceCity = serviceCityForZip(zip) ?? undefined;
+  return {
+    isLeadNotification: true,
+    provider: 'yelp',
+    lead: {
+      source: 'Yelp',
+      name,
+      zip,
+      city: serviceCity,
+      serviceCity,
+      serviceRequested: service,
+      serviceOffScope: offScope(service),
+      // Yelp gives no phone: replying happens inside Yelp.
+      details: [service, 'Reply inside Yelp — no phone number is provided.'].filter(Boolean).join(' — '),
+    },
+    inServiceArea: zip ? serviceCity !== undefined : null,
+  };
+}
+
 export function classifyLeadMail(input: LeadMailInput): LeadMailResult {
   const from = input.from.toLowerCase();
 
@@ -226,6 +305,15 @@ export function classifyLeadMail(input: LeadMailInput): LeadMailResult {
     || from.includes('localservices-noreply@google.com');
   if (isLsaSender && /potential customer/i.test(input.subject)) {
     return parseLsaRequest(input);
+  }
+  // HomeAdvisor: marketing mail also comes from homeadvisor.com, so anchor on
+  // the lead sender AND the Opportunity subject shape.
+  if (from.includes('@homeadvisor.com') && /^New Opportunity/i.test(input.subject)) {
+    return parseHomeAdvisor(input);
+  }
+  // Yelp uses a per-thread reply+<token>@messaging.yelp.com sender.
+  if (/@messaging\.yelp\.com/.test(from) && /^Message from .+ for Art.?is.?Tree/i.test(input.subject)) {
+    return parseYelp(input);
   }
   return NOT_A_LEAD;
 }

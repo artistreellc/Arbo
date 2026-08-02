@@ -293,6 +293,118 @@ describe('Google LSA (§5A #12) — the sender address the old rule never matche
   });
 });
 
+// Both shapes are the REAL 2026-08-01/02 messages. The read-only sweep found
+// NINE lead-shaped emails in two days matching no rule; HomeAdvisor and Yelp
+// were two entire channels Arbo could not see.
+const HA_BODY = `A homeowner in Norfolk needs a pro for Trees - Trim.
+
+There's a new Opportunity near you
+Respond quickly if you're interested.
+
+Trees - Trim
+Norfolk, VA
+Lead #: 327955820
+View all details`;
+
+const YELP_BODY = `Job Requested
+Landscaping
+Postal Code
+23456
+Bi-weekly lawn mowing service for a small yard. Include edging and weed control.`;
+
+describe('HomeAdvisor (§5A #12) — a whole channel Arbo could not see', () => {
+  const r = classifyLeadMail({
+    from: 'newlead@homeadvisor.com',
+    subject: 'New Opportunity: Trees - Trim',
+    body: HA_BODY,
+  });
+
+  it('is recognised, with the service and the city', () => {
+    expect(r.isLeadNotification).toBe(true);
+    expect(r.provider).toBe('home_advisor');
+    expect(r.lead.serviceRequested).toBe('Trees - Trim');
+    expect(r.lead.serviceCity).toBe('Norfolk');
+    expect(r.inServiceArea).toBe(true);
+  });
+
+  it('keeps HomeAdvisor\'s own lead number so Mike can find it in their app', () => {
+    expect(r.lead.externalRef).toBe('327955820');
+    expect(r.lead.details).toMatch(/HomeAdvisor app/);
+  });
+
+  it('does NOT invent a name or phone it was never given', () => {
+    expect(r.lead.name).toBeUndefined();
+    expect(r.lead.phone).toBeUndefined();
+  });
+
+  it('an out-of-area city is flagged for review, not dropped (§3.7)', () => {
+    const far = classifyLeadMail({
+      from: 'newlead@homeadvisor.com',
+      subject: 'New Opportunity: Trees - Trim',
+      body: HA_BODY.replace(/Norfolk/g, 'Richmond'),
+    });
+    expect(far.isLeadNotification).toBe(true);
+    expect(far.inServiceArea).toBe(false);
+  });
+
+  it('HomeAdvisor marketing mail is not a lead', () => {
+    expect(classifyLeadMail({
+      from: 'news@homeadvisor.com',
+      subject: 'Your monthly pro report',
+      body: 'stats',
+    }).isLeadNotification).toBe(false);
+  });
+});
+
+describe('Yelp (§5A #12) — per-thread reply sender, and often not tree work', () => {
+  const r = classifyLeadMail({
+    from: 'reply+1666185633f144e281d3b9529549db55@messaging.yelp.com',
+    subject: 'Message from Chase C. for Art-Is-Tree',
+    body: YELP_BODY,
+  });
+
+  it('matches on the yelp messaging domain, not a fixed address', () => {
+    expect(r.isLeadNotification).toBe(true);
+    expect(r.provider).toBe('yelp');
+    expect(r.lead.name).toBe('Chase C.');
+  });
+
+  it('resolves the city from the postal code', () => {
+    expect(r.lead.zip).toBe('23456');
+    expect(r.lead.serviceCity).toBe('Virginia Beach');
+  });
+
+  it('FLAGS a request that is not tree work rather than booking it as one', () => {
+    expect(r.lead.serviceRequested).toBe('Landscaping');
+    expect(r.lead.serviceOffScope).toBe(true);
+    // Still a lead — flagged for review, never silently dropped (§3.7).
+    expect(r.isLeadNotification).toBe(true);
+  });
+
+  it('does not flag real tree work as off-scope', () => {
+    const tree = classifyLeadMail({
+      from: 'reply+abc@messaging.yelp.com',
+      subject: 'Message from A B. for Art-Is-Tree',
+      body: YELP_BODY.replace('Landscaping', 'Tree Removal'),
+    });
+    expect(tree.lead.serviceOffScope).toBe(false);
+  });
+
+  it('does not flag a mixed request that includes tree work', () => {
+    const mixed = classifyLeadMail({
+      from: 'reply+abc@messaging.yelp.com',
+      subject: 'Message from A B. for Art-Is-Tree',
+      body: YELP_BODY.replace('Landscaping', 'Lawn care and tree trimming'),
+    });
+    expect(mixed.lead.serviceOffScope).toBe(false);
+  });
+
+  it('says plainly that Yelp gives no phone number', () => {
+    expect(r.lead.phone).toBeUndefined();
+    expect(r.lead.details).toMatch(/Reply inside Yelp/);
+  });
+});
+
 describe('follow-up engine (§5A #16–20) — recommend-only, legally gated', () => {
   const legal = loadLegal();
   // A "now" squarely inside quiet hours: 15:00 EDT on a Wednesday.

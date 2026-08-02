@@ -29,7 +29,7 @@ this document is the spec.
 ## Step A — Lead inbox sweep (§5A #12/#13)
 
 1. Search Gmail (label id for `ARBOR/processed` is `Label_3`):
-   `{from:ads-account-noreply@google.com from:no-reply@callrail.com from:localservices-noreply@google.com from:awexpress.google.com} newer_than:2d -label:Label_3`
+   `{from:ads-account-noreply@google.com from:no-reply@callrail.com from:localservices-noreply@google.com from:awexpress.google.com from:homeadvisor.com from:messaging.yelp.com from:formsubmit.co} newer_than:2d -label:Label_3`
 
    > **2026-08-02 — this query used to miss real leads.** LSA does NOT send
    > from `localservices-noreply@`; every LSA lead arrives from a per-lead
@@ -64,8 +64,23 @@ this document is the spec.
      an address if it ends in a real street suffix ("1000 works if possible"
      is a budget, not a street). LSA gives no city on the wire, so
      `inServiceArea` stays UNKNOWN unless a ZIP resolves it.
+   - `newlead@homeadvisor.com` + subject `New Opportunity: <service>` →
+     **home_advisor**. Carries service, city, and HomeAdvisor's lead number —
+     but NO name or phone (those are behind "View all details" in their app),
+     so the row points Mike there instead of pretending to hold contact
+     details. Other `@homeadvisor.com` senders are marketing → not a lead.
+   - `reply+<token>@messaging.yelp.com` + subject `Message from <name> for
+     Art-Is-Tree` → **yelp**. Per-thread sender, so match the DOMAIN. Body has
+     `Job Requested` and `Postal Code`; replying happens inside Yelp, so there
+     is no phone. Yelp routinely sends non-tree requests — the classifier sets
+     `serviceOffScope` and the row is FLAGGED for review, never booked as tree
+     work and never dropped.
    - Weekly/monthly summaries, "recommendations auto-applied", any
      `learn@callrail.com` marketing → **not a lead**. Label processed, no row.
+
+   > **Still unhandled as of 2026-08-02:** FormSubmit
+   > (`submissions@formsubmit.co`, "New estimate request from …") — the
+   > website contact page. Leave unlabeled and report until a rule exists.
 3. Ingest (Supabase `execute_sql`, parameter-safe quoting):
    - Contact: match `select id from contact where phones @> array['<E164ish>']`;
      else insert (`name`, `phones`, `consent_source` = `'inbound_call'` for
