@@ -105,6 +105,26 @@ storing comes later, on Mike's word.
 
 ---
 
+## R7 — Do not touch the website, Resend, or anything SEO-adjacent
+**Ruling: 2026-08-02.** Mike: *"we would have to re configure the resend and
+code on the site all of that and in turn you'd mess with my rankings for
+something you're not even supposed to be working on."*
+
+**What happened:** I built a classifier branch for the website contact-form
+channel. In the app it was harmless — but making that channel actually useful
+means reconfiguring Resend and the site, and the site's search rankings are a
+live business asset. It was reverted (`bb77428`).
+
+**The rule now:** Arbo's scope stops at the app. Anything that would require
+changing artistreevabeach.com, its forms, or its mail plumbing is OUT — even
+when the code change itself lives in this repo, if the change only pays off
+by touching the site.
+
+**Do not:** re-add the FormSubmit channel, or any other work whose value
+depends on editing the website.
+
+---
+
 ## R5 — Opus is the brain
 **Owner decision (§8A.2), re-affirmed.** Agents run on `claude-opus-5`. Do not
 downgrade an agent to a cheaper model for cost reasons; that is Mike's call,
@@ -127,6 +147,7 @@ cross-platform app for everything non-AR. Android AR waits.
 - **Friday questionnaire length: 10 or 15 questions.** Built PARAMETERISED
   (`defaultQuestionnaireConfig.questionCount`) so either answer is a config
   change, not a rewrite.
+- **FormSubmit / website contact page** — deliberately NOT handled. See R7.
 - **Doc-scan tool** (`docs/DOC_SCAN_TOOL_SPEC.md`). Proceeding on two stated
   defaults unless Mike says otherwise: OCR *proposes* the total on the confirm
   screen and never writes it (so Arbo cannot price from a photo), and a
