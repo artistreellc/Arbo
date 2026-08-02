@@ -372,11 +372,18 @@ tools). Rule-review note from run 1: short name+phone calendar events may
 be estimate visits — the estimate/job title heuristic in OPS_SWEEP.md
 deserves tightening once Mike confirms his conventions.
 
-### Railway deploy path fixed (2026-08-02)
-Mike added RAILWAY_TOKEN; every run then failed INSIDE the vendor action
-(jzeuzs/action-railway: its Docker image pipes Railway's installer into
-plain `sh`; the script's bash-only substitution dies, exit 2 — before our
-code runs). deploy-railway.yml now installs the official @railway/cli and
-runs `railway up --service arbor-server --detach` directly (D49-in-D43
-spirit: fewer third-party moving parts). Run #17 green on GitHub;
-Railway-side build verification via /health follows.
+### Railway deploy path fixed (2026-08-02) — corrected diagnosis
+The red X's Mike saw: GitHub builds a Docker action's image BEFORE
+evaluating the step's `if` guard, and jzeuzs/action-railway's image broke
+upstream (it pipes Railway's installer into plain `sh`; the script's
+bash-only substitution dies, exit 2). So every push failed at action
+setup even though the deploy step itself would have been SKIPPED —
+RAILWAY_TOKEN is in fact still not visible to Actions (run #17 with the
+fix skipped green on the token guard, and Railway answers "Application
+not found": nothing has ever deployed there). deploy-railway.yml now
+installs the official @railway/cli and runs `railway up --service
+arbor-server --detach` directly — no third-party image to break. Pushes
+are green again; the Railway path lights up the day a repository secret
+named exactly RAILWAY_TOKEN exists (Settings → Secrets and variables →
+Actions → Repository secrets). Until then Vercel remains the live
+production path, unaffected throughout.
