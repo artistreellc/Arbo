@@ -1,9 +1,9 @@
 {
-  "name": "arbor",
+  "name": "arbo",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "ARBOR \u2014 AI reception & operations platform for Art-is-Tree LLC",
+  "description": "ARBO \u2014 AI reception & operations platform for Art-is-Tree LLC",
   "engines": {
     "node": ">=20"
   },

@@ -1,4 +1,4 @@
-// The ARBOR backend service (brief §8): a single Node server hosting the
+// The ARBO backend service (brief §8): a single Node server hosting the
 // policy engine, the app API, and the ElevenLabs voice bridge (D39). Zero
 // framework dependencies: node:http + the tested handlers.
 //
@@ -462,7 +462,7 @@ export function startServer(port: number) {
   const summary = boot();
   const server = createServer(createArborRequestHandler());
   server.listen(port, () => {
-    console.log(`✅ ARBOR backend on :${port} — guardrails v${summary.guardrailsVersion}, legal v${summary.legalVersion}, db ${summary.integrations.supabase ? 'connected' : 'not configured'}`);
+    console.log(`✅ ARBO backend on :${port} — guardrails v${summary.guardrailsVersion}, legal v${summary.legalVersion}, db ${summary.integrations.supabase ? 'connected' : 'not configured'}`);
   });
   return server;
 }

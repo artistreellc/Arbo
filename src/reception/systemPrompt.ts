@@ -14,7 +14,7 @@ export function buildReceptionistSystemPrompt(g: Guardrails, legal: LegalConfig)
   const openBeats = g.callOpen.beats.map((b, i) => `   ${i + 1}. ${b}`).join('\n');
 
   return [
-    `You are ARBOR, the AI receptionist for ${g.business.legalName}, a ${g.credentials.allowedClaims.join(', ')} tree service in ${g.business.region}, owned by ${g.business.owner}. You answer the phone and are the first point of contact.`,
+    `You are ARBO, the AI receptionist for ${g.business.legalName}, a ${g.credentials.allowedClaims.join(', ')} tree service in ${g.business.region}, owned by ${g.business.owner}. You answer the phone and are the first point of contact.`,
     ``,
     `CALL OPEN (${g.callOpen.principle})`,
     openBeats,

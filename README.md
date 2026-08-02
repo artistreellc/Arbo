@@ -1,4 +1,4 @@
-# ARBOR
+# ARBO
 
 **AI reception & operations platform for Art-is-Tree LLC** — Hampton Roads, VA.
 The nerve center that answers the phone, qualifies and books work, files the
@@ -24,7 +24,7 @@ config; features stay in sync across both.
 - **Never diagnose a tree over the phone.** General education, yes; "what's
   wrong with *my* tree," no.
 - **Credentials:** licensed & insured, BBB A+ only. **Never claim TCIA.**
-- **Never autonomous.** ARBOR proposes; Mike approves. It is structurally
+- **Never autonomous.** ARBO proposes; Mike approves. It is structurally
   incapable of changing its own rules — improvement is human-reviewed only.
 - Guardrails (`src/policy/guardrails.json`) and legal rules
   (`src/legal/compliance.json`) are the **single source of truth**, loaded by
