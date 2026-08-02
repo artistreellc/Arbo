@@ -51,8 +51,7 @@ import { createElevenLabsBridge, type BridgeRequestBody } from './voice/elevenla
 import type { Alerter } from './reception/receptionist.js';
 import { loadAppHtml } from './server/appPage.js';
 import { emitSafe } from './binder/eventBus.js';
-import { runPermittingAgent } from './agents/permittingAgent.js';
-import { runOwnerBriefingAgent } from './agents/ownerBriefingAgent.js';
+import { runAgentSweep, startAgentScheduler } from './agents/sweep.js';
 
 /** Live DataSource over the Phase 1 repositories (service-role, RLS-locked). */
 export function createLiveSource(): DataSource {
@@ -290,8 +289,9 @@ const consoleAlerter: Alerter = {
  */
 export function createArborRequestHandler() {
   boot(); // validates guardrails + legal or throws
+  const alertsProvider = createNwsAlertsProvider((url, init) => fetch(url, init));
   const api = createApi(createLiveSource(), {
-    alerts: createNwsAlertsProvider((url, init) => fetch(url, init)),
+    alerts: alertsProvider,
     ...(env.elevenlabs.apiKey ? { tts: createElevenLabsTts(env.elevenlabs.apiKey) } : {}),
   });
 
@@ -431,11 +431,7 @@ export function createArborRequestHandler() {
       // the key lands (§1B — never bluff).
       if (req.method === 'POST' && url.pathname === '/api/agents/sweep') {
         if (!hasDb()) return send(503, { error: 'db_not_configured' });
-        const [permitting, briefing] = await Promise.all([
-          runPermittingAgent(),
-          runOwnerBriefingAgent(api),
-        ]);
-        return send(200, { permitting, briefing });
+        return send(200, await runAgentSweep(api, alertsProvider));
       }
       // ElevenLabs custom-LLM endpoint (the agent's Server URL points at
       // /voice/llm; the platform appends the OpenAI-style path).
@@ -461,6 +457,11 @@ export function createArborRequestHandler() {
 export function startServer(port: number) {
   const summary = boot();
   const server = createServer(createArborRequestHandler());
+  // §8A.6f: the agents run on their own clock, not only when Mike taps.
+  startAgentScheduler(
+    createApi(createLiveSource(), { alerts: createNwsAlertsProvider((u, i) => fetch(u, i)) }),
+    createNwsAlertsProvider((u, i) => fetch(u, i)),
+  );
   server.listen(port, () => {
     console.log(`✅ ARBO backend on :${port} — guardrails v${summary.guardrailsVersion}, legal v${summary.legalVersion}, db ${summary.integrations.supabase ? 'connected' : 'not configured'}`);
   });
