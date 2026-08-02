@@ -20,6 +20,17 @@ describe('ARBOR app shell', () => {
     expect(html).not.toMatch(/@import/);
   });
 
+  it('embeds the real Google Calendar — and only calendar.google.com', () => {
+    // Mike's rule: the calendar IS Google Calendar, planted in the app.
+    expect(html).toContain('calendar.google.com/calendar/embed');
+    expect(html).toContain('artistreeofvirginia@gmail.com');
+    // The embed is the ONE sanctioned outbound host. Anything else would be a
+    // third-party dependency the app must not grow.
+    const hosts = [...html.matchAll(/https:\/\/([a-z0-9.-]+)/gi)].map((m) => m[1]!.toLowerCase());
+    const allowed = new Set(['calendar.google.com', 'maps.google.com', 'www.google.com']);
+    expect([...new Set(hosts)].filter((h) => !allowed.has(h))).toEqual([]);
+  });
+
   it('talks to the real API routes', () => {
     expect(html).toContain('/api/brief');
     expect(html).toContain('/api/leads');

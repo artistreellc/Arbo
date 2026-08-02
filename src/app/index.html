@@ -235,13 +235,14 @@ nav button .ico{font-size:20px;line-height:1}
 .internal-tag{font-size:10px;font-weight:900;letter-spacing:.14em;color:var(--muted);
   text-transform:uppercase;margin-top:10px;opacity:.8}
 
-/* ---- Calendar (§3.22): Mike's Google Calendar, in the app ---- */
-.cal-head{display:flex;align-items:center;gap:8px;margin-bottom:12px}
-.cal-head button{min-width:48px;min-height:48px;border:1px solid var(--border);border-radius:var(--r-md);
-  background:var(--surface);color:var(--canopy);font-size:20px;font-weight:800;cursor:pointer}
-.cal-range{flex:1;font-size:15px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ink)}
+/* ---- Calendar (§3.22): the actual Google Calendar, planted in the app ---- */
+#gcal-frame{width:100%;height:calc(100vh - 210px);min-height:420px;border:1px solid var(--border);
+  border-radius:var(--r-md);background:var(--surface)}
+.cal-open{display:flex;align-items:center;justify-content:center;min-height:48px;border-radius:var(--r-md);
+  background:var(--surface);border:1.5px solid var(--border);color:var(--canopy);font-size:14px;font-weight:800;
+  text-decoration:none;margin-top:10px}
 .cal-src{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);
-  margin-bottom:12px}
+  margin-bottom:10px}
 .cal-day{margin-bottom:14px}
 .cal-daylabel{display:flex;align-items:baseline;gap:8px;font-size:13px;font-weight:900;letter-spacing:.1em;
   text-transform:uppercase;color:var(--muted);padding:6px 0;border-bottom:1px solid var(--border);margin-bottom:8px}
@@ -718,84 +719,51 @@ async function renderLeads() {
   }
 }
 
-// ---------- Calendar (§3.22): MIKE'S Google Calendar, rendered in the app.
-// Arbo has no calendar of its own and never writes to his — this mirrors the
-// Art-is-Tree calendar and deep-links every event back to the real thing.
-let calWeekOffset = 0;
-const DAY_FMT = { weekday: 'short', month: 'short', day: 'numeric' };
-function weekStart(offsetWeeks) {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - d.getDay() + offsetWeeks * 7); // Sunday-start
-  return d;
+// ---------- Calendar: the ACTUAL Google Calendar, embedded ----------
+// Not a rebuild, not a mirror view — Mike's own Art-is-Tree calendar rendered
+// by Google inside the app. He edits it here exactly like he does anywhere
+// else; Arbo still never writes to it.
+const GCAL_ID = 'artistreeofvirginia@gmail.com';
+function gcalEmbedUrl() {
+  const p = new URLSearchParams({
+    src: GCAL_ID,
+    ctz: 'America/New_York',
+    mode: window.innerWidth >= 900 ? 'WEEK' : 'AGENDA',
+    bgcolor: '#0B0D10',
+    showTitle: '0',
+    showNav: '1',
+    showDate: '1',
+    showPrint: '0',
+    showTabs: '1',
+    showCalendars: '0',
+    showTz: '0',
+  });
+  return 'https://calendar.google.com/calendar/embed?' + p.toString();
 }
-async function renderCalendar() {
+function renderCalendar() {
   const v = $('view-cal');
+  if (v.querySelector('#gcal-frame')) return; // don't reload on every refresh tick
   v.replaceChildren();
-  const start = weekStart(calWeekOffset);
-  const end = new Date(start); end.setDate(end.getDate() + 7);
-
-  const head = el('div', 'cal-head');
-  const prev = el('button', '', '\u2039');
-  const next = el('button', '', '\u203A');
-  const today = el('button', '', '\u25CF');
-  prev.title = 'Previous week'; next.title = 'Next week'; today.title = 'This week';
-  prev.onclick = () => { calWeekOffset--; renderCalendar(); };
-  next.onclick = () => { calWeekOffset++; renderCalendar(); };
-  today.onclick = () => { calWeekOffset = 0; renderCalendar(); };
-  const rangeLabel = start.toLocaleDateString([], { month: 'long', day: 'numeric' }) + ' \u2013 ' +
-    new Date(end.getTime() - 86400000).toLocaleDateString([], { month: 'long', day: 'numeric' });
-  head.appendChild(prev);
-  head.appendChild(el('div', 'cal-range', rangeLabel));
-  head.appendChild(today);
-  head.appendChild(next);
+  const head = el('div', 'cal-src', '\u25CF Google Calendar \u2014 Art-is-Tree');
   v.appendChild(head);
-  v.appendChild(el('div', 'cal-src', '\u25CF Your Google Calendar \u2014 Art-is-Tree'));
-
-  let data;
-  try {
-    data = await api('/api/calendar?from=' + start.toISOString() + '&to=' + end.toISOString());
-  } catch (e) {
-    if (e.code === 401) return showKeywall();
-    v.appendChild(state('Calendar unavailable', e.code === 503
-      ? 'Database not connected \u2014 your calendar shows the moment it is.'
-      : 'Could not load the calendar. Pull refresh to retry.'));
-    return;
-  }
-  const byDay = new Map();
-  for (const ev of data.events) {
-    if (!ev.timeIso) continue;
-    const key = new Date(ev.timeIso).toDateString();
-    byDay.set(key, [...(byDay.get(key) || []), ev]);
-  }
-  const todayKey = new Date().toDateString();
-  for (let i = 0; i < 7; i++) {
-    const day = new Date(start); day.setDate(day.getDate() + i);
-    const key = day.toDateString();
-    const box = el('div', 'cal-day' + (key === todayKey ? ' today' : ''));
-    box.appendChild(el('div', 'cal-daylabel', day.toLocaleDateString([], DAY_FMT)));
-    const evs = byDay.get(key) || [];
-    if (!evs.length) box.appendChild(el('div', 'cal-empty', 'Open'));
-    for (const ev of evs) {
-      const row = el('div', 'cal-ev' + (ev.kind === 'estimate' ? ' est' : ''));
-      row.appendChild(el('div', 't', fmtTime(ev.timeIso)));
-      const body = el('div', 'body');
-      body.appendChild(el('div', 'who', (ev.name || 'Unnamed') + (ev.kind === 'estimate' ? ' \u00b7 estimate' : '')));
-      if (ev.address) body.appendChild(el('div', 'where', ev.address + (ev.city ? ', ' + ev.city : '')));
-      if (ev.scope) body.appendChild(el('div', 'where', ev.scope));
-      row.appendChild(body);
-      if (ev.calendarEventId) {
-        const g = el('a', 'gcal', 'Google \u2197');
-        g.href = 'https://calendar.google.com/calendar/u/0/r/eventedit/' + ev.calendarEventId;
-        g.target = '_blank'; g.rel = 'noopener';
-        g.addEventListener('click', (e) => e.stopPropagation());
-        row.appendChild(g);
-      }
-      if (ev.propertyId) row.addEventListener('click', () => openTwin(ev.propertyId, ev.address || 'Property'));
-      box.appendChild(row);
-    }
-    v.appendChild(box);
-  }
+  // The open-in-Google action lives ABOVE the frame: if the embed can't render
+  // (signed out of Google on this device), the way through is already on screen.
+  const openTop = el('a', 'cal-open', 'Open in Google Calendar \u2197');
+  openTop.href = 'https://calendar.google.com/calendar/u/0/r';
+  openTop.target = '_blank';
+  openTop.rel = 'noopener';
+  openTop.style.marginTop = '0';
+  openTop.style.marginBottom = '10px';
+  v.appendChild(openTop);
+  const frame = document.createElement('iframe');
+  frame.id = 'gcal-frame';
+  frame.src = gcalEmbedUrl();
+  frame.setAttribute('frameborder', '0');
+  frame.setAttribute('scrolling', 'no');
+  frame.title = 'Art-is-Tree Google Calendar';
+  v.appendChild(frame);
+  v.appendChild(el('div', 'cal-src',
+    'Blank above? You are signed out of Google on this device \u2014 use the button.'));
 }
 
 // ---------- The Book (§6/#36: every property, tap into its twin) ----------
