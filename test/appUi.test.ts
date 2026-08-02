@@ -42,8 +42,9 @@ describe('ARBOR app shell', () => {
     expect(html).not.toContain('innerHTML');
   });
 
-  it('uses the §9 design tokens (forest primary, 48px+ targets)', () => {
-    expect(html).toContain('#1B4D3E');
+  it('uses the §9 cockpit tokens (violet primary, dark base, 48px+ targets)', () => {
+    expect(html).toContain('#7C3AED'); // luminous purple accent
+    expect(html).toContain('#0B0D10'); // near-black base
     expect(html).toMatch(/min-height:\s*(48|56)px/);
   });
 });

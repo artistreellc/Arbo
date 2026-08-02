@@ -1,39 +1,41 @@
-// ARBOR design tokens (brief §9). Built for a glove-friendly, sunlight-readable,
-// one-handed field app: large touch targets, high contrast, earthy palette.
+// Arbo design tokens (live brief §9 — COCKPIT). Dark mission-control HUD:
+// black/gray base, luminous purple accents, mono numerals, sharp sans.
+// Glove-friendly, sunlight-readable, one-handed: large targets, high contrast.
 // The mobile app (Phase 10) and any web surface consume these so nothing drifts.
 
 export const color = {
-  // Deep greens / natural earth tones — calm, professional, confident.
+  // Luminous purple on near-black — the cockpit accent family.
+  // Key names kept stable (forest/canopy/...) so consumers don't churn;
+  // values are the §9 cockpit palette.
   brand: {
-    forest: '#1B4D3E', // primary
-    forestDark: '#12352B', // pressed / headers
-    canopy: '#2A7A5E', // accent / success-ish
-    moss: '#6B8F71',
-    bark: '#3E2C23', // earth
-    clay: '#B4552D', // warm accent (badge marks, sparingly)
-    amber: '#D4AF37', // highlight (used sparingly)
+    forest: '#7C3AED', // primary accent (violet)
+    forestDark: '#5B21B6', // pressed / deep accent
+    canopy: '#A78BFA', // light accent
+    moss: '#8B93A1', // cool gray
+    bark: '#1C2026', // raised dark surface
+    clay: '#A78BFA', // secondary accent (kept sparing)
+    amber: '#FFB020', // highlight (used sparingly)
   },
-  // High-contrast neutrals for direct sunlight.
-  ink: '#0F1A15', // near-black text
-  surface: '#FFFFFF',
-  surfaceAlt: '#F3F5F2',
-  border: '#D5DCD7',
-  muted: '#5C6B62',
-  // Status — must read at a glance outdoors.
+  // High-contrast on dark for direct sunlight.
+  ink: '#E9ECF1', // near-white text
+  surface: '#15181D', // card surface
+  surfaceAlt: '#0B0D10', // page background / header bar
+  border: '#2A2F37',
+  muted: '#98A0AC',
+  // Status — must read at a glance outdoors, on dark.
   status: {
-    emergency: '#C62828', // red flag: on-structure / power-line
-    warning: '#E08A00',
-    ok: '#2A7A5E',
-    info: '#2B6CB0',
+    emergency: '#FF5A52', // red flag: on-structure / power-line
+    warning: '#FFB020',
+    ok: '#37C98B',
+    info: '#5AA9FF',
   },
 } as const;
 
 export const typography = {
-  // Strong weights for sunlight legibility; system stack for now (Phase 10 picks
-  // the shipped typeface). Confident, readable, generous.
+  // Sharp sans everywhere; mono for numerals/timestamps (HUD instrument feel).
   fontFamily: {
     sans: 'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif',
-    display: 'ui-serif, Georgia, "Times New Roman", serif',
+    mono: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
   },
   // Type scale (px). Big by default — "the most important thing is the biggest."
   size: { xs: 13, sm: 15, base: 17, lg: 20, xl: 24, '2xl': 30, '3xl': 38, '4xl': 48 },
@@ -52,8 +54,8 @@ export const radius = { none: 0, sm: 6, md: 10, lg: 16, xl: 24, pill: 999 } as c
 export const touchTarget = { min: 48, comfortable: 56 } as const;
 
 export const elevation = {
-  card: '0 1px 3px rgba(15,26,21,0.12), 0 1px 2px rgba(15,26,21,0.08)',
-  raised: '0 4px 12px rgba(15,26,21,0.16)',
+  card: 'inset 0 1px 0 rgba(255,255,255,0.03), 0 2px 10px rgba(0,0,0,0.5)',
+  raised: '0 4px 16px rgba(0,0,0,0.6)',
 } as const;
 
 export const tokens = { color, typography, spacing, radius, touchTarget, elevation } as const;
