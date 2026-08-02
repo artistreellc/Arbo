@@ -29,6 +29,7 @@ import {
 } from '../training/questionnaire.js';
 import { toCrewFacing, gradeSubmission, type GradableItem } from '../training/grading.js';
 import { buildTrainingBoard, type CrewProfileRow, type GateCompletionRow } from '../training/board.js';
+import { buildAreaReport, buildCampaignReport, type AreaJobFact, type CampaignFact } from '../ops/areaPerformance.js';
 import {
   assessArrival, draftChangeOrder, splitChangeOrders, ChangeOrderRejected,
   type SiteConditionRecord, type ChangeOrderRow,
@@ -148,6 +149,9 @@ export interface DataSource {
   trainingPool?(): Promise<TrainingItemRef[]>;
   /** Full rows INCLUDING the answer key. Server-side only — never serialised. */
   trainingItems?(ids: string[]): Promise<GradableItem[]>;
+  /** §6D/§6N.3 area + campaign performance facts. */
+  areaJobFacts?(sinceIso: string): Promise<AreaJobFact[]>;
+  campaignFacts?(): Promise<CampaignFact[]>;
   /** §6 site conditions + change orders. */
   recordSiteCondition?(input: SiteConditionRecord): Promise<{ id: string }>;
   siteCondition?(jobId: string): Promise<SiteConditionRecord | null>;
@@ -1428,6 +1432,37 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       if (!ok) return { status: 409, body: { error: 'not_approvable' } };
       if (source.emit) await source.emit('job.change_order.approved', { changeOrderId: id });
       return { status: 200, body: { ok: true } };
+    },
+
+    /**
+     * GET /api/performance — §6D/§6N.3. Which areas actually pay, on a rate
+     * that controls for job size and crew scale, and which campaigns can be
+     * measured at all. Thin samples are listed and NOT judged.
+     */
+    async performance(days = 365): Promise<ApiResult> {
+      if (!source.ready() || !source.areaJobFacts) return { status: 503, body: { error: 'db_not_configured' } };
+      const window = Number.isFinite(days) && days > 0 ? Math.min(Math.floor(days), 1095) : 365;
+      const since = new Date(Date.now() - window * 86400_000).toISOString();
+
+      const areaReport = buildAreaReport(await source.areaJobFacts(since));
+
+      let campaigns: ReturnType<typeof buildCampaignReport> = [];
+      let campaignsKnown = true;
+      if (source.campaignFacts) {
+        try {
+          campaigns = buildCampaignReport(await source.campaignFacts());
+        } catch {
+          // Unreadable is not "no campaigns running".
+          campaignsKnown = false;
+        }
+      } else {
+        campaignsKnown = false;
+      }
+
+      return {
+        status: 200,
+        body: { ...areaReport, campaigns, campaignsKnown, windowDays: window, checkedAtIso: new Date().toISOString() },
+      };
     },
 
     /** GET /api/agents/runs — §8A.6g audit visibility: what the agents did. */

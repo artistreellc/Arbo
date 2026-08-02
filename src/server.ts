@@ -59,6 +59,8 @@ import {
   trainingItemsByIds,
   pendingLessonDrafts,
   crewWithProfiles,
+  areaJobFacts,
+  campaignFacts,
   recordSiteCondition,
   siteConditionForJob,
   createChangeOrder,
@@ -328,6 +330,8 @@ export function createLiveSource(): DataSource {
     trainingItems: (ids) => trainingItemsByIds(ids),
     pendingDrafts: () => pendingLessonDrafts(),
     crewProfiles: () => crewWithProfiles(),
+    areaJobFacts: (since) => areaJobFacts(since),
+    campaignFacts: () => campaignFacts(),
     // §6 site conditions + change orders.
     recordSiteCondition: (input) => recordSiteCondition(input),
     siteCondition: (jobId) => siteConditionForJob(jobId),
@@ -560,6 +564,10 @@ export function createArborRequestHandler() {
       }
       if (req.method === 'POST' && url.pathname === '/api/crew/near-miss') {
         return send(...unpack(await api.reportNearMiss((await readJson(req)) as Record<string, unknown>)));
+      }
+      // §6D/§6N.3 performance.
+      if (req.method === 'GET' && url.pathname === '/api/performance') {
+        return send(...unpack(await api.performance(Number(url.searchParams.get('days') ?? 365))));
       }
       // §6 site conditions + change orders.
       {

@@ -1888,3 +1888,80 @@ export async function markChangeOrdersInvoiced(ids: string[]): Promise<void> {
   const res = await db.from('change_order').update({ invoiced: true }).in('id', ids);
   if (res.error) throw res.error;
 }
+
+// ---------------------------------------------------------------------------
+// §6D/§6N.3 area + campaign performance. Facts only — every judgement about
+// them lives in src/ops/areaPerformance.ts where it can be tested.
+// ---------------------------------------------------------------------------
+
+/**
+ * Completed, paid work with the factors needed to NORMALIZE a rate. A job
+ * missing hours is returned with hours 0 so the caller can exclude and COUNT
+ * it, rather than the query silently dropping it from the benchmark.
+ */
+export async function areaJobFacts(sinceIso: string): Promise<Array<{
+  jobId: string; areaKey: string; hours: number; crewSize: number;
+  revenue: number; jobType: 'removal' | 'pruning' | 'other';
+}>> {
+  const db = getDb();
+  const res = await db.from('job')
+    .select('id, truck_to_truck_hours, crew_size, job_type, completed_at, property:property_id(city, zip), invoice:invoice(amount, status)')
+    .eq('status', 'completed')
+    .gte('completed_at', sinceIso);
+  if (res.error) throw res.error;
+  return ((res.data ?? []) as Array<Record<string, unknown>>).map((j) => {
+    const prop = j.property as { city?: string | null; zip?: string | null } | null;
+    const invoices = (j.invoice as Array<{ amount: unknown; status: string }> | null) ?? [];
+    // Paid money only. A sent-but-unpaid invoice is not revenue yet.
+    const paid = invoices.filter((i) => i.status === 'paid').reduce((s, i) => s + Number(i.amount ?? 0), 0);
+    const type = String(j.job_type ?? 'other');
+    return {
+      jobId: j.id as string,
+      // ZIP is the area key: it is the finest grain Arbo reliably has.
+      areaKey: prop?.zip ? `${prop.city ?? '?'} ${prop.zip}` : `${prop?.city ?? 'unknown'} (no zip)`,
+      hours: Number(j.truck_to_truck_hours ?? 0),
+      crewSize: Number(j.crew_size ?? 1),
+      revenue: paid,
+      jobType: (type === 'removal' || type === 'pruning' ? type : 'other') as 'removal' | 'pruning' | 'other',
+    };
+  });
+}
+
+/** Campaigns with their attribution wiring made explicit. */
+export async function campaignFacts(): Promise<Array<{
+  id: string; type: 'flyer' | 'ads' | 'seasonal' | 'neighbor_around_job';
+  cost: number | null; bookedJobs: number; attributionWired: boolean;
+}>> {
+  const db = getDb();
+  const res = await db.from('campaign')
+    .select('id, type, cost, tracking_number, attributed_lead_ids');
+  if (res.error) throw res.error;
+  const rows = (res.data ?? []) as Array<Record<string, unknown>>;
+  if (rows.length === 0) return [];
+
+  // Which attributed leads actually became jobs.
+  const allLeadIds = [...new Set(rows.flatMap((r) => (r.attributed_lead_ids as string[] | null) ?? []))];
+  let bookedByLead = new Set<string>();
+  if (allLeadIds.length) {
+    const jobs = await db.from('estimate')
+      .select('lead_id, outcome')
+      .in('lead_id', allLeadIds)
+      .eq('outcome', 'won');
+    if (!jobs.error) {
+      bookedByLead = new Set(((jobs.data ?? []) as Array<{ lead_id: string | null }>)
+        .map((e) => e.lead_id).filter((x): x is string => Boolean(x)));
+    }
+  }
+
+  return rows.map((r) => {
+    const leads = (r.attributed_lead_ids as string[] | null) ?? [];
+    return {
+      id: r.id as string,
+      type: r.type as 'flyer' | 'ads' | 'seasonal' | 'neighbor_around_job',
+      cost: r.cost === null ? null : Number(r.cost),
+      bookedJobs: leads.filter((l) => bookedByLead.has(l)).length,
+      // No tracking number AND no attributed leads = nothing was ever wired up.
+      attributionWired: Boolean(r.tracking_number) || leads.length > 0,
+    };
+  });
+}
