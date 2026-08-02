@@ -332,3 +332,10 @@ Vercel env vars — harmless since D46 shape-validation ignores them. Both are
 60-second dashboard clicks whenever Mike wants; D46 means neither blocks
 anything, and a rotated key ships into the carried config on the next
 deploy with one paste.
+
+### Deploy verification (2026-08-02)
+Deployment `dpl_HaLUaeNXg1mzUDdyE7EME9KPJbaL` READY on production
+(arbor-artistree.vercel.app), carrying the rotated bridge secret. Verified
+live over the webhook path: /health 200 db:true; /api/location/status 200
+(tracking OFF by default, late=no_data); /api/review/backlog 200 (empty);
+/api/leads 200 with the real seeded row. Full loop green end-to-end.
