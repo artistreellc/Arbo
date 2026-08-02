@@ -56,13 +56,30 @@ export async function runPermittingAgent(now = new Date()): Promise<PermittingSw
 
     const since = new Date(now.getTime() - 14 * 86400_000).toISOString();
     const missing = await propertiesMissingScreens(since);
-    for (const propertyId of missing) {
+    // Dedupe against the bus: a property already flagged (and still missing a
+    // screen) is not re-flagged every sweep — consumers act once per gap.
+    const already = new Set<string>();
+    if (missing.length > 0) {
+      const prior = await getDb()
+        .from('event')
+        .select('payload')
+        .eq('type', 'permit.flagged')
+        .gte('emitted_at', new Date(now.getTime() - 30 * 86400_000).toISOString());
+      if (!prior.error) {
+        for (const r of prior.data ?? []) {
+          const pid = (r.payload as { propertyId?: string }).propertyId;
+          if (pid) already.add(pid);
+        }
+      }
+    }
+    const fresh = missing.filter((id) => !already.has(id));
+    for (const propertyId of fresh) {
       await emitSafe('permit.flagged', { propertyId, reason: 'no_screen_on_file' }, 'permitting-agent');
     }
 
     await run.finish({
       status: 'ok',
-      outputSummary: `events=${processed} screens_missing=${missing.length} llm=${llm}`,
+      outputSummary: `events=${processed} screens_missing=${missing.length} newly_flagged=${fresh.length} llm=${llm}`,
     });
     return {
       agent: 'permitting', eventsProcessed: processed, screensMissing: missing.length,

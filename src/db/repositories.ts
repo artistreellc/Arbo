@@ -929,19 +929,29 @@ export interface LoopSnapshotRows {
 
 export async function loadLoopSnapshot(): Promise<LoopSnapshotRows> {
   const db = getDb();
-  const since = new Date(Date.now() - 45 * 86400_000).toISOString(); // 45-day working window
+  // Windows are shaped so open loops can NEVER age out silently (§1E — the
+  // oldest loop is the worst one, not the first to disappear):
+  //  - estimates: any still-open state (pending/won), bounded by a wide
+  //    updated_at horizon so the table stays scannable
+  //  - jobs: open states windowed on scheduled_for (jobs are booked weeks
+  //    ahead — created_at would hide both the future and the stale past)
+  //  - leads: status 'new' only; 45 days is generous for a callback
+  const wide = new Date(Date.now() - 180 * 86400_000).toISOString();
+  const jobHorizon = new Date(Date.now() - 90 * 86400_000).toISOString();
+  const leadSince = new Date(Date.now() - 45 * 86400_000).toISOString();
   const [estimates, jobs, leads] = await Promise.all([
     db.from('estimate')
       .select('id, property_id, scheduled_slot, visited_at, outcome, updated_at')
-      .gte('created_at', since),
+      .in('outcome', ['pending', 'won'])
+      .gte('updated_at', wide),
     db.from('job')
       .select('id, property_id, scheduled_for, status')
       .in('status', ['booked', 'in_progress'])
-      .gte('created_at', since),
+      .gte('scheduled_for', jobHorizon),
     db.from('lead')
       .select('id, created_at, status, qualification')
       .eq('status', 'new')
-      .gte('created_at', since),
+      .gte('created_at', leadSince),
   ]);
   for (const r of [estimates, jobs, leads]) if (r.error) throw r.error;
   return {
@@ -951,13 +961,27 @@ export async function loadLoopSnapshot(): Promise<LoopSnapshotRows> {
   };
 }
 
-/** Property ids that already have a job — closes the won-but-never-booked rule. */
-export async function propertyIdsWithJobs(propertyIds: string[]): Promise<Set<string>> {
-  if (propertyIds.length === 0) return new Set();
+/**
+ * Latest non-cancelled job creation time per property. The won-but-never-
+ * booked rule compares this against the WIN's timestamp — a paid job from
+ * last year must not hide a fresh unbooked win (repeat customers are the
+ * base of this business).
+ */
+export async function latestJobCreatedByProperty(propertyIds: string[]): Promise<Map<string, string>> {
+  if (propertyIds.length === 0) return new Map();
   const db = getDb();
-  const res = await db.from('job').select('property_id').in('property_id', propertyIds);
+  const res = await db.from('job')
+    .select('property_id, created_at')
+    .in('property_id', propertyIds)
+    .neq('status', 'cancelled');
   if (res.error) throw res.error;
-  return new Set((res.data ?? []).map((r) => r.property_id as string).filter(Boolean));
+  const out = new Map<string, string>();
+  for (const r of res.data ?? []) {
+    const pid = r.property_id as string;
+    const at = r.created_at as string;
+    if (pid && (!out.has(pid) || out.get(pid)! < at)) out.set(pid, at);
+  }
+  return out;
 }
 
 // ============================================================================

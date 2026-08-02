@@ -34,7 +34,7 @@ import {
   getPropertyTwin,
   updateLeadStatus,
   loadLoopSnapshot,
-  propertyIdsWithJobs,
+  latestJobCreatedByProperty,
   leakageWindow,
   createLeakageEvent,
   listAgentRuns,
@@ -224,18 +224,25 @@ export function createLiveSource(): DataSource {
       const wonPropertyIds = rows.estimates
         .filter((e) => e.outcome === 'won' && e.property_id)
         .map((e) => e.property_id as string);
-      const booked = await propertyIdsWithJobs(wonPropertyIds);
+      const latestJob = await latestJobCreatedByProperty(wonPropertyIds);
       return {
         nowIso: new Date().toISOString(),
-        estimates: rows.estimates.map((e) => ({
-          id: e.id,
-          propertyId: e.property_id,
-          scheduledIso: e.scheduled_slot,
-          visitedAtIso: e.visited_at,
-          outcome: e.outcome as 'pending' | 'won' | 'lost' | 'no_show',
-          outcomeAtIso: e.outcome === 'pending' ? null : e.updated_at,
-          hasJobForProperty: e.property_id ? booked.has(e.property_id) : false,
-        })),
+        estimates: rows.estimates.map((e) => {
+          // "Booked" only counts if a (non-cancelled) job was created at or
+          // after the win — last year's job can't close this year's loop.
+          const jobAt = e.property_id ? latestJob.get(e.property_id) : undefined;
+          const outcomeAt = e.outcome === 'pending' ? null : e.updated_at;
+          const bookedAfterWin = Boolean(jobAt && (!outcomeAt || jobAt >= outcomeAt));
+          return {
+            id: e.id,
+            propertyId: e.property_id,
+            scheduledIso: e.scheduled_slot,
+            visitedAtIso: e.visited_at,
+            outcome: e.outcome as 'pending' | 'won' | 'lost' | 'no_show',
+            outcomeAtIso: outcomeAt,
+            hasJobForProperty: bookedAfterWin,
+          };
+        }),
         jobs: rows.jobs.map((j) => ({ id: j.id, scheduledIso: j.scheduled_for, status: j.status })),
         leads: rows.leads.map((l) => ({
           id: l.id,

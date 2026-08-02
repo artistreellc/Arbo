@@ -442,11 +442,14 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       if (!source.ready() || !source.properties) return { status: 503, body: { error: 'db_not_configured' } };
       const list = await source.properties();
       let due: ReturnType<typeof buildDueProperties> = [];
+      let forecastUnavailable = false;
       if (source.growthTargets) {
         try {
           due = buildDueProperties(await source.growthTargets(), now);
         } catch {
-          // Forecast read failure never hides the Book itself.
+          // Forecast read failure never hides the Book itself — but it must
+          // be NAMED: a dead forecast is not "nothing due" (§1B).
+          forecastUnavailable = true;
         }
       }
       const dueById = new Map(due.map((d) => [d.propertyId, d]));
@@ -454,7 +457,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
         ...p,
         due: dueById.get(p.id) ? { state: dueById.get(p.id)!.state, note: dueById.get(p.id)!.note } : null,
       }));
-      return { status: 200, body: { properties, comingDue: due } };
+      return { status: 200, body: { properties, comingDue: forecastUnavailable ? null : due, forecastUnavailable } };
     },
 
     /** GET /api/properties/:id — one property's full twin. */
@@ -493,11 +496,9 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       if (!source.ready() || !source.loopSnapshot) return { status: 503, body: { error: 'db_not_configured' } };
       const snapshot = await source.loopSnapshot();
       const open = findOpenLoops(snapshot);
-      if (source.emit) {
-        for (const item of open.filter((i) => i.severity === 'urgent')) {
-          await source.emit('needs_decision.raised', { key: item.key, kind: item.kind, refTable: item.refTable, refId: item.refId });
-        }
-      }
+      // Read-only by design: a GET must be idempotent. needs_decision events
+      // are emitted by the scheduled agent sweep (deduped there), never by
+      // the app polling this endpoint every minute.
       return { status: 200, body: { open, checkedAtIso: snapshot.nowIso } };
     },
 

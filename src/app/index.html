@@ -498,7 +498,8 @@ async function renderToday() {
     }
   }).catch(() => {});
   api('/api/properties').then((p) => {
-    setTile(dueTile, (p.comingDue || []).length, (p.comingDue || []).length ? 'warn' : 'ok-t');
+    // A dead forecast feed stays '\u2013' \u2014 null is not zero (\u00a71B honesty).
+    if (Array.isArray(p.comingDue)) setTile(dueTile, p.comingDue.length, p.comingDue.length ? 'warn' : 'ok-t');
   }).catch(() => {});
   api('/api/agents/runs?limit=5').then((r) => {
     setTile(agentTile, r.runs.length, r.runs.some(x => x.status === 'error') ? 'warn' : 'ok-t');

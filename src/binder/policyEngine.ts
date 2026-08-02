@@ -124,8 +124,15 @@ export function inspectMessage(params: {
     return { allowed: false, blocks };
   }
   if (blocks.length > 0) {
-    // Content violation on a permitted send: speak the approved pivot instead.
-    return { allowed: false, blocks, safeText: guard.reply };
+    // Content violation on a permitted send: speak an approved pivot instead.
+    // guard.reply is only a pivot when the voice guard ITSELF blocked; a
+    // date-promise caught here alone would pass guard.reply through verbatim —
+    // so a violation the voice guard didn't see gets its own pivot line.
+    const pivot = guard.safe
+      ? (params.guardrails.goldenRules.find((r) => r.id === 'no-date-guarantee')?.approvedLine
+          ?? "Let's get you on the schedule — Mike will confirm the exact time.")
+      : guard.reply;
+    return { allowed: false, blocks, safeText: pivot };
   }
   return { allowed: true, blocks, safeText: text };
 }

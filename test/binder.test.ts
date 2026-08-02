@@ -41,14 +41,18 @@ describe('policy engine (§8A.6d) — the ONE deterministic wall', () => {
     expect(v.blocks.some((b) => b.rule === 'no-diagnosis')).toBe(true);
   });
 
-  it('blocks a hard date promise', () => {
+  it('blocks a hard date promise — and the pivot NEVER echoes the promise', () => {
     const v = inspectMessage({
       audience: 'customer', channel: 'sms', guardrails,
-      text: "We'll be there on Tuesday, guaranteed.",
+      text: "I've booked you in for Friday morning.",
       contact: consented, atIso: noon,
     });
     expect(v.allowed).toBe(false);
     expect(v.blocks.some((b) => b.rule === 'no-date-promise')).toBe(true);
+    // The review-caught bypass: safeText must be a pivot, not the violation.
+    expect(v.safeText).toBeDefined();
+    expect(v.safeText).not.toContain('Friday');
+    expect(v.safeText).not.toMatch(/booked you in/i);
   });
 
   it('TCPA: no consent = nothing goes out, not even a pivot line', () => {
