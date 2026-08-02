@@ -69,3 +69,28 @@ describe('the crew door (§8C.1) — one app, two doors', () => {
     expect(html).not.toMatch(/innerHTML/);
   });
 });
+
+describe('crew near-miss filing (§6V) — blameless and always reachable', () => {
+  const html = loadCrewHtml();
+
+  it('posts to the crew near-miss endpoint', () => {
+    expect(html).toContain('/api/crew/near-miss');
+  });
+
+  it('is OUTSIDE the briefing gate — reportable before the day starts', () => {
+    // renderNearMiss() runs on boot, not from renderWork(), which is the
+    // gate-guarded path. A near miss that has to wait for a briefing is a
+    // near miss that never gets filed.
+    expect(html).toMatch(/renderNearMiss\(\);\s*\n\s*api\('\/api\/crew\/briefing'\)/);
+  });
+
+  it('promises no blame in the copy, and asks for no name', () => {
+    expect(html).toContain('No names, no blame, no write-up');
+    expect(html).not.toMatch(/who was at fault|whose fault|who caused/i);
+  });
+
+  it('a failed filing is told to the crew, never swallowed', () => {
+    expect(html).toContain('Did not save');
+    expect(html).toContain('Tell the office directly');
+  });
+});

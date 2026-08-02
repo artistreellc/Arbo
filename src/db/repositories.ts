@@ -1489,3 +1489,71 @@ export async function setInvoiceStatus(
   if (res.error) throw res.error;
   return true;
 }
+
+// ---------------------------------------------------------------------------
+// §6V safety spine. Near-miss filing is blameless by construction; cert expiry
+// answers BEFORE the day is assigned, and says UNKNOWN when it cannot answer.
+// ---------------------------------------------------------------------------
+
+/** File a near-miss. `blameless` is not a parameter — it is always true. */
+export async function createNearMiss(input: {
+  reportedBy: string; jobId: string | null; description: string;
+  occurredOn: string; hazardCategory: string;
+}): Promise<{ id: string }> {
+  const db = getDb();
+  const res = await db.from('near_miss').insert({
+    reported_by: input.reportedBy,
+    job_id: input.jobId,
+    occurred_on: input.occurredOn,
+    description: input.description,
+    hazard_category: input.hazardCategory,
+    blameless: true,
+  }).select('id').single();
+  if (res.error) throw res.error;
+  return { id: res.data.id as string };
+}
+
+/** Active crew with the identity facts the cert engine needs. */
+export async function listActiveCrew(): Promise<Array<{ id: string; name: string; role: string; active: boolean }>> {
+  const db = getDb();
+  const res = await db.from('crew_member').select('id, name, role, active').eq('active', true).order('name');
+  if (res.error) throw res.error;
+  return (res.data ?? []).map((c) => ({
+    id: c.id as string, name: c.name as string, role: c.role as string, active: c.active as boolean,
+  }));
+}
+
+/** Every certification row. Expiry may be null — that is UNKNOWN, not valid. */
+export async function listCertifications(): Promise<Array<{
+  id: string; crewMemberId: string; type: string; expiresOn: string | null;
+}>> {
+  const db = getDb();
+  const res = await db.from('certification').select('id, crew_member_id, type, expires_at');
+  if (res.error) throw res.error;
+  return (res.data ?? []).map((c) => ({
+    id: c.id as string,
+    crewMemberId: c.crew_member_id as string,
+    type: c.type as string,
+    expiresOn: (c.expires_at as string | null) ?? null,
+  }));
+}
+
+/** Recent near-misses for the admin safety surface. No reporter names leave here. */
+export async function recentNearMisses(sinceDate: string): Promise<Array<{
+  id: string; occurredOn: string; hazardCategory: string | null;
+  description: string; hasTrainingItem: boolean;
+}>> {
+  const db = getDb();
+  const res = await db.from('near_miss')
+    .select('id, occurred_on, hazard_category, description, generated_training_item_id')
+    .gte('occurred_on', sinceDate)
+    .order('occurred_on', { ascending: false });
+  if (res.error) throw res.error;
+  return (res.data ?? []).map((r) => ({
+    id: r.id as string,
+    occurredOn: r.occurred_on as string,
+    hazardCategory: (r.hazard_category as string | null) ?? null,
+    description: r.description as string,
+    hasTrainingItem: Boolean(r.generated_training_item_id),
+  }));
+}

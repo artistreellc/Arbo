@@ -20,6 +20,8 @@ import {
   buildInvoiceDrafts, buildCollectionQueue, derivedStatus, daysOverdue, lateFeeOwed,
   safeLateFeePct, DEFAULT_NET_DAYS, type InvoiceableJob, type OpenInvoice,
 } from '../ops/invoicing.js';
+import { fileNearMiss, NearMissRejected, type NearMissReport } from '../safety/nearMiss.js';
+import { findCertProblems, type CertRow, type CrewMemberRef } from '../safety/certifications.js';
 import { buildActionPlan, isSchedulable, type BreakdownReport, type KnownPart, type UnitStatus } from '../fleet/breakdown.js';
 import type { TtsClient } from '../voice/elevenlabsTts.js';
 import { scoreLead, type LeadQualityResult } from '../reception/leadQuality.js';
@@ -120,6 +122,14 @@ export interface DataSource {
   createInvoice?(input: { jobId: string; amount: number; lateFeePct: number; netDays: number }): Promise<{ id: string } | 'already_invoiced'>;
   /** Returns false when no such invoice exists — never a silent no-op success. */
   setInvoiceStatus?(invoiceId: string, status: 'sent' | 'paid' | 'void'): Promise<boolean>;
+  /** §6V safety spine. */
+  fileNearMiss?(input: {
+    reportedBy: string; jobId: string | null; description: string;
+    occurredOn: string; hazardCategory: string;
+  }): Promise<{ id: string }>;
+  activeCrew?(): Promise<CrewMemberRef[]>;
+  certifications?(): Promise<CertRow[]>;
+  recentNearMisses?(sinceDate: string): Promise<unknown[]>;
   /** §6M.8: today's published tailgate briefing, or null if none. */
   todaysBriefing?(): Promise<{ id: string; body: string; standardRefs: string[] } | null>;
   /** §6V.4 gated briefing acknowledgment + its payable time entry (§4.6). */
@@ -892,6 +902,109 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       if (!changed) return { status: 404, body: { error: 'unknown_invoice' } };
       if (source.emit) await source.emit('invoice.' + status, { invoiceId });
       return { status: 200, body: { ok: true } };
+    },
+
+    /**
+     * POST /api/crew/near-miss — §6V blameless filing. Reachable from the CREW
+     * door: a report must cost the reporter nothing, so this takes the fewest
+     * possible fields and there is no parameter anywhere that records fault.
+     */
+    async reportNearMiss(body: Record<string, unknown>): Promise<ApiResult> {
+      if (!source.ready() || !source.fileNearMiss) return { status: 503, body: { error: 'db_not_configured' } };
+      // ONE reading of the ET day: computing it twice can straddle midnight
+      // and reject a report as "in the future" against a day that just turned.
+      const todayEt = etToday();
+      const report: NearMissReport = {
+        reportedBy: String(body.reportedBy ?? ''),
+        jobId: body.jobId ? String(body.jobId) : undefined,
+        description: String(body.description ?? ''),
+        // Default to today in ET — the crew's day, not the server's UTC day.
+        occurredOn: String(body.occurredOn ?? todayEt),
+      };
+      // Content first: what the crew member typed is their business, and they
+      // must hear about a blank box before they hear about a client-side id.
+      let filed;
+      try {
+        filed = fileNearMiss(report, todayEt);
+      } catch (err) {
+        if (err instanceof NearMissRejected) return { status: 400, body: { error: err.reason } };
+        throw err;
+      }
+      // reported_by and job_id are uuid columns. A non-UUID reaches Postgres
+      // as a cast error and surfaces as a 500 — which on THIS surface means a
+      // crew member believes they filed a near miss that does not exist.
+      if (!UUID_RE.test(filed.reportedBy)) return { status: 400, body: { error: 'bad_reporter_id' } };
+      if (filed.jobId && !UUID_RE.test(filed.jobId)) return { status: 400, body: { error: 'bad_job_id' } };
+      let saved;
+      try {
+        saved = await source.fileNearMiss({
+          reportedBy: filed.reportedBy, jobId: filed.jobId, description: filed.description,
+          occurredOn: filed.occurredOn, hazardCategory: filed.hazardCategory,
+        });
+      } catch (err) {
+        // A reporter id that passes the UUID shape but matches no crew member
+        // trips the foreign key. Name it, so the crew is told plainly rather
+        // than being shown a generic failure they might read as "saved".
+        const code = (err as { code?: string }).code;
+        if (code === '23503') return { status: 400, body: { error: 'unknown_reporter' } };
+        throw err;
+      }
+      if (source.emit) {
+        // Category and id only: a near-miss narrative can name people, and the
+        // event bus is read by surfaces that must not carry that (§4.3).
+        await source.emit('safety.near_miss.filed', {
+          nearMissId: saved.id, hazardCategory: filed.hazardCategory,
+        });
+      }
+      return { status: 200, body: { id: saved.id, hazardCategory: filed.hazardCategory, blameless: true } };
+    },
+
+    /**
+     * GET /api/safety — the admin safety board. Every section is tri-state:
+     * a real answer or a NAMED blind spot. There is no path here that says
+     * anyone is qualified — only that no expiry problem was found.
+     */
+    async safety(): Promise<ApiResult> {
+      if (!source.ready()) return { status: 503, body: { error: 'db_not_configured' } };
+      const todayEt = etToday();
+      const blindSpots: string[] = [];
+
+      let certProblems: ReturnType<typeof findCertProblems> = [];
+      if (!source.activeCrew || !source.certifications) {
+        blindSpots.push('certifications: no source wired');
+      } else {
+        try {
+          const [crew, certs] = await Promise.all([source.activeCrew(), source.certifications()]);
+          certProblems = findCertProblems(crew, certs, todayEt);
+        } catch {
+          blindSpots.push('certifications: could not read crew or certification records');
+        }
+      }
+
+      let nearMisses: unknown[] = [];
+      if (!source.recentNearMisses) {
+        blindSpots.push('near_miss: no source wired');
+      } else {
+        try {
+          const since = new Date(Date.parse(`${todayEt}T00:00:00Z`) - 90 * 86400_000).toISOString().slice(0, 10);
+          nearMisses = await source.recentNearMisses(since);
+        } catch {
+          blindSpots.push('near_miss: could not read the incident log');
+        }
+      }
+
+      return {
+        status: 200,
+        body: {
+          certProblems,
+          aerialBlocked: [...new Set(certProblems.filter((f) => f.blocksAerialWork).map((f) => f.crewMemberId))],
+          nearMisses,
+          // Empty is the ONLY all-clear. A populated list means part of this
+          // board is guesswork and the UI must say so (§1B).
+          blindSpots,
+          checkedAtIso: new Date().toISOString(),
+        },
+      };
     },
 
     /** GET /api/agents/runs — §8A.6g audit visibility: what the agents did. */

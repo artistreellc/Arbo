@@ -61,6 +61,20 @@ const REQUIRED_BY_ROLE: Record<string, CertType[]> = {
   driver: ['first_aid', 'cpr', 'cdl'],
 };
 
+/**
+ * An UNRECOGNISED role gets the STRICTEST requirements, not the lightest.
+ * Falling back to 'groundie' would mean a typo in a role name quietly
+ * exempts someone from the aerial-rescue check — the pessimistic reading is
+ * the only safe one here, and a false alarm costs a phone call while the
+ * other direction costs a rescue nobody can perform.
+ */
+const STRICTEST: CertType[] = ['first_aid', 'cpr', 'aerial_rescue'];
+
+function requiredFor(role: string): { certs: CertType[]; roleRecognised: boolean } {
+  const known = REQUIRED_BY_ROLE[role.trim().toLowerCase()];
+  return known ? { certs: known, roleRecognised: true } : { certs: STRICTEST, roleRecognised: false };
+}
+
 /** Certs whose absence or lapse grounds aerial work specifically. */
 const AERIAL_CRITICAL: CertType[] = ['aerial_rescue', 'first_aid', 'cpr'];
 
@@ -112,7 +126,7 @@ export function findCertProblems(
   for (const m of crew) {
     if (!m.active) continue; // an inactive member is not on the schedule
     const held = byMember.get(m.id) ?? [];
-    const required = REQUIRED_BY_ROLE[m.role.toLowerCase()] ?? REQUIRED_BY_ROLE.groundie!;
+    const { certs: required, roleRecognised } = requiredFor(m.role);
 
     for (const type of required) {
       // The NEWEST row for this type is the one that governs — an old expired
@@ -123,10 +137,14 @@ export function findCertProblems(
             (r.expiresOn ?? '') > (best.expiresOn ?? '') ? r : best)
         : null;
 
+      const roleNote = roleRecognised
+        ? ''
+        : ` (role "${m.role}" is not one Arbo knows, so it was checked against the strictest requirements)`;
+
       if (!governing) {
         out.push({
           crewMemberId: m.id, crewMemberName: m.name, type, state: 'missing', daysUntil: null,
-          line: `${LABEL[type]} — NO RECORD on file. Arbo cannot confirm this credential; do not assume it exists.`,
+          line: `${LABEL[type]} — NO RECORD on file. Arbo cannot confirm this credential; do not assume it exists.${roleNote}`,
           blocksAerialWork: AERIAL_CRITICAL.includes(type),
         });
         continue;
@@ -145,7 +163,8 @@ export function findCertProblems(
               : `${LABEL[type]} has no expiry date on file — Arbo cannot tell whether it is valid.`;
 
       out.push({
-        crewMemberId: m.id, crewMemberName: m.name, type, state, daysUntil, line,
+        crewMemberId: m.id, crewMemberName: m.name, type, state, daysUntil,
+        line: line + roleNote,
         blocksAerialWork: AERIAL_CRITICAL.includes(type) && (state === 'lapsed' || state === 'unknown'),
       });
     }

@@ -53,6 +53,17 @@ describe('ARBOR app shell', () => {
     expect(html).not.toContain('innerHTML');
   });
 
+  it('the safety board never declares anyone qualified or cleared (§4)', () => {
+    // "No expiry problem found" is the strongest thing Arbo may say.
+    expect(html).toContain('That is not a clearance');
+    expect(html).not.toMatch(/is qualified|are qualified|cleared to climb|good to climb|certified and current/i);
+  });
+
+  it('the safety board shows what it CANNOT see before anything reassuring (§1B)', () => {
+    expect(html).toContain('CANNOT SEE');
+    expect(html).toContain('not a claim that everyone is current');
+  });
+
   it('the money surface names a dead ledger instead of implying everything is paid (§1B)', () => {
     expect(html).toContain('Ledger unavailable');
     expect(html).toContain('not a claim that everything is paid');

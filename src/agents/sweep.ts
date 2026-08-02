@@ -11,6 +11,7 @@ import { runOwnerBriefingAgent } from './ownerBriefingAgent.js';
 import { runWeatherAgent } from './weatherAgent.js';
 import { runBookingAgent } from './bookingAgent.js';
 import { runCollectionsAgent } from './collectionsAgent.js';
+import { runSafetyAgent } from './safetyAgent.js';
 import type { NeedsDecision } from '../ops/loopCloser.js';
 import { emitSafe } from '../binder/eventBus.js';
 import { getDb, hasDb } from '../db/client.js';
@@ -64,6 +65,7 @@ export interface SweepSummary {
   weather: Awaited<ReturnType<typeof runWeatherAgent>> | { status: 'error' };
   booking: Awaited<ReturnType<typeof runBookingAgent>> | { status: 'error' };
   collections: Awaited<ReturnType<typeof runCollectionsAgent>> | { status: 'error' };
+  safety: Awaited<ReturnType<typeof runSafetyAgent>> | { status: 'error' };
   urgentLoopsRaised: number | 'unavailable';
 }
 
@@ -71,15 +73,16 @@ export async function runAgentSweep(api: Api, alerts: AlertsProvider, now = new 
   const settle = async <T>(p: Promise<T>): Promise<T | { status: 'error' }> => {
     try { return await p; } catch { return { status: 'error' as const }; }
   };
-  const [permitting, briefing, weather, booking, collections, urgentLoopsRaised] = await Promise.all([
+  const [permitting, briefing, weather, booking, collections, safety, urgentLoopsRaised] = await Promise.all([
     settle(runPermittingAgent(now)),
     settle(runOwnerBriefingAgent(api, now)),
     settle(runWeatherAgent(alerts, now)),
     settle(runBookingAgent(now)),
     settle(runCollectionsAgent(now)),
+    settle(runSafetyAgent(alerts, now)),
     raiseUrgentLoops(api, now),
   ]);
-  return { ranAtIso: now.toISOString(), permitting, briefing, weather, booking, collections, urgentLoopsRaised };
+  return { ranAtIso: now.toISOString(), permitting, briefing, weather, booking, collections, safety, urgentLoopsRaised };
 }
 
 /**
@@ -98,11 +101,16 @@ export function startAgentScheduler(api: Api, alerts: AlertsProvider): NodeJS.Ti
       const degraded = ([
         ['permitting', s.permitting], ['briefing', s.briefing],
         ['weather', s.weather], ['booking', s.booking],
-        ['collections', s.collections],
+        ['collections', s.collections], ['safety', s.safety],
       ] as const).filter(([, a]) => a.status !== 'ok').map(([name]) => name);
       const loops = s.urgentLoopsRaised;
-      if (degraded.length > 0 || loops === 'unavailable') {
-        console.error(`[agents] sweep DEGRADED — failed=[${degraded.join(',')}] urgent_loops=${loops}`);
+      // A safety agent that RAN but could not read a feed is not "ok": a
+      // safety brief with a silent hole reads as "nothing to worry about".
+      const safetyBlind = 'blindSpots' in s.safety ? s.safety.blindSpots : ['safety agent did not run'];
+      if (degraded.length > 0 || loops === 'unavailable' || safetyBlind.length > 0) {
+        console.error(
+          `[agents] sweep DEGRADED — failed=[${degraded.join(',')}] urgent_loops=${loops}` +
+          (safetyBlind.length ? ` safety_blind=[${safetyBlind.join('|')}]` : ''));
       } else {
         console.log(`[agents] sweep ok — urgent_loops_raised=${loops}`);
       }

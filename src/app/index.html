@@ -973,6 +973,87 @@ async function renderCalls() {
   }
 }
 
+// ---------- Safety (§6V/§4: credentials and near misses) ----------
+const CERT_STATE = {
+  lapsed: ['EXPIRED', 'b-emg'],
+  missing: ['NO RECORD', 'b-emg'],
+  unknown: ['NO EXPIRY DATE', 'b-flag'],
+  urgent: ['EXPIRES SOON', 'b-warm'],
+  upcoming: ['RENEWAL DUE', 'b-src'],
+};
+async function renderSafety(slot) {
+  slot.replaceChildren();
+  let s;
+  try {
+    s = await api('/api/safety');
+  } catch (e) {
+    if (e.code === 401) return;
+    slot.appendChild(el('div', 'panel-title', 'Safety'));
+    slot.appendChild(state('Safety board unavailable', e.code === 503
+      ? 'Database not connected — Arbo cannot check credentials or near misses.'
+      : 'Could not read the safety board. This is not a claim that everyone is current.'));
+    return;
+  }
+
+  // Blind spots FIRST. A safety board with a hole in it must say so before it
+  // shows anything reassuring (§1B).
+  for (const b of s.blindSpots) {
+    const c = el('div', 'card loop-card urgent');
+    c.appendChild(el('div', 'loop-kind', '⚠ CANNOT SEE'));
+    c.appendChild(el('div', 'scope', b));
+    slot.appendChild(c);
+  }
+
+  if (s.aerialBlocked.length) {
+    const c = el('div', 'card emergency');
+    c.appendChild(el('div', 'who', s.aerialBlocked.length + ' crew member(s) cannot be put on aerial work'));
+    c.appendChild(el('div', 'scope',
+      'A rescue-critical credential is expired, missing, or has no date on file. Fix before assigning the day.'));
+    slot.appendChild(c);
+  }
+
+  if (s.certProblems.length) {
+    slot.appendChild(el('div', 'panel-title', 'Credentials — ' + s.certProblems.length + ' need attention'));
+    for (const f of s.certProblems) {
+      const hard = f.state === 'lapsed' || f.state === 'missing';
+      const c = el('div', 'card' + (hard ? ' emergency' : ''));
+      const top = el('div', 'toprow');
+      top.appendChild(el('div', 'who', f.crewMemberName));
+      top.appendChild(el('div', 'when', f.daysUntil === null ? '—' : f.daysUntil + 'd'));
+      c.appendChild(top);
+      c.appendChild(el('div', 'scope', f.line));
+      const b = el('div', 'badges');
+      const [label, cls] = CERT_STATE[f.state] || [String(f.state).toUpperCase(), 'b-src'];
+      b.appendChild(badge(label, cls));
+      if (f.blocksAerialWork) b.appendChild(badge('NO AERIAL WORK', 'b-emg'));
+      c.appendChild(b);
+      slot.appendChild(c);
+    }
+  }
+
+  const openNm = (s.nearMisses || []).filter((n) => !n.hasTrainingItem);
+  if (openNm.length) {
+    slot.appendChild(el('div', 'panel-title', 'Near misses — ' + openNm.length + ' with no lesson yet'));
+    for (const n of openNm.slice(0, 8)) {
+      const c = el('div', 'card');
+      const top = el('div', 'toprow');
+      top.appendChild(el('div', 'who', (n.hazardCategory || 'uncategorised').replace(/_/g, ' ')));
+      top.appendChild(el('div', 'when', n.occurredOn));
+      c.appendChild(top);
+      c.appendChild(el('div', 'scope', n.description));
+      slot.appendChild(c);
+    }
+  }
+
+  // Clean board must look different from a board that never ran.
+  if (!s.blindSpots.length && !s.certProblems.length && !openNm.length) {
+    slot.appendChild(el('div', 'panel-title', 'Safety'));
+    slot.appendChild(state('No expiry problems found',
+      'Arbo checked every active crew member against the certs on file and found nothing expiring. '
+      + 'That is not a clearance — it means no problem was found in the records Arbo can see.'));
+  }
+}
+
 // ---------- Money (§4.8: bill the work, chase what is owed) ----------
 const STAGE_LABEL = {
   reminder: ['PAST DUE', 'b-warm'],
@@ -1216,6 +1297,10 @@ async function renderFollowUps() {
     loopsSlot.appendChild(el('div', 'panel-title', 'Open loops — silence is never success'));
     for (const o of qq.open) loopsSlot.appendChild(loopCard(o));
   }).catch(() => {});
+  // §6V safety leads the Queue: a lapsed rescue card outranks an unpaid bill.
+  const safetySlot = el('div');
+  v.appendChild(safetySlot);
+  renderSafety(safetySlot);
   // §4.8 money: unbilled work and unpaid invoices are open loops too.
   const moneySlot = el('div');
   v.appendChild(moneySlot);

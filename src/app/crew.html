@@ -95,6 +95,19 @@ main{padding:16px;max-width:640px;margin:0 auto}
   border-radius:999px;background:var(--surface);color:var(--muted);font-size:12px;font-weight:800;
   padding:0 14px;cursor:pointer}
 #whoami .signed{margin-bottom:0}
+/* Near-miss filing. Deliberately plain and always reachable — a report that
+   takes effort is a report that never happens. */
+#nearmiss{margin-top:28px}
+#nm-card{border:1px solid var(--border);border-radius:14px;padding:16px;background:var(--surface)}
+#nm-card .why{color:var(--muted);font-size:14px;line-height:1.5;margin-bottom:12px}
+#nm-desc{width:100%;min-height:88px;border:1px solid var(--border);border-radius:12px;
+  background:var(--bg);color:var(--ink);font-size:17px;padding:12px;font-family:inherit;resize:vertical}
+#nm-go{width:100%;min-height:56px;margin-top:12px;border:0;border-radius:12px;
+  background:var(--forest);color:#fff;font-size:17px;font-weight:800;cursor:pointer}
+#nm-go:disabled{opacity:.55}
+#nm-out{margin-top:12px;font-size:15px;line-height:1.5}
+#nm-out.ok{color:var(--ok)}
+#nm-out.err{color:var(--emergency)}
 </style>
 </head>
 <body>
@@ -106,6 +119,7 @@ main{padding:16px;max-width:640px;margin:0 auto}
   <div id="whoami"></div>
   <div id="gate-slot"></div>
   <div id="work"></div>
+  <div id="nearmiss"></div>
 </main>
 
 <script>
@@ -297,6 +311,67 @@ async function renderWork() {
   }
 }
 
+// ---- Near-miss filing (§6V). Deliberately OUTSIDE the briefing gate: a
+// near miss must be reportable at any moment, including before the day has
+// started. Nothing here records blame, because nothing anywhere in Arbo does.
+function renderNearMiss() {
+  const box = $('nearmiss');
+  box.replaceChildren();
+  box.appendChild(el('div', 'panel-title', 'Report a near miss'));
+  const card = el('div');
+  card.id = 'nm-card';
+  card.appendChild(el('div', 'why',
+    'Something almost went wrong? Say it here. No names, no blame, no write-up — '
+    + 'this goes straight into training so the next crew does not meet it.'));
+  const ta = el('textarea');
+  ta.id = 'nm-desc';
+  ta.placeholder = 'What almost happened?';
+  card.appendChild(ta);
+  const btn = el('button', '', 'File it');
+  btn.id = 'nm-go';
+  card.appendChild(btn);
+  const out = el('div');
+  out.id = 'nm-out';
+  card.appendChild(out);
+  box.appendChild(card);
+
+  btn.addEventListener('click', async () => {
+    const description = ta.value.trim();
+    out.className = '';
+    out.textContent = '';
+    if (!description) {
+      out.className = 'err';
+      out.textContent = 'Type what almost happened — even a few words.';
+      return;
+    }
+    if (!CREW_ID) {
+      out.className = 'err';
+      out.textContent = 'Tell the app who is on this phone first, up at the top.';
+      return;
+    }
+    btn.disabled = true;
+    try {
+      const res = await api('/api/crew/near-miss', {
+        method: 'POST',
+        body: { reportedBy: CREW_ID, description },
+      });
+      ta.value = '';
+      out.className = 'ok';
+      out.textContent = 'Filed. Thank you — that is how nobody gets hurt next time.'
+        + (res.hazardCategory && res.hazardCategory !== 'uncategorised'
+          ? ' Logged under: ' + res.hazardCategory.replace(/_/g, ' ') + '.'
+          : '');
+    } catch (e) {
+      // Never swallow it: a report the crew THINKS they filed is worse than
+      // one they know failed.
+      out.className = 'err';
+      out.textContent = 'Did not save (' + (e.message || 'error') + '). Tell the office directly.';
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
 // ---- Identity. The acknowledgment IS the OSHA record, so it must name a
 // real person: without an identity this page asks rather than filing an
 // anonymous sign-off. (Replaced by the §8C Supabase login when that lands.)
@@ -338,6 +413,7 @@ function renderWhoAmI() {
 $('dateline').textContent = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
 if (renderWhoAmI()) {
   renderWork();
+  renderNearMiss();
   api('/api/crew/briefing').then(renderGate).catch(() => {
     $('gate-slot').appendChild(el('div', 'state', 'No briefing published for today yet — check with the office.'));
   });

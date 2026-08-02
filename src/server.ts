@@ -50,6 +50,10 @@ import {
   openInvoiceRows,
   createInvoice,
   setInvoiceStatus,
+  createNearMiss,
+  listActiveCrew,
+  listCertifications,
+  recentNearMisses,
   recordBreakdown,
   closeMaintenanceTask,
 } from './db/repositories.js';
@@ -290,6 +294,17 @@ export function createLiveSource(): DataSource {
     openInvoices: () => openInvoiceRows(),
     createInvoice: (input) => createInvoice(input),
     setInvoiceStatus: (id, status) => setInvoiceStatus(id, status),
+    // §6V safety spine.
+    fileNearMiss: (input) => createNearMiss(input),
+    activeCrew: () => listActiveCrew(),
+    // Cast is narrowed, not blanket: the DB CHECK constrains `type`, and any
+    // row that somehow carries an unknown type is DROPPED rather than typed
+    // into the engine as something it is not.
+    certifications: async () => (await listCertifications()).filter(
+      (c): c is typeof c & { type: 'first_aid' | 'cpr' | 'aerial_rescue' | 'tree_rescue' | 'cdl' | 'other' } =>
+        ['first_aid', 'cpr', 'aerial_rescue', 'tree_rescue', 'cdl', 'other'].includes(c.type),
+    ),
+    recentNearMisses: (since) => recentNearMisses(since),
     recordBreakdown: (input) => recordBreakdown(input),
     closeMaintenanceTask: (input) => closeMaintenanceTask(input),
   };
@@ -502,6 +517,13 @@ export function createArborRequestHandler() {
         if (req.method === 'POST' && m) {
           return send(...unpack(await api.setInvoiceStatus(m[1]!, (await readJson(req)) as Record<string, unknown>)));
         }
+      }
+      // §6V safety spine.
+      if (req.method === 'GET' && url.pathname === '/api/safety') {
+        return send(...unpack(await api.safety()));
+      }
+      if (req.method === 'POST' && url.pathname === '/api/crew/near-miss') {
+        return send(...unpack(await api.reportNearMiss((await readJson(req)) as Record<string, unknown>)));
       }
       // §8A.6g: what the agents did, straight from the audit log.
       if (req.method === 'GET' && url.pathname === '/api/agents/runs') {
