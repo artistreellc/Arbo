@@ -53,8 +53,12 @@ this document is the spec.
    - Insert lead: `source` ∈ `call` (calls/voicemails/LSA calls), `text`
      (TXT), `other` (web/lead forms); `details` = short human line (tracker,
      duration, form description); `qualification` jsonb MUST include
-     `{"gmailThread":"<id>","provider":"<provider>"}` plus extracted facts;
-     `status='new'`.
+     `{"gmailThread":"<id>","provider":"<provider>","receivedAt":"<email ISO timestamp>"}`
+     plus extracted facts; `status='new'`; **`created_at` MUST be set to the
+     email's real received time (`receivedAt`), never left to default** — the
+     app shows created_at as "when the customer reached out," and a backfilled
+     batch that all reads "today" misleads Mike (fixed once by hand
+     2026-08-02; this rule keeps it fixed).
    - **Out-of-area / spam-shaped lead forms** (city that doesn't resolve to
      VB/Norfolk/Chesapeake/Portsmouth): still insert, `status='new'`,
      `qualification.reviewReason='out_of_area_form'` — flagged, never
