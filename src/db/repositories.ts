@@ -1667,3 +1667,68 @@ export async function saveTrainingProfile(
     .eq('id', crewMemberId);
   if (res.error) throw res.error;
 }
+
+/**
+ * Full item rows for a set of ids — INCLUDING the answer key. Server-side only:
+ * the crew API strips the key before anything reaches a phone, and grading
+ * happens here rather than being taken on trust from the client.
+ */
+export async function trainingItemsByIds(ids: string[]): Promise<Array<{
+  id: string; topic: string; type: string; body: Record<string, unknown>;
+}>> {
+  if (ids.length === 0) return [];
+  const db = getDb();
+  const res = await db.from('training_item')
+    .select('id, topic, type, body')
+    .in('id', ids)
+    .eq('published', true);
+  if (res.error) throw res.error;
+  return (res.data ?? []).map((r) => ({
+    id: r.id as string,
+    topic: r.topic as string,
+    type: r.type as string,
+    body: (r.body ?? {}) as Record<string, unknown>,
+  }));
+}
+
+/** Lesson drafts waiting on a human vetter (§4.7). Never auto-published. */
+export async function pendingLessonDrafts(): Promise<Array<{
+  id: string; topic: string; body: Record<string, unknown>; createdAt: string; originNearMissId: string | null;
+}>> {
+  const db = getDb();
+  const res = await db.from('training_item')
+    .select('id, topic, body, created_at, origin_near_miss_id')
+    .eq('published', false)
+    .eq('source', 'event_generated')
+    .order('created_at', { ascending: true });
+  if (res.error) throw res.error;
+  return (res.data ?? []).map((r) => ({
+    id: r.id as string,
+    topic: r.topic as string,
+    body: (r.body ?? {}) as Record<string, unknown>,
+    createdAt: r.created_at as string,
+    originNearMissId: (r.origin_near_miss_id as string | null) ?? null,
+  }));
+}
+
+/**
+ * Publish a vetted lesson. `vettedBy` is REQUIRED and is the whole point of
+ * §4.7 — the DB CHECK refuses a publish without it, and this refuses earlier
+ * so the caller gets a reason instead of a 500. Nothing automated calls this.
+ */
+export async function publishLesson(itemId: string, vettedBy: string): Promise<boolean> {
+  if (!vettedBy.trim()) throw new Error('vetter_required');
+  const db = getDb();
+  const res = await db.from('training_item')
+    .update({
+      published: true,
+      vetted_by: vettedBy.trim(),
+      vetted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', itemId)
+    .eq('published', false)
+    .select('id');
+  if (res.error) throw res.error;
+  return (res.data ?? []).length > 0;
+}

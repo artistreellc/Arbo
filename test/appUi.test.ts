@@ -64,6 +64,19 @@ describe('ARBOR app shell', () => {
     expect(html).toContain('not a claim that everyone is current');
   });
 
+  it('the vetting queue demands a named human before publishing (§4.7)', () => {
+    expect(html).toContain('/api/training/drafts');
+    expect(html).toContain('cannot publish without your name on it');
+    // The UI must collect the vetter, so the DB CHECK is never the thing that
+    // says no — a 500 on a safety surface teaches people to click harder.
+    expect(html).toContain('required to publish');
+  });
+
+  it('a dead draft queue is named, not rendered as an empty queue (§1B)', () => {
+    expect(html).toContain('Draft queue unavailable');
+    expect(html).toContain('not a claim that nothing is waiting');
+  });
+
   it('the money surface names a dead ledger instead of implying everything is paid (§1B)', () => {
     expect(html).toContain('Ledger unavailable');
     expect(html).toContain('not a claim that everything is paid');

@@ -56,6 +56,9 @@ import {
   recentNearMisses,
   createLessonDraftFromNearMiss,
   publishedTrainingItems,
+  trainingItemsByIds,
+  pendingLessonDrafts,
+  publishLesson,
   trainingProfile,
   saveTrainingProfile,
   recordGateCompletion,
@@ -313,6 +316,9 @@ export function createLiveSource(): DataSource {
     // §6M training loop.
     createLessonDraft: (input) => createLessonDraftFromNearMiss(input),
     trainingPool: () => publishedTrainingItems(),
+    trainingItems: (ids) => trainingItemsByIds(ids),
+    pendingDrafts: () => pendingLessonDrafts(),
+    publishLesson: (id, by) => publishLesson(id, by),
     trainingProfile: (id) => trainingProfile(id),
     saveTrainingProfile: (id, p) => saveTrainingProfile(id, p),
     recordGate: (input) => recordGateCompletion(input),
@@ -545,6 +551,16 @@ export function createArborRequestHandler() {
       }
       if (req.method === 'POST' && url.pathname === '/api/crew/quiz/complete') {
         return send(...unpack(await api.completeQuiz((await readJson(req)) as Record<string, unknown>)));
+      }
+      // §4.7 vetting queue.
+      if (req.method === 'GET' && url.pathname === '/api/training/drafts') {
+        return send(...unpack(await api.trainingDrafts()));
+      }
+      {
+        const m = url.pathname.match(/^\/api\/training\/drafts\/([^/]+)\/publish$/);
+        if (req.method === 'POST' && m) {
+          return send(...unpack(await api.publishLesson(m[1]!, (await readJson(req)) as Record<string, unknown>)));
+        }
       }
       // §8A.6g: what the agents did, straight from the audit log.
       if (req.method === 'GET' && url.pathname === '/api/agents/runs') {

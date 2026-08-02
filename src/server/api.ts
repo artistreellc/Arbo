@@ -27,6 +27,7 @@ import {
   selectQuestionnaire, buildGateCompletion, updateProfile, GateRejected,
   defaultQuestionnaireConfig, type TrainingItemRef, type TrainingProfile, type GateContext,
 } from '../training/questionnaire.js';
+import { toCrewFacing, gradeSubmission, type GradableItem } from '../training/grading.js';
 import { buildActionPlan, isSchedulable, type BreakdownReport, type KnownPart, type UnitStatus } from '../fleet/breakdown.js';
 import type { TtsClient } from '../voice/elevenlabsTts.js';
 import { scoreLead, type LeadQualityResult } from '../reception/leadQuality.js';
@@ -140,6 +141,12 @@ export interface DataSource {
     nearMissId: string; topic: string; body: unknown; difficulty: number; vetterNotes: string[];
   }): Promise<{ id: string }>;
   trainingPool?(): Promise<TrainingItemRef[]>;
+  /** Full rows INCLUDING the answer key. Server-side only — never serialised. */
+  trainingItems?(ids: string[]): Promise<GradableItem[]>;
+  /** §4.7 vetting queue: drafts awaiting a named human. */
+  pendingDrafts?(): Promise<Array<{ id: string; topic: string; body: Record<string, unknown>; createdAt: string; originNearMissId: string | null }>>;
+  /** Returns false when the draft is gone or already published. */
+  publishLesson?(itemId: string, vettedBy: string): Promise<boolean>;
   trainingProfile?(crewMemberId: string): Promise<TrainingProfile>;
   saveTrainingProfile?(crewMemberId: string, profile: TrainingProfile): Promise<void>;
   recordGate?(input: {
@@ -1071,9 +1078,23 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       // A clock-in gate is one item; the Friday questionnaire is the full set.
       const count = ctx === 'friday_questionnaire' ? defaultQuestionnaireConfig.questionCount : 1;
       const sel = selectQuestionnaire(pool, profile, { ...defaultQuestionnaireConfig, questionCount: count });
+
+      // A phone gets the question and never the key. Grading happens on the
+      // server (see completeQuiz) — a client-asserted score is not a score.
+      let items: ReturnType<typeof toCrewFacing> = [];
+      let itemsLoaded = true;
+      try {
+        items = source.trainingItems ? toCrewFacing(await source.trainingItems(sel.itemIds)) : [];
+      } catch {
+        itemsLoaded = false;
+      }
       return {
         status: 200,
-        body: { ...sel, context: ctx, profileKnown, poolSize: pool.length },
+        body: {
+          ...sel, items, context: ctx, profileKnown, poolSize: pool.length,
+          // A quiz whose questions could not be loaded is NOT an empty quiz.
+          itemsLoaded,
+        },
       };
     },
 
@@ -1091,6 +1112,30 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       // the event insert — the cycle-4 lesson, applied here before it repeats.
       if (itemIds.some((id) => !UUID_RE.test(id))) return { status: 400, body: { error: 'bad_item_id' } };
 
+      // Grade against the REAL key, server-side. `correct`/`answered`/
+      // `topicScores` are deliberately NOT read from the request: a client
+      // that can assert its own score can quiz itself out of the weak-topic
+      // weighting, which makes the whole loop decorative.
+      const answers: Record<string, number> = {};
+      const rawAnswers = body.answers;
+      if (rawAnswers && typeof rawAnswers === 'object') {
+        for (const [k, v] of Object.entries(rawAnswers as Record<string, unknown>)) {
+          const n = Number(v);
+          if (UUID_RE.test(k) && Number.isInteger(n) && n >= 0) answers[k] = n;
+        }
+      }
+      let graded = { answered: 0, correct: 0, score: null as number | null, topicScores: {} as Record<string, number>, ungradable: [] as string[] };
+      let gradedOk = true;
+      if (source.trainingItems && Object.keys(answers).length > 0) {
+        try {
+          graded = gradeSubmission(await source.trainingItems(itemIds), answers);
+        } catch {
+          // Ungradable is NOT zero-correct. The completion still pays (§4.6),
+          // and the score is reported as unknown rather than as a failure.
+          gradedOk = false;
+        }
+      }
+
       let completion;
       try {
         completion = buildGateCompletion({
@@ -1099,8 +1144,8 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
           itemIds,
           startedAtIso: String(body.startedAtIso ?? ''),
           completedAtIso: String(body.completedAtIso ?? ''),
-          correct: Number(body.correct ?? 0),
-          answered: Number(body.answered ?? 0),
+          correct: graded.correct,
+          answered: graded.answered,
         });
       } catch (err) {
         if (err instanceof GateRejected) return { status: 400, body: { error: err.reason } };
@@ -1126,27 +1171,14 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       }
 
       // Profile update is a nice-to-have; the PAY is not. A failure here must
-      // never roll back a recorded, compensated completion.
+      // never roll back a recorded, compensated completion. The scores come
+      // from server-side grading, so they cannot be inflated from a phone.
       let profileUpdated = false;
-      const claimed = (body.topicScores ?? null) as Record<string, number> | null;
-      if (claimed && source.trainingProfile && source.saveTrainingProfile) {
+      if (Object.keys(graded.topicScores).length && source.trainingProfile && source.saveTrainingProfile) {
         try {
-          // A client must not be able to claim mastery of a topic it was never
-          // asked about — that would let anyone quiz themselves out of the
-          // weak-topic targeting. Only topics actually represented in THIS
-          // submission's items count.
-          const pool = source.trainingPool ? await source.trainingPool() : [];
-          const askedTopics = new Set(
-            pool.filter((i) => completion.itemIds.includes(i.id)).map((i) => i.topic),
-          );
-          const scoped = Object.fromEntries(
-            Object.entries(claimed).filter(([topic]) => askedTopics.has(topic)),
-          );
-          if (Object.keys(scoped).length) {
-            const prior = await source.trainingProfile(crewMemberId);
-            await source.saveTrainingProfile(crewMemberId, updateProfile(prior, scoped));
-            profileUpdated = true;
-          }
+          const prior = await source.trainingProfile(crewMemberId);
+          await source.saveTrainingProfile(crewMemberId, updateProfile(prior, graded.topicScores));
+          profileUpdated = true;
         } catch { /* named in the response below, never silently assumed */ }
       }
 
@@ -1156,9 +1188,47 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
           ...saved,
           payableMinutes: completion.payableMinutes,
           score: completion.score,
+          answered: graded.answered,
+          correct: graded.correct,
           profileUpdated,
+          // Named, never swallowed: items Arbo could not grade, and a grading
+          // pass that failed outright.
+          ungradable: graded.ungradable,
+          gradedOk,
         },
       };
+    },
+
+    /** GET /api/training/drafts — §4.7 vetting queue. */
+    async trainingDrafts(): Promise<ApiResult> {
+      if (!source.ready() || !source.pendingDrafts) return { status: 503, body: { error: 'db_not_configured' } };
+      const drafts = await source.pendingDrafts();
+      return { status: 200, body: { drafts, count: drafts.length } };
+    },
+
+    /**
+     * POST /api/training/drafts/:id/publish — §4.7. A named human vetter is
+     * REQUIRED. The DB CHECK enforces it; this rejects earlier so the cockpit
+     * gets a reason rather than a 500, and no automated caller exists.
+     */
+    async publishLesson(itemId: string, body: Record<string, unknown>): Promise<ApiResult> {
+      if (!source.ready() || !source.publishLesson) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!UUID_RE.test(itemId)) return { status: 400, body: { error: 'bad_id' } };
+      const vettedBy = String(body.vettedBy ?? '').trim();
+      if (!vettedBy) {
+        return {
+          status: 400,
+          body: {
+            error: 'vetter_required',
+            line: 'Life-safety content cannot publish without a named human vetter (§4.7).',
+          },
+        };
+      }
+      const ok = await source.publishLesson(itemId, vettedBy);
+      // Already published or gone: say so rather than reporting a fresh publish.
+      if (!ok) return { status: 409, body: { error: 'not_publishable' } };
+      if (source.emit) await source.emit('training.item.published', { itemId, vettedBy });
+      return { status: 200, body: { ok: true, vettedBy } };
     },
 
     /** GET /api/agents/runs — §8A.6g audit visibility: what the agents did. */

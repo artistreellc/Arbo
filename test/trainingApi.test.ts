@@ -19,6 +19,12 @@ function src(over: Partial<DataSource> = {}): DataSource {
     fileNearMiss: async () => ({ id: '33333333-3333-3333-3333-333333333333' }),
     createLessonDraft: async () => ({ id: 'draft-1' }),
     trainingPool: async () => pool,
+    trainingItems: async (ids) => [
+      { id: ITEM_A, topic: 'Electrical hazards', type: 'quiz_question',
+        body: { prompt: 'Minimum approach distance?', options: ['10 ft', '3 ft'], answer: 0 } },
+      { id: ITEM_B, topic: 'Rigging', type: 'quiz_question',
+        body: { prompt: 'Who stands in line with a loaded rope?', options: ['Nobody', 'The groundie'], answer: 0 } },
+    ].filter((i) => ids.includes(i.id)),
     trainingProfile: async () => ({ scores: { Rigging: 0.4 } }),
     saveTrainingProfile: async () => {},
     recordGate: async () => ({ trainingEventId: 'te1', timeEntryId: 't1' }),
@@ -72,6 +78,22 @@ describe('GET /api/crew/quiz', () => {
     expect(b.shortfall).toBe(8); // asked for 10, pool has 2
   });
 
+  it('serves the question but NEVER the answer key', async () => {
+    const res = await createApi(src()).crewQuiz(CREW, 'clock_in_gate');
+    const b = res.body as { items: Array<Record<string, unknown>>; itemsLoaded: boolean };
+    expect(b.itemsLoaded).toBe(true);
+    expect(b.items[0]!.prompt).toBeTruthy();
+    expect(b.items[0]!.options).toHaveLength(2);
+    expect(JSON.stringify(b.items)).not.toMatch(/"answer"/);
+  });
+
+  it('a quiz whose questions could not load is NOT an empty quiz', async () => {
+    const res = await createApi(src({
+      trainingItems: async () => { throw new Error('db down'); },
+    })).crewQuiz(CREW, 'clock_in_gate');
+    expect((res.body as { itemsLoaded: boolean }).itemsLoaded).toBe(false);
+  });
+
   it('rejects a bad crew id or context instead of guessing', async () => {
     const api = createApi(src());
     expect((await api.crewQuiz('dave', 'clock_in_gate')).status).toBe(400);
@@ -118,16 +140,13 @@ describe('POST /api/crew/quiz/complete — §4.6, the time is always paid', () =
     const api = createApi(src({
       saveTrainingProfile: async () => { throw new Error('db down'); },
     }));
-    const res = await api.completeQuiz({ ...good, topicScores: { 'Electrical hazards': 0.9 } });
+    const res = await api.completeQuiz({ ...good, answers: { [ITEM_A]: 0 } });
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ timeEntryId: 't1', profileUpdated: false });
   });
 
   it('reports profileUpdated honestly when it did work', async () => {
-    // The topic must be one the quiz actually covered — ITEM_A is Electrical.
-    const res = await createApi(src()).completeQuiz({
-      ...good, topicScores: { 'Electrical hazards': 0.9 },
-    });
+    const res = await createApi(src()).completeQuiz({ ...good, answers: { [ITEM_A]: 0 } });
     expect(res.body).toMatchObject({ profileUpdated: true });
   });
 
@@ -140,27 +159,41 @@ describe('POST /api/crew/quiz/complete — §4.6, the time is always paid', () =
     expect(res.body).toMatchObject({ duplicate: true });
   });
 
-  it('a client cannot claim mastery of a topic it was never asked about', async () => {
+  it('a client-asserted score is IGNORED — the server grades against the key', async () => {
     let savedProfile: unknown = null;
     const api = createApi(src({
       saveTrainingProfile: async (_id, p) => { savedProfile = p; },
     }));
-    // ITEM_A is Electrical hazards. The client claims a perfect Rigging score
-    // it was never quizzed on — that must not reach the profile.
+    // The client claims a perfect Rigging score it was never quizzed on, and
+    // claims it got the Electrical question right while answering it WRONG.
     const res = await api.completeQuiz({
-      ...good, itemIds: [ITEM_A], topicScores: { Rigging: 1, 'Electrical hazards': 0.5 },
+      ...good, itemIds: [ITEM_A],
+      answers: { [ITEM_A]: 1 },            // wrong: the key is 0
+      topicScores: { Rigging: 1, 'Electrical hazards': 1 },
+      correct: 99, answered: 99,
     });
     expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ correct: 0, answered: 1, score: 0 });
     const scores = (savedProfile as { scores: Record<string, number> }).scores;
-    expect(scores['Electrical hazards']).toBeDefined();
-    expect(scores.Rigging).toBe(0.4); // untouched prior value, not the claimed 1
+    expect(scores.Rigging).toBe(0.4);      // untouched prior value
+    expect(scores['Electrical hazards']).toBe(0); // the real result
   });
 
-  it('claims for only-unasked topics change nothing and say so', async () => {
+  it('an unanswered question is missing data, not a wrong answer', async () => {
     const res = await createApi(src()).completeQuiz({
-      ...good, itemIds: [ITEM_A], topicScores: { Rigging: 1 },
+      ...good, itemIds: [ITEM_A, ITEM_B], answers: { [ITEM_A]: 0 },
     });
-    expect(res.body).toMatchObject({ profileUpdated: false });
+    expect(res.body).toMatchObject({ answered: 1, correct: 1, score: 1 });
+  });
+
+  it('a failed grading pass still PAYS and reports the score as unknown', async () => {
+    const api = createApi(src({
+      trainingItems: async () => { throw new Error('db down'); },
+    }));
+    const res = await api.completeQuiz({ ...good, answers: { [ITEM_A]: 0 } });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ gradedOk: false, score: null });
+    expect((res.body as { payableMinutes: number }).payableMinutes).toBeGreaterThanOrEqual(1);
   });
 
   it('503s honestly with no database', async () => {

@@ -94,3 +94,34 @@ describe('crew near-miss filing (§6V) — blameless and always reachable', () =
     expect(html).toContain('Tell the office directly');
   });
 });
+
+describe('clock-in question (§6M/§4.6) on the crew door', () => {
+  const html = loadCrewHtml();
+
+  it('asks the server for the question and posts answers, never a score', () => {
+    expect(html).toContain('/api/crew/quiz?context=clock_in_gate');
+    expect(html).toContain('/api/crew/quiz/complete');
+    // The phone sends WHICH option it picked. It never asserts correctness —
+    // the server grades against a key this page has never seen.
+    expect(html).toContain('answers: QUIZ.answers');
+    expect(html).not.toMatch(/correct:\s*\d/);
+  });
+
+  it('shows the crew that the time is paid (§4.6)', () => {
+    expect(html).toContain('paid time');
+    expect(html).toContain('min paid');
+  });
+
+  it('a quiz that fails to load says so instead of silently skipping', () => {
+    expect(html).toContain('do not skip it quietly');
+    expect(html).toContain('not "no question"');
+  });
+
+  it('the question only renders after the briefing gate unlocks', () => {
+    expect(html).toMatch(/if \(!GATE\.unlocked \|\| QUIZ\.done\) return;/);
+  });
+
+  it('keeps field-sized targets', () => {
+    expect(html).toMatch(/\.qopt\{[^}]*min-height:56px/);
+  });
+});

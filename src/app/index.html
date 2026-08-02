@@ -1054,6 +1054,69 @@ async function renderSafety(slot) {
   }
 }
 
+// ---------- Vetting queue (§4.7: a human publishes, never Arbo) ----------
+async function renderVetting(slot) {
+  slot.replaceChildren();
+  let d;
+  try {
+    d = await api('/api/training/drafts');
+  } catch (e) {
+    if (e.code === 401) return;
+    slot.appendChild(el('div', 'panel-title', 'Safety lessons'));
+    slot.appendChild(state('Draft queue unavailable', e.code === 503
+      ? 'Database not connected — Arbo cannot show what is waiting to be vetted.'
+      : 'Could not read the draft queue. This is not a claim that nothing is waiting.'));
+    return;
+  }
+  if (!d.count) return;
+  slot.appendChild(el('div', 'panel-title', 'Safety lessons awaiting YOUR sign-off — ' + d.count));
+  for (const draft of d.drafts) {
+    const c = el('div', 'card loop-card');
+    c.appendChild(el('div', 'loop-kind', draft.topic));
+    const b = draft.body || {};
+    if (b.headline) c.appendChild(el('div', 'scope', b.headline));
+    if (b.whatHappened) c.appendChild(el('div', 'scope', b.whatHappened));
+    for (const step of (b.whatToDoDifferently || [])) c.appendChild(el('div', 'scope', '• ' + step));
+    for (const note of (b.vetterNotes || [])) {
+      const w = el('div', 'scope');
+      w.style.color = 'var(--warning)';
+      w.textContent = '⚠ ' + note;
+      c.appendChild(w);
+    }
+    const row = el('div', 'field');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'Your name — required to publish';
+    row.appendChild(input);
+    c.appendChild(row);
+    const btn = el('button', 'actbtn', 'Vet & publish');
+    const err = el('div', 'errline', '');
+    btn.addEventListener('click', async () => {
+      const vettedBy = input.value.trim();
+      if (!vettedBy) {
+        // §4.7 in the UI, so the DB CHECK is never the thing that says no.
+        err.textContent = 'Life-safety content cannot publish without your name on it.';
+        return;
+      }
+      btn.disabled = true;
+      try {
+        await api('/api/training/drafts/' + draft.id + '/publish', { method: 'POST', body: { vettedBy } });
+        btn.textContent = 'Published ✓';
+        btn.className = 'actbtn done';
+        renderVetting(slot);
+      } catch (ex) {
+        btn.disabled = false;
+        err.textContent = ex.code === 409
+          ? 'Already published — nothing to do.'
+          : 'Could not publish that. Nothing was changed.';
+      }
+    });
+    c.appendChild(btn);
+    c.appendChild(err);
+    slot.appendChild(c);
+  }
+}
+
 // ---------- Money (§4.8: bill the work, chase what is owed) ----------
 const STAGE_LABEL = {
   reminder: ['PAST DUE', 'b-warm'],
@@ -1301,6 +1364,10 @@ async function renderFollowUps() {
   const safetySlot = el('div');
   v.appendChild(safetySlot);
   renderSafety(safetySlot);
+  // §4.7: a safety lesson waiting on Mike's name is an open loop too.
+  const vetSlot = el('div');
+  v.appendChild(vetSlot);
+  renderVetting(vetSlot);
   // §4.8 money: unbilled work and unpaid invoices are open loops too.
   const moneySlot = el('div');
   v.appendChild(moneySlot);
