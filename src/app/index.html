@@ -9,9 +9,9 @@
 /* Design tokens (src/design/tokens.ts, §9) — inlined so the app is one file,
    sunlight-readable, glove-friendly (48px+ targets), one-handed. */
 :root{
-  --forest:#1B4D3E; --forest-dark:#12352B; --canopy:#2A7A5E; --moss:#6B8F71;
-  --bark:#3E2C23; --clay:#B4552D; --amber:#D4AF37;
-  --ink:#0F1A15; --surface:#FFFFFF; --surface-alt:#F3F5F2; --border:#D5DCD7; --muted:#5C6B62;
+  --forest:#1E4A38; --forest-dark:#12352B; --canopy:#2E6B4F; --moss:#6B8F71;
+  --bark:#3E2C23; --clay:#B4552D; --amber:#B98A2E;
+  --ink:#20261F; --surface:#FFFFFF; --surface-alt:#F5F1E6; --border:#E3DCC8; --muted:#6C7266;
   --emergency:#C62828; --warning:#E08A00; --ok:#2A7A5E; --info:#2B6CB0;
   --r-sm:6px; --r-md:10px; --r-lg:16px; --r-pill:999px;
   --shadow-card:0 1px 3px rgba(15,26,21,.12),0 1px 2px rgba(15,26,21,.08);
@@ -29,7 +29,7 @@ header{
   position:sticky;top:0;z-index:10;box-shadow:var(--shadow-card);
 }
 .hrow{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.brand{font-size:24px;font-weight:800;letter-spacing:.5px}
+.brand{font-family:ui-serif,'Iowan Old Style','Palatino Nova',Palatino,Georgia,serif;font-size:26px;font-weight:900;letter-spacing:.5px}
 .brand small{font-weight:600;font-size:15px;opacity:.85;margin-left:8px}
 #dateline{font-size:15px;opacity:.9;margin-top:2px}
 #refresh{
@@ -54,20 +54,20 @@ main{padding:16px;max-width:640px;margin:0 auto}
 
 /* Cards */
 .card{
-  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
-  box-shadow:var(--shadow-card);padding:16px;margin-bottom:12px;
+  background:var(--surface);border:1px solid var(--border);border-radius:14px;
+  box-shadow:0 1px 2px rgba(32,38,31,.06);padding:18px;margin-bottom:14px;
 }
 .card.emergency{border-left:6px solid var(--emergency)}
 .card .toprow{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:4px}
-.card .who{font-size:20px;font-weight:800}
+.card .who{font-family:ui-serif,'Iowan Old Style','Palatino Nova',Palatino,Georgia,serif;font-size:19px;font-weight:800;line-height:1.25}
 .card .when{font-size:17px;font-weight:700;color:var(--forest);white-space:nowrap}
 .card .addr{font-size:17px;margin:2px 0 8px}
 .card .addr a{color:var(--info);text-decoration:none;font-weight:600}
 .card .scope{font-size:15px;color:var(--muted);margin-bottom:8px}
 .badges{display:flex;flex-wrap:wrap;gap:6px}
 .badge{
-  font-size:13px;font-weight:800;letter-spacing:.4px;border-radius:var(--r-sm);
-  padding:4px 8px;border:1.5px solid transparent;
+  font-size:11px;font-weight:800;letter-spacing:.8px;border-radius:var(--r-sm);
+  padding:3px 7px;border:1px solid transparent;text-transform:uppercase;
 }
 .b-job{background:var(--forest);color:#fff}
 .b-est{border-color:var(--canopy);color:var(--canopy)}
@@ -106,9 +106,11 @@ nav button{
   flex:1;min-height:56px;border:0;background:none;font-size:15px;font-weight:700;
   color:var(--muted);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0;
 }
-nav button.active{color:var(--forest)}
+nav button.active{color:#fff}
+nav button.active .navpill{background:var(--forest);color:#fff}
+nav button .navpill{display:flex;flex-direction:column;align-items:center;gap:2px;border-radius:12px;padding:6px 14px;color:var(--muted)}
 nav button .ico{font-size:22px;line-height:1}
-nav button.active::after{content:"";width:24px;height:3px;border-radius:2px;background:var(--forest);margin-top:2px}
+
 
 /* Key overlay */
 #keywall{
@@ -116,7 +118,7 @@ nav button.active::after{content:"";width:24px;height:3px;border-radius:2px;back
   display:none;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;
 }
 #keywall.show{display:flex}
-#keywall h1{font-size:38px;font-weight:800;margin-bottom:4px}
+#keywall h1{font-family:ui-serif,'Iowan Old Style','Palatino Nova',Palatino,Georgia,serif;font-size:40px;font-weight:900;margin-bottom:4px}
 #keywall p{opacity:.9;margin-bottom:24px;max-width:320px}
 #keywall input{
   width:100%;max-width:320px;min-height:56px;border:0;border-radius:var(--r-md);
@@ -151,12 +153,14 @@ nav button.active::after{content:"";width:24px;height:3px;border-radius:2px;back
 .actbtn:disabled{opacity:.5}
 .actbtn.done{background:var(--surface-alt);color:var(--ok);border:1.5px solid var(--ok)}
 /* Lead action row (§9: one-tap, glove-sized) */
-.actions{display:flex;gap:8px;margin-top:10px}
-.callbtn{flex:1;display:flex;align-items:center;justify-content:center;min-height:48px;
-  border-radius:var(--r-md);background:var(--forest);color:#fff;font-size:15px;font-weight:800;
-  text-decoration:none}
-.minibtn{min-height:48px;min-width:64px;border:1.5px solid var(--border);border-radius:var(--r-md);
-  background:var(--surface);color:var(--ink);font-size:14px;font-weight:800;cursor:pointer;padding:0 12px}
+.card.callback{border-left:5px solid var(--clay)}
+.cb-label{color:var(--clay);font-size:12px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:2px}
+.actions{display:flex;gap:10px;margin-top:12px}
+.callbtn{flex:1;display:flex;align-items:center;justify-content:center;min-height:50px;
+  border-radius:999px;background:var(--forest);color:#fff;font-size:16px;font-weight:800;
+  text-decoration:none;box-shadow:0 2px 4px rgba(18,53,43,.25)}
+.minibtn{min-height:50px;min-width:56px;border:1.5px solid var(--border);border-radius:999px;
+  background:var(--surface-alt);color:var(--ink);font-size:16px;font-weight:800;cursor:pointer;padding:0 14px}
 .minibtn.ok{color:var(--ok);border-color:var(--ok)}
 .minibtn.bad{color:#B4231F;border-color:#D9A6A4}
 .card.dismissed{opacity:.35}
@@ -216,11 +220,11 @@ nav button.active::after{content:"";width:24px;height:3px;border-radius:2px;back
 </div>
 
 <nav>
-  <button id="tab-today" class="active"><span class="ico">&#9728;</span>Today</button>
-  <button id="tab-leads"><span class="ico">&#9993;</span>Leads</button>
-  <button id="tab-book"><span class="ico">&#127794;</span>Book</button>
-  <button id="tab-followups"><span class="ico">&#8634;</span>Queue</button>
-  <button id="tab-calls"><span class="ico">&#9742;</span>Calls</button>
+  <button id="tab-today" class="active"><span class="navpill"><span class="ico">&#9728;</span>Today</span></button>
+  <button id="tab-leads"><span class="navpill"><span class="ico">&#9993;</span>Leads</span></button>
+  <button id="tab-book"><span class="navpill"><span class="ico">&#127794;</span>Book</span></button>
+  <button id="tab-followups"><span class="navpill"><span class="ico">&#8634;</span>Queue</span></button>
+  <button id="tab-calls"><span class="navpill"><span class="ico">&#9742;</span>Calls</span></button>
 </nav>
 
 <script>
@@ -360,11 +364,11 @@ async function renderToday() {
     return c;
   };
   chips.appendChild(chip('stops', s.totalStops));
-  chips.appendChild(chip('jobs', s.jobs));
-  chips.appendChild(chip('estimates', s.estimates));
-  chips.appendChild(chip('first-timers', s.firstTimers));
-  chips.appendChild(chip('red flags', s.redFlagCount, true));
-  chips.appendChild(chip('emergencies', s.emergencies, true));
+  if (s.jobs) chips.appendChild(chip('jobs', s.jobs));
+  if (s.estimates) chips.appendChild(chip('estimates', s.estimates));
+  if (s.firstTimers) chips.appendChild(chip('first-timers', s.firstTimers));
+  if (s.redFlagCount) chips.appendChild(chip('red flags', s.redFlagCount, true));
+  if (s.emergencies) chips.appendChild(chip('emergencies', s.emergencies, true));
   v.appendChild(chips);
 
   if (s.zipRun && s.zipRun.length) {
@@ -441,7 +445,8 @@ async function renderLeads() {
     (rank[a.quality.priority] - rank[b.quality.priority]) ||
     (new Date(b.createdAt) - new Date(a.createdAt)));
   for (const lead of leads) {
-    const c = el('div', 'card' + (lead.isEmergency ? ' emergency' : ''));
+    const c = el('div', 'card' + (lead.isEmergency ? ' emergency' : '') + (lead.needsCallback ? ' callback' : ''));
+    if (lead.needsCallback) c.appendChild(el('div', 'cb-label', 'Call back needed'));
     const top = el('div', 'toprow');
     top.appendChild(el('div', 'who', lead.name || 'Unknown caller'));
     top.appendChild(el('div', 'when', new Date(lead.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })));
@@ -451,13 +456,11 @@ async function renderLeads() {
     if (lead.details) c.appendChild(el('div', 'scope', lead.details));
     const b = el('div', 'badges');
     if (lead.isEmergency) b.appendChild(badge('EMERGENCY', 'b-emg'));
-    if (lead.needsCallback) b.appendChild(badge('CALL BACK', 'b-hot'));
-    b.appendChild(badge(lead.quality.priority.toUpperCase(), 'b-' + lead.quality.priority));
     const pb = permitBadge(lead);
     if (pb) b.appendChild(pb);
     if (lead.isFirstTimer === true) b.appendChild(badge('FIRST-TIMER', 'b-first'));
     if (lead.isFirstTimer === false) b.appendChild(badge('REPEAT', 'b-repeat'));
-    if (lead.source) b.appendChild(badge(lead.source.toUpperCase(), 'b-src'));
+    b.appendChild(badge(lead.quality.priority.toUpperCase(), 'b-' + lead.quality.priority));
     c.appendChild(b);
     // §9 one-tap actions: call the human back, or file the lead. ARBOR never
     // calls anyone itself — the phone app does, with Mike's thumb on it.
