@@ -322,6 +322,7 @@ nav button .ico{font-size:20px;line-height:1}
   <div id="view-book" class="view"></div>
   <div id="view-followups" class="view"></div>
   <div id="view-calls" class="view"></div>
+  <div id="view-perf" class="view"></div>
 </main>
 
 <div id="twin" class="sheet">
@@ -386,6 +387,7 @@ nav button .ico{font-size:20px;line-height:1}
   <button id="tab-book"><span class="navpill"><span class="ico">&#127794;</span>Book</span></button>
   <button id="tab-followups"><span class="navpill"><span class="ico">&#8634;</span>Queue</span></button>
   <button id="tab-calls"><span class="navpill"><span class="ico">&#9742;</span>Calls</span></button>
+  <button id="tab-perf"><span class="navpill"><span class="ico">&#128200;</span>Numbers</span></button>
 </nav>
 
 <script>
@@ -1115,6 +1117,110 @@ async function renderTrainingBoard(slot) {
   }
 }
 
+// ---------- Performance (§6D/§6N.3: which areas actually pay) ----------
+const VERDICT_LABEL = {
+  above: ['ABOVE FLEET RATE', 'b-cool'],
+  at: ['AT FLEET RATE', 'b-src'],
+  below: ['BELOW FLEET RATE', 'b-warm'],
+  not_enough_data: ['NOT ENOUGH DATA', 'b-pending'],
+};
+function mixLine(mix) {
+  return Object.keys(mix || {}).map((k) => mix[k] + ' ' + k).join(' \u00b7 ');
+}
+async function renderPerformance() {
+  const v = $('view-perf');
+  v.replaceChildren();
+  let p;
+  try {
+    p = await api('/api/performance');
+  } catch (e) {
+    if (e.code === 401) return showKeywall();
+    v.appendChild(state('Performance unavailable', e.code === 503
+      ? 'Database not connected — Arbo cannot rate any area.'
+      : 'Could not read the numbers. This is not a claim that everything is fine.'));
+    return;
+  }
+
+  // The benchmark first: every verdict below is measured against it, so it
+  // must never be read without it.
+  const hud = el('div', 'hud');
+  const tile = (n, label, cls) => {
+    const t = el('div', 'tile' + (cls ? ' ' + cls : ''));
+    t.appendChild(el('b', '', String(n)));
+    t.appendChild(el('span', '', label));
+    return t;
+  };
+  hud.appendChild(tile(p.fleetRatePerCrewHour === null ? '\u2013' : '$' + p.fleetRatePerCrewHour,
+    'fleet $/crew-hr', 'accent wide'));
+  hud.appendChild(tile(p.areas.filter((a) => a.verdict !== 'not_enough_data').length, 'areas rated'));
+  hud.appendChild(tile(p.withheld.length, 'unrated', p.withheld.length ? 'warn' : ''));
+  v.appendChild(hud);
+
+  // §1B: what the numbers cannot see comes BEFORE the numbers.
+  for (const b of p.blindSpots) {
+    const w = el('div', 'card loop-card urgent');
+    w.appendChild(el('div', 'loop-kind', '\u26a0 BLIND SPOT'));
+    w.appendChild(el('div', 'scope', b));
+    v.appendChild(w);
+  }
+
+  const judged = p.areas.filter((a) => a.verdict !== 'not_enough_data');
+  const unjudged = p.areas.filter((a) => a.verdict === 'not_enough_data');
+
+  if (judged.length) {
+    v.appendChild(el('div', 'panel-title', 'Rated on revenue per crew-hour \u2014 not per job'));
+    for (const a of judged) v.appendChild(areaCard(a));
+  }
+
+  // Unrated areas are shown SEPARATELY, never as the bottom of a ranking.
+  if (unjudged.length) {
+    v.appendChild(el('div', 'panel-title', 'Not enough work yet to rate \u2014 ' + unjudged.length));
+    v.appendChild(el('div', 'zip-run', 'These are unmeasured, not underperforming. Do not read them as either.'));
+    for (const a of unjudged) v.appendChild(areaCard(a));
+  }
+
+  if (!p.areas.length) {
+    v.appendChild(state('No completed work to rate yet',
+      'Areas appear here once jobs are completed with hours and crew size recorded.'));
+  }
+
+  v.appendChild(el('div', 'panel-title', 'Campaigns'));
+  if (!p.campaignsKnown) {
+    v.appendChild(state('Campaign data unavailable', 'Arbo could not read the campaigns. This is not "no campaigns running".'));
+  } else if (!p.campaigns.length) {
+    v.appendChild(state('No campaigns on file', 'Add one and its cost per booked job shows up here.'));
+  } else {
+    for (const c of p.campaigns) {
+      const card = el('div', 'card');
+      const top = el('div', 'toprow');
+      top.appendChild(el('div', 'who', c.type.replace(/_/g, ' ')));
+      top.appendChild(el('div', 'when', c.costPerBookedJob === null ? '\u2013' : '$' + c.costPerBookedJob + '/job'));
+      card.appendChild(top);
+      card.appendChild(el('div', 'scope', c.line));
+      v.appendChild(card);
+    }
+  }
+}
+
+function areaCard(a) {
+  const c = el('div', 'card' + (a.verdict === 'below' ? ' emergency' : ''));
+  const top = el('div', 'toprow');
+  top.appendChild(el('div', 'who', a.areaKey));
+  top.appendChild(el('div', 'when',
+    a.normalizedRatePerCrewHour === null ? '\u2013' : '$' + a.normalizedRatePerCrewHour + '/crew-hr'));
+  c.appendChild(top);
+  c.appendChild(el('div', 'scope', a.line));
+  const b = el('div', 'badges');
+  const [label, cls] = VERDICT_LABEL[a.verdict] || [a.verdict, 'b-src'];
+  b.appendChild(badge(label, cls));
+  // The job mix always rides with the verdict, so it cannot be read without
+  // the context that produced it.
+  const mix = mixLine(a.mix);
+  if (mix) b.appendChild(badge(mix, 'b-src'));
+  c.appendChild(b);
+  return c;
+}
+
 // ---------- Vetting queue (§4.7: a human publishes, never Arbo) ----------
 async function renderVetting(slot) {
   slot.replaceChildren();
@@ -1507,16 +1613,16 @@ $('keygo').addEventListener('click', async () => {
 $('keyinput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('keygo').click(); });
 
 function switchTab(which) {
-  for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls']) {
+  for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf']) {
     $('view-' + t).classList.toggle('active', which === t);
     $('tab-' + t).classList.toggle('active', which === t);
   }
 }
-for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls']) {
+for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf']) {
   $('tab-' + t).addEventListener('click', () => switchTab(t));
 }
 
-function refreshAll() { renderToday(); renderLeads(); renderCalendar(); renderBook(); renderFollowUps(); renderCalls(); }
+function refreshAll() { renderToday(); renderLeads(); renderCalendar(); renderBook(); renderFollowUps(); renderCalls(); renderPerformance(); }
 $('refresh').addEventListener('click', refreshAll);
 
 $('dateline').textContent = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });

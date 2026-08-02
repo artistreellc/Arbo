@@ -117,6 +117,25 @@ describe('ARBOR app shell', () => {
     expect(html).not.toMatch(/order (the |this )?part|add to cart|checkout|buy now/i);
   });
 
+  it('the performance screen shows the benchmark and the blind spots FIRST (§1B/§6N.3)', () => {
+    expect(html).toContain('/api/performance');
+    expect(html).toContain('fleet $/crew-hr');
+    // Rated on crew-hours, and the screen says so — per-job rewards job mix.
+    expect(html).toContain('not per job');
+    expect(html).toContain('BLIND SPOT');
+  });
+
+  it('unrated areas are shown apart, never as the bottom of a ranking', () => {
+    expect(html).toContain('Not enough work yet to rate');
+    expect(html).toContain('unmeasured, not underperforming');
+  });
+
+  it('a dead performance feed is named, not drawn as healthy numbers', () => {
+    expect(html).toContain('Performance unavailable');
+    expect(html).toContain('not a claim that everything is fine');
+    expect(html).toContain('not "no campaigns running"');
+  });
+
   it('uses the §9 cockpit tokens (violet primary, dark base, 48px+ targets)', () => {
     expect(html).toContain('#7C3AED'); // luminous purple accent
     expect(html).toContain('#0B0D10'); // near-black base
