@@ -244,6 +244,17 @@ nav button .ico{font-size:22px;line-height:1}
   .view .sect, .view .zip-run, .view .state, .view .panel-title,
   .view .storm, .view .storm-muted, .view .routebtn, .view .hudbtn{grid-column:1 / -1}
   #view-today > div:first-child{grid-column:1 / -1}
+  /* The open-loops panel is one DOM node but must read as a full-width
+     instrument row — span it, then lay its own cards out in two columns. */
+  #loops-panel{grid-column:1 / -1;display:grid;grid-template-columns:1fr 1fr;
+    gap:16px;align-items:start}
+  #loops-panel .panel-title, #loops-panel .hudbtn{grid-column:1 / -1}
+  #loops-panel .card{margin-bottom:0}
+  /* Queue tab: the loops block above the recommended sends, same treatment. */
+  #view-followups > div:first-child{grid-column:1 / -1;display:grid;
+    grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  #view-followups > div:first-child .panel-title{grid-column:1 / -1}
+  #view-followups > div:first-child .card{margin-bottom:0}
   .card{margin-bottom:0}
   nav{left:50%;transform:translateX(-50%);max-width:720px;border-radius:16px 16px 0 0;
     border:1px solid var(--border);border-bottom:0;box-shadow:0 -2px 16px rgba(0,0,0,.5)}
@@ -479,6 +490,7 @@ async function renderToday() {
   yardBtn.addEventListener('click', openYard);
   v.appendChild(yardBtn);
   const loopsPanel = el('div');
+  loopsPanel.id = 'loops-panel';
   v.appendChild(loopsPanel);
   const setTile = (t, n, cls) => {
     t.querySelector('b').textContent = String(n);
