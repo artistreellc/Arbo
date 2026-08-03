@@ -82,6 +82,8 @@ import type { TtsClient } from '../voice/elevenlabsTts.js';
 import { scoreLead, type LeadQualityResult } from '../reception/leadQuality.js';
 import { integrationStatus } from '../env.js';
 import { buildPermitBoard, assertBoardNeverClear, type PermitTrackRow } from '../permitting/permitBoard.js';
+import { authorizeClearance, assertUnblockingSetMatchesGate } from '../permitting/clearance.js';
+import { crewMayStart, type PermitLifecycle } from '../permitting/permitRecord.js';
 
 /** Postgres uuid shape. Non-UUID ids must be rejected BEFORE any write. */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -170,6 +172,19 @@ export interface DataSource {
    * rows would silently drop exactly those (§1B).
    */
   permitTracks?(): Promise<PermitTrackRow[]>;
+  /**
+   * §6B.3 clearance: the CURRENT state of one permit, so a move is validated
+   * against what is actually on file rather than against whatever state the
+   * caller's screen was showing. A stale tab must not be able to walk a
+   * permit backwards without saying why.
+   */
+  permitState?(permitId: string): Promise<{ status: PermitLifecycle; notes: string | null } | null>;
+  /** Record a human's lifecycle move. The only writer of permit status. */
+  movePermitStatus?(input: {
+    permitId: string;
+    to: PermitLifecycle;
+    patch: { formRef?: string; notes: string };
+  }): Promise<void>;
   /** This unit's OWN parts history — the only source a suggestion may draw on. */
   unitParts?(unitId: string): Promise<KnownPart[]>;
   /** Open maintenance tasks on this unit — NOT a schedule check (see §1B note). */
@@ -885,6 +900,75 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       const board = buildPermitBoard(await source.permitTracks(), etToday());
       assertBoardNeverClear(board);
       return { status: 200, body: board };
+    },
+
+    /**
+     * POST /api/permits/status — §6B.3, the human clearance step. The ONLY
+     * path that moves a permit's lifecycle, and therefore the only thing in
+     * the app that can unblock a crew on protected work.
+     *
+     * The `from` state is read from the database, never taken from the
+     * caller. A phone with a stale board open would otherwise be able to
+     * report a move from a state that has already changed — and the check
+     * that guards walking backwards off a clearance depends entirely on
+     * `from` being true.
+     */
+    async movePermit(body: Record<string, unknown>): Promise<ApiResult> {
+      if (!source.ready() || !source.movePermitStatus || !source.permitState) {
+        return { status: 503, body: { error: 'db_not_configured' } };
+      }
+      // The gate and the evidence bar must agree about which states open the
+      // door. Run on the real path, not only in a test.
+      assertUnblockingSetMatchesGate(crewMayStart);
+
+      const permitId = String(body.permitId ?? '');
+      if (!UUID_RE.test(permitId)) return { status: 400, body: { error: 'bad_permit_id' } };
+      const current = await source.permitState(permitId);
+      if (current === null) return { status: 404, body: { error: 'no_such_permit' } };
+      const from = current.status;
+
+      const w = body.cityWord as Record<string, unknown> | undefined;
+      const outcome = authorizeClearance({
+        permitId,
+        from,
+        to: String(body.to ?? '') as PermitLifecycle,
+        // Not read from the body: there is one kind of author and it is a
+        // human. A caller cannot declare itself something else.
+        author: { kind: 'human', name: String(body.recordedBy ?? '') },
+        ...(w
+          ? {
+              cityWord: {
+                contactName: String(w.contactName ?? ''),
+                saidOnIso: String(w.saidOnIso ?? ''),
+                reference: w.reference == null || String(w.reference).trim() === '' ? null : String(w.reference),
+                noReferenceIssued: w.noReferenceIssued === true,
+                note: String(w.note ?? ''),
+              },
+            }
+          : {}),
+      });
+
+      if (!outcome.ok) {
+        // 422, not 400: the request was understood perfectly and refused on
+        // its merits. The refusals are sentences a person can act on — "the
+        // city needs a name" beats "bad_request" at 7am with a crew waiting.
+        return { status: 422, body: { error: 'clearance_refused', refusals: outcome.refusals } };
+      }
+
+      // APPEND, never replace. `permit` has one notes column; a second
+      // clearance that overwrote the first would erase the evidence behind
+      // the state a crew already worked under. Newest first, so the note that
+      // explains the CURRENT state reads at the top.
+      const notes = [outcome.move.patch.notes, current.notes].filter((n) => n && n.trim()).join('\n');
+      await source.movePermitStatus({ ...outcome.move, patch: { ...outcome.move.patch, notes } });
+      // On the binder (§8A). This is the most consequential write in the app
+      // — it is what lets a crew start protected work — so it does not get to
+      // be the one that leaves no trace. States and ids only; the recorder is
+      // an employee and attribution IS the point of the record.
+      if (source.emit) {
+        await source.emit('permit.status.moved', { permitId, from, to: outcome.move.to, recordedBy: String(body.recordedBy ?? '') });
+      }
+      return { status: 200, body: { moved: true, permitId, from, to: outcome.move.to } };
     },
 
     /** GET /api/fleet/units — the fleet with what each unit still owes (§6E). */

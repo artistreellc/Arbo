@@ -390,6 +390,26 @@ export async function getLatestPermitForProperty(propertyId: string): Promise<Pe
 }
 
 /**
+ * The lifecycle state on file for one permit, or null if there is no such
+ * permit. Exists so the §6B.3 clearance step validates a move against the
+ * DATABASE rather than against whatever the caller's screen was showing —
+ * a stale board must not be able to walk a permit backwards off a clearance
+ * while claiming it was never cleared.
+ */
+export async function permitStateById(
+  id: string,
+): Promise<{ status: PermitLifecycle; notes: string | null } | null> {
+  const db = getDb();
+  const res = await db.from('permit').select('status, notes').eq('id', id).maybeSingle();
+  if (res.error) throw res.error;
+  // `notes` rides along because the clearance step APPENDS to it rather than
+  // replacing it: `permit` has one notes column, and a second clearance that
+  // overwrote the first would erase the evidence behind the state the crew
+  // was working under. Read it here so there is only one round trip.
+  return (res.data as { status: PermitLifecycle; notes: string | null } | null) ?? null;
+}
+
+/**
  * Advance the permit lifecycle (§6B.3). Setting 'not_required_verified' or
  * 'approved' is the human clearance step — an explicit write here, never a side
  * effect of screening. `formRef` records e.g. the VB PPR record number.

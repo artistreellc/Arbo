@@ -87,6 +87,8 @@ import {
   todaysBriefing,
   listUnits,
   listPermitTracks,
+  permitStateById,
+  updatePermitStatus,
   listUnitParts,
   unitOpenTaskCount,
   unitStatus,
@@ -381,6 +383,12 @@ export function createLiveSource(): DataSource {
     todaysBriefing: () => todaysBriefing(),
     units: () => listUnits(),
     permitTracks: () => listPermitTracks(),
+    // §6B.3 clearance. Two functions, and the WRITE is deliberately the
+    // thinnest possible wrapper: every rule about whether a move is
+    // allowed lives in clearance.ts, where it can be tested without a
+    // database, and none of it lives down here where it cannot.
+    permitState: (id) => permitStateById(id),
+    movePermitStatus: (m) => updatePermitStatus(m.permitId, m.to, m.patch),
     unitParts: (id) => listUnitParts(id),
     unitOpenTaskCount: (id) => unitOpenTaskCount(id),
     unitStatus: (id) => unitStatus(id),
@@ -679,6 +687,13 @@ export function createArborRequestHandler() {
       // human, and there is no handler here that could move it.
       if (req.method === 'GET' && url.pathname === '/api/permits') {
         return send(...unpack(await api.permitBoard()));
+      }
+      // §6B.3 — the human clearance step. The only route in the app that can
+      // move a permit's lifecycle, and so the only one that can unblock a
+      // crew on protected work. Every rule about whether a move is allowed
+      // lives in clearance.ts; this line only carries the request there.
+      if (req.method === 'POST' && url.pathname === '/api/permits/status') {
+        return send(...unpack(await api.movePermit((await readJson(req)) as Record<string, unknown>)));
       }
       // The five-minute inbox watch's last pass (Mike, 2026-08-03). READ-ONLY
       // in both directions: this reports what the watch already saw and can

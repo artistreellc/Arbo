@@ -60,6 +60,12 @@ export const CoreEvents = {
   jobCompleted: 'job.completed',
   followupSent: 'followup.sent',
   permitFlagged: 'permit.flagged',
+  /**
+   * §6B.3 — a human moved a permit's lifecycle. On the spine because it is
+   * the write that can UNBLOCK A CREW on protected work: if any single event
+   * in this system needs to be reconstructable a year later, it is this one.
+   */
+  permitStatusMoved: 'permit.status.moved',
   equipmentFailed: 'equipment.failed',
   maintenanceDue: 'maintenance.due',
   needsDecision: 'needs_decision.raised',
