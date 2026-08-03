@@ -42,11 +42,19 @@
 */
 // MISS UTILITY MARKINGS — remembered, drawn dotted, and NEVER a live locate.
 //
-// LIVES IN src/permitting/ ON MIKE'S INSTRUCTION, 2026-08-03: "i want this to
-// be a the permitting part". It belongs here on the merits too — permitting is
-// the "what has to happen before anyone touches this property" domain, and the
-// 811 call is the underground half of the question the CBPA screen answers
-// above ground. digPermit.ts joins the two into one answer.
+// LIVES IN src/assessment/ ALONGSIDE THE RA, not in src/permitting/.
+//
+// I briefly moved this file to src/permitting/ on 2026-08-03, having read
+// Mike's "i want this to be a the permitting part" as an instruction about
+// where the code goes. He corrected that immediately — "no i do not" — he was
+// talking about where the BUILD was headed, not about this file. It came
+// straight back here and the note is left in so nobody re-litigates the move.
+//
+// It belongs with the RA on the merits: these markings are recorded facts
+// about a property, captured on the same visit and by the same person as the
+// tree observations, and they are read by the RA. The permitting engine is
+// about what a CITY requires; the 811 call is a separate obligation with a
+// separate authority, and coupling them would imply one answers for the other.
 //
 // MIKE'S INSTRUCTION, 2026-08-03, verbatim:
 //   "addionally all that miss utitly marking would be store and though dtted
