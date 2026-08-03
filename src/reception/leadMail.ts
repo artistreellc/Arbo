@@ -489,8 +489,16 @@ export function classifyLeadMail(input: LeadMailInput): LeadMailResult {
   // subject shape. RECOGNISED FIRST, then gated: Mike switched this channel
   // off on 2026-08-03 and will switch it back on seasonally, so the mail is
   // named and counted rather than ignored (§3.7).
-  const isHomeAdvisorSender = from.includes('@homeadvisor.com') || from.includes('@angi.com')
-    || from.includes('@angieslist.com');
+  // Subdomains matter: Angi sends from `angi@em.angi.com`, which an
+  // `@angi.com` substring test MISSES entirely. Match the domain suffix
+  // instead. Widening the SENDER is safe because the subject gate below
+  // still requires "New Opportunity" — their marketing mail comes from the
+  // same domains and must not become a phantom lead.
+  // `\b` after .com is NOT enough — it lets `newlead@angi.com.evil.test`
+  // through, which would make a lookalike domain a trusted lead source the
+  // day this channel is switched back on. Anchor to the END of the address:
+  // end-of-string, a closing angle bracket, or whitespace.
+  const isHomeAdvisorSender = /@(?:[\w-]+\.)*(?:homeadvisor|angi|angieslist)\.com(?:>|\s|$)/i.test(from.trim());
   if (isHomeAdvisorSender && /^New Opportunity/i.test(input.subject)) {
     if (channelIsOff('home_advisor')) {
       return { isLeadNotification: false, provider: 'home_advisor', lead: {}, inServiceArea: null, channelOff: 'home_advisor' };

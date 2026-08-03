@@ -705,3 +705,34 @@ describe('the website contact form (FormSubmit) — Mike, 2026-08-03', () => {
     }
   });
 });
+
+describe('Angi subdomain senders (caught by the 15:21Z sweep)', () => {
+  // `angi@em.angi.com` is a real sender on Mike's inbox and an `@angi.com`
+  // substring test misses it completely. When the channel comes back on that
+  // would have meant Angi leads arriving and never being recognised.
+  it('matches the domain SUFFIX, so subdomains are covered', () => {
+    for (const from of ['angi@em.angi.com', 'leads@mail.angieslist.com', 'newlead@homeadvisor.com']) {
+      const r = classifyLeadMail({ from, subject: 'New Opportunity: Trees - Trim', body: HA_BODY });
+      expect(r.provider, from).toBe('home_advisor');
+      expect(r.channelOff, from).toBe('home_advisor');
+    }
+  });
+
+  it('a wider sender match does NOT turn their marketing into a lead', () => {
+    // The subject gate is what keeps this safe — widening the sender alone
+    // would otherwise let promo mail from the same domains through.
+    const r = classifyLeadMail({
+      from: 'angi@em.angi.com', subject: 'Save 20% on your Angi membership', body: 'promo',
+    });
+    expect(r.isLeadNotification).toBe(false);
+    expect(r.provider).toBeNull();
+    expect(r.channelOff).toBeUndefined();
+  });
+
+  it('does not match a lookalike domain', () => {
+    const r = classifyLeadMail({
+      from: 'newlead@angi.com.evil.test', subject: 'New Opportunity: Trees - Trim', body: HA_BODY,
+    });
+    expect(r.provider).toBeNull();
+  });
+});

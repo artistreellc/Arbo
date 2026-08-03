@@ -72,7 +72,20 @@ this document is the spec.
 ## Step A — Lead inbox sweep (§5A #12/#13)
 
 1. Search Gmail (label id for `ARBOR/processed` is `Label_3`):
-   `{from:ads-account-noreply@google.com from:no-reply@callrail.com from:localservices-noreply@google.com from:awexpress.google.com from:homeadvisor.com from:messaging.yelp.com from:formsubmit.co} newer_than:2d -label:Label_3`
+   `{from:ads-account-noreply@google.com from:no-reply@callrail.com from:localservices-noreply@google.com from:awexpress.google.com from:homeadvisor.com from:angi.com from:angieslist.com from:messaging.yelp.com from:formsubmit.co} newer_than:2d -label:Label_3`
+
+   > **2026-08-03 — Angi domains were missing from this query.** The
+   > classifier gated `angi.com` / `angieslist.com` while the SEARCH never
+   > fetched them, so the gate could never fire on real Angi mail. Harmless
+   > only because the channel is off; the day Mike switches it on, Angi
+   > leads would have been invisible. Both domains are in the query above
+   > now. Caught by the 15:21Z sweep, not by a test.
+
+   > **SPAM IS NOT VISIBLE THROUGH THIS CONNECTOR.** `in:spam`, `label:spam`
+   > and `in:anywhere` all return nothing. A lead that Google files as spam
+   > is invisible to every sweep. Do NOT report spam as "nothing relevant" —
+   > report it as UNVERIFIABLE. §1B: "we cannot see it" and "there is
+   > nothing there" are different facts.
 
    > **Cadence: every 5 minutes** (Mike, 2026-08-03), not hourly. The website
    > form is the reason — a homeowner who fills it in is shopping, and an hour
