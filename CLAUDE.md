@@ -121,6 +121,23 @@ diff → fix what's confirmed → screenshots before ship → commit → push �
 deploy by full SHA → verify.** Mike has asked for this repeatedly; skipping
 the review step is how holes get left.
 
+**Two speeds, and pick the right one (owner instruction, 2026-08-03).**
+
+- **Complex code: three lines, then stop and reread them.** Not at the end of
+  the file — every three lines. Read what you just wrote and ask the audit
+  question: does this already exist somewhere, does it break anything below
+  it, is it the pattern this codebase already uses, and am I about to cause
+  one of the issues that keep happening? Mike's words: *"just making sure
+  your not causing these issues anymore."* This is where the defects come
+  from, so this is where the brakes go.
+- **Easy, non-complex sections: go fast.** Wiring, plumbing, boilerplate,
+  copy, a route that mirrors four others — speed up. He does not want the
+  brakes on the parts that cannot hurt him.
+
+The recurring defect this catches: writing a fix, claiming it in the commit
+message, and never rereading to confirm it actually took. That has now
+happened twice (the library composer, then the fleet composer).
+
 - Ask before *rejecting* something rather than flagging it. Three rules
   inferred from the brief turned out narrower than how Mike actually runs the
   business (lead dates, the LSA sender, Suffolk). Flagging is cheap; silently
