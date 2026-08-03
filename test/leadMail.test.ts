@@ -535,3 +535,124 @@ describe('follow-up engine (§5A #16–20) — recommend-only, legally gated', (
     expect(q.due.every((a) => a.recommendOnly === true)).toBe(true);
   });
 });
+
+describe('the website contact form (FormSubmit) — Mike, 2026-08-03', () => {
+  // Built from the REAL message shape read out of Mike's inbox on 2026-08-03,
+  // not from a tidied-up idea of it. The two things that matter: the body is
+  // HTML-ONLY (no plaintext part at all), and the address carries no city.
+  const htmlBody = (rows: Array<[string, string]>) => `<!doctype html><html><body>
+<p>Someone just submitted your form on https://artistreevabeach.com/.</p>
+<table>
+  <tr><th>Name</th><th>Value</th></tr>
+  ${rows.map(([k, v]) => `<tr>
+      <td style="border: 1px solid #ddd; padding: 8px;"><strong>${k}</strong></td>
+      <td style="border: 1px solid #ddd; padding: 8px;">
+        <pre style="margin: 0;white-space: pre-wrap">${v}</pre>
+      </td>
+    </tr>`).join('\n')}
+</table></body></html>`;
+
+  const realShape = {
+    from: 'submissions@formsubmit.co',
+    subject: 'New estimate request from SIM Customer — Tree Removal',
+    body: htmlBody([
+      ['name', 'SIM Customer'],
+      ['phone', '(555) 010-1234'],
+      ['email', 'sim@example.com'],
+      ['address', '101 Simulation Row'],
+      ['serviceNeeded', 'Tree Removal'],
+      ['urgency', 'Just getting a quote'],
+      ['message', 'Pine in the back, I believe it&#039;s dead or dying. Quote to remove it and it&#039;s stump.'],
+    ]),
+  };
+
+  it('classifies the real message shape as a website form lead', () => {
+    const r = classifyLeadMail(realShape);
+    expect(r.isLeadNotification).toBe(true);
+    expect(r.provider).toBe('website_form');
+  });
+
+  it('pulls every field out of the HTML table — there is no plaintext to read', () => {
+    // This is the whole point. The runbook tells the sweep to read
+    // plaintextBody; FormSubmit sends none, so a plaintext-only parser
+    // records a lead with no name, no phone and no address — §1B, absence of
+    // data rendering as absence of a customer.
+    const { lead } = classifyLeadMail(realShape);
+    expect(lead.name).toBe('SIM Customer');
+    expect(lead.phone).toBe('(555) 010-1234');
+    expect(lead.email).toBe('sim@example.com');
+    expect(lead.address).toBe('101 Simulation Row');
+    expect(lead.serviceRequested).toBe('Tree Removal');
+    expect(lead.urgency).toBe('Just getting a quote');
+  });
+
+  it('decodes HTML entities so the customer’s words read as they typed them', () => {
+    expect(classifyLeadMail(realShape).lead.details).toContain("it's dead or dying");
+    expect(classifyLeadMail(realShape).lead.details).not.toContain('&#039;');
+  });
+
+  it('keeps the customer’s own description verbatim in the details', () => {
+    // "I believe it's dead or dying" is the CUSTOMER describing their tree.
+    // It must reach Mike unedited — Arbo neither strips it nor repeats it as
+    // a finding of its own.
+    const { lead } = classifyLeadMail(realShape);
+    expect(lead.details).toContain('Pine in the back');
+    expect(lead.details).toContain('Urgency: Just getting a quote');
+  });
+
+  it('leaves service area UNKNOWN — the form carries no city, state or ZIP', () => {
+    // NULL, never false. Same rule as LSA: a form with no city is not an
+    // out-of-area form, and storing it as one would silently bin a real lead.
+    const r = classifyLeadMail(realShape);
+    expect(r.inServiceArea).toBeNull();
+    expect(r.lead.serviceCity).toBeUndefined();
+  });
+
+  it('falls back to the subject when the table shape changes', () => {
+    // FormSubmit controls this template and can change it. If the table stops
+    // parsing, the subject still carries name and service, so a real lead is
+    // never reduced to a blank row.
+    const r = classifyLeadMail({ ...realShape, body: '<html><body>something else entirely</body></html>' });
+    expect(r.isLeadNotification).toBe(true);
+    expect(r.lead.name).toBe('SIM Customer');
+    expect(r.lead.serviceRequested).toBe('Tree Removal');
+  });
+
+  it('flags an off-scope request rather than booking it as tree work', () => {
+    const r = classifyLeadMail({
+      ...realShape,
+      subject: 'New estimate request from SIM Customer — Lawn Mowing',
+      body: htmlBody([['name', 'SIM Customer'], ['serviceNeeded', 'Lawn Mowing']]),
+    });
+    expect(r.lead.serviceOffScope).toBe(true);
+    expect(r.isLeadNotification).toBe(true);
+  });
+
+  it('does not flag tree work that merely mentions an off-scope word', () => {
+    const r = classifyLeadMail({
+      ...realShape,
+      body: htmlBody([['name', 'SIM'], ['serviceNeeded', 'Tree removal near the fence line']]),
+    });
+    expect(r.lead.serviceOffScope).toBeUndefined();
+  });
+
+  it('ignores FormSubmit mail that is not a submission', () => {
+    // Their sponsor/marketing mail comes from the same domain.
+    expect(classifyLeadMail({
+      from: 'noreply@formsubmit.co',
+      subject: 'Upgrade your FormSubmit plan',
+      body: '<html><body>promo</body></html>',
+    }).isLeadNotification).toBe(false);
+  });
+
+  it('handles an en dash or hyphen in the subject, not just the em dash', () => {
+    for (const dash of ['—', '–', '-']) {
+      const r = classifyLeadMail({
+        ...realShape,
+        subject: `New estimate request from SIM Customer ${dash} Tree Removal`,
+        body: '<html><body>no table</body></html>',
+      });
+      expect(r.lead.name, dash).toBe('SIM Customer');
+    }
+  });
+});

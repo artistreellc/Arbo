@@ -74,6 +74,11 @@ this document is the spec.
 1. Search Gmail (label id for `ARBOR/processed` is `Label_3`):
    `{from:ads-account-noreply@google.com from:no-reply@callrail.com from:localservices-noreply@google.com from:awexpress.google.com from:homeadvisor.com from:messaging.yelp.com from:formsubmit.co} newer_than:2d -label:Label_3`
 
+   > **Cadence: every 5 minutes** (Mike, 2026-08-03), not hourly. The website
+   > form is the reason — a homeowner who fills it in is shopping, and an hour
+   > of silence is an hour a competitor answers first. The window stays 2 days;
+   > only the firing interval changed.
+
    > **2026-08-02 — this query used to miss real leads.** LSA does NOT send
    > from `localservices-noreply@`; every LSA lead arrives from a per-lead
    > address `customer-request-<digits>@awexpress.google.com`, so the sweep
@@ -121,9 +126,25 @@ this document is the spec.
    - Weekly/monthly summaries, "recommendations auto-applied", any
      `learn@callrail.com` marketing → **not a lead**. Label processed, no row.
 
-   > **Still unhandled as of 2026-08-02:** FormSubmit
-   > (`submissions@formsubmit.co`, "New estimate request from …") — the
-   > website contact page. Leave unlabeled and report until a rule exists.
+   - `submissions@formsubmit.co` + subject `New estimate request from <name>
+     — <service>` → **website_form**. The WEBSITE CONTACT PAGE, handled since
+     Mike's 2026-08-03 instruction: *"Arbo can address the form submitted on
+     website via Gmail access no need for site"*. R7 still stands — nothing
+     here touches the site, the DNS, or the form endpoint; the rule reads the
+     notification FormSubmit already sends to the inbox.
+
+     > **THIS MAIL IS HTML-ONLY — there is NO plaintext part.** Verified on
+     > the real messages 2026-08-03. Feeding `plaintextBody` to the parser
+     > yields an EMPTY body and therefore a lead row with no name, no phone
+     > and no address — a real customer stored as a blank. For this sender
+     > pass the **htmlBody**; `parseWebsiteForm` reads the HTML table.
+
+     Fields sit in a `<tr><td><strong>KEY</strong></td><td><pre>VALUE</pre>`
+     table: `name` / `phone` / `email` / `address` / `serviceNeeded` /
+     `urgency` / `message`. Entities are HTML-encoded (`&#039;`) and the
+     parser decodes them. The form carries **no city, state or ZIP** — the
+     address is a bare street line — so `inServiceArea` stays UNKNOWN, never
+     false. A form with no city is not an out-of-area form.
 3. Ingest (Supabase `execute_sql`, parameter-safe quoting):
    - Contact: match `select id from contact where phones @> array['<E164ish>']`;
      else insert (`name`, `phones`, `consent_source` = `'inbound_call'` for

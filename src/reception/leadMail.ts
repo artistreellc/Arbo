@@ -58,7 +58,7 @@
 
 import { resolveServiceCity, serviceCityForZip, extractZip, type ServiceCity } from '../lib/address.js';
 
-export type LeadMailProvider = 'google_ads_lead_form' | 'callrail_call' | 'callrail_web_form' | 'lsa_call' | 'home_advisor' | 'yelp';
+export type LeadMailProvider = 'google_ads_lead_form' | 'callrail_call' | 'callrail_web_form' | 'lsa_call' | 'home_advisor' | 'yelp' | 'website_form';
 
 export interface LeadMailInput {
   from: string;
@@ -94,6 +94,12 @@ export interface ExtractedLead {
    * auto-booked as a tree job.
    */
   serviceOffScope?: boolean;
+  /**
+   * The website form's own urgency picker ("Just getting a quote",
+   * "Emergency", ...). Kept verbatim — it is the customer's self-report, not
+   * a triage decision, and Arbo does not upgrade or downgrade it.
+   */
+  urgency?: string;
 }
 
 export interface LeadMailResult {
@@ -206,6 +212,100 @@ function parseCallRailWebForm(input: LeadMailInput): LeadMailResult {
     // A ZIP we do not recognize is UNKNOWN, not out-of-area: national lead-gen
     // forms send from everywhere, and §3.7 says flag for review, never drop.
     inServiceArea: zip ? (serviceCity !== undefined ? true : false) : null,
+  };
+}
+
+/**
+ * THE WEBSITE CONTACT FORM (FormSubmit), Mike 2026-08-03: "Arbo can address
+ * the form submitted on website via Gmail access no need for site".
+ *
+ * That instruction is what unblocks this. R7 keeps the WEBSITE and Resend out
+ * of scope — his rankings are a live business asset. Reading the notification
+ * email that FormSubmit already sends to his inbox touches none of that: no
+ * DNS, no site config, no form endpoint change. Gmail only.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * THIS MAIL IS HTML-ONLY. THERE IS NO PLAINTEXT PART.
+ * ─────────────────────────────────────────────────────────────────────────
+ * Verified against the real messages on 2026-08-03. The ops runbook tells the
+ * sweep to read `plaintextBody`, which for FormSubmit is EMPTY — so a sweep
+ * following the runbook literally would extract nothing and record a lead with
+ * no name, no phone and no address. That is the §1B failure exactly: absence
+ * of data rendering as absence of a customer. So this parser reads the HTML
+ * table, and `fieldFromHtml` is written for the shape FormSubmit actually
+ * sends rather than a tidied-up idea of it.
+ *
+ * The real shape:
+ *   subject  "New estimate request from <name> — <service>"  (em dash)
+ *   body     <tr><td><strong>KEY</strong></td><td><pre>VALUE</pre></td></tr>
+ *   keys     name · phone · email · address · serviceNeeded · urgency · message
+ *
+ * WHAT IT DOES NOT CARRY: city, state, ZIP. The address is a bare street line
+ * ("4500 Medford Ct"), so `inServiceArea` stays NULL — unknown, never false.
+ * Same rule as LSA: a form with no city is not an out-of-area form.
+ */
+function decodeEntities(text: string): string {
+  return text
+    .replace(/&#0?39;|&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    // Ampersand LAST: decoding it first would let "&amp;lt;" become "<".
+    .replace(/&amp;/g, '&');
+}
+
+function parseWebsiteForm(input: LeadMailInput): LeadMailResult {
+  const body = input.body;
+
+  /**
+   * Pull one row out of the FormSubmit table. Tolerates the <pre> wrapper
+   * being present or absent (FormSubmit omits it on some field types) and
+   * tolerates arbitrary inline styles and whitespace between the tags.
+   */
+  const field = (key: string): string | undefined => {
+    const re = new RegExp(
+      `<strong>\\s*${key}\\s*</strong>\\s*</td>[\\s\\S]*?<td[^>]*>([\\s\\S]*?)</td>`,
+      'i',
+    );
+    const cell = body.match(re)?.[1];
+    if (cell === undefined) return undefined;
+    const v = decodeEntities(cell.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+    return v && v !== 'N/A' ? v : undefined;
+  };
+
+  // Subject is the fallback for name and service — if the table shape ever
+  // changes, the subject still carries both, so a real lead is never reduced
+  // to a blank row.
+  const subj = input.subject.match(/^New estimate request from\s+(.+?)\s*[—–-]\s*(.+)$/i);
+
+  const name = field('name') ?? subj?.[1]?.trim();
+  const phone = field('phone');
+  const email = field('email');
+  const address = field('address');
+  const serviceRequested = field('serviceNeeded') ?? subj?.[2]?.trim();
+  const urgency = field('urgency');
+  // The customer's own words about their tree. Kept VERBATIM. They often say
+  // "it is dead or dying" — that is the customer describing it, and it must
+  // reach Mike unedited. Arbo neither repeats it as a finding nor strips it.
+  const message = field('message');
+
+  const offScope = serviceRequested !== undefined
+    && OFF_SCOPE.test(serviceRequested) && !TREE_WORK.test(serviceRequested);
+
+  const details = [serviceRequested, urgency ? `Urgency: ${urgency}` : undefined, message]
+    .filter(Boolean).join(' — ') || undefined;
+
+  return {
+    isLeadNotification: true,
+    provider: 'website_form',
+    lead: {
+      name, phone, email, address, serviceRequested, urgency, details,
+      ...(offScope ? { serviceOffScope: true } : {}),
+    },
+    // NULL, not false. The form carries no city/ZIP at all, so we do not know
+    // — and "we cannot tell" must never be stored as "outside the area".
+    inServiceArea: null,
   };
 }
 
@@ -352,6 +452,12 @@ export function classifyLeadMail(input: LeadMailInput): LeadMailResult {
   // the lead sender AND the Opportunity subject shape.
   if (from.includes('@homeadvisor.com') && /^New Opportunity/i.test(input.subject)) {
     return parseHomeAdvisor(input);
+  }
+  // The website contact form, via the FormSubmit notification only (Mike,
+  // 2026-08-03). Sender is exact; the subject shape keeps FormSubmit's own
+  // marketing/sponsor mail from becoming a phantom lead.
+  if (from.includes('@formsubmit.co') && /^New estimate request from/i.test(input.subject)) {
+    return parseWebsiteForm(input);
   }
   // Yelp uses a per-thread reply+<token>@messaging.yelp.com sender.
   if (/@messaging\.yelp\.com/.test(from) && /^Message from .+ for Art.?is.?Tree/i.test(input.subject)) {
