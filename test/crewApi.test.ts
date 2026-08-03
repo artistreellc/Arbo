@@ -473,13 +473,53 @@ describe('fleet + campaign registries (§6E/§6D) — the last read-only tables'
     expect(res.body).toMatchObject({ heightInches: null, weightLbsLoaded: null });
   });
 
-  it('a duplicate VIN is a 409, not a 500', async () => {
+  it('a duplicate VIN is a 409, not a 500 — as Supabase ACTUALLY rejects it', async () => {
+    // The first version of this test threw `new Error(...)` and the handler
+    // matched on the message. Supabase rejects with a PostgrestError — a plain
+    // object, NOT an Error — so the check never fired in production and every
+    // duplicate came back a 500. Throw the real shape, match on the SQLSTATE.
     const api = createApi(regSource({
-      createEquipmentUnit: async () => { throw new Error('duplicate key value violates unique constraint'); },
+      createEquipmentUnit: async () => {
+        throw { code: '23505', message: 'duplicate key value violates unique constraint', details: null, hint: null };
+      },
     }));
     const res = await api.createEquipmentUnit({ name: 'A', kind: 'b', vinOrSerial: 'VIN1' });
     expect(res.status).toBe(409);
     expect(res.body).toMatchObject({ error: 'vin_already_registered' });
+  });
+
+  it('an EMPTY spend is unknown, never recorded as a free campaign (§1B)', async () => {
+    // The form always sends '' for a blank field, and Number('') is 0. Testing
+    // only `undefined` and junk text missed the one value the UI actually
+    // sends, and a blank cost was being stamped as a campaign that cost
+    // nothing — which would render as a confident $0 per booked job.
+    const written: Array<{ cost: number | null }> = [];
+    const api = createApi(regSource({ createCampaign: async (i) => { written.push(i); return 'x'; } }));
+    const res = await api.createCampaign({ type: 'flyer', cost: '', trackingNumber: '', sentAtIso: '' });
+    expect(written[0]!.cost).toBeNull();
+    expect(res.body).toMatchObject({ cost: null, costKnown: false });
+    expect((res.body as { line: string }).line).toContain('not the same as it being free');
+    // A real zero is still a real zero — somebody typed it.
+    await api.createCampaign({ type: 'flyer', cost: '0' });
+    expect(written[1]!.cost).toBe(0);
+  });
+
+  it('a part against an unknown or retired unit is named, not a 500', async () => {
+    // reportBreakdown already guards this and says why; addEquipmentPart did
+    // not, so a well-formed but unknown id died on the foreign key.
+    const gone = createApi(regSource({ unitStatus: async () => null }));
+    expect((await gone.addEquipmentPart(UUID, { partNumber: 'x' })).status).toBe(404);
+    const dead = createApi(regSource({ unitStatus: async () => 'retired' }));
+    expect((await dead.addEquipmentPart(UUID, { partNumber: 'x' })).status).toBe(409);
+    const live = createApi(regSource({ unitStatus: async () => 'up' }));
+    expect((await live.addEquipmentPart(UUID, { partNumber: 'x' })).status).toBe(201);
+  });
+
+  it('retiring a unit reports the open work that leaves the board with it', async () => {
+    const api = createApi(regSource({ unitOpenTaskCount: async () => 2 }));
+    const res = await api.retireEquipmentUnit(UUID);
+    expect(res.body).toMatchObject({ ok: true, openTasksAtRetirement: 2 });
+    expect((res.body as { line: string }).line).toContain('leave the board');
   });
 
   it('needs a name, a kind and a VIN', async () => {

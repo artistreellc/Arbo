@@ -1409,25 +1409,47 @@ async function renderPerformance() {
   }
 
   v.appendChild(el('div', 'panel-title', 'Campaigns'));
-  if (!p.campaignsKnown) {
-    v.appendChild(state('Campaign data unavailable', 'Arbo could not read the campaigns. This is not "no campaigns running".'));
-  } else if (!p.campaigns.length) {
-    v.appendChild(state('No campaigns on file', 'Add one and its cost per booked job shows up here.'));
-  } else {
-    for (const c of p.campaigns) {
-      const card = el('div', 'card');
-      const top = el('div', 'toprow');
-      top.appendChild(el('div', 'who', c.type.replace(/_/g, ' ')));
-      top.appendChild(el('div', 'when', c.costPerBookedJob === null ? '\u2013' : '$' + c.costPerBookedJob + '/job'));
-      card.appendChild(top);
-      card.appendChild(el('div', 'scope', c.line));
-      v.appendChild(card);
-    }
-  }
+  // Its own slot, for the same reason the fleet list has one: the composer
+  // below refreshes the LIST after a save, and re-rendering the whole view
+  // would delete the composer along with the answer it just printed.
+  const campSlot = el('div');
+  v.appendChild(campSlot);
+  renderCampaignList(campSlot, p);
   // Only when the read worked. Offering the form over an unreadable feed would
   // imply Arbo is talking to the database when it is not, and nothing typed
   // into it could be saved.
-  if (p.campaignsKnown) v.appendChild(campaignComposer());
+  if (p.campaignsKnown) v.appendChild(campaignComposer(campSlot));
+}
+
+function renderCampaignList(slot, p) {
+  slot.replaceChildren();
+  if (!p.campaignsKnown) {
+    slot.appendChild(state('Campaign data unavailable', 'Arbo could not read the campaigns. This is not "no campaigns running".'));
+    return;
+  }
+  if (!p.campaigns.length) {
+    slot.appendChild(state('No campaigns on file', 'Add one below and its cost per booked job shows up here.'));
+    return;
+  }
+  for (const c of p.campaigns) {
+    const card = el('div', 'card');
+    const top = el('div', 'toprow');
+    top.appendChild(el('div', 'who', c.type.replace(/_/g, ' ')));
+    top.appendChild(el('div', 'when', c.costPerBookedJob === null ? '\u2013' : '$' + c.costPerBookedJob + '/job'));
+    card.appendChild(top);
+    card.appendChild(el('div', 'scope', c.line));
+    slot.appendChild(card);
+  }
+}
+
+/** Re-read just the campaigns and redraw that list, leaving the composer be. */
+async function refreshCampaignList(slot) {
+  try {
+    renderCampaignList(slot, await api('/api/performance'));
+  } catch {
+    // The save already succeeded and said so. A failed re-read must not
+    // overwrite that with something that looks like the save failed.
+  }
 }
 
 // §6D: register what was spent so the Numbers screen can say whether it paid.
@@ -1437,7 +1459,7 @@ const CAMPAIGN_TYPES = [
   ['flyer', 'Flyer drop'], ['ads', 'Ads'], ['seasonal', 'Seasonal push'],
   ['neighbor_around_job', 'Neighbors around a job'],
 ];
-function campaignComposer() {
+function campaignComposer(listSlot) {
   const c = el('div', 'card');
   c.appendChild(el('div', 'loop-kind', 'Register a campaign'));
   c.appendChild(el('div', 'scope',
@@ -1471,11 +1493,13 @@ function campaignComposer() {
         },
       });
       // Untracked is a warning, not a win — it decides what the screen can say.
-      out.style.color = res.attributionWired ? 'var(--ok)' : 'var(--warning)';
+      out.style.color = res.attributionWired && res.costKnown ? 'var(--ok)' : 'var(--warning)';
       out.textContent = res.line;
       cost.value = '';
       track.value = '';
       btn.disabled = false;
+      // Show it in the list straight away, or it reads as though nothing saved.
+      refreshCampaignList(listSlot);
     } catch (e) {
       btn.disabled = false;
       out.style.color = '';
@@ -1903,7 +1927,9 @@ async function renderFleetList(slot) {
     off.addEventListener('click', async () => {
       off.disabled = true;
       try {
-        await api('/api/fleet/units/' + u.id + '/retire', { method: 'POST', body: {} });
+        const res = await api('/api/fleet/units/' + u.id + '/retire', { method: 'POST', body: {} });
+        // Open tasks leave the board with the unit — never silently.
+        if (res.openTasksAtRetirement > 0) window.alert(res.line);
         renderFleetList(slot);
       } catch (ex) {
         off.disabled = false;
@@ -1914,7 +1940,11 @@ async function renderFleetList(slot) {
     c.appendChild(offerr);
     slot.appendChild(c);
   }
-  slot.appendChild(fleetComposer(slot));
+  // Returning true is what tells renderFleet the feed was readable. Falling off
+  // the end here returned undefined, so the guarded composer never rendered and
+  // a leftover one — appended into THIS slot — took its place and wiped its own
+  // confirmation on every successful add.
+  return true;
 }
 
 // A part that fits this unit. The breakdown plan reads these — with none on
@@ -1927,6 +1957,9 @@ function partAdder(unit, slot) {
   const sup = document.createElement('input');
   sup.type = 'text';
   sup.placeholder = 'Supplier (optional)';
+  const fit = document.createElement('input');
+  fit.type = 'text';
+  fit.placeholder = 'Also fits — e.g. both chippers (optional)';
   const btn = el('button', 'actbtn', 'Save the part');
   const out = el('div', 'errline', '');
   btn.addEventListener('click', async () => {
@@ -1934,21 +1967,32 @@ function partAdder(unit, slot) {
     btn.disabled = true;
     try {
       await api('/api/fleet/units/' + unit.id + '/part', {
-        method: 'POST', body: { partNumber: num.value.trim(), supplier: sup.value.trim() },
+        method: 'POST',
+        body: {
+          partNumber: num.value.trim(),
+          supplier: sup.value.trim(),
+          sharedFitment: fit.value.trim(),
+        },
       });
       out.style.color = 'var(--ok)';
       out.textContent = 'Saved. It will show up in the breakdown plan for this unit.';
       num.value = '';
       sup.value = '';
+      fit.value = '';
       btn.disabled = false;
-    } catch {
+    } catch (e) {
       btn.disabled = false;
       out.style.color = '';
-      out.textContent = 'Could not save that. Nothing was written.';
+      out.textContent = e.code === 404
+        ? 'That unit is not on file any more.'
+        : e.code === 409
+          ? 'That unit is retired.'
+          : 'Could not save that. Nothing was written.';
     }
   });
   wrap.appendChild(num);
   wrap.appendChild(sup);
+  wrap.appendChild(fit);
   wrap.appendChild(btn);
   wrap.appendChild(out);
   return wrap;

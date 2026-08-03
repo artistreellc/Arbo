@@ -1816,8 +1816,13 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       } catch (err) {
         // vin_or_serial is UNIQUE. A duplicate is the caller's problem and gets
         // named, not a 500 that reads as "Arbo broke".
-        const msg = err instanceof Error ? err.message : '';
-        if (/duplicate|unique/i.test(msg)) {
+        //
+        // Match on the SQLSTATE, not on the message. Supabase rejects with a
+        // PostgrestError — a plain object, not an Error — so an
+        // `err instanceof Error` message check never fires in production and
+        // every duplicate came back a 500. Same shape as the 23505 handling on
+        // the gate-completion path above.
+        if ((err as { code?: string }).code === '23505') {
           return { status: 409, body: { error: 'vin_already_registered' } };
         }
         throw err;
@@ -1843,10 +1848,26 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
     async retireEquipmentUnit(id: string): Promise<ApiResult> {
       if (!source.ready() || !source.retireEquipmentUnit) return { status: 503, body: { error: 'db_not_configured' } };
       if (!UUID_RE.test(id)) return { status: 400, body: { error: 'bad_id' } };
+      // Count the open work BEFORE retiring: listUnits excludes retired units,
+      // so those tasks are about to leave the board. Vanishing silently is the
+      // §1B failure — the count goes back with the answer.
+      let openTasks = 0;
+      try {
+        openTasks = source.unitOpenTaskCount ? await source.unitOpenTaskCount(id) : 0;
+      } catch { /* absence of the count is not a claim that there are none */ }
       const ok = await source.retireEquipmentUnit(id);
       if (!ok) return { status: 409, body: { error: 'already_retired' } };
       if (source.emit) await source.emit('equipment.unit.retired', { id });
-      return { status: 200, body: { ok: true } };
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          openTasksAtRetirement: openTasks,
+          line: openTasks > 0
+            ? 'Retired. It had ' + openTasks + ' open maintenance task(s), and those leave the board with it.'
+            : 'Retired.',
+        },
+      };
     },
 
     /**
@@ -1859,6 +1880,15 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       if (!UUID_RE.test(unitId)) return { status: 400, body: { error: 'bad_id' } };
       const partNumber = String(body.partNumber ?? '').trim();
       if (!partNumber) return { status: 400, body: { error: 'part_number_required' } };
+      // The unit must exist before we write. Same guard reportBreakdown makes
+      // and for the same reason: without it a well-formed but unknown id dies
+      // on the foreign key and surfaces as a 500, which reads as "Arbo broke"
+      // when the truth is "there is no such unit".
+      if (source.unitStatus) {
+        const current = await source.unitStatus(unitId);
+        if (!current) return { status: 404, body: { error: 'unknown_unit' } };
+        if (current === 'retired') return { status: 409, body: { error: 'unit_retired' } };
+      }
       const id = await source.addEquipmentPart({
         unitId,
         partNumber,
@@ -1881,10 +1911,20 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       const type = String(body.type ?? '').trim().toLowerCase();
       const ALLOWED = ['flyer', 'ads', 'seasonal', 'neighbor_around_job'];
       if (!ALLOWED.includes(type)) return { status: 400, body: { error: 'bad_campaign_type', allowed: ALLOWED } };
-      const rawCost = Number(body.cost);
-      const cost = Number.isFinite(rawCost) && rawCost >= 0 ? Math.round(rawCost * 100) / 100 : null;
-      if (String(body.cost ?? '').trim() && cost === null) {
-        return { status: 400, body: { error: 'bad_cost', line: 'Spend has to be a number.' } };
+      // "Nobody recorded the spend" and "it cost nothing" are different facts
+      // and must not become the same row (§1B). Number('') is 0, so testing
+      // the parsed value first would quietly stamp a blank field as a free
+      // campaign — and cost-per-booked-job would then report a confident $0.
+      // Read the RAW field: empty means unknown, present-but-unparseable is a
+      // 400, and only a real number becomes a figure.
+      const costRaw = String(body.cost ?? '').trim();
+      let cost: number | null = null;
+      if (costRaw !== '') {
+        const parsed = Number(costRaw);
+        if (!Number.isFinite(parsed) || parsed < 0) {
+          return { status: 400, body: { error: 'bad_cost', line: 'Spend has to be a number.' } };
+        }
+        cost = Math.round(parsed * 100) / 100;
       }
       const trackingNumber = String(body.trackingNumber ?? '').trim() || null;
       const sentRaw = String(body.sentAtIso ?? '').trim();
@@ -1900,9 +1940,18 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
         body: {
           id, type, cost, trackingNumber,
           attributionWired: trackingNumber !== null,
-          line: trackingNumber
-            ? 'Registered. Leads on that number will be attributed to it.'
-            : 'Registered with NO tracking number. Arbo will report this one as UNKNOWN — it cannot tell whether it worked, and it will not report that as zero.',
+          costKnown: cost !== null,
+          // Both gaps are named, because each one blinds a different half of
+          // the answer: no tracking number means Arbo cannot count what came
+          // back, and no spend means it cannot divide by what went out.
+          line: [
+            trackingNumber
+              ? 'Registered. Leads on that number will be attributed to it.'
+              : 'Registered with NO tracking number. Arbo will report this one as UNKNOWN — it cannot tell whether it worked, and it will not report that as zero.',
+            ...(cost === null
+              ? ['No spend recorded either, so there is no cost per booked job to work out. That is not the same as it being free.']
+              : []),
+          ].join(' '),
         },
       };
     },

@@ -253,14 +253,14 @@ describe('ARBOR app shell', () => {
   });
 
   it('an untracked campaign is a warning, never presented as a clean save', () => {
-    expect(html).toContain('res.attributionWired ?');
+    expect(html).toContain('res.attributionWired && res.costKnown ?');
     expect(html).toContain('it will say UNKNOWN rather than report it as zero');
   });
 
   it('no write form is offered over a feed Arbo could not read', () => {
     // Offering the form would imply Arbo is talking to a database it is not.
     expect(html).toContain('if (readable) slot.appendChild(fleetComposer(listSlot))');
-    expect(html).toContain('if (p.campaignsKnown) v.appendChild(campaignComposer())');
+    expect(html).toContain('if (p.campaignsKnown) v.appendChild(campaignComposer(campSlot))');
   });
 
   it('uses the §9 cockpit tokens (violet primary, dark base, 48px+ targets)', () => {
