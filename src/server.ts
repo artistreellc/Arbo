@@ -146,6 +146,11 @@ import type { Alerter } from './reception/receptionist.js';
 import { loadAppHtml, loadCrewHtml } from './server/appPage.js';
 import { emitSafe } from './binder/eventBus.js';
 import { runAgentSweep, startAgentScheduler } from './agents/sweep.js';
+import {
+  startInboxWatch,
+  unavailablePass,
+  type InboxWatchHandle,
+} from './ops/inboxWatch.js';
 import { createSimSource } from './dev/simSource.js';
 
 /**
@@ -675,6 +680,16 @@ export function createArborRequestHandler() {
       if (req.method === 'GET' && url.pathname === '/api/permits') {
         return send(...unpack(await api.permitBoard()));
       }
+      // The five-minute inbox watch's last pass (Mike, 2026-08-03). READ-ONLY
+      // in both directions: this reports what the watch already saw and can
+      // neither trigger a pass nor touch the mailbox.
+      //
+      // A watch that never started answers UNAVAILABLE, not an empty pass. On
+      // a screen those two look the same and mean opposite things.
+      if (req.method === 'GET' && url.pathname === '/api/inbox') {
+        const last = inboxWatch?.last();
+        return send(200, last ?? unavailablePass(new Date().toISOString(), 'inbox watch has not completed a pass'));
+      }
       if (req.method === 'GET' && url.pathname === '/api/fleet/units') {
         return send(...unpack(await api.fleetUnits()));
       }
@@ -851,9 +866,28 @@ export function createArborRequestHandler() {
   };
 }
 
+/**
+ * The running inbox watch, if one was started. Module-level and nullable on
+ * purpose — the handler needs to read the last pass, and threading a handle
+ * through createApi to reach one route is the kind of cleverness this
+ * codebase keeps being told to stop doing.
+ */
+let inboxWatch: InboxWatchHandle | null = null;
+
 export function startServer(port: number) {
   const summary = boot();
   const server = createServer(createArborRequestHandler());
+  // Mike, 2026-08-03: "it needs to run a sweep every 5 mins". The platform
+  // scheduler floors at an hour and its routines carry no Gmail connector,
+  // so the loop lives here instead.
+  //
+  // THE READER IS NULL UNTIL A TOKEN EXISTS, and that is the honest state,
+  // not a stub: `createGoogleGmailReader(getAccessToken)` is written and
+  // tested, and the one thing missing is a consumer-Gmail OAuth token
+  // (backlog #36 — Mike's call, see src/integrations/gmail.ts). Started
+  // anyway, because a watch reporting UNAVAILABLE every hour is a fact an
+  // operator can act on; a watch that was never started is silence.
+  inboxWatch = startInboxWatch(null);
   // §8A.6f: the agents run on their own clock, not only when Mike taps.
   startAgentScheduler(
     createApi(createServerSource(), { alerts: createNwsAlertsProvider((u, i) => fetch(u, i)) }),

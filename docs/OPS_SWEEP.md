@@ -92,6 +92,22 @@ this document is the spec.
    > of silence is an hour a competitor answers first. The window stays 2 days;
    > only the firing interval changed.
 
+   > **THIS SWEEP CANNOT DO EITHER OF THOSE THINGS, AND THE APP CAN.** The
+   > platform scheduler rejects `*/5 * * * *` (one-hour floor) and a routine
+   > created from a session carries no Gmail connector, so the five-minute
+   > cadence lives in ARBO instead: `startInboxWatch` in
+   > `src/ops/inboxWatch.ts`, on a 5-minute in-process timer, read-only by
+   > the shape of its `GmailReader` interface. Its reader
+   > (`src/integrations/gmail.ts`) also passes `includeSpamTrash=true`, which
+   > closes the spam hole above — the Gmail API can read spam even though
+   > this connector cannot.
+   >
+   > **It is not switched on.** The reader is wired to `null` pending a
+   > consumer-Gmail OAuth token (backlog #36); the service-account keys in
+   > env cannot reach a personal mailbox. Until then the watch reports
+   > UNAVAILABLE hourly and `GET /api/inbox` says the same — never "0 new
+   > leads". This manual sweep stays the live one in the meantime.
+
    > **2026-08-02 — this query used to miss real leads.** LSA does NOT send
    > from `localservices-noreply@`; every LSA lead arrives from a per-lead
    > address `customer-request-<digits>@awexpress.google.com`, so the sweep
