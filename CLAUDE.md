@@ -68,6 +68,40 @@ the prompts and makes the calls; your job is to build.
 - **No customer PII in chat output or logs** — counts and ids only (§4.3).
 - **Deploy is manual.** Auto-deploy stays OFF.
 
+## §3 — The data links are CUT. Do not reconnect them.
+
+**Owner instruction, 2026-08-03.** Mike: *"there should be no data in the app
+yet as its not done"* and *"no one said delete just cut all data links to the
+app till we finish the rough build."*
+
+**The switch:** `ARBO_DATA_LINKS` must be **exactly `live`**. Anything else —
+unset, empty, `off`, `true`, `LIVE`, a trailing space — leaves the link CUT.
+It fails closed on purpose: the expensive failure is an unfinished app quietly
+touching live customer data, not a screen saying it cannot see. Two doors
+enforce it — `hasDb()` gates every handler and repository, and `getDb()`
+refuses on its own, so a caller that forgets to check still cannot reach a
+real table. The agent scheduler gates on `hasDb()`, so the same switch stops
+the timed sweeps. *Carried by:* `src/db/client.ts`, `test/dataLinks.test.ts`.
+
+**Nothing was deleted, and nothing should be.** Mike said cut, not delete. His
+rows are still in Supabase, untouched. Do not "clean them up".
+
+**Why this exists — my mistake, written down so it is not repeated.** I
+ingested Mike's leads into the app. He told me to stop. I reverted the *code*
+and never checked the *rows it had already written*, so 11 of his leads sat in
+the `job` table for a day, status `booked` — which the crew door renders as
+work orders. Reverting a writer does not unwrite what it wrote. **When you
+turn something off, go and look at what it already did.**
+
+**Use simulations instead.** `src/dev/seed.ts` writes obviously-fake records
+(`SIM-` names, `555-01xx` numbers, streets that do not exist) so no screen
+ever needs a real customer to have something to render. It refuses on a
+non-empty database, because a seed that merges into live rows makes simulated
+and real indistinguishable.
+
+**To reconnect:** only when Mike says the rough build is done. Set
+`ARBO_DATA_LINKS=live`. That is his call, not an optimisation to make quietly.
+
 ## Guardrails that live in code, not prose
 
 Never price · never diagnose · never promise a date · never claim a credential
