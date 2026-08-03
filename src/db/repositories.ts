@@ -1531,6 +1531,91 @@ export async function listActiveCrew(): Promise<Array<{ id: string; name: string
   }));
 }
 
+/**
+ * Put a person on the roster. Until this existed there was no way to create a
+ * crew member at all, which meant no crew codes, an empty safety board, and a
+ * crew door nobody could sign into.
+ */
+export async function createCrewMember(input: {
+  name: string; role: string; competencyLevel: number; phone: string | null;
+}): Promise<string> {
+  const db = getDb();
+  const res = await db.from('crew_member')
+    .insert({
+      name: input.name,
+      role: input.role,
+      competency_level: input.competencyLevel,
+      phone: input.phone,
+      active: true,
+    })
+    .select('id')
+    .single();
+  if (res.error) throw res.error;
+  return (res.data as { id: string }).id;
+}
+
+/**
+ * Take somebody off the roster. Deactivate, never delete: the certification
+ * rows cascade on delete, and a training/safety record that vanishes when
+ * somebody leaves is the record you most need afterwards.
+ */
+export async function deactivateCrewMember(id: string): Promise<boolean> {
+  const db = getDb();
+  const res = await db.from('crew_member')
+    .update({ active: false, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('active', true)
+    .select('id');
+  if (res.error) throw res.error;
+  return (res.data ?? []).length > 0;
+}
+
+/** The whole roster, active and not — the safety board needs both. */
+export async function fullRoster(): Promise<Array<{
+  id: string; name: string; role: string; competencyLevel: number; active: boolean;
+}>> {
+  const db = getDb();
+  const res = await db.from('crew_member')
+    .select('id, name, role, competency_level, active')
+    .order('name', { ascending: true });
+  if (res.error) throw res.error;
+  return (res.data ?? []).map((r) => ({
+    id: r.id as string,
+    name: r.name as string,
+    role: r.role as string,
+    competencyLevel: Number(r.competency_level),
+    active: r.active as boolean,
+  }));
+}
+
+/**
+ * Record or renew a certification. A renewal REPLACES the old row for that
+ * person and type rather than stacking a second one — two rows for the same
+ * card means the expiry check has to pick, and picking wrong on a safety
+ * surface is the failure this whole module exists to prevent.
+ */
+export async function recordCertification(input: {
+  crewMemberId: string; type: string; issuedOn: string | null; expiresOn: string | null;
+}): Promise<string> {
+  const db = getDb();
+  const del = await db.from('certification')
+    .delete()
+    .eq('crew_member_id', input.crewMemberId)
+    .eq('type', input.type);
+  if (del.error) throw del.error;
+  const res = await db.from('certification')
+    .insert({
+      crew_member_id: input.crewMemberId,
+      type: input.type,
+      issued_at: input.issuedOn,
+      expires_at: input.expiresOn,
+    })
+    .select('id')
+    .single();
+  if (res.error) throw res.error;
+  return (res.data as { id: string }).id;
+}
+
 /** Every certification row. Expiry may be null — that is UNKNOWN, not valid. */
 export async function listCertifications(): Promise<Array<{
   id: string; crewMemberId: string; type: string; expiresOn: string | null;

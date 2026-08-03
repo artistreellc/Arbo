@@ -308,3 +308,87 @@ describe('reference library authoring (§4.7) — nothing reaches a phone unsign
     expect((await dead.createReferenceEntry({ techniqueName: 'a', howTo: 'b' })).status).toBe(503);
   });
 });
+
+describe('the roster (§4) — the safety board needs people to check', () => {
+  const person = (over = {}) => ({ id: 'p1', name: 'Dee', role: 'climber', competencyLevel: 5, active: true, ...over });
+  const rosterSource = (over: Partial<DataSource> = {}): DataSource => ({
+    ready: () => true,
+    stopsBetween: async () => [],
+    newLeads: async () => [],
+    fullRoster: async () => [person()],
+    certifications: async () => [{ id: 'c1', crewMemberId: 'p1', type: 'first_aid', expiresOn: '2027-01-01' }],
+    createCrewMember: async () => 'new-id',
+    deactivateCrewMember: async () => true,
+    recordCertification: async () => 'cert-id',
+    ...over,
+  });
+  const UUID = '11111111-1111-4111-8111-111111111111';
+
+  it('counts cards on file per person', async () => {
+    const body = (await createApi(rosterSource()).roster()).body as
+      { people: Array<{ certCount: number | null }>; certsKnown: boolean; activeCount: number };
+    expect(body.certsKnown).toBe(true);
+    expect(body.people[0]!.certCount).toBe(1);
+    expect(body.activeCount).toBe(1);
+  });
+
+  it('unreadable cards are UNKNOWN, never zero (§1B)', async () => {
+    const api = createApi(rosterSource({ certifications: async () => { throw new Error('down'); } }));
+    const body = (await api.roster()).body as
+      { people: Array<{ certCount: number | null }>; certsKnown: boolean };
+    expect(body.certsKnown).toBe(false);
+    expect(body.people[0]!.certCount).toBeNull();
+  });
+
+  it('an unrecognised role is accepted and FLAGGED, not silently normalised', async () => {
+    // certifications.ts gives an unknown role the STRICTEST requirements. That
+    // is right, and surprising, so the caller is told it happened.
+    const res = await createApi(rosterSource()).createCrewMember({ name: 'Sam', role: 'Bucket Op' });
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ role: 'bucket op', roleRecognised: false });
+    expect((res.body as { line: string }).line).toContain('STRICTEST');
+  });
+
+  it('needs a name, and clamps the skill level', async () => {
+    const created: Array<{ competencyLevel: number }> = [];
+    const api = createApi(rosterSource({
+      createCrewMember: async (i) => { created.push(i); return 'x'; },
+    }));
+    expect((await api.createCrewMember({ name: '  ' })).status).toBe(400);
+    await api.createCrewMember({ name: 'A', competencyLevel: 44 });
+    await api.createCrewMember({ name: 'B', competencyLevel: 0 });
+    expect(created.map((c) => c.competencyLevel)).toEqual([10, 1]);
+  });
+
+  it('a card with no expiry is recorded and reported as UNKNOWN, not current', async () => {
+    const res = await createApi(rosterSource()).recordCertification(UUID, { type: 'cpr' });
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ expiryKnown: false, expiresOn: null });
+    expect((res.body as { line: string }).line).toContain('UNKNOWN');
+  });
+
+  it('an unparseable expiry is REJECTED rather than becoming "no expiry"', async () => {
+    // Silently dropping it would turn a tracked card into an invisible one.
+    const res = await createApi(rosterSource()).recordCertification(UUID, { type: 'cpr', expiresOn: 'next spring' });
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: 'bad_expiry_date' });
+  });
+
+  it('refuses a cert type the safety module cannot reason about', async () => {
+    const res = await createApi(rosterSource()).recordCertification(UUID, { type: 'chainsaw_vibes' });
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: 'bad_cert_type' });
+  });
+
+  it('taking somebody off the roster twice is a 409, not a second success', async () => {
+    const res = await createApi(rosterSource({ deactivateCrewMember: async () => false })).deactivateCrewMember(UUID);
+    expect(res.status).toBe(409);
+  });
+
+  it('says 503 rather than an empty roster when the DB is not configured (§1B)', async () => {
+    const dead = createApi({ ready: () => false, stopsBetween: async () => [], newLeads: async () => [] });
+    expect((await dead.roster()).status).toBe(503);
+    expect((await dead.createCrewMember({ name: 'A' })).status).toBe(503);
+    expect((await dead.recordCertification(UUID, { type: 'cpr' })).status).toBe(503);
+  });
+});

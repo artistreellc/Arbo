@@ -136,6 +136,38 @@ describe('ARBOR app shell', () => {
     expect(html).toContain('not "no campaigns running"');
   });
 
+  it('is the only place a crew member or a card can be put on file (§4)', () => {
+    expect(html).toContain("api('/api/roster')");
+    expect(html).toContain('/certification');
+    expect(html).toContain('Add somebody to the roster');
+    // The crew code is what somebody types into the crew door.
+    expect(html).toContain('Crew code: ');
+  });
+
+  it('the roster counts cards on file and never rules on anybody', () => {
+    expect(html).toContain('CARDS ON FILE');
+    // Scoped to the roster — 'qualified' is also a LEAD status elsewhere on
+    // this page, which is a different word about a different thing.
+    const roster = html.slice(html.indexOf('function renderRoster('), html.indexOf('// ---------- Training board'));
+    expect(roster).not.toMatch(/qualified|certified|cleared|is current|good to/i);
+  });
+
+  it('unreadable cards read as UNKNOWN on the roster, never as zero (§1B)', () => {
+    expect(html).toContain('CARDS UNKNOWN');
+    expect(html).toContain('Card counts below are unknown — not zero.');
+  });
+
+  it('an empty roster explains what it breaks, and a dead one is named apart', () => {
+    expect(html).toContain('Nobody on the roster yet');
+    expect(html).toContain('Roster unavailable');
+    expect(html).toContain('not a claim that nobody is on it');
+  });
+
+  it('a card recorded with no expiry is shown as a warning, not a win (§1B)', () => {
+    expect(html).toContain('res.expiryKnown ?');
+    expect(html).toContain("'var(--warning)'");
+  });
+
   it('is the only place the §6U library can be written, and it writes drafts', () => {
     expect(html).toContain('/api/reference/drafts');
     expect(html).toContain("api('/api/reference'");

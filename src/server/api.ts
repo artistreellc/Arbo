@@ -142,6 +142,11 @@ export interface DataSource {
   }): Promise<{ id: string }>;
   activeCrew?(): Promise<CrewMemberRef[]>;
   certifications?(): Promise<CertRow[]>;
+  /** §4 roster writes — without these the safety board has nobody in it. */
+  fullRoster?(): Promise<Array<{ id: string; name: string; role: string; competencyLevel: number; active: boolean }>>;
+  createCrewMember?(input: { name: string; role: string; competencyLevel: number; phone: string | null }): Promise<string>;
+  deactivateCrewMember?(id: string): Promise<boolean>;
+  recordCertification?(input: { crewMemberId: string; type: string; issuedOn: string | null; expiresOn: string | null }): Promise<string>;
   recentNearMisses?(sinceDate: string): Promise<unknown[]>;
   /** §6M training loop. */
   createLessonDraft?(input: {
@@ -1629,6 +1634,112 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       if (!ok) return { status: 409, body: { error: 'not_publishable' } };
       if (source.emit) await source.emit('reference.entry.published', { id, vettedBy });
       return { status: 200, body: { ok: true, vettedBy } };
+    },
+
+    /**
+     * GET /api/roster — the people, and what Arbo can and cannot see about
+     * each one's cards. Admin only; the crew door has no roster.
+     */
+    async roster(): Promise<ApiResult> {
+      if (!source.ready() || !source.fullRoster) return { status: 503, body: { error: 'db_not_configured' } };
+      const people = await source.fullRoster();
+      // Cert counts, never a verdict — findCertProblems owns the verdict, and
+      // this screen must not grow a second, softer opinion about the same rows.
+      let certsByMember = new Map<string, number>();
+      let certsKnown = true;
+      if (source.certifications) {
+        try {
+          const certs = await source.certifications();
+          certsByMember = certs.reduce((m, c) => m.set(c.crewMemberId, (m.get(c.crewMemberId) ?? 0) + 1), new Map<string, number>());
+        } catch {
+          // §1B: "we could not read the cards" is not "he has no cards".
+          certsKnown = false;
+        }
+      } else {
+        certsKnown = false;
+      }
+      return {
+        status: 200,
+        body: {
+          people: people.map((p) => ({ ...p, certCount: certsKnown ? (certsByMember.get(p.id) ?? 0) : null })),
+          certsKnown,
+          activeCount: people.filter((p) => p.active).length,
+        },
+      };
+    },
+
+    /** POST /api/roster — add a person. */
+    async createCrewMember(body: Record<string, unknown>): Promise<ApiResult> {
+      if (!source.ready() || !source.createCrewMember) return { status: 503, body: { error: 'db_not_configured' } };
+      const name = String(body.name ?? '').trim();
+      if (!name) return { status: 400, body: { error: 'name_required' } };
+      const role = String(body.role ?? '').trim().toLowerCase() || 'groundie';
+      const rawLevel = Number(body.competencyLevel);
+      const competencyLevel = Number.isFinite(rawLevel) ? Math.min(10, Math.max(1, Math.floor(rawLevel))) : 1;
+      const phone = String(body.phone ?? '').trim() || null;
+
+      const id = await source.createCrewMember({ name, role, competencyLevel, phone });
+      if (source.emit) await source.emit('crew.member.added', { id, role });
+      // An unrecognised role is NOT rejected — it gets the strictest cert
+      // requirements (see certifications.ts) — but the caller is told, because
+      // silently applying climber rules to a typo is a surprise nobody needs.
+      const roleRecognised = ['climber', 'foreman', 'groundie', 'driver'].includes(role);
+      return {
+        status: 201,
+        body: {
+          id, role, roleRecognised,
+          line: roleRecognised
+            ? 'Added. Their crew code is the id above — give it to them for the crew door.'
+            : 'Added, but "' + role + '" is not a role Arbo knows, so it applies the STRICTEST cert requirements to them.',
+        },
+      };
+    },
+
+    /** POST /api/roster/:id/deactivate — off the roster, records intact. */
+    async deactivateCrewMember(id: string): Promise<ApiResult> {
+      if (!source.ready() || !source.deactivateCrewMember) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!UUID_RE.test(id)) return { status: 400, body: { error: 'bad_id' } };
+      const ok = await source.deactivateCrewMember(id);
+      if (!ok) return { status: 409, body: { error: 'not_active' } };
+      if (source.emit) await source.emit('crew.member.deactivated', { id });
+      return { status: 200, body: { ok: true } };
+    },
+
+    /**
+     * POST /api/roster/:id/certification — record or renew a card. A row with
+     * no expiry is ACCEPTED and reported as UNKNOWN, never as current: refusing
+     * it would just mean the card goes unrecorded, which is worse.
+     */
+    async recordCertification(crewMemberId: string, body: Record<string, unknown>): Promise<ApiResult> {
+      if (!source.ready() || !source.recordCertification) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!UUID_RE.test(crewMemberId)) return { status: 400, body: { error: 'bad_id' } };
+      const type = String(body.type ?? '').trim().toLowerCase();
+      const ALLOWED = ['first_aid', 'cpr', 'aerial_rescue', 'tree_rescue', 'cdl', 'other'];
+      if (!ALLOWED.includes(type)) return { status: 400, body: { error: 'bad_cert_type', allowed: ALLOWED } };
+      const date = (v: unknown): string | null => {
+        const s = String(v ?? '').trim();
+        return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+      };
+      const expiresOn = date(body.expiresOn);
+      if (String(body.expiresOn ?? '').trim() && !expiresOn) {
+        // A date Arbo could not parse must not silently become "no expiry" —
+        // that is the difference between a tracked card and an invisible one.
+        return { status: 400, body: { error: 'bad_expiry_date', line: 'Expiry has to be YYYY-MM-DD.' } };
+      }
+      const id = await source.recordCertification({
+        crewMemberId, type, issuedOn: date(body.issuedOn), expiresOn,
+      });
+      if (source.emit) await source.emit('crew.certification.recorded', { crewMemberId, type });
+      return {
+        status: 201,
+        body: {
+          id, type, expiresOn,
+          expiryKnown: expiresOn !== null,
+          line: expiresOn
+            ? 'Recorded. Arbo will start warning 60 days out.'
+            : 'Recorded with NO expiry date. Arbo will report this card as UNKNOWN, not as current — it cannot warn you about a date it does not have.',
+        },
+      };
     },
 
     /** GET /api/agents/runs — §8A.6g audit visibility: what the agents did. */

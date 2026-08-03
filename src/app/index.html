@@ -220,7 +220,8 @@ nav button .ico{font-size:20px;line-height:1}
 /* §6U library desk. The vetting card and the composer both live in .card, so
    their fields are styled here rather than inheriting the yard-check rules. */
 .card .field{margin-bottom:10px}
-.card .field input[type=text],.card .field textarea{width:100%;min-height:50px;
+.card .field input[type=text],.card .field input[type=date],.card .field select,.card .field textarea{
+  width:100%;min-height:50px;
   border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface-alt);
   color:var(--ink);font-size:16px;padding:12px;font-family:inherit;display:block}
 .card .field textarea{min-height:76px;resize:vertical;line-height:1.45}
@@ -1063,6 +1064,180 @@ async function renderSafety(slot) {
   }
 }
 
+// ---------- Roster (§4): the people, and the cards Arbo can see ----------
+// The safety board reads certifications; this is where a person and a card get
+// on file at all. Nothing here passes judgement on anybody — it reports how
+// many cards are RECORDED, which is a different fact, and findCertProblems on
+// the board above owns the only verdict in the app.
+const CERT_TYPES = [
+  ['first_aid', 'First aid'], ['cpr', 'CPR'], ['aerial_rescue', 'Aerial rescue'],
+  ['tree_rescue', 'Tree rescue'], ['cdl', 'CDL'], ['other', 'Other'],
+];
+const CREW_ROLES = ['climber', 'foreman', 'groundie', 'driver'];
+
+function renderRoster(slot) {
+  slot.replaceChildren();
+  slot.appendChild(el('div', 'panel-title', 'Crew roster'));
+  const listSlot = el('div');
+  slot.appendChild(listSlot);
+  slot.appendChild(rosterComposer(listSlot));
+  renderRosterList(listSlot);
+}
+
+async function renderRosterList(slot) {
+  slot.replaceChildren();
+  let r;
+  try {
+    r = await api('/api/roster');
+  } catch (e) {
+    if (e.code === 401) return;
+    slot.appendChild(state('Roster unavailable', e.code === 503
+      ? 'Database not connected — Arbo cannot tell you who is on the crew.'
+      : 'Could not read the roster. This is not a claim that nobody is on it.'));
+    return;
+  }
+  if (!r.certsKnown) {
+    // §1B: unread cards are UNKNOWN, and a zero would read as "he has none".
+    const w = el('div', 'card loop-card urgent');
+    w.appendChild(el('div', 'loop-kind', '⚠ CANNOT SEE'));
+    w.appendChild(el('div', 'scope',
+      'Arbo could not read the certification rows. Card counts below are unknown — not zero.'));
+    slot.appendChild(w);
+  }
+  if (!r.people.length) {
+    slot.appendChild(state('Nobody on the roster yet',
+      'Add your crew below. Until somebody is on here the safety board has nothing to check and no one can sign into the crew door.'));
+    return;
+  }
+  for (const p of r.people) {
+    const c = el('div', 'card' + (p.active ? '' : ' loop-card'));
+    const top = el('div', 'toprow');
+    top.appendChild(el('div', 'who', p.name));
+    top.appendChild(el('div', 'when', 'lvl ' + p.competencyLevel));
+    c.appendChild(top);
+    const b = el('div', 'badges');
+    b.appendChild(badge(p.role.toUpperCase(), CREW_ROLES.indexOf(p.role) === -1 ? 'b-verify' : 'b-src'));
+    if (!p.active) b.appendChild(badge('OFF ROSTER', 'b-src'));
+    // A count of cards on file — never a statement about what they can do.
+    b.appendChild(badge(p.certCount === null ? 'CARDS UNKNOWN' : p.certCount + ' CARDS ON FILE',
+      p.certCount === null ? 'b-verify' : 'b-src'));
+    c.appendChild(b);
+    if (CREW_ROLES.indexOf(p.role) === -1) {
+      const w = el('div', 'scope');
+      w.style.color = 'var(--warning)';
+      w.textContent = '⚠ Arbo does not know this role, so it applies the strictest card requirements to them.';
+      c.appendChild(w);
+    }
+    c.appendChild(el('div', 'scope', 'Crew code: ' + p.id));
+    c.appendChild(certAdder(p, slot));
+    if (p.active) {
+      const off = el('button', 'actbtn', 'Take off the roster');
+      const err = el('div', 'errline', '');
+      off.addEventListener('click', async () => {
+        off.disabled = true;
+        try {
+          await api('/api/roster/' + p.id + '/deactivate', { method: 'POST', body: {} });
+          renderRosterList(slot);
+        } catch {
+          off.disabled = false;
+          err.textContent = 'Could not do that. Nothing was changed.';
+        }
+      });
+      c.appendChild(off);
+      c.appendChild(err);
+    }
+    slot.appendChild(c);
+  }
+}
+
+function certAdder(person, listSlot) {
+  const wrap = el('div', 'field');
+  const type = document.createElement('select');
+  for (const [v, label] of CERT_TYPES) {
+    const o = document.createElement('option');
+    o.value = v;
+    o.textContent = label;
+    type.appendChild(o);
+  }
+  const exp = document.createElement('input');
+  exp.type = 'date';
+  const btn = el('button', 'actbtn', 'Record / renew a card');
+  const out = el('div', 'errline', '');
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    out.style.color = '';
+    try {
+      const res = await api('/api/roster/' + person.id + '/certification', {
+        method: 'POST', body: { type: type.value, expiresOn: exp.value },
+      });
+      // A card with no date must not read as a win — the line says UNKNOWN.
+      out.style.color = res.expiryKnown ? 'var(--ok)' : 'var(--warning)';
+      out.textContent = res.line;
+      exp.value = '';
+      btn.disabled = false;
+      renderRosterList(listSlot);
+    } catch (e) {
+      btn.disabled = false;
+      out.textContent = e.message === 'bad_expiry_date'
+        ? 'Expiry has to be a real date.'
+        : 'Could not record that. Nothing was written.';
+    }
+  });
+  wrap.appendChild(type);
+  wrap.appendChild(exp);
+  wrap.appendChild(btn);
+  wrap.appendChild(out);
+  return wrap;
+}
+
+function rosterComposer(listSlot) {
+  const c = el('div', 'card');
+  c.appendChild(el('div', 'loop-kind', 'Add somebody to the roster'));
+  const row = el('div', 'field');
+  const name = document.createElement('input');
+  name.type = 'text';
+  name.placeholder = 'Name';
+  const role = document.createElement('select');
+  for (const r of CREW_ROLES) {
+    const o = document.createElement('option');
+    o.value = r;
+    o.textContent = r;
+    role.appendChild(o);
+  }
+  const level = document.createElement('input');
+  level.type = 'text';
+  level.placeholder = 'Skill level 1–10';
+  row.appendChild(name);
+  row.appendChild(role);
+  row.appendChild(level);
+  c.appendChild(row);
+  const btn = el('button', 'actbtn', 'Add to roster');
+  const out = el('div', 'errline', '');
+  btn.addEventListener('click', async () => {
+    if (!name.value.trim()) { out.textContent = 'Needs a name.'; return; }
+    btn.disabled = true;
+    try {
+      const res = await api('/api/roster', {
+        method: 'POST',
+        body: { name: name.value.trim(), role: role.value, competencyLevel: Number(level.value) || 1 },
+      });
+      out.style.color = res.roleRecognised ? 'var(--ok)' : 'var(--warning)';
+      out.textContent = res.line;
+      name.value = '';
+      level.value = '';
+      btn.disabled = false;
+      renderRosterList(listSlot);
+    } catch {
+      btn.disabled = false;
+      out.style.color = '';
+      out.textContent = 'Could not add them. Nothing was written.';
+    }
+  });
+  c.appendChild(btn);
+  c.appendChild(out);
+  return c;
+}
+
 // ---------- Training board (§6M.5: weak, untested, strong are three states) ----------
 async function renderTrainingBoard(slot) {
   slot.replaceChildren();
@@ -1684,6 +1859,11 @@ async function renderFollowUps() {
   const safetySlot = el('div');
   v.appendChild(safetySlot);
   renderSafety(safetySlot);
+  // §4: the safety board above checks people against cards. This is the only
+  // place either one can be put on file.
+  const rosterSlot = el('div');
+  v.appendChild(rosterSlot);
+  renderRoster(rosterSlot);
   // §6M.5: a man nobody has ever tested is an open loop too.
   const trainSlot = el('div');
   v.appendChild(trainSlot);

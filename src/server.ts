@@ -53,6 +53,10 @@ import {
   createNearMiss,
   listActiveCrew,
   listCertifications,
+  fullRoster,
+  createCrewMember,
+  deactivateCrewMember,
+  recordCertification,
   recentNearMisses,
   createLessonDraftFromNearMiss,
   publishedTrainingItems,
@@ -337,6 +341,10 @@ export function createLiveSource(): DataSource {
     crewProfiles: () => crewWithProfiles(),
     referenceEntries: () => referenceEntries(),
     crewSkillLevel: (id) => crewSkillLevel(id),
+    fullRoster: () => fullRoster(),
+    createCrewMember: (input) => createCrewMember(input),
+    deactivateCrewMember: (id) => deactivateCrewMember(id),
+    recordCertification: (input) => recordCertification(input),
     draftReferenceEntries: () => draftReferenceEntries(),
     createReferenceEntry: (input) => createReferenceEntry(input),
     publishReferenceEntry: (id, vettedBy) => publishReferenceEntry(id, vettedBy),
@@ -631,6 +639,25 @@ export function createArborRequestHandler() {
         const m = url.pathname.match(/^\/api\/training\/drafts\/([^/]+)\/publish$/);
         if (req.method === 'POST' && m) {
           return send(...unpack(await api.publishLesson(m[1]!, (await readJson(req)) as Record<string, unknown>)));
+        }
+      }
+      // §4 roster — the people, their cards. Admin only.
+      if (req.method === 'GET' && url.pathname === '/api/roster') {
+        return send(...unpack(await api.roster()));
+      }
+      if (req.method === 'POST' && url.pathname === '/api/roster') {
+        return send(...unpack(await api.createCrewMember((await readJson(req)) as Record<string, unknown>)));
+      }
+      {
+        const m = url.pathname.match(/^\/api\/roster\/([^/]+)\/deactivate$/);
+        if (req.method === 'POST' && m) {
+          return send(...unpack(await api.deactivateCrewMember(m[1]!)));
+        }
+      }
+      {
+        const m = url.pathname.match(/^\/api\/roster\/([^/]+)\/certification$/);
+        if (req.method === 'POST' && m) {
+          return send(...unpack(await api.recordCertification(m[1]!, (await readJson(req)) as Record<string, unknown>)));
         }
       }
       // §6U library authoring — drafts in, named human out.
