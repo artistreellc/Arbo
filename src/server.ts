@@ -369,15 +369,34 @@ export function createLiveSource(): DataSource {
 }
 
 /** Read + parse a JSON body, capped at 1 MB (voice turns are tiny). */
+/**
+ * A caller error is not a server error. A malformed body used to fall through
+ * to the catch-all and come back as 500 `server_error`, which says "Arbo
+ * broke" when the truth is "that was not JSON" — and a 500 on a POST teaches
+ * a client to retry a request that can never succeed. These two throw a typed
+ * error the request handler turns into a 400.
+ */
+class BadRequestError extends Error {
+  constructor(readonly code: 'bad_json' | 'body_too_large') { super(code); }
+}
+
 async function readJson(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
     size += (chunk as Buffer).length;
-    if (size > 1_000_000) throw new Error('body too large');
+    if (size > 1_000_000) throw new BadRequestError('body_too_large');
     chunks.push(chunk as Buffer);
   }
-  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  const raw = Buffer.concat(chunks).toString('utf8').trim();
+  // An empty body is an empty object — every handler already validates its
+  // own fields, and 400ing here would break the no-payload POSTs.
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new BadRequestError('bad_json');
+  }
 }
 
 /**
@@ -698,6 +717,9 @@ export function createArborRequestHandler() {
       }
       return send(404, { error: 'not_found' });
     } catch (err) {
+      // A bad request is the CALLER's fault and says so — 400, with which of
+      // the two problems it was. Everything else is genuinely ours.
+      if (err instanceof BadRequestError) return send(400, { error: err.code });
       // Never put customer data or stack traces on the wire (§4.3).
       console.error('[server]', err instanceof Error ? err.message : 'error');
       return send(500, { error: 'server_error' });
