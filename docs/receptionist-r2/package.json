@@ -1,0 +1,27 @@
+{
+  "name": "arbo-receptionist",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Arbo — Art-is-Tree AI receptionist. Config-as-code for the live ElevenLabs ARBOR agent plus the server base layer (webhooks + agent tools).",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "node --env-file=.env --import tsx src/index.ts",
+    "start": "node --env-file=.env dist/src/index.js",
+    "typecheck": "tsc --noEmit",
+    "agent:pull": "node --env-file=.env --import tsx scripts/pull-agent.ts",
+    "agent:push": "node --env-file=.env --import tsx scripts/push-prompt.ts"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.5.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4"
+  }
+}

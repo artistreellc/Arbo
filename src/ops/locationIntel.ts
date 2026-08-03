@@ -173,7 +173,7 @@ export function assessRunningLate(
       state: 'late',
       nextStopId: nextStop.id,
       minutesBehind,
-      draftMessage: `Hi${first ? ` ${first}` : ''}, this is ARBOR with Art-is-Tree. Mike is finishing up a job and is running a little behind for your appointment — he doesn't want to leave you waiting, so he'll confirm an updated time shortly. Thanks for your patience!`,
+      draftMessage: `Hi${first ? ` ${first}` : ''}, this is ARBO with Art-is-Tree. Mike is finishing up a job and is running a little behind for your appointment — he doesn't want to leave you waiting, so he'll confirm an updated time shortly. Thanks for your patience!`,
       recommendOnly: true,
     };
   }

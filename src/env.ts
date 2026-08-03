@@ -88,7 +88,7 @@ const getShaped = (k: string): string | undefined => {
 
 export const env = {
   nodeEnv: get('NODE_ENV') ?? 'development',
-  appName: get('APP_NAME') ?? 'ARBOR',
+  appName: get('APP_NAME') ?? 'ARBO',
   supabase: {
     url: getShaped('SUPABASE_URL'),
     anonKey: get('SUPABASE_ANON_KEY'),

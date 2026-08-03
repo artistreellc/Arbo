@@ -1,0 +1,61 @@
+{
+  "_snapshot": {
+    "note": "Snapshot of the LIVE ElevenLabs ARBOR agent AFTER the 2026-08-03 dial-in patch (Patch 1). Refresh with `npm run agent:pull`. The prompt text lives in agent/prompt/system-prompt.md — that file is the source of truth for edits and MATCHES LIVE as of this snapshot; push with `npm run agent:push`.",
+    "agent_id": "agent_1901kyyxyj2sf9nsx9jascy2ssxj",
+    "name": "ARBOR — Art-is-Tree Receptionist",
+    "version_id": "agtvrsn_3901kz2pgc2gewg83b0ft5d912z7",
+    "created_at_unix_secs": 1785596955,
+    "updated_at_unix_secs": 1785723367,
+    "tags": ["arbor", "reception"],
+    "phone_numbers_attached": [],
+    "patch_1_applied_2026_08_03": [
+      "ASR keywords: Art-is-Tree, arborist, stump grinding, topping, limb, crane, Chesapeake, Portsmouth, Norfolk, Virginia Beach",
+      "turn.silence_end_call_timeout: -1 -> 30 (hang up after 30s dead air)",
+      "end_call system tool enabled; CALL WRAP-UP block added to prompt (the ONLY prompt text change)",
+      "Guardrails ON: focus + prompt_injection (content categories left off deliberately)",
+      "12 data-collection fields (caller_name, callback_phone, property_address, city, job_type, tree_details, near_power_lines, is_emergency, first_time_customer, photos_offered, outcome, callback_notes)",
+      "6 evaluation criteria (no_pricing, no_diagnosis, no_time_commitment, disclosure_given, contact_captured, service_area_respected)"
+    ],
+    "remaining_gaps": [
+      "No phone number attached — Mike chose web-test-only for now",
+      "No webhook tools wired (book-estimate, emergency-alert, photo-link) — BLOCKED on server deployment",
+      "No post-call transcript webhook configured — BLOCKED on server deployment",
+      "Voice still stock George (JBFqnCBsd6RMkjVDRZzb) — American voice samples pending Mike's pick",
+      "max_duration 600s (10 min); LLM gemini-2.5-flash, temperature 0 — deliberate, unchanged"
+    ]
+  },
+  "conversation_config": {
+    "asr": { "quality": "high", "provider": "scribe_realtime", "user_input_audio_format": "pcm_16000", "keywords": [] },
+    "turn": { "turn_timeout": 7, "silence_end_call_timeout": -1, "mode": "turn", "turn_eagerness": "normal", "turn_model": "turn_v3" },
+    "tts": {
+      "model_id": "eleven_flash_v2",
+      "voice_id": "JBFqnCBsd6RMkjVDRZzb",
+      "agent_output_audio_format": "pcm_16000",
+      "optimize_streaming_latency": 3,
+      "stability": 0.5,
+      "speed": 1,
+      "similarity_boost": 0.8
+    },
+    "conversation": { "text_only": false, "max_duration_seconds": 600 },
+    "agent": {
+      "first_message_file": "agent/first-message.txt",
+      "language": "en",
+      "prompt": {
+        "prompt_file": "agent/prompt/system-prompt.md",
+        "llm": "gemini-2.5-flash",
+        "temperature": 0,
+        "max_tokens": -1,
+        "tool_ids": [],
+        "knowledge_base": []
+      }
+    }
+  },
+  "platform_settings_of_note": {
+    "guardrails": "all disabled (focus, prompt_injection, content categories)",
+    "privacy": { "record_voice": true, "retention_days": -1 },
+    "call_limits": { "daily_limit": 100000, "bursting_enabled": true },
+    "workspace_webhooks": { "post_call_webhook_id": null, "events": ["transcript"] },
+    "evaluation_criteria": [],
+    "data_collection": {}
+  }
+}

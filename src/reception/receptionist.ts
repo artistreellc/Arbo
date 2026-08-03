@@ -51,6 +51,10 @@ import type { LegalConfig } from '../config/legal.schema.js';
 import type { PermitScreenSummary } from '../permitting/intakeScreen.js';
 import { buildReceptionistSystemPrompt } from './systemPrompt.js';
 import { guardReply, type GuardResult } from './outputGuard.js';
+import {
+  notifyTier, missOnCallEnd,
+  type NotifyDecision, type MissRecord,
+} from './judgment.js';
 import { detectIntent, type CallIntent, type IncidentType } from './intent.js';
 import { capture, nextQuestion, isComplete, toQualificationJson, type QualField, type QualState } from './qualification.js';
 
@@ -97,6 +101,8 @@ export interface LeadSink {
 }
 
 export interface TurnResult {
+  /** VA brief Part 6 — what reaches Mike, and when. Decided every turn. */
+  notify: NotifyDecision;
   reply: string;
   guard: GuardResult;
   emergency: boolean;
@@ -113,6 +119,8 @@ export class Receptionist {
   private incidentTypeSeen: IncidentType | null = null;
   private wantsHumanFlag = false;
   private screened = false;
+  private flaggedByMike = false;
+  private lastNotify: NotifyDecision | null = null;
 
   constructor(
     private readonly deps: { g: Guardrails; legal: LegalConfig; llm: LlmClient; alerter: Alerter; escalator?: Escalator },
@@ -179,7 +187,54 @@ export class Receptionist {
     }
 
     this.messages.push({ role: 'assistant', content: reply });
-    return { reply, guard, emergency: this.emergencyAlerted, intent: intent.intent, incidentType: intent.incidentType ?? undefined };
+
+    // VA brief Part 6. Decided on the FACTS of this turn, not on what the
+    // model said — a tier the model could talk its way out of is not a tier.
+    const notify = notifyTier({
+      intent: intent.intent,
+      incidentType: intent.incidentType,
+      hazardToPerson: intent.incidentType === 'injury',
+      customerFlaggedByMike: this.flaggedByMike,
+    });
+    this.lastNotify = notify;
+
+    return {
+      reply, guard, notify,
+      emergency: this.emergencyAlerted,
+      intent: intent.intent,
+      incidentType: intent.incidentType ?? undefined,
+    };
+  }
+
+  /**
+   * VA brief Part 4 — call this when the line drops, however it drops.
+   * Returns a MISS record when the floor was not met, or null on a good call.
+   * A screened solicitation is never a miss (§3.2): counting it would corrupt
+   * the lead data §6O uses to judge which marketing actually works.
+   *
+   * §1E: the miss is RETURNED so the caller logs it. A call that quietly
+   * ended short is exactly the failure this exists to make visible.
+   */
+  endCall(): MissRecord | null {
+    return missOnCallEnd(
+      {
+        name: this.state.name,
+        phone: this.state.phone,
+        address: this.state.address,
+        city: this.state.city,
+      },
+      { screenedAsSolicitation: this.screened },
+    );
+  }
+
+  /** Mike has flagged this customer personally — every turn goes to him NOW. */
+  flagCustomer(): void {
+    this.flaggedByMike = true;
+  }
+
+  /** The tier decided on the most recent turn, for the caller to act on. */
+  get notifyDecision(): NotifyDecision | null {
+    return this.lastNotify;
   }
 
   captureField(key: QualField, value: string | boolean): void {

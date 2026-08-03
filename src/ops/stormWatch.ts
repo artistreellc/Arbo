@@ -104,7 +104,7 @@ export function createNwsAlertsProvider(fetchFn: FetchFn): AlertsProvider {
       const byId = new Map<string, StormAlert>();
       for (const [city, p] of Object.entries(CITY_POINTS) as Array<[ServiceCity, { lat: number; lng: number }]>) {
         const url = `https://api.weather.gov/alerts/active?point=${p.lat},${p.lng}`;
-        const res = await fetchFn(url, { headers: { 'user-agent': 'ARBOR (Art-is-Tree LLC ops)', accept: 'application/geo+json' } });
+        const res = await fetchFn(url, { headers: { 'user-agent': 'ARBO (Art-is-Tree LLC ops)', accept: 'application/geo+json' } });
         if (!res.ok) throw new Error(`NWS alerts failed for ${city}: HTTP ${res.status}`);
         const body = (await res.json()) as { features?: NwsFeature[] };
         if (!Array.isArray(body.features)) throw new Error(`NWS alerts: malformed response for ${city}`);

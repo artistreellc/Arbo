@@ -49,6 +49,8 @@
 import type { Guardrails } from '../config/guardrails.schema.js';
 import { scanForbidden } from '../lint/forbiddenStrings.js';
 
+import { screenFinancialCommitment, FINANCIAL_DEFERRAL } from './judgment.js';
+
 export interface GuardViolation {
   rule: string; // golden-rule id or 'forbidden-term'
   matched: string; // the offending substring
@@ -82,6 +84,14 @@ export function guardReply(candidate: string, g: Guardrails): GuardResult {
   const dxHit = firstMatch(candidate, rulePatterns(g, 'no-diagnosis'));
   if (dxHit) violations.push({ rule: 'no-diagnosis', matched: dxHit });
 
+  // VA brief §1.3 — zero financial authority. no-price stops Arbo QUOTING;
+  // this stops it GIVING MONEY AWAY, which the brief calls the leak that
+  // actually costs: a discount, a waived haul, "we'll throw that in", a
+  // payment plan, a scope add-on at the quoted figure. Screened here so it
+  // covers the model's reply AND every deterministic policy line.
+  const money = screenFinancialCommitment(candidate);
+  if (money.blocked) violations.push({ rule: 'no-financial-authority', matched: money.what! });
+
   for (const hit of scanForbidden(candidate, 'reply')) {
     violations.push({ rule: 'forbidden-term', matched: hit.term });
   }
@@ -92,6 +102,9 @@ export function guardReply(candidate: string, g: Guardrails): GuardResult {
   let reply: string;
   if (violations.some((v) => v.rule === 'no-price')) reply = approvedLine(g, 'no-price');
   else if (violations.some((v) => v.rule === 'no-diagnosis')) reply = approvedLine(g, 'no-diagnosis');
+  // Ranked above the on-topic pivot: the caller DID ask about money, so
+  // changing the subject would read as dodging. Defer it to Mike instead.
+  else if (violations.some((v) => v.rule === 'no-financial-authority')) reply = FINANCIAL_DEFERRAL;
   else reply = approvedLine(g, 'on-topic') || "Let's keep it to your trees — I can get you set up with a free estimate.";
 
   return { safe: false, violations, reply };
