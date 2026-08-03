@@ -50,7 +50,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { boot } from './index.js';
 import { createApi, type DataSource, type ApiLeadInput } from './server/api.js';
-import { hasDb } from './db/client.js';
+import { hasDb, dataLinksLive, dbConfigured } from './db/client.js';
 import {
   listLeads,
   listStopsBetween,
@@ -468,6 +468,7 @@ export function createArborRequestHandler() {
   boot(); // validates guardrails + legal or throws
   const alertsProvider = createNwsAlertsProvider((url, init) => fetch(url, init));
   const api = createApi(createLiveSource(), {
+    dataLinksLive: dataLinksLive(),
     alerts: alertsProvider,
     ...(env.elevenlabs.apiKey ? { tts: createElevenLabsTts(env.elevenlabs.apiKey) } : {}),
   });
@@ -805,7 +806,13 @@ export function startServer(port: number) {
     createNwsAlertsProvider((u, i) => fetch(u, i)),
   );
   server.listen(port, () => {
-    console.log(`✅ ARBO backend on :${port} — guardrails v${summary.guardrailsVersion}, legal v${summary.legalVersion}, db ${summary.integrations.supabase ? 'connected' : 'not configured'}`);
+    // Three states, never two: configured-and-live, configured-but-CUT, and
+    // not configured at all. Collapsing the middle one into either of the
+    // others is the §1B lie in the one line an operator actually reads.
+    const dbState = !dbConfigured()
+      ? 'not configured'
+      : dataLinksLive() ? 'connected' : 'CONFIGURED BUT LINKS CUT (ARBO_DATA_LINKS is not "live") — no real data is being read or written';
+    console.log(`✅ ARBO backend on :${port} — guardrails v${summary.guardrailsVersion}, legal v${summary.legalVersion}, db ${dbState}`);
   });
   return server;
 }

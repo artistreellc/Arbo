@@ -49,13 +49,53 @@ import { env } from '../env.js';
 
 let _client: SupabaseClient | null = null;
 
-/** True when the DB is configured (URL + service role key present). */
+/**
+ * THE DATA LINK SWITCH — owner instruction, 2026-08-03. Mike: "cut all data
+ * links to the app till we finish the rough build."
+ *
+ * While this is OFF the app touches NOTHING real: no read, no write, no
+ * agent sweep. The rows stay exactly where they are — this cuts the link,
+ * it does not delete anything, and it is one environment variable to undo.
+ *
+ * It is deliberately OPT-IN. A missing or misspelled value leaves the link
+ * CUT, because the failure that costs something is the app quietly reaching
+ * live customer data before it is finished, not a screen saying it cannot
+ * see. Every surface already reports "not connected" honestly (§1B), so
+ * cutting the link degrades the app into telling the truth.
+ *
+ * To reconnect when the rough build is done: ARBO_DATA_LINKS=live
+ */
+export function dataLinksLive(): boolean {
+  return process.env.ARBO_DATA_LINKS === 'live';
+}
+
+/**
+ * True when the DB is configured AND the data link is open. Every repository
+ * and every API handler gates on this, so one switch stops the whole app from
+ * reaching real data.
+ */
 export function hasDb(): boolean {
+  if (!dataLinksLive()) return false;
+  return Boolean(env.supabase.url && env.supabase.serviceRoleKey);
+}
+
+/** Configured, regardless of the switch — for boot output that must not lie. */
+export function dbConfigured(): boolean {
   return Boolean(env.supabase.url && env.supabase.serviceRoleKey);
 }
 
 /** Get the service-role Supabase client, or throw a clear error if unconfigured. */
 export function getDb(): SupabaseClient {
+  // The switch is enforced HERE as well as in hasDb(), because this is the
+  // only door to a real table. A caller that forgets to check hasDb() must
+  // still be unable to reach live data by accident — and the message says
+  // which of the two reasons it was, never a vague failure.
+  if (!dataLinksLive()) {
+    throw new Error(
+      'Data links are CUT (ARBO_DATA_LINKS is not "live"). The app is not reading or '
+      + 'writing real data until the rough build is finished. Nothing was deleted.',
+    );
+  }
   if (!hasDb()) {
     throw new Error(
       'Supabase not configured: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env',

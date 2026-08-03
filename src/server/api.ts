@@ -269,6 +269,12 @@ export interface ApiGeoStop {
 export interface ApiExtras {
   alerts?: AlertsProvider;
   tts?: TtsClient;
+  /**
+   * Whether the data links are open. Passed in rather than read here so this
+   * module stays free of process.env and remains testable. Undefined means
+   * the caller did not say — reported as 'unknown', never guessed as either.
+   */
+  dataLinksLive?: boolean;
 }
 
 export interface ApiLeadInput {
@@ -324,6 +330,10 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
           guardrailsVersion: guardrails.version,
           legalVersion: legal.version,
           db: source.ready(),
+          // "The link is cut" and "there is no database" are different facts
+          // and must not read the same on the one endpoint used to check
+          // whether Arbo is alive (§1B).
+          dataLinks: extras.dataLinksLive === undefined ? 'unknown' : extras.dataLinksLive ? 'live' : 'cut',
           integrations: integrationStatus(),
         },
       };
