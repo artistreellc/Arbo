@@ -434,3 +434,96 @@ describe('the roster (§4) — the safety board needs people to check', () => {
     expect((await dead.recordCertification(UUID, { type: 'cpr' })).status).toBe(503);
   });
 });
+
+describe('fleet + campaign registries (§6E/§6D) — the last read-only tables', () => {
+  const regSource = (over: Partial<DataSource> = {}): DataSource => ({
+    ready: () => true,
+    stopsBetween: async () => [],
+    newLeads: async () => [],
+    createEquipmentUnit: async () => 'unit-id',
+    retireEquipmentUnit: async () => true,
+    addEquipmentPart: async () => 'part-id',
+    createCampaign: async () => 'camp-id',
+    ...over,
+  });
+  const UUID = '11111111-1111-4111-8111-111111111111';
+
+  it('a unit with no measurements is accepted and told it routes as UNKNOWN', async () => {
+    // §6M2.4 trusts a number and stays conservative on a null, so an absent
+    // measurement is safer than a guess — but the caller has to KNOW which.
+    const res = await createApi(regSource()).createEquipmentUnit({
+      name: 'Chip truck 1', kind: 'chip truck', vinOrSerial: 'VIN1',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ heightInches: null, weightLbsLoaded: null, dimensionsKnown: false });
+    expect((res.body as { line: string }).line).toContain('UNKNOWN');
+  });
+
+  it('measurements that are given are kept and reported as known', async () => {
+    const res = await createApi(regSource()).createEquipmentUnit({
+      name: 'A', kind: 'chipper', vinOrSerial: 'VIN2', heightInches: '138', weightLbsLoaded: 26000,
+    });
+    expect(res.body).toMatchObject({ heightInches: 138, weightLbsLoaded: 26000, dimensionsKnown: true });
+  });
+
+  it('a junk measurement becomes UNKNOWN rather than a bogus clearance', async () => {
+    const res = await createApi(regSource()).createEquipmentUnit({
+      name: 'A', kind: 'chipper', vinOrSerial: 'VIN3', heightInches: 'tall-ish', weightLbsLoaded: -5,
+    });
+    expect(res.body).toMatchObject({ heightInches: null, weightLbsLoaded: null });
+  });
+
+  it('a duplicate VIN is a 409, not a 500', async () => {
+    const api = createApi(regSource({
+      createEquipmentUnit: async () => { throw new Error('duplicate key value violates unique constraint'); },
+    }));
+    const res = await api.createEquipmentUnit({ name: 'A', kind: 'b', vinOrSerial: 'VIN1' });
+    expect(res.status).toBe(409);
+    expect(res.body).toMatchObject({ error: 'vin_already_registered' });
+  });
+
+  it('needs a name, a kind and a VIN', async () => {
+    expect((await createApi(regSource()).createEquipmentUnit({ name: 'A', kind: 'b' })).status).toBe(400);
+  });
+
+  it('retiring twice is a 409, not a second success', async () => {
+    const res = await createApi(regSource({ retireEquipmentUnit: async () => false })).retireEquipmentUnit(UUID);
+    expect(res.status).toBe(409);
+  });
+
+  it('a part needs a number and lands against the unit', async () => {
+    const saved: Array<{ unitId: string; partNumber: string }> = [];
+    const api = createApi(regSource({ addEquipmentPart: async (i) => { saved.push(i); return 'p'; } }));
+    expect((await api.addEquipmentPart(UUID, {})).status).toBe(400);
+    await api.addEquipmentPart(UUID, { partNumber: ' 42-X ' });
+    expect(saved[0]).toMatchObject({ unitId: UUID, partNumber: '42-X' });
+  });
+
+  it('an untracked campaign is registered and reported as UNKNOWN, never zero', async () => {
+    const res = await createApi(regSource()).createCampaign({ type: 'flyer', cost: 250 });
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ attributionWired: false, trackingNumber: null, cost: 250 });
+    expect((res.body as { line: string }).line).toContain('UNKNOWN');
+  });
+
+  it('refuses a campaign type §6D cannot reason about', async () => {
+    const res = await createApi(regSource()).createCampaign({ type: 'skywriting' });
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: 'bad_campaign_type' });
+  });
+
+  it('an unparseable cost or date is REJECTED, never silently dropped to null', async () => {
+    const api = createApi(regSource());
+    expect((await api.createCampaign({ type: 'ads', cost: 'a few hundred' })).status).toBe(400);
+    expect((await api.createCampaign({ type: 'ads', sentAtIso: 'last spring' })).status).toBe(400);
+    // Omitted entirely is fine — that is "not recorded", not "unparseable".
+    expect((await api.createCampaign({ type: 'ads' })).status).toBe(201);
+  });
+
+  it('says 503 rather than pretending to write when the DB is not configured', async () => {
+    const dead = createApi({ ready: () => false, stopsBetween: async () => [], newLeads: async () => [] });
+    expect((await dead.createEquipmentUnit({ name: 'A', kind: 'b', vinOrSerial: 'c' })).status).toBe(503);
+    expect((await dead.addEquipmentPart(UUID, { partNumber: 'x' })).status).toBe(503);
+    expect((await dead.createCampaign({ type: 'flyer' })).status).toBe(503);
+  });
+});

@@ -238,6 +238,31 @@ describe('ARBOR app shell', () => {
     expect(html).toContain('not a claim that nothing is waiting');
   });
 
+  it('is the only place a unit, a part, or a campaign can be created (§6E/§6D)', () => {
+    expect(html).toContain("api('/api/fleet/units'");
+    expect(html).toContain("'/retire'");
+    expect(html).toContain("'/part'");
+    expect(html).toContain("api('/api/campaigns'");
+    expect(html).toContain('Add a unit to the fleet');
+    expect(html).toContain('Register a campaign');
+  });
+
+  it('an unmeasured unit is flagged on the card as conservatively routed', () => {
+    expect(html).toContain('SIZE UNKNOWN — ROUTED CONSERVATIVELY');
+    expect(html).toContain('a guessed clearance is worse than none');
+  });
+
+  it('an untracked campaign is a warning, never presented as a clean save', () => {
+    expect(html).toContain('res.attributionWired ?');
+    expect(html).toContain('it will say UNKNOWN rather than report it as zero');
+  });
+
+  it('no write form is offered over a feed Arbo could not read', () => {
+    // Offering the form would imply Arbo is talking to a database it is not.
+    expect(html).toContain('if (readable) slot.appendChild(fleetComposer(listSlot))');
+    expect(html).toContain('if (p.campaignsKnown) v.appendChild(campaignComposer())');
+  });
+
   it('uses the §9 cockpit tokens (violet primary, dark base, 48px+ targets)', () => {
     expect(html).toContain('#7C3AED'); // luminous purple accent
     expect(html).toContain('#0B0D10'); // near-black base

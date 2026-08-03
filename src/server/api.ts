@@ -184,6 +184,11 @@ export interface DataSource {
   }): Promise<{ id: string }>;
   activeCrew?(): Promise<CrewMemberRef[]>;
   certifications?(): Promise<CertRow[]>;
+  /** §6E fleet + §6D campaign writes — the last of the read-only tables. */
+  createEquipmentUnit?(input: { name: string; kind: string; vinOrSerial: string; heightInches: number | null; weightLbsLoaded: number | null }): Promise<string>;
+  retireEquipmentUnit?(id: string): Promise<boolean>;
+  addEquipmentPart?(input: { unitId: string; partNumber: string; supplier: string | null; sharedFitment: string | null }): Promise<string>;
+  createCampaign?(input: { type: string; cost: number | null; trackingNumber: string | null; sentAtIso: string | null }): Promise<string>;
   /** §4 roster writes — without these the safety board has nobody in it. */
   fullRoster?(): Promise<Array<{ id: string; name: string; role: string; competencyLevel: number; active: boolean }>>;
   createCrewMember?(input: { name: string; role: string; competencyLevel: number; phone: string | null }): Promise<string>;
@@ -1780,6 +1785,124 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
           line: expiresOn
             ? 'Recorded. Arbo will start warning 60 days out.'
             : 'Recorded with NO expiry date. Arbo will report this card as UNKNOWN, not as current — it cannot warn you about a date it does not have.',
+        },
+      };
+    },
+
+    /**
+     * POST /api/fleet/units — put a truck in the registry.
+     *
+     * Height and weight are OPTIONAL and stay null when not given. §6M2.4
+     * routes conservatively on a null and trusts a number, so an absent
+     * measurement is safer than a typed guess — and the response says which
+     * one this unit has.
+     */
+    async createEquipmentUnit(body: Record<string, unknown>): Promise<ApiResult> {
+      if (!source.ready() || !source.createEquipmentUnit) return { status: 503, body: { error: 'db_not_configured' } };
+      const name = String(body.name ?? '').trim();
+      const kind = String(body.kind ?? '').trim();
+      const vinOrSerial = String(body.vinOrSerial ?? '').trim();
+      if (!name || !kind || !vinOrSerial) return { status: 400, body: { error: 'name_kind_vin_required' } };
+      const measure = (v: unknown): number | null => {
+        const n = Number(v);
+        return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+      };
+      const heightInches = measure(body.heightInches);
+      const weightLbsLoaded = measure(body.weightLbsLoaded);
+
+      let id: string;
+      try {
+        id = await source.createEquipmentUnit({ name, kind, vinOrSerial, heightInches, weightLbsLoaded });
+      } catch (err) {
+        // vin_or_serial is UNIQUE. A duplicate is the caller's problem and gets
+        // named, not a 500 that reads as "Arbo broke".
+        const msg = err instanceof Error ? err.message : '';
+        if (/duplicate|unique/i.test(msg)) {
+          return { status: 409, body: { error: 'vin_already_registered' } };
+        }
+        throw err;
+      }
+      if (source.emit) await source.emit('equipment.unit.added', { id, kind });
+      const missing = [
+        ...(heightInches === null ? ['height'] : []),
+        ...(weightLbsLoaded === null ? ['loaded weight'] : []),
+      ];
+      return {
+        status: 201,
+        body: {
+          id, heightInches, weightLbsLoaded,
+          dimensionsKnown: missing.length === 0,
+          line: missing.length === 0
+            ? 'Added. Routing can use its real clearance.'
+            : 'Added with no ' + missing.join(' and ') + ' on file. Routing will treat this unit as UNKNOWN and stay conservative — it will not guess.',
+        },
+      };
+    },
+
+    /** POST /api/fleet/units/:id/retire — off the board, history kept. */
+    async retireEquipmentUnit(id: string): Promise<ApiResult> {
+      if (!source.ready() || !source.retireEquipmentUnit) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!UUID_RE.test(id)) return { status: 400, body: { error: 'bad_id' } };
+      const ok = await source.retireEquipmentUnit(id);
+      if (!ok) return { status: 409, body: { error: 'already_retired' } };
+      if (source.emit) await source.emit('equipment.unit.retired', { id });
+      return { status: 200, body: { ok: true } };
+    },
+
+    /**
+     * POST /api/fleet/units/:id/part — a part that fits this unit. The
+     * breakdown plan reads these; with none on file it says "no parts history",
+     * which is why recording them matters.
+     */
+    async addEquipmentPart(unitId: string, body: Record<string, unknown>): Promise<ApiResult> {
+      if (!source.ready() || !source.addEquipmentPart) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!UUID_RE.test(unitId)) return { status: 400, body: { error: 'bad_id' } };
+      const partNumber = String(body.partNumber ?? '').trim();
+      if (!partNumber) return { status: 400, body: { error: 'part_number_required' } };
+      const id = await source.addEquipmentPart({
+        unitId,
+        partNumber,
+        supplier: String(body.supplier ?? '').trim() || null,
+        sharedFitment: String(body.sharedFitment ?? '').trim() || null,
+      });
+      return { status: 201, body: { id, partNumber } };
+    },
+
+    /**
+     * POST /api/campaigns — register something Mike spent money on so the
+     * Numbers screen can tell whether it worked.
+     *
+     * A campaign with no tracking number is ACCEPTED and flagged: §6D reports
+     * an untracked campaign as UNKNOWN, never as zero leads. Refusing it would
+     * just mean the spend goes unrecorded.
+     */
+    async createCampaign(body: Record<string, unknown>): Promise<ApiResult> {
+      if (!source.ready() || !source.createCampaign) return { status: 503, body: { error: 'db_not_configured' } };
+      const type = String(body.type ?? '').trim().toLowerCase();
+      const ALLOWED = ['flyer', 'ads', 'seasonal', 'neighbor_around_job'];
+      if (!ALLOWED.includes(type)) return { status: 400, body: { error: 'bad_campaign_type', allowed: ALLOWED } };
+      const rawCost = Number(body.cost);
+      const cost = Number.isFinite(rawCost) && rawCost >= 0 ? Math.round(rawCost * 100) / 100 : null;
+      if (String(body.cost ?? '').trim() && cost === null) {
+        return { status: 400, body: { error: 'bad_cost', line: 'Spend has to be a number.' } };
+      }
+      const trackingNumber = String(body.trackingNumber ?? '').trim() || null;
+      const sentRaw = String(body.sentAtIso ?? '').trim();
+      const sentAtIso = /^\d{4}-\d{2}-\d{2}/.test(sentRaw) ? new Date(sentRaw).toISOString() : null;
+      if (sentRaw && sentAtIso === null) {
+        return { status: 400, body: { error: 'bad_sent_date', line: 'Sent date has to be YYYY-MM-DD.' } };
+      }
+
+      const id = await source.createCampaign({ type, cost, trackingNumber, sentAtIso });
+      if (source.emit) await source.emit('campaign.created', { id, type });
+      return {
+        status: 201,
+        body: {
+          id, type, cost, trackingNumber,
+          attributionWired: trackingNumber !== null,
+          line: trackingNumber
+            ? 'Registered. Leads on that number will be attributed to it.'
+            : 'Registered with NO tracking number. Arbo will report this one as UNKNOWN — it cannot tell whether it worked, and it will not report that as zero.',
         },
       };
     },

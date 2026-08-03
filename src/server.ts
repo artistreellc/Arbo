@@ -96,6 +96,10 @@ import {
   listActiveCrew,
   listCertifications,
   fullRoster,
+  createEquipmentUnit,
+  retireEquipmentUnit,
+  addEquipmentPart,
+  createCampaign,
   createCrewMember,
   deactivateCrewMember,
   recordCertification,
@@ -383,6 +387,10 @@ export function createLiveSource(): DataSource {
     crewProfiles: () => crewWithProfiles(),
     referenceEntries: () => referenceEntries(),
     crewSkillLevel: (id) => crewSkillLevel(id),
+    createEquipmentUnit: (input) => createEquipmentUnit(input),
+    retireEquipmentUnit: (id) => retireEquipmentUnit(id),
+    addEquipmentPart: (input) => addEquipmentPart(input),
+    createCampaign: (input) => createCampaign(input),
     fullRoster: () => fullRoster(),
     createCrewMember: (input) => createCrewMember(input),
     deactivateCrewMember: (id) => deactivateCrewMember(id),
@@ -701,6 +709,25 @@ export function createArborRequestHandler() {
         if (req.method === 'POST' && m) {
           return send(...unpack(await api.publishLesson(m[1]!, (await readJson(req)) as Record<string, unknown>)));
         }
+      }
+      // §6E fleet registry + §6D campaigns — the last read-only tables.
+      if (req.method === 'POST' && url.pathname === '/api/fleet/units') {
+        return send(...unpack(await api.createEquipmentUnit((await readJson(req)) as Record<string, unknown>)));
+      }
+      {
+        const m = url.pathname.match(/^\/api\/fleet\/units\/([^/]+)\/retire$/);
+        if (req.method === 'POST' && m) {
+          return send(...unpack(await api.retireEquipmentUnit(m[1]!)));
+        }
+      }
+      {
+        const m = url.pathname.match(/^\/api\/fleet\/units\/([^/]+)\/part$/);
+        if (req.method === 'POST' && m) {
+          return send(...unpack(await api.addEquipmentPart(m[1]!, (await readJson(req)) as Record<string, unknown>)));
+        }
+      }
+      if (req.method === 'POST' && url.pathname === '/api/campaigns') {
+        return send(...unpack(await api.createCampaign((await readJson(req)) as Record<string, unknown>)));
       }
       // §4 roster — the people, their cards. Admin only.
       if (req.method === 'GET' && url.pathname === '/api/roster') {

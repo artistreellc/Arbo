@@ -2204,6 +2204,94 @@ export async function publishReferenceEntry(id: string, vettedBy: string): Promi
   return (res.data ?? []).length > 0;
 }
 
+/**
+ * Put a unit in the registry. Same hole the roster had: everything in §6E
+ * reads equipment_unit and nothing could write one, so the fleet board was
+ * permanently empty and a breakdown had no unit to report against.
+ *
+ * The routing dimensions are NULLABLE on purpose. §6M2.4 treats a null height
+ * or weight as UNKNOWN and routes conservatively; forcing a number here would
+ * mean somebody types a guess, and a guessed clearance is worse than no
+ * clearance because the router would trust it.
+ */
+export async function createEquipmentUnit(input: {
+  name: string; kind: string; vinOrSerial: string;
+  heightInches: number | null; weightLbsLoaded: number | null;
+}): Promise<string> {
+  const db = getDb();
+  const res = await db.from('equipment_unit')
+    .insert({
+      name: input.name,
+      kind: input.kind,
+      vin_or_serial: input.vinOrSerial,
+      height_inches: input.heightInches,
+      weight_lbs_loaded: input.weightLbsLoaded,
+      status: 'up',
+    })
+    .select('id')
+    .single();
+  if (res.error) throw res.error;
+  return (res.data as { id: string }).id;
+}
+
+/** Retire a unit. listUnits already excludes retired, so it leaves the board. */
+export async function retireEquipmentUnit(id: string): Promise<boolean> {
+  const db = getDb();
+  const res = await db.from('equipment_unit')
+    .update({ status: 'retired', updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .neq('status', 'retired')
+    .select('id');
+  if (res.error) throw res.error;
+  return (res.data ?? []).length > 0;
+}
+
+/**
+ * Record a part that fits a unit. This is what makes a breakdown plan useful:
+ * buildActionPlan reads these, and with none on file it says so rather than
+ * implying no part is needed.
+ */
+export async function addEquipmentPart(input: {
+  unitId: string; partNumber: string; supplier: string | null; sharedFitment: string | null;
+}): Promise<string> {
+  const db = getDb();
+  const res = await db.from('equipment_part')
+    .insert({
+      unit_id: input.unitId,
+      part_number: input.partNumber,
+      supplier: input.supplier,
+      shared_fitment: input.sharedFitment,
+    })
+    .select('id')
+    .single();
+  if (res.error) throw res.error;
+  return (res.data as { id: string }).id;
+}
+
+/**
+ * Register a campaign. campaignFacts reads this table for the Numbers screen;
+ * with no writer the campaign section could only ever render UNKNOWN.
+ *
+ * `cost` is a figure a human types — the amount actually spent. Arbo still
+ * originates nothing (§3); it divides what Mike spent by what came back.
+ */
+export async function createCampaign(input: {
+  type: string; cost: number | null; trackingNumber: string | null; sentAtIso: string | null;
+}): Promise<string> {
+  const db = getDb();
+  const res = await db.from('campaign')
+    .insert({
+      type: input.type,
+      cost: input.cost,
+      tracking_number: input.trackingNumber,
+      sent_at: input.sentAtIso,
+    })
+    .select('id')
+    .single();
+  if (res.error) throw res.error;
+  return (res.data as { id: string }).id;
+}
+
 /** A crew member's competency level, for the above-your-level flag. */
 export async function crewSkillLevel(crewMemberId: string): Promise<number | null> {
   const db = getDb();

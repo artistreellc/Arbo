@@ -1424,6 +1424,71 @@ async function renderPerformance() {
       v.appendChild(card);
     }
   }
+  // Only when the read worked. Offering the form over an unreadable feed would
+  // imply Arbo is talking to the database when it is not, and nothing typed
+  // into it could be saved.
+  if (p.campaignsKnown) v.appendChild(campaignComposer());
+}
+
+// §6D: register what was spent so the Numbers screen can say whether it paid.
+// Arbo still originates no figure (§3) — Mike types what he spent, and Arbo
+// divides it by what came back.
+const CAMPAIGN_TYPES = [
+  ['flyer', 'Flyer drop'], ['ads', 'Ads'], ['seasonal', 'Seasonal push'],
+  ['neighbor_around_job', 'Neighbors around a job'],
+];
+function campaignComposer() {
+  const c = el('div', 'card');
+  c.appendChild(el('div', 'loop-kind', 'Register a campaign'));
+  c.appendChild(el('div', 'scope',
+    'Without a tracking number Arbo cannot tell whether it worked — and it will say UNKNOWN rather than report it as zero.'));
+  const row = el('div', 'field');
+  const type = document.createElement('select');
+  for (const [v2, label] of CAMPAIGN_TYPES) {
+    const o = document.createElement('option');
+    o.value = v2;
+    o.textContent = label;
+    type.appendChild(o);
+  }
+  row.appendChild(type);
+  const mk = (ph) => { const n = document.createElement('input'); n.type = 'text'; n.placeholder = ph; row.appendChild(n); return n; };
+  const cost = mk('What it cost');
+  const track = mk('Tracking number (optional)');
+  const sent = document.createElement('input');
+  sent.type = 'date';
+  row.appendChild(sent);
+  c.appendChild(row);
+  const btn = el('button', 'actbtn', 'Register it');
+  const out = el('div', 'errline', '');
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    try {
+      const res = await api('/api/campaigns', {
+        method: 'POST',
+        body: {
+          type: type.value, cost: cost.value.trim(),
+          trackingNumber: track.value.trim(), sentAtIso: sent.value,
+        },
+      });
+      // Untracked is a warning, not a win — it decides what the screen can say.
+      out.style.color = res.attributionWired ? 'var(--ok)' : 'var(--warning)';
+      out.textContent = res.line;
+      cost.value = '';
+      track.value = '';
+      btn.disabled = false;
+    } catch (e) {
+      btn.disabled = false;
+      out.style.color = '';
+      out.textContent = e.message === 'bad_cost'
+        ? 'The cost has to be a number.'
+        : e.message === 'bad_sent_date'
+          ? 'That sent date is not a real date.'
+          : 'Could not register it. Nothing was written.';
+    }
+  });
+  c.appendChild(btn);
+  c.appendChild(out);
+  return c;
 }
 
 function areaCard(a) {
@@ -1778,25 +1843,39 @@ const UNIT_STATUS = {
   down: ['DOWN', 'b-emg'],
   maintenance: ['NEEDS ATTENTION', 'b-warm'],
 };
+// The list and the composer are SEPARATE slots. Refreshing the list after an
+// add must not wipe the line the composer just printed — the composer's own
+// answer ("added with no height on file, routing stays conservative") is the
+// part that matters most, and re-rendering over it would delete it unread.
 async function renderFleet(slot) {
+  slot.replaceChildren();
+  const listSlot = el('div');
+  slot.appendChild(listSlot);
+  const readable = await renderFleetList(listSlot);
+  // No composer over a dead feed: nothing could be written to it anyway, and
+  // offering the form would imply Arbo is talking to the database.
+  if (readable) slot.appendChild(fleetComposer(listSlot));
+}
+
+async function renderFleetList(slot) {
   slot.replaceChildren();
   let f;
   try {
     f = await api('/api/fleet/units');
   } catch (e) {
-    if (e.code === 401) return;
+    if (e.code === 401) return false;
     // §1B: a dead feed is named, never drawn as a confident "all trucks up".
     slot.appendChild(el('div', 'panel-title', 'Fleet'));
     slot.appendChild(state('Fleet status unknown', e.code === 503
       ? 'Database not connected — Arbo cannot tell you which units are down.'
       : 'Could not read the fleet. This is not a claim that everything runs.'));
-    return;
+    return false;
   }
   slot.appendChild(el('div', 'panel-title',
     f.down > 0 ? 'Fleet — ' + f.down + ' unit(s) DOWN, not schedulable' : 'Fleet — all units schedulable'));
   if (!f.units.length) {
-    slot.appendChild(state('No units on file', 'Add equipment to the fleet and it shows up here.'));
-    return;
+    slot.appendChild(state('No units on file', 'Add equipment below and it shows up here.'));
+    return true;
   }
   for (const u of f.units) {
     const c = el('div', 'card' + (u.status === 'down' ? ' emergency' : ''));
@@ -1810,11 +1889,120 @@ async function renderFleet(slot) {
     if (!u.schedulable) b.appendChild(badge('NOT SCHEDULABLE', 'b-flag'));
     if (u.openTasks > 0) b.appendChild(badge(u.openTasks + ' OPEN TASK' + (u.openTasks === 1 ? '' : 'S'), 'b-warm'));
     c.appendChild(b);
+    // §6M2.4: a null clearance is UNKNOWN and the router stays conservative.
+    // Say that on the card, so nobody assumes the number is simply missing.
+    if (!u.heightInches || !u.weightLbsLoaded) {
+      b.appendChild(badge('SIZE UNKNOWN — ROUTED CONSERVATIVELY', 'b-verify'));
+    }
     const btn = el('button', 'actbtn', 'Report a breakdown');
     btn.addEventListener('click', () => openBreakdown(u));
     c.appendChild(btn);
+    c.appendChild(partAdder(u, slot));
+    const off = el('button', 'actbtn', 'Retire this unit');
+    const offerr = el('div', 'errline', '');
+    off.addEventListener('click', async () => {
+      off.disabled = true;
+      try {
+        await api('/api/fleet/units/' + u.id + '/retire', { method: 'POST', body: {} });
+        renderFleetList(slot);
+      } catch (ex) {
+        off.disabled = false;
+        offerr.textContent = ex.code === 409 ? 'Already retired.' : 'Could not do that. Nothing was changed.';
+      }
+    });
+    c.appendChild(off);
+    c.appendChild(offerr);
     slot.appendChild(c);
   }
+  slot.appendChild(fleetComposer(slot));
+}
+
+// A part that fits this unit. The breakdown plan reads these — with none on
+// file it says "no parts history", which is not the same as "no part needed".
+function partAdder(unit, slot) {
+  const wrap = el('div', 'field');
+  const num = document.createElement('input');
+  num.type = 'text';
+  num.placeholder = 'Part number that fits this unit';
+  const sup = document.createElement('input');
+  sup.type = 'text';
+  sup.placeholder = 'Supplier (optional)';
+  const btn = el('button', 'actbtn', 'Save the part');
+  const out = el('div', 'errline', '');
+  btn.addEventListener('click', async () => {
+    if (!num.value.trim()) { out.textContent = 'Needs a part number.'; return; }
+    btn.disabled = true;
+    try {
+      await api('/api/fleet/units/' + unit.id + '/part', {
+        method: 'POST', body: { partNumber: num.value.trim(), supplier: sup.value.trim() },
+      });
+      out.style.color = 'var(--ok)';
+      out.textContent = 'Saved. It will show up in the breakdown plan for this unit.';
+      num.value = '';
+      sup.value = '';
+      btn.disabled = false;
+    } catch {
+      btn.disabled = false;
+      out.style.color = '';
+      out.textContent = 'Could not save that. Nothing was written.';
+    }
+  });
+  wrap.appendChild(num);
+  wrap.appendChild(sup);
+  wrap.appendChild(btn);
+  wrap.appendChild(out);
+  return wrap;
+}
+
+function fleetComposer(listSlot) {
+  const slot = listSlot;
+  const c = el('div', 'card');
+  c.appendChild(el('div', 'loop-kind', 'Add a unit to the fleet'));
+  c.appendChild(el('div', 'scope',
+    'Leave height and weight blank if you do not know them. Arbo routes an unknown unit '
+    + 'conservatively — a guessed clearance is worse than none, because routing would trust it.'));
+  const row = el('div', 'field');
+  const mk = (ph) => { const n = document.createElement('input'); n.type = 'text'; n.placeholder = ph; row.appendChild(n); return n; };
+  const name = mk('Name — e.g. Chip truck 1');
+  const kind = mk('Kind — chip truck / chipper / crane');
+  const vin = mk('VIN or serial');
+  const height = mk('Height in inches (optional)');
+  const weight = mk('Loaded weight in lbs (optional)');
+  c.appendChild(row);
+  const btn = el('button', 'actbtn', 'Add the unit');
+  const out = el('div', 'errline', '');
+  btn.addEventListener('click', async () => {
+    if (!name.value.trim() || !kind.value.trim() || !vin.value.trim()) {
+      out.style.color = '';
+      out.textContent = 'Needs a name, a kind, and a VIN or serial.';
+      return;
+    }
+    btn.disabled = true;
+    try {
+      const res = await api('/api/fleet/units', {
+        method: 'POST',
+        body: {
+          name: name.value.trim(), kind: kind.value.trim(), vinOrSerial: vin.value.trim(),
+          heightInches: height.value.trim(), weightLbsLoaded: weight.value.trim(),
+        },
+      });
+      // An unmeasured unit is a warning, not a win — it changes how it routes.
+      out.style.color = res.dimensionsKnown ? 'var(--ok)' : 'var(--warning)';
+      out.textContent = res.line;
+      name.value = ''; kind.value = ''; vin.value = ''; height.value = ''; weight.value = '';
+      btn.disabled = false;
+      renderFleetList(slot);
+    } catch (e) {
+      btn.disabled = false;
+      out.style.color = '';
+      out.textContent = e.code === 409
+        ? 'That VIN or serial is already on a unit.'
+        : 'Could not add it. Nothing was written.';
+    }
+  });
+  c.appendChild(btn);
+  c.appendChild(out);
+  return c;
 }
 
 let BREAKDOWN_UNIT = null;
