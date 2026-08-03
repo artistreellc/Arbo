@@ -83,6 +83,10 @@ import { scoreLead, type LeadQualityResult } from '../reception/leadQuality.js';
 import { integrationStatus } from '../env.js';
 import { buildPermitBoard, assertBoardNeverClear, type PermitTrackRow } from '../permitting/permitBoard.js';
 import { authorizeClearance, assertUnblockingSetMatchesGate } from '../permitting/clearance.js';
+import { assemblePacket } from '../permitting/packet.js';
+import type { ScreenStatus } from '../permitting/screening.js';
+import type { ServiceCity } from '../lib/address.js';
+import type { PacketSourceRow as PacketSource } from '../db/repositories.js';
 import { crewMayStart, type PermitLifecycle } from '../permitting/permitRecord.js';
 
 /** Postgres uuid shape. Non-UUID ids must be rejected BEFORE any write. */
@@ -179,6 +183,11 @@ export interface DataSource {
    * permit backwards without saying why.
    */
   permitState?(permitId: string): Promise<{ status: PermitLifecycle; notes: string | null } | null>;
+  /**
+   * §6B.1 step 6 — everything the packet needs about one permit. Null when
+   * there is no such permit.
+   */
+  packetSource?(permitId: string): Promise<PacketSource | null>;
   /** Record a human's lifecycle move. The only writer of permit status. */
   movePermitStatus?(input: {
     permitId: string;
@@ -900,6 +909,70 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       const board = buildPermitBoard(await source.permitTracks(), etToday());
       assertBoardNeverClear(board);
       return { status: 200, body: board };
+    },
+
+    /**
+     * GET /api/permits/:id/packet — §6B.1 step 6. Assemble the submission
+     * packet for a human to file. There is no submit here and there never
+     * will be: `assemblePacket` returns `neverAutoFiled: true` as a literal,
+     * and ARBO prepares and hands off (§6B.3).
+     *
+     * §1B lives in `notTracked`. Nothing in the schema records which city
+     * forms have actually been filled out, so the checklist cannot know —
+     * and "we have no record" must not render as "not done" without saying
+     * which of the two it is. The forms read as outstanding (the safe
+     * direction for a checklist whose job is to stop a filing with a gap),
+     * and the response names the reason.
+     */
+    async permitPacket(permitId: string): Promise<ApiResult> {
+      if (!source.ready() || !source.packetSource) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!UUID_RE.test(permitId)) return { status: 400, body: { error: 'bad_permit_id' } };
+      const src = await source.packetSource(permitId);
+      if (!src) return { status: 404, body: { error: 'no_such_permit' } };
+
+      const packet = assemblePacket({
+        city: src.permit.city as ServiceCity,
+        permit: {
+          id: src.permit.id,
+          screenStatus: src.permit.screen_status as ScreenStatus,
+          inRpa: src.permit.in_rpa,
+          formRef: src.permit.form_ref,
+          labeledMapFile: src.permit.labeled_map_file,
+        },
+        property: { address: src.property.address, zip: src.property.zip },
+        // The OWNER, not the caller. A city form names the person who owns
+        // the tree; §5.9 makes the distinction binding, so an absent owner
+        // link is an absent owner, never the caller standing in.
+        owner: {
+          name: src.owner?.name ?? null,
+          phone: src.owner?.phones[0] ?? null,
+          email: src.owner?.emails[0] ?? null,
+        },
+        photos: src.photos
+          .map((p) => p.drive_file_id)
+          .filter((id): id is string => Boolean(id))
+          .map((driveFileId) => ({ driveFileId })),
+        // Not tracked anywhere — see the note above. An empty list is the
+        // honest input; the response says why it is empty.
+        preparedForms: [],
+        // treeCount is the number of trees BEING REMOVED, which multiplies
+        // the city's replacement ratio. The property's tree rows are every
+        // tree on the lot, not that number, and nothing records the real one
+        // — so it is omitted and the mitigation note stays general rather
+        // than quoting a replacement count that is wrong on a city document.
+      });
+
+      return {
+        status: 200,
+        body: {
+          ...packet,
+          notTracked: [
+            'Which city forms are already filled out — ARBO has no record of that, so every form reads as outstanding.',
+            'How many trees are being removed — the mitigation note stays general rather than quoting a replacement count ARBO cannot know.',
+            ...(src.owner ? [] : ['Who owns this property — no owner is linked, so the owner line cannot be filled.']),
+          ],
+        },
+      };
     },
 
     /**

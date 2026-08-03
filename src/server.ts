@@ -87,6 +87,7 @@ import {
   todaysBriefing,
   listUnits,
   listPermitTracks,
+  packetSource,
   permitStateById,
   updatePermitStatus,
   listUnitParts,
@@ -387,6 +388,7 @@ export function createLiveSource(): DataSource {
     // thinnest possible wrapper: every rule about whether a move is
     // allowed lives in clearance.ts, where it can be tested without a
     // database, and none of it lives down here where it cannot.
+    packetSource: (id) => packetSource(id),
     permitState: (id) => permitStateById(id),
     movePermitStatus: (m) => updatePermitStatus(m.permitId, m.to, m.patch),
     unitParts: (id) => listUnitParts(id),
@@ -692,6 +694,14 @@ export function createArborRequestHandler() {
       // move a permit's lifecycle, and so the only one that can unblock a
       // crew on protected work. Every rule about whether a move is allowed
       // lives in clearance.ts; this line only carries the request there.
+      // §6B.1 step 6 — the submission packet for one permit. GET only: there
+      // is no filing endpoint here and there is not going to be one.
+      {
+        const m = url.pathname.match(/^\/api\/permits\/([^/]+)\/packet$/);
+        if (req.method === 'GET' && m) {
+          return send(...unpack(await api.permitPacket(decodeURIComponent(m[1]!))));
+        }
+      }
       if (req.method === 'POST' && url.pathname === '/api/permits/status') {
         return send(...unpack(await api.movePermit((await readJson(req)) as Record<string, unknown>)));
       }

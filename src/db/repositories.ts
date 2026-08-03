@@ -410,6 +410,74 @@ export async function permitStateById(
 }
 
 /**
+ * Everything `assemblePacket` needs about one permit, in one round trip.
+ *
+ * WHAT IS DELIBERATELY ABSENT: which city forms have actually been filled
+ * out. Nothing in the schema records that, so nothing here invents it — the
+ * API says so out loud rather than letting an untracked fact render as a
+ * finished checklist item.
+ *
+ * NOR is the number of trees BEING REMOVED. The property's tree rows are not
+ * that number — they are every tree on the lot — and the packet multiplies
+ * the removal count by the city's replacement ratio. Feeding it the wrong one
+ * would overstate what the city requires of Mike, on the document he hands
+ * the city. It is left out until something records the real figure.
+ *
+ * The owner is whoever is linked to the property as 'owner'. If the caller
+ * and the owner are different people (§5.9), the CALLER is not who goes on a
+ * city form, so this asks for the owner role specifically and returns nothing
+ * rather than substituting.
+ */
+export interface PacketSourceRow {
+  permit: {
+    id: string;
+    city: string;
+    screen_status: string;
+    in_rpa: boolean;
+    form_ref: string | null;
+    labeled_map_file: string | null;
+    property_id: string;
+  };
+  property: { address: string; zip: string | null };
+  owner: { name: string | null; phones: string[]; emails: string[] } | null;
+  photos: Array<{ drive_file_id: string | null }>;
+}
+
+export async function packetSource(permitId: string): Promise<PacketSourceRow | null> {
+  const db = getDb();
+  const p = await db
+    .from('permit')
+    .select('id, city, screen_status, in_rpa, form_ref, labeled_map_file, property_id')
+    .eq('id', permitId)
+    .maybeSingle();
+  if (p.error) throw p.error;
+  const permit = p.data as PacketSourceRow['permit'] | null;
+  if (!permit) return null;
+
+  const [prop, link, photos] = await Promise.all([
+    db.from('property').select('address, zip').eq('id', permit.property_id).maybeSingle(),
+    db.from('contact_property').select('contact_id').eq('property_id', permit.property_id).eq('role', 'owner').maybeSingle(),
+    db.from('photo').select('drive_file_id').eq('property_id', permit.property_id),
+  ]);
+  for (const r of [prop, link, photos]) if (r.error) throw r.error;
+
+  const contactId = (link.data as { contact_id: string } | null)?.contact_id;
+  let owner: PacketSourceRow['owner'] = null;
+  if (contactId) {
+    const c = await db.from('contact').select('name, phones, emails').eq('id', contactId).maybeSingle();
+    if (c.error) throw c.error;
+    owner = (c.data as PacketSourceRow['owner']) ?? null;
+  }
+
+  return {
+    permit,
+    property: (prop.data as PacketSourceRow['property'] | null) ?? { address: '', zip: null },
+    owner,
+    photos: (photos.data as Array<{ drive_file_id: string | null }>) ?? [],
+  };
+}
+
+/**
  * Advance the permit lifecycle (§6B.3). Setting 'not_required_verified' or
  * 'approved' is the human clearance step — an explicit write here, never a side
  * effect of screening. `formRef` records e.g. the VB PPR record number.

@@ -54,6 +54,7 @@ import {
 import { crewMayStart, type PermitLifecycle } from '../src/permitting/permitRecord.js';
 import { createApi, type DataSource } from '../src/server/api.js';
 import { CoreEvents } from '../src/binder/eventBus.js';
+import type { PacketSourceRow } from '../src/db/repositories.js';
 
 const CITY: CityWord = {
   contactName: 'A. Planner',
@@ -351,5 +352,88 @@ describe('POST /api/permits/status', () => {
     const res = await createApi(source({ status: 'needed', notes: null }, moves)).movePermit({ ...goodBody, recordedBy: '' });
     expect(res.status).toBe(422);
     expect(moves).toHaveLength(0);
+  });
+});
+
+// ── §6B.1 step 6. `assemblePacket` has been written and tested since the
+// permitting build and NOTHING called it — the same "specified in the
+// runbook, unreachable in code" shape that has already cost three lead
+// channels. These tests exist to keep it reachable.
+describe('GET /api/permits/:id/packet', () => {
+  const PERMIT_ID = '11111111-2222-4333-8444-555555555555';
+
+  const src = (over: Partial<PacketSourceRow> = {}): PacketSourceRow => ({
+    permit: {
+      id: PERMIT_ID,
+      city: 'Virginia Beach',
+      screen_status: 'PERMIT_LIKELY',
+      in_rpa: true,
+      form_ref: null,
+      labeled_map_file: 'drive-map-1',
+      property_id: 'prop-1',
+    },
+    property: { address: '404 Nowhere Lane', zip: '23451' },
+    owner: { name: 'SIM Testerson', phones: ['757-555-0142'], emails: ['sim@example.test'] },
+    photos: [{ drive_file_id: 'drive-photo-1' }],
+    ...over,
+  });
+
+  const source = (row: PacketSourceRow | null, ready = true): DataSource => ({
+    ready: () => ready,
+    async stopsBetween() { return []; },
+    async newLeads() { return []; },
+    ...(ready ? { packetSource: async () => row } : {}),
+  });
+
+  it('503s when the data links are cut', async () => {
+    const res = await createApi(source(null, false)).permitPacket(PERMIT_ID);
+    expect(res.status).toBe(503);
+  });
+
+  it('404s on a permit that does not exist', async () => {
+    const res = await createApi(source(null)).permitPacket(PERMIT_ID);
+    expect(res.status).toBe(404);
+  });
+
+  it('assembles the packet and never offers to file it', async () => {
+    const res = await createApi(source(src())).permitPacket(PERMIT_ID);
+    expect(res.status).toBe(200);
+    const body = res.body as { neverAutoFiled: boolean; handoff: { method: string }; mitigationNote?: string };
+    // §6B.3: ARBO prepares and hands off. The literal `true` is the promise.
+    expect(body.neverAutoFiled).toBe(true);
+    expect(body.handoff.method).toBeTruthy();
+    // A PERMIT_LIKELY removal surfaces mitigation up front (§6B.4).
+    expect(body.mitigationNote).toBeTruthy();
+  });
+
+  it('names what it cannot know instead of rendering it as done (§1B)', async () => {
+    const res = await createApi(source(src())).permitPacket(PERMIT_ID);
+    const body = res.body as { notTracked: string[]; status: string; missing: string[] };
+    // Nothing records which city forms are filled out, so the checklist says
+    // so rather than letting an untracked fact read as a finished item.
+    expect(body.notTracked.join(' ')).toMatch(/no record/i);
+    // And the replacement count, which would otherwise be quoted wrong on a
+    // document Mike hands the city.
+    expect(body.notTracked.join(' ')).toMatch(/how many trees are being removed/i);
+    expect(body.status).toBe('INCOMPLETE');
+    expect(body.missing.length).toBeGreaterThan(0);
+  });
+
+  it('says so when no owner is linked — the caller is not the owner (§5.9)', async () => {
+    const res = await createApi(source(src({ owner: null }))).permitPacket(PERMIT_ID);
+    const body = res.body as { notTracked: string[]; missing: string[] };
+    expect(body.notTracked.join(' ')).toMatch(/who owns this property/i);
+    expect(body.missing.join(' ')).toMatch(/owner/i);
+  });
+
+  it('rejects a non-UUID id before it reaches the database', async () => {
+    const res = await createApi(source(src())).permitPacket('p1');
+    expect(res.status).toBe(400);
+  });
+
+  it('never says the forbidden thing, on the real response path', async () => {
+    const res = await createApi(source(src())).permitPacket(PERMIT_ID);
+    const body = res.body as { coverSummary: string };
+    expect(body.coverSummary).not.toMatch(/all clear|you'?re clear|no permit (needed|required)/i);
   });
 });
