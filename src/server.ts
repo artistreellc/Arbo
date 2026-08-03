@@ -50,7 +50,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { boot } from './index.js';
 import { createApi, type DataSource, type ApiLeadInput } from './server/api.js';
-import { hasDb, dataLinksLive, dbConfigured } from './db/client.js';
+import { hasDb, dataLinksLive, dataLinksSim, dbConfigured } from './db/client.js';
 import {
   listLeads,
   listStopsBetween,
@@ -144,6 +144,19 @@ import type { Alerter } from './reception/receptionist.js';
 import { loadAppHtml, loadCrewHtml } from './server/appPage.js';
 import { emitSafe } from './binder/eventBus.js';
 import { runAgentSweep, startAgentScheduler } from './agents/sweep.js';
+import { createSimSource } from './dev/simSource.js';
+
+/**
+ * The source the server actually runs on. In SIM mode this is in-memory fake
+ * data and no database client is ever constructed; otherwise it is the live
+ * repositories, which are themselves gated by the data-link switch.
+ *
+ * One function decides it, so there is exactly one place where the app can
+ * pick up data — and no path that mixes the two.
+ */
+export function createServerSource(): DataSource {
+  return dataLinksSim() ? createSimSource() : createLiveSource();
+}
 
 /** Live DataSource over the Phase 1 repositories (service-role, RLS-locked). */
 export function createLiveSource(): DataSource {
@@ -467,8 +480,9 @@ const consoleAlerter: Alerter = {
 export function createArborRequestHandler() {
   boot(); // validates guardrails + legal or throws
   const alertsProvider = createNwsAlertsProvider((url, init) => fetch(url, init));
-  const api = createApi(createLiveSource(), {
+  const api = createApi(createServerSource(), {
     dataLinksLive: dataLinksLive(),
+    dataLinksSim: dataLinksSim(),
     alerts: alertsProvider,
     ...(env.elevenlabs.apiKey ? { tts: createElevenLabsTts(env.elevenlabs.apiKey) } : {}),
   });
@@ -802,16 +816,18 @@ export function startServer(port: number) {
   const server = createServer(createArborRequestHandler());
   // §8A.6f: the agents run on their own clock, not only when Mike taps.
   startAgentScheduler(
-    createApi(createLiveSource(), { alerts: createNwsAlertsProvider((u, i) => fetch(u, i)) }),
+    createApi(createServerSource(), { alerts: createNwsAlertsProvider((u, i) => fetch(u, i)) }),
     createNwsAlertsProvider((u, i) => fetch(u, i)),
   );
   server.listen(port, () => {
     // Three states, never two: configured-and-live, configured-but-CUT, and
     // not configured at all. Collapsing the middle one into either of the
     // others is the §1B lie in the one line an operator actually reads.
-    const dbState = !dbConfigured()
-      ? 'not configured'
-      : dataLinksLive() ? 'connected' : 'CONFIGURED BUT LINKS CUT (ARBO_DATA_LINKS is not "live") — no real data is being read or written';
+    const dbState = dataLinksSim()
+      ? 'SIMULATION — every record is fake, no database connection is opened'
+      : !dbConfigured()
+        ? 'not configured'
+        : dataLinksLive() ? 'connected' : 'CONFIGURED BUT LINKS CUT (ARBO_DATA_LINKS is not "live") — no real data is being read or written';
     console.log(`✅ ARBO backend on :${port} — guardrails v${summary.guardrailsVersion}, legal v${summary.legalVersion}, db ${dbState}`);
   });
   return server;

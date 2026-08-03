@@ -275,6 +275,8 @@ export interface ApiExtras {
    * the caller did not say — reported as 'unknown', never guessed as either.
    */
   dataLinksLive?: boolean;
+  /** True when the app is running on in-memory simulated records. */
+  dataLinksSim?: boolean;
 }
 
 export interface ApiLeadInput {
@@ -333,7 +335,12 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
           // "The link is cut" and "there is no database" are different facts
           // and must not read the same on the one endpoint used to check
           // whether Arbo is alive (§1B).
-          dataLinks: extras.dataLinksLive === undefined ? 'unknown' : extras.dataLinksLive ? 'live' : 'cut',
+          // SIMULATION is its own state and must never read as live. Anyone
+          // looking at this endpoint to decide whether a number is real needs
+          // that answer in one word.
+          dataLinks: extras.dataLinksSim
+            ? 'simulation'
+            : extras.dataLinksLive === undefined ? 'unknown' : extras.dataLinksLive ? 'live' : 'cut',
           integrations: integrationStatus(),
         },
       };

@@ -70,6 +70,20 @@ export function dataLinksLive(): boolean {
 }
 
 /**
+ * SIMULATION mode — the app runs on in-memory fake records and never opens a
+ * database connection at all. Mike: "you can make simulations to test
+ * connections."
+ *
+ * Mutually exclusive with live by construction: 'live' and 'sim' are
+ * different strings, so a value can only ever be one of them. There is no
+ * combination of settings that puts simulated rows next to real ones, which
+ * is the failure that would make the two indistinguishable.
+ */
+export function dataLinksSim(): boolean {
+  return process.env.ARBO_DATA_LINKS === 'sim';
+}
+
+/**
  * True when the DB is configured AND the data link is open. Every repository
  * and every API handler gates on this, so one switch stops the whole app from
  * reaching real data.
