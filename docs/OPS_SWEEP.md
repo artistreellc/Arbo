@@ -112,8 +112,22 @@ this document is the spec.
      an address if it ends in a real street suffix ("1000 works if possible"
      is a budget, not a street). LSA gives no city on the wire, so
      `inServiceArea` stays UNKNOWN unless a ZIP resolves it.
-   - `newlead@homeadvisor.com` + subject `New Opportunity: <service>` →
-     **home_advisor**. Carries service, city, and HomeAdvisor's lead number —
+   - `newlead@homeadvisor.com` / `@angi.com` / `@angieslist.com` + subject
+     `New Opportunity: <service>` → **home_advisor — CHANNEL OFF.**
+
+     > **Mike, 2026-08-03:** *"Not worried about Angi or homeadivsor we are
+     > not going after them currently so don't add them to Arbo I'll let you
+     > know when as we use them seasonally"*. HomeAdvisor and Angi are the
+     > same company, so both domains are gated.
+     >
+     > The classifier still RECOGNISES these and returns
+     > `channelOff: 'home_advisor'`. Report them as a single suppressed
+     > count — "N HomeAdvisor/Angi, channel off" — never as leads and never
+     > as nothing (§3.7). Off is a stated fact, not a blind spot. Flip
+     > `SEASONAL_CHANNELS_OFF` in leadMail.ts when Mike says the season is on.
+
+     The dormant parser, for when it comes back on, carries service, city and
+     HomeAdvisor's own lead number —
      but NO name or phone (those are behind "View all details" in their app),
      so the row points Mike there instead of pretending to hold contact
      details. Other `@homeadvisor.com` senders are marketing → not a lead.

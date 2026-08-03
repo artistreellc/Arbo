@@ -40,8 +40,8 @@
 
   Remember the marker: SLOW::ARBO
 */
-import { describe, it, expect } from 'vitest';
-import { classifyLeadMail } from '../src/reception/leadMail.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { classifyLeadMail, SEASONAL_CHANNELS_OFF } from '../src/reception/leadMail.js';
 import { buildFollowUpQueue, clampToQuietHours, type EstimateState, type JobState } from '../src/ops/followUps.js';
 import { loadLegal } from '../src/config/loadConfig.js';
 
@@ -354,47 +354,96 @@ Postal Code
 23456
 Bi-weekly lawn mowing service for a small yard. Include edging and weed control.`;
 
-describe('HomeAdvisor (§5A #12) — a whole channel Arbo could not see', () => {
-  const r = classifyLeadMail({
+describe('HomeAdvisor / Angi — SWITCHED OFF (Mike, 2026-08-03)', () => {
+  // "Not worried about Angi or homeadivsor we are not going after them
+  // currently so don't add them to Arbo I'll let you know when as we use them
+  // seasonally". Off, not deleted — he will turn it back on.
+  const ha = (over: Partial<{ from: string; subject: string; body: string }> = {}) => classifyLeadMail({
     from: 'newlead@homeadvisor.com',
     subject: 'New Opportunity: Trees - Trim',
     body: HA_BODY,
+    ...over,
   });
 
-  it('is recognised, with the service and the city', () => {
-    expect(r.isLeadNotification).toBe(true);
+  it('is recognised but NOT treated as a lead', () => {
+    const r = ha();
+    expect(r.isLeadNotification).toBe(false);
+    // Recognised, so the sweep can say what it ignored and how much of it.
     expect(r.provider).toBe('home_advisor');
+    expect(r.channelOff).toBe('home_advisor');
+  });
+
+  it('extracts nothing while the channel is off', () => {
+    // No point parsing a channel we are not working. Empty lead, and the
+    // reason is on the result rather than implied by the emptiness.
+    expect(ha().lead).toEqual({});
+  });
+
+  it('covers Angi too — same company, both domains', () => {
+    for (const from of ['newlead@angi.com', 'leads@angieslist.com']) {
+      const r = ha({ from });
+      expect(r.channelOff, from).toBe('home_advisor');
+    }
+  });
+
+  it('"off" is a stated fact, never a silent drop (§3.7)', () => {
+    // The distinction that matters: unrecognised mail has provider null;
+    // a switched-off channel names itself. A sweep must be able to report
+    // "4 HomeAdvisor, channel off" rather than showing nothing at all.
+    const off = ha();
+    const unknown = classifyLeadMail({ from: 'someone@nowhere.test', subject: 'hello', body: '' });
+    expect(off.provider).not.toBeNull();
+    expect(unknown.provider).toBeNull();
+    expect(unknown.channelOff).toBeUndefined();
+  });
+
+  it('their marketing mail is still not a lead, off or on', () => {
+    expect(ha({ from: 'news@homeadvisor.com', subject: 'Your monthly pro report', body: 'stats' })
+      .isLeadNotification).toBe(false);
+  });
+});
+
+describe('HomeAdvisor parser still works for the day Mike switches it back on', () => {
+  // The parser is dormant, not deleted. These tests keep it from rotting
+  // while the channel is off — rebuilding a lead parser from memory months
+  // later is how a channel comes back subtly wrong.
+  let restore: string[];
+  beforeEach(() => {
+    restore = [...SEASONAL_CHANNELS_OFF];
+    SEASONAL_CHANNELS_OFF.length = 0;
+  });
+  afterEach(() => {
+    SEASONAL_CHANNELS_OFF.length = 0;
+    SEASONAL_CHANNELS_OFF.push(...(restore as typeof SEASONAL_CHANNELS_OFF));
+  });
+
+  const on = (body = HA_BODY) => classifyLeadMail({
+    from: 'newlead@homeadvisor.com', subject: 'New Opportunity: Trees - Trim', body,
+  });
+
+  it('reads the service and the city', () => {
+    const r = on();
+    expect(r.isLeadNotification).toBe(true);
+    expect(r.channelOff).toBeUndefined();
     expect(r.lead.serviceRequested).toBe('Trees - Trim');
     expect(r.lead.serviceCity).toBe('Norfolk');
     expect(r.inServiceArea).toBe(true);
   });
 
-  it('keeps HomeAdvisor\'s own lead number so Mike can find it in their app', () => {
-    expect(r.lead.externalRef).toBe('327955820');
-    expect(r.lead.details).toMatch(/HomeAdvisor app/);
+  it('keeps their lead number so Mike can find it in their app', () => {
+    expect(on().lead.externalRef).toBe('327955820');
+    expect(on().lead.details).toMatch(/HomeAdvisor app/);
   });
 
   it('does NOT invent a name or phone it was never given', () => {
-    expect(r.lead.name).toBeUndefined();
-    expect(r.lead.phone).toBeUndefined();
+    expect(on().lead.name).toBeUndefined();
+    expect(on().lead.phone).toBeUndefined();
   });
 
   it('an out-of-area city is flagged for review, not dropped (§3.7)', () => {
-    const far = classifyLeadMail({
-      from: 'newlead@homeadvisor.com',
-      subject: 'New Opportunity: Trees - Trim',
-      body: HA_BODY.replace(/Norfolk/g, 'Richmond'),
-    });
+    const far = on(HA_BODY.replace(/Norfolk/g, 'Richmond'));
     expect(far.isLeadNotification).toBe(true);
     expect(far.inServiceArea).toBe(false);
-  });
-
-  it('HomeAdvisor marketing mail is not a lead', () => {
-    expect(classifyLeadMail({
-      from: 'news@homeadvisor.com',
-      subject: 'Your monthly pro report',
-      body: 'stats',
-    }).isLeadNotification).toBe(false);
   });
 });
 

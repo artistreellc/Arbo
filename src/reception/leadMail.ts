@@ -60,6 +60,33 @@ import { resolveServiceCity, serviceCityForZip, extractZip, type ServiceCity } f
 
 export type LeadMailProvider = 'google_ads_lead_form' | 'callrail_call' | 'callrail_web_form' | 'lsa_call' | 'home_advisor' | 'yelp' | 'website_form';
 
+/**
+ * CHANNELS MIKE HAS SWITCHED OFF. Owner instruction, 2026-08-03:
+ *   "Not worried about Angi or homeadivsor we are not going after them
+ *    currently so don't add them to Arbo I'll let you know when as we use
+ *    them seasonally"
+ *
+ * HomeAdvisor and Angi are the same company, so the sender match below covers
+ * both domains — otherwise Angi mail would arrive as unrecognised noise the
+ * day they send any.
+ *
+ * WHY THIS IS A SWITCH AND NOT A DELETION. Mike said "I'll let you know when",
+ * so this comes back. Deleting the parser would mean rebuilding it — and
+ * rebuilding a lead parser from memory is how a channel comes back subtly
+ * wrong. Flip the array; the rule is already written and already tested.
+ *
+ * WHAT IT DOES NOT DO. It does not make the mail invisible. The classifier
+ * still recognises it and returns `channelOff: 'home_advisor'`, so a sweep
+ * can say "4 HomeAdvisor mails, channel off" instead of either counting them
+ * as leads or silently dropping them (§3.7). Off is a stated fact, not a
+ * blind spot.
+ */
+export const SEASONAL_CHANNELS_OFF: LeadMailProvider[] = ['home_advisor'];
+
+export function channelIsOff(p: LeadMailProvider): boolean {
+  return SEASONAL_CHANNELS_OFF.includes(p);
+}
+
 export interface LeadMailInput {
   from: string;
   subject: string;
@@ -108,6 +135,15 @@ export interface LeadMailResult {
   lead: ExtractedLead;
   /** False when a captured city is clearly outside the 4 cities — review, don't auto-lead. */
   inServiceArea: boolean | null;
+  /**
+   * Set when the mail WAS recognised but its channel is switched off (see
+   * SEASONAL_CHANNELS_OFF). This is NOT the same as `isLeadNotification:
+   * false` on unrecognised mail: we know exactly what this is, and we are
+   * deliberately not treating it as a lead. Surfaces name the channel and
+   * count it — §3.7 forbids a silent drop, and "we ignored 4 of these on
+   * purpose" is a different fact from "nothing arrived".
+   */
+  channelOff?: LeadMailProvider;
 }
 
 const NOT_A_LEAD: LeadMailResult = { isLeadNotification: false, provider: null, lead: {}, inServiceArea: null };
@@ -448,9 +484,17 @@ export function classifyLeadMail(input: LeadMailInput): LeadMailResult {
   if (isLsaSender && /potential customer/i.test(input.subject)) {
     return parseLsaRequest(input);
   }
-  // HomeAdvisor: marketing mail also comes from homeadvisor.com, so anchor on
-  // the lead sender AND the Opportunity subject shape.
-  if (from.includes('@homeadvisor.com') && /^New Opportunity/i.test(input.subject)) {
+  // HomeAdvisor / Angi — same company, both domains. Marketing mail also comes
+  // from these senders, so anchor on the lead sender AND the Opportunity
+  // subject shape. RECOGNISED FIRST, then gated: Mike switched this channel
+  // off on 2026-08-03 and will switch it back on seasonally, so the mail is
+  // named and counted rather than ignored (§3.7).
+  const isHomeAdvisorSender = from.includes('@homeadvisor.com') || from.includes('@angi.com')
+    || from.includes('@angieslist.com');
+  if (isHomeAdvisorSender && /^New Opportunity/i.test(input.subject)) {
+    if (channelIsOff('home_advisor')) {
+      return { isLeadNotification: false, provider: 'home_advisor', lead: {}, inServiceArea: null, channelOff: 'home_advisor' };
+    }
     return parseHomeAdvisor(input);
   }
   // The website contact form, via the FormSubmit notification only (Mike,
