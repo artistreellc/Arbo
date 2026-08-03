@@ -1,4 +1,6 @@
 -- ═══════════════════════════════════════════════════════════════════════
+-- SLOW::ARBO   ← this marker IS this note. Wherever it appears, all of
+--              it applies: in a file, a commit, a doc, or from Mike.
 -- STOP. READ THIS BEFORE YOU CHANGE ONE CHARACTER OF THIS FILE.
 -- Owner instruction from Mike, 2026-08-03. This is not decoration and it
 -- is not optional. It is here because this is the point in a build where
@@ -34,6 +36,8 @@
 --    asked, and nothing else.
 --
 -- If you are moving fast right now, you are already off the rails.
+--
+-- Remember the marker: SLOW::ARBO
 -- Arbo full data spine + the binder (live brief §7 entities 12–27, §8A.6, §4.6,
 -- §4.8, §6E2.4, §6J2.4, §8C groundwork). Same access model as 0001: RLS enabled
 -- on every table with NO anon/authenticated policies — service role only.

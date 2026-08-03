@@ -1,5 +1,7 @@
 /*
   ═══════════════════════════════════════════════════════════════════════
+  SLOW::ARBO   ← this marker IS this note. Wherever it appears, all of
+               it applies: in a file, a commit, a doc, or from Mike.
   STOP. READ THIS BEFORE YOU CHANGE ONE CHARACTER OF THIS FILE.
   Owner instruction from Mike, 2026-08-03. This is not decoration and it
   is not optional. It is here because this is the point in a build where
@@ -35,6 +37,8 @@
      asked, and nothing else.
 
   If you are moving fast right now, you are already off the rails.
+
+  Remember the marker: SLOW::ARBO
 */
 // Agent #13 — Owner Briefing (brief §8A.5, §3.17, §6G). Writes the brief; the
 // failure mode is OMISSION, so the deterministic core gathers every signal the

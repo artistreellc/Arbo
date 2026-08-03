@@ -1,4 +1,6 @@
 -- ═══════════════════════════════════════════════════════════════════════
+-- SLOW::ARBO   ← this marker IS this note. Wherever it appears, all of
+--              it applies: in a file, a commit, a doc, or from Mike.
 -- STOP. READ THIS BEFORE YOU CHANGE ONE CHARACTER OF THIS FILE.
 -- Owner instruction from Mike, 2026-08-03. This is not decoration and it
 -- is not optional. It is here because this is the point in a build where
@@ -34,6 +36,8 @@
 --    asked, and nothing else.
 --
 -- If you are moving fast right now, you are already off the rails.
+--
+-- Remember the marker: SLOW::ARBO
 -- estimate.calendar_event_id (§5A #14 + D36). When a signed contract flips an
 -- estimate to a booked job, ARBOR recolors the ORIGINAL estimate calendar
 -- event to Sage (colorId 2) — Mike's real "job won" convention, learned from

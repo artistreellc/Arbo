@@ -1,4 +1,6 @@
 -- ═══════════════════════════════════════════════════════════════════════
+-- SLOW::ARBO   ← this marker IS this note. Wherever it appears, all of
+--              it applies: in a file, a commit, a doc, or from Mike.
 -- STOP. READ THIS BEFORE YOU CHANGE ONE CHARACTER OF THIS FILE.
 -- Owner instruction from Mike, 2026-08-03. This is not decoration and it
 -- is not optional. It is here because this is the point in a build where
@@ -34,6 +36,8 @@
 --    asked, and nothing else.
 --
 -- If you are moving fast right now, you are already off the rails.
+--
+-- Remember the marker: SLOW::ARBO
 -- Review finding (cycle 4): five crew policies in 0010 were `using (true)`,
 -- which in Supabase means EVERY `authenticated` principal — including a
 -- DEACTIVATED crew member whose JWT is still valid, and any signed-up account

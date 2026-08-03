@@ -1,4 +1,6 @@
 -- ═══════════════════════════════════════════════════════════════════════
+-- SLOW::ARBO   ← this marker IS this note. Wherever it appears, all of
+--              it applies: in a file, a commit, a doc, or from Mike.
 -- STOP. READ THIS BEFORE YOU CHANGE ONE CHARACTER OF THIS FILE.
 -- Owner instruction from Mike, 2026-08-03. This is not decoration and it
 -- is not optional. It is here because this is the point in a build where
@@ -34,6 +36,8 @@
 --    asked, and nothing else.
 --
 -- If you are moving fast right now, you are already off the rails.
+--
+-- Remember the marker: SLOW::ARBO
 -- §8C ACCESS & IDENTITY — the login that makes "admin-only" REAL.
 -- RLS is the enforcement layer, not the UI (§8C.2). The backend keeps using
 -- the service role (bypasses RLS); these policies govern any authenticated

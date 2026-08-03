@@ -1,5 +1,7 @@
 /*
   ═══════════════════════════════════════════════════════════════════════
+  SLOW::ARBO   ← this marker IS this note. Wherever it appears, all of
+               it applies: in a file, a commit, a doc, or from Mike.
   STOP. READ THIS BEFORE YOU CHANGE ONE CHARACTER OF THIS FILE.
   Owner instruction from Mike, 2026-08-03. This is not decoration and it
   is not optional. It is here because this is the point in a build where
@@ -35,6 +37,8 @@
      asked, and nothing else.
 
   If you are moving fast right now, you are already off the rails.
+
+  Remember the marker: SLOW::ARBO
 */
 // Breakdown flow (brief §6E / §6E2.2, FLEET_MANAGEMENT_SPEC §1). A crew member
 // reports a failure from the field; the unit goes DOWN so scheduling stops
