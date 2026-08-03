@@ -293,11 +293,33 @@ export function notifyTier(input: NotifyInput): NotifyDecision {
  *
  * Every one of these is "that's Mike's call — I'll get it in front of him."
  */
+// These patterns are deliberately GENERAL. A first version matched the exact
+// phrasings its own tests used — "knock some off", "throw that in" — and a
+// live proof walked straight through it with "knock a hundred off" and "throw
+// the stump in for free". A money guard that only catches the wording you
+// thought of is not a guard.
+//
+// The bias here is toward blocking. A false positive costs one slightly stiff
+// sentence ("that's Mike's call"); a false negative costs the stump.
+// OWNER RULING R8, 2026-08-03 — PAYMENT PLANS ARE ALLOWED. Mike: "its
+// supposed to be the oposite we can set them up on a payment plan." The VA
+// training brief §1.3 lists payment plans as forbidden; Mike says otherwise
+// and he owns the business, so there is deliberately NO payment-plan pattern
+// below. Do not add one back from reading the brief.
+//
+// What still holds: ARBO may say a plan is possible, never the TERMS. Amounts,
+// instalments and dates are numbers, and §3 no-price already blocks those.
 const FINANCIAL_COMMITMENTS: Array<{ re: RegExp; what: string }> = [
-  { re: /\b(discount|knock (?:some|a bit) off|take .{0,12}off (?:the|your)|cut you a deal)\b/i, what: 'a discount' },
+  // knock/take/cut ANY amount off — a number, "some", "a bit", nothing at all.
+  { re: /\b(discount|(?:knock|take|cut)\b[^.!?]{0,25}\boff\b|cut you a deal)/i, what: 'a discount' },
   { re: /\b(we'?ll work with you|meet you halfway|match (?:that|their|the other))\b/i, what: 'matching or negotiating a figure' },
-  { re: /\b(waive|no charge|free of charge|won'?t charge|throw (?:that|it) in|on the house)\b/i, what: 'waiving a charge' },
-  { re: /\b(payment plan|pay (?:us )?(?:later|when you can)|split (?:it|the) (?:up|payment)|invoice you later)\b/i, what: 'a payment plan' },
+  // "throw it in", and "throw <anything> in ... for free / no charge / on us".
+  {
+    re: /\b(waive|no charge|free of charge|won'?t charge|on the house|throw(?:ing)?\s+(?:that|it|those|them)\s+in\b|throw(?:ing)?\b[^.!?]{0,30}\bin\b[^.!?]{0,20}\b(?:free|no charge|on us)\b)/i,
+    what: 'waiving a charge',
+  },
+  // Any first-person commitment to do something at no cost.
+  { re: /\b(?:we'?ll|we can|we could|i'?ll|i can)\b[^.!?]{0,40}\bfor free\b/i, what: 'waiving a charge' },
   { re: /\b(while (?:we'?re|he'?s|you'?re) (?:out )?there,? (?:we|he)(?:'ll| can| will))\b/i, what: 'a scope add-on at the quoted figure' },
   { re: /\b(that (?:was|is) included|it includes the stump|includes? the (?:stump|haul|cleanup))\b/i, what: "accepting the customer's version of what was included" },
 ];

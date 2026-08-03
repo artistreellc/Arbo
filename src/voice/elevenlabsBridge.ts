@@ -202,7 +202,7 @@ export function createElevenLabsBridge(deps: BridgeDeps): ElevenLabsBridge {
 
       const id = `arbor-${key}-${session.turns}`;
       const created = Math.floor(nowMs / 1000);
-      const model = body.model ?? 'arbor-receptionist';
+      const model = body.model ?? 'arbo-receptionist';
 
       if (body.stream) {
         // One content chunk carrying the already-guarded reply (see header note).

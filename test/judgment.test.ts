@@ -178,7 +178,6 @@ describe('zero financial authority (§1.3) — the leak §3 does not cover', () 
     ["we'll work with you on the number", 'matching or negotiating a figure'],
     ["we won't charge you for the haul", 'waiving a charge'],
     ["we'll throw that in", 'waiving a charge'],
-    ['we can do a payment plan', 'a payment plan'],
     ["while we're out there we'll take the stump too", 'a scope add-on at the quoted figure'],
     ['yes, that was included', "accepting the customer's version of what was included"],
   ])('blocks %o', (line, what) => {
@@ -191,6 +190,33 @@ describe('zero financial authority (§1.3) — the leak §3 does not cover', () 
   it('the replacement line commits nothing and refuses nothing', () => {
     expect(FINANCIAL_DEFERRAL).toContain("Mike's call");
     expect(FINANCIAL_DEFERRAL).not.toMatch(/\$|\bno\b|cannot|can't/i);
+  });
+
+  it.each([
+    'I can knock a hundred off if you book today.',
+    "We'll throw the stump in for free.",
+    "We'll take fifty off the removal.",
+    'I can throw it in.',
+  ])('catches the wording the FIRST version leaked on: %o', (line) => {
+    // A live proof walked straight through v1 with these. The patterns only
+    // matched the phrasings their own tests used. Regression-locked.
+    expect(screenFinancialCommitment(line).blocked).toBe(true);
+  });
+
+  it.each([
+    'Mike will be out between 3 and 4 to take a look.',
+    'The crew will take the brush with them when they go.',
+    'I can get you on the schedule for a free estimate.',
+    'The estimate is free — Mike comes out and looks at no cost to you.',
+    // OWNER RULING R8: payment plans are a real thing Art-is-Tree offers.
+    // The VA brief forbids them; Mike overruled it. ARBO may say a plan is
+    // possible — it still may not state the terms, which no-price blocks.
+    'We can set you up on a payment plan — Mike will go over the details.',
+    'We do offer payment plans.',
+  ])('does not block ordinary speech: %o', (line) => {
+    // "Free estimate" is a line the golden rules REQUIRE ARBO to say. A money
+    // guard that blocks it would break the one pivot every price question uses.
+    expect(screenFinancialCommitment(line).blocked).toBe(false);
   });
 
   it('lets an ordinary line through untouched', () => {

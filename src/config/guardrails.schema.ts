@@ -149,6 +149,30 @@ export const GuardrailsSchema = z
       nameAskLine: z.string().min(1),
       example: z.string().min(1),
     }),
+    // How the call ENDS. Dialed in on the live agent before this existed in
+    // code: recap, thank them by name, hang up rather than sit on dead air.
+    // A call that trails off leaves the caller unsure anything was booked.
+    // OWNER RULING R8, 2026-08-03. Mike: payment plans are allowed, and ARBO
+    // "can gladly pass our financing option and where the app is."
+    // The LINKS are nullable on purpose: ARBO offers the option either way,
+    // but it must never invent a URL or a lender. §1.4 — never say something
+    // Mike then has to lie to defend.
+    financing: z.object({
+      available: z.boolean(),
+      /** What ARBO may say. Never terms, rates, or amounts — §3 blocks those. */
+      offerLine: z.string().min(1),
+      /** Where to apply. Null until Mike supplies it; ARBO then defers. */
+      applyLink: z.string().url().nullable(),
+      /** Where the customer app lives. Null until Mike supplies it. */
+      appLink: z.string().url().nullable(),
+      /** Said instead when a link is missing, so ARBO never guesses one. */
+      linkPendingLine: z.string().min(1),
+    }),
+    callWrapUp: z.object({
+      instruction: z.string().min(1),
+      /** Spoken-length ceiling. A phone call is not a document. */
+      maxSentences: z.number().int().min(1).max(5),
+    }),
   })
   .strict();
 

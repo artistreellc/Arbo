@@ -168,10 +168,51 @@ depends on editing the website.
 
 ---
 
+## R8 — Payment plans and financing are ALLOWED. Offer them gladly.
+**Ruling: 2026-08-03.** Mike: *"its supposed to be the oposite we can set them
+up on a payment plan"* and *"it can gladly pass our finiacing option and where
+the app is."*
+
+**Why it looks wrong:** `docs/VA_TRAINING_BRIEF.md` §1.3 lists "No payment
+plan, no deferred payment, no 'pay us when you can'" among the hard-nos, and
+the first implementation blocked exactly that. Mike overruled it — Art-is-Tree
+really does offer financing and payment plans, and turning a caller away from
+them loses work.
+
+**The rule now:** ARBO offers financing and payment plans gladly, and shares
+where the app is. There is deliberately NO payment-plan pattern in
+`FINANCIAL_COMMITMENTS`. **Do not add one back from reading the brief.**
+
+**What still holds:** ARBO may say a plan or financing is AVAILABLE. It may
+never state terms, rates, instalments, or any figure — those are numbers, and
+§3 no-price already blocks them. The rest of §1.3 stands: no discounts, no
+waiving a haul or a stump, no "throw that in", no matching a competitor.
+
+**The links are nullable on purpose.** `financing.applyLink` and
+`financing.appLink` are null until Mike supplies the real ones. While null,
+ARBO says Mike will send it rather than guessing a URL (§1.4 — never say
+something Mike then has to lie to defend). Filling them in is a config edit,
+not a code change.
+
+*Carried by:* `src/reception/judgment.ts` (`FINANCIAL_COMMITMENTS`),
+`src/policy/guardrails.json` (`financing`), `src/reception/systemPrompt.ts`,
+`test/judgment.test.ts`.
+
+---
+
 ## R5 — Opus is the brain
-**Owner decision (§8A.2), re-affirmed.** Agents run on `claude-opus-5`. Do not
-downgrade an agent to a cheaper model for cost reasons; that is Mike's call,
-not an optimisation to make quietly.
+**Owner decision (§8A.2), re-affirmed 2026-08-03.** Agents run on
+`claude-opus-5`. Do not downgrade an agent to a cheaper model for cost
+reasons; that is Mike's call, not an optimisation to make quietly.
+
+**Applied to the phone line, 2026-08-03.** Mike's separately-built ElevenLabs
+agent ran on `gemini-2.5-flash` with the guardrails as prompt text. Asked
+which way to go, Mike said **"we are using opus"** and **"guardReply()"**.
+So ElevenLabs is VOICE ONLY and calls Arbo as its custom LLM at
+`/voice/llm/chat/completions`; the conversation runs on Opus and every spoken
+line passes `guardReply()` — a rule in code cannot be talked around, a rule in
+a prompt can. The scaffold from that session is filed unmerged at
+`docs/receptionist-r2/`.
 
 *Carried by:* `src/agents/*` (`modelUsed`), verified in `agent_run`.
 
