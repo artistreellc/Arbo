@@ -84,7 +84,18 @@ real table. The agent scheduler gates on `hasDb()`, so the same switch stops
 the timed sweeps. *Carried by:* `src/db/client.ts`, `test/dataLinks.test.ts`.
 
 **Nothing was deleted, and nothing should be.** Mike said cut, not delete. His
-rows are still in Supabase, untouched. Do not "clean them up".
+rows are still in Supabase, untouched. Do not "clean them up". That data is
+the AI assistant's context — contact instructions ("CALL FIRST", "gets home
+at 3"), who owns the property versus who called, prior history — and the VA
+brief §5.9 makes those binding on every future contact. Throwing it away
+would throw away exactly what the assistant needs.
+
+**Import NOTHING involving active company activity until the app is
+developed.** Owner instruction, 2026-08-03, in his words. Not leads, not
+calendar appointments, not permit mail, not customer records — nothing that
+is part of the business running right now. Scheduled sweeps stay read-only
+and report only. This is not a judgement call to revisit each cycle; it holds
+until Mike says the app is built.
 
 **Why this exists — my mistake, written down so it is not repeated.** I
 ingested Mike's leads into the app. He told me to stop. I reverted the *code*
