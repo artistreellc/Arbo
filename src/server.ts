@@ -86,6 +86,7 @@ import {
   recordBriefingAck,
   todaysBriefing,
   listUnits,
+  listPermitTracks,
   listUnitParts,
   unitOpenTaskCount,
   unitStatus,
@@ -374,6 +375,7 @@ export function createLiveSource(): DataSource {
     recordBriefingAck: (input) => recordBriefingAck(input),
     todaysBriefing: () => todaysBriefing(),
     units: () => listUnits(),
+    permitTracks: () => listPermitTracks(),
     unitParts: (id) => listUnitParts(id),
     unitOpenTaskCount: (id) => unitOpenTaskCount(id),
     unitStatus: (id) => unitStatus(id),
@@ -668,6 +670,11 @@ export function createArborRequestHandler() {
         return send(...unpack(await api.ackBriefing((await readJson(req)) as Record<string, unknown>)));
       }
       // §6E fleet surface.
+      // §6B — the permitting board. Read-only; the lifecycle only moves by a
+      // human, and there is no handler here that could move it.
+      if (req.method === 'GET' && url.pathname === '/api/permits') {
+        return send(...unpack(await api.permitBoard()));
+      }
       if (req.method === 'GET' && url.pathname === '/api/fleet/units') {
         return send(...unpack(await api.fleetUnits()));
       }

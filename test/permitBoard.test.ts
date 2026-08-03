@@ -9,6 +9,7 @@ import {
   type PermitTrackRow,
 } from '../src/permitting/permitBoard.js';
 import type { OverlayHit } from '../src/permitting/screening.js';
+import { createApi, type DataSource } from '../src/server/api.js';
 
 const TODAY = '2026-08-03';
 const CBPA: OverlayHit = { kind: 'CBPA_RPA', layer: 'DEQ RPA layer 33', meaning: 'In the Bay buffer.' };
@@ -212,6 +213,56 @@ describe('no row on a permitting screen can read as permission (§6B.3)', () => 
   it('never uses the forbidden vocabulary anywhere', () => {
     for (const r of everything.rows) {
       expect(`${r.headline} ${r.nextStep}`).not.toMatch(/no permit (needed|required)|all clear|you'?re clear|good to (go|cut)/i);
+    }
+  });
+});
+
+// ── The API path. permitBoard.test.ts above proves the logic; this proves the
+// app actually calls it, which is the failure mode this codebase keeps
+// hitting — a tested function nothing invokes.
+describe('GET /api/permits', () => {
+  // Typed as DataSource on purpose. A bare object literal here type-checks
+  // as its own shape and the optional-member mismatch only shows up in
+  // `npm run check` — vitest does not typecheck, so the test would pass while
+  // the build broke.
+  // stopsBetween/newLeads are required members of DataSource and unrelated to
+  // this endpoint; they return empty so the shape is honest rather than cast
+  // away with `as DataSource`, which would hide a real mismatch later.
+  const source = (rows: PermitTrackRow[] | null): DataSource => ({
+    ready: () => rows !== null,
+    async stopsBetween() { return []; },
+    async newLeads() { return []; },
+    ...(rows ? { permitTracks: async () => rows } : {}),
+  });
+
+  it('503s honestly when the data links are cut rather than returning an empty board', async () => {
+    const res = await createApi(source(null)).permitBoard();
+    // §3 + §1B: "we cannot see" must not render as "there is nothing".
+    expect(res.status).toBe(503);
+    expect((res.body as { error: string }).error).toBe('db_not_configured');
+  });
+
+  it('returns the board, buckets and all', async () => {
+    const res = await createApi(source([
+      row({ propertyId: 'unscreened', screen: null }),
+      row({
+        propertyId: 'blocked', scheduledFor: '2026-08-04',
+        screen: { status: 'PERMIT_LIKELY', inRpa: true, overlays: [CBPA], ranAt: '2026-08-01', rulesetLastVerified: '2026-08-01' },
+      }),
+    ])).permitBoard();
+    expect(res.status).toBe(200);
+    const body = res.body as { rows: Array<{ propertyId: string; bucket: string }>; blockedCount: number; neverScreenedCount: number };
+    expect(body.blockedCount).toBe(1);
+    expect(body.neverScreenedCount).toBe(1);
+    expect(body.rows[0]!.propertyId).toBe('blocked');
+  });
+
+  it('the never-clear assertion runs on the real response path, not just in tests', async () => {
+    // If the handler ever stops asserting, this is what notices.
+    const res = await createApi(source([row()])).permitBoard();
+    const body = res.body as { rows: Array<{ headline: string; nextStep: string }> };
+    for (const r of body.rows) {
+      expect(`${r.headline} ${r.nextStep}`).not.toMatch(/all clear|you'?re clear|no permit (needed|required)/i);
     }
   });
 });

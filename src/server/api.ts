@@ -81,6 +81,7 @@ import { buildActionPlan, isSchedulable, type BreakdownReport, type KnownPart, t
 import type { TtsClient } from '../voice/elevenlabsTts.js';
 import { scoreLead, type LeadQualityResult } from '../reception/leadQuality.js';
 import { integrationStatus } from '../env.js';
+import { buildPermitBoard, assertBoardNeverClear, type PermitTrackRow } from '../permitting/permitBoard.js';
 
 /** Postgres uuid shape. Non-UUID ids must be rejected BEFORE any write. */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -162,6 +163,13 @@ export interface DataSource {
   crewJobs?(fromIso: string, toIso: string): Promise<CrewJobSource[]>;
   /** §6E fleet: units with their open-task counts. */
   units?(): Promise<unknown[]>;
+  /**
+   * §6B permitting board: EVERY property, with its latest permit track or
+   * null. Must include properties that have never been screened — they are
+   * the loudest rows on the board, and a source that only returns permit
+   * rows would silently drop exactly those (§1B).
+   */
+  permitTracks?(): Promise<PermitTrackRow[]>;
   /** This unit's OWN parts history — the only source a suggestion may draw on. */
   unitParts?(unitId: string): Promise<KnownPart[]>;
   /** Open maintenance tasks on this unit — NOT a schedule check (see §1B note). */
@@ -856,6 +864,27 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       });
       if (source.emit) await source.emit('briefing.acknowledged', { crewMemberId, trainingEventId: saved.trainingEventId });
       return { status: 200, body: { unlocked: true, payableMinutes: ack.payableMinutes, ...saved } };
+    },
+
+    /**
+     * GET /api/permits — the §6B permitting board.
+     *
+     * The date is passed in rather than read from a clock inside the board so
+     * the whole thing stays a pure function and testable offline, the same
+     * shape as the screening engine.
+     *
+     * assertBoardNeverClear runs HERE, on the real response path, not only in
+     * a test. The recurring defect in this codebase has been a test proving a
+     * behaviour the app never exercises; an assertion the handler itself runs
+     * cannot drift out from under one. It throws rather than returning a soft
+     * row — a 500 is a cheaper failure than a permitting screen that reads
+     * like a clearance.
+     */
+    async permitBoard(): Promise<ApiResult> {
+      if (!source.ready() || !source.permitTracks) return { status: 503, body: { error: 'db_not_configured' } };
+      const board = buildPermitBoard(await source.permitTracks(), etToday());
+      assertBoardNeverClear(board);
+      return { status: 200, body: board };
     },
 
     /** GET /api/fleet/units — the fleet with what each unit still owes (§6E). */

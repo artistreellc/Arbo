@@ -47,6 +47,8 @@
 import { getDb } from './client.js';
 import { parseAddress, type ServiceCity, type OffFocusCity } from '../lib/address.js';
 import type { PermitRecordInput, PermitLifecycle } from '../permitting/permitRecord.js';
+import type { PermitTrackRow } from '../permitting/permitBoard.js';
+import type { OverlayHit, ScreenStatus } from '../permitting/screening.js';
 
 /**
  * Thrown when an address is in no city Art-is-Tree works — NOT merely outside
@@ -2301,4 +2303,73 @@ export async function crewSkillLevel(crewMemberId: string): Promise<number | nul
     .maybeSingle();
   if (res.error) throw res.error;
   return res.data ? Number(res.data.competency_level) : null;
+}
+
+/**
+ * Every property with a permit track, plus the ones that have NO track at all.
+ *
+ * The second half is the point. A LEFT JOIN from property, not a SELECT from
+ * permit: a property nobody ever screened has no permit row, and if this
+ * queried `permit` it would return exactly the properties that are already
+ * handled and silently omit the ones that are not. That is the §1B failure at
+ * the query layer — the board would look calm because the unscreened
+ * properties fell out of the FROM clause.
+ *
+ * Only properties with a service city are returned; the DB CHECK already keeps
+ * out-of-area properties out, so this is belt and braces on the city cast.
+ */
+export async function listPermitTracks(): Promise<PermitTrackRow[]> {
+  const db = getDb();
+  const [props, permits, jobs] = await Promise.all([
+    db.from('property').select('id, address, city').order('address', { ascending: true }),
+    db.from('permit')
+      .select('id, property_id, job_id, city, screen_status, in_rpa, overlay_source, form_ref, status, ruleset_last_verified, created_at')
+      .order('created_at', { ascending: false }),
+    db.from('job').select('property_id, scheduled_for').eq('status', 'booked'),
+  ]);
+  if (props.error) throw props.error;
+  if (permits.error) throw permits.error;
+  if (jobs.error) throw jobs.error;
+
+  // Newest permit per property. The ordering above is DESC, so the first one
+  // seen for a property is the current track.
+  const latest = new Map<string, Record<string, unknown>>();
+  for (const p of permits.data ?? []) {
+    const pid = p.property_id as string;
+    if (!latest.has(pid)) latest.set(pid, p as Record<string, unknown>);
+  }
+
+  // Soonest booked job per property — what makes a blocked row urgent.
+  const soonest = new Map<string, string>();
+  for (const j of jobs.data ?? []) {
+    const pid = j.property_id as string | null;
+    const at = j.scheduled_for as string | null;
+    if (!pid || !at) continue;
+    const cur = soonest.get(pid);
+    if (!cur || at < cur) soonest.set(pid, at);
+  }
+
+  return (props.data ?? []).map((prop) => {
+    const pid = prop.id as string;
+    const pm = latest.get(pid);
+    return {
+      permitId: (pm?.id as string) ?? null,
+      propertyId: pid,
+      addressLabel: (prop.address as string) ?? '(no address on file)',
+      city: prop.city as PermitTrackRow['city'],
+      jobId: (pm?.job_id as string) ?? null,
+      screen: pm
+        ? {
+          status: pm.screen_status as ScreenStatus,
+          inRpa: pm.in_rpa === true,
+          overlays: (pm.overlay_source as OverlayHit[]) ?? [],
+          ranAt: String(pm.created_at ?? ''),
+          rulesetLastVerified: (pm.ruleset_last_verified as string) ?? null,
+        }
+        : null,
+      status: (pm?.status as PermitTrackRow['status']) ?? 'needed',
+      formRef: (pm?.form_ref as string) ?? null,
+      scheduledFor: soonest.get(pid) ?? null,
+    };
+  });
 }
