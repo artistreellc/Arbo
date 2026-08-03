@@ -75,6 +75,29 @@ describe('request body handling', () => {
     expect(res.status).toBe(503);
   });
 
+  it('serves both home-screen manifests, and they are different apps', async () => {
+    // iOS install (task #39). Two manifests because the cockpit and the crew
+    // door are two apps — installing one must not open the other.
+    const base = `http://127.0.0.1:${(server!.address() as { port: number }).port}`;
+    type Manifest = { start_url: string; scope: string; display: string };
+    const admin = await (await fetch(`${base}/manifest.webmanifest`)).json() as Manifest;
+    const crew = await (await fetch(`${base}/crew.webmanifest`)).json() as Manifest;
+    expect(admin.start_url).toBe('/');
+    expect(crew.start_url).toBe('/crew');
+    expect(admin.display).toBe('standalone');
+    expect(crew.scope).toBe('/crew');
+  });
+
+  it('serves the icons, and the filename regex is the allow-list', async () => {
+    const base = `http://127.0.0.1:${(server!.address() as { port: number }).port}`;
+    const png = await fetch(`${base}/icons/arbo-180.png`);
+    expect(png.status).toBe(200);
+    expect(png.headers.get('content-type')).toBe('image/png');
+    // No path can walk out of the icons directory — only three names match.
+    expect((await fetch(`${base}/icons/../server.ts`)).status).toBe(404);
+    expect((await fetch(`${base}/icons/arbo-999.png`)).status).toBe(404);
+  });
+
   it('an unknown route is a 404, never a 500', async () => {
     const base = `http://127.0.0.1:${(server!.address() as { port: number }).port}`;
     const res = await fetch(`${base}/api/nope`);

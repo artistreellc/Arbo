@@ -48,6 +48,7 @@
 // the server accepts a single request (they are law — §0 rule 4).
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { readFileSync } from 'node:fs';
 import { boot } from './index.js';
 import { createApi, type DataSource, type ApiLeadInput } from './server/api.js';
 import { hasDb, dataLinksLive, dataLinksSim, dbConfigured } from './db/client.js';
@@ -527,6 +528,38 @@ export function createArborRequestHandler() {
       if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/app')) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
         return res.end(loadAppHtml());
+      }
+      // §9 / iOS: both doors install to the iPhone home screen and open
+      // full-screen. Two manifests because they are two different apps — Mike
+      // installs the cockpit, the crew installs the crew door, and neither
+      // should open the other. Served BEFORE the /api key gate: an icon behind
+      // a key does not render.
+      if (req.method === 'GET' && (url.pathname === '/manifest.webmanifest' || url.pathname === '/crew.webmanifest')) {
+        const crew = url.pathname.startsWith('/crew');
+        res.writeHead(200, { 'content-type': 'application/manifest+json', 'cache-control': 'no-store' });
+        return res.end(JSON.stringify({
+          name: crew ? 'Arbo Crew' : 'Arbo — Art-is-Tree',
+          short_name: crew ? 'Arbo Crew' : 'Arbo',
+          start_url: crew ? '/crew' : '/',
+          scope: crew ? '/crew' : '/',
+          display: 'standalone',
+          orientation: 'portrait',
+          background_color: '#0B0D10',
+          theme_color: '#0B0D10',
+          icons: [192, 512].map((s) => ({
+            src: `/icons/arbo-${s}.png`, sizes: `${s}x${s}`, type: 'image/png', purpose: 'any maskable',
+          })),
+        }));
+      }
+      {
+        const m = url.pathname.match(/^\/icons\/(arbo-(?:180|192|512)\.png)$/);
+        if (req.method === 'GET' && m) {
+          // Only the three known filenames — the regex IS the allow-list, so
+          // no path can walk out of the icons directory.
+          const file = new URL(`./app/icons/${m[1]}`, import.meta.url);
+          res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'public, max-age=86400' });
+          return res.end(readFileSync(file));
+        }
       }
       if (req.method === 'GET' && url.pathname === '/health') return send(...unpack(await api.health()));
       if (url.pathname.startsWith('/api/') && !apiAuthorized()) {
