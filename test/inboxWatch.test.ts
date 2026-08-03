@@ -221,6 +221,64 @@ describe('inbox watch — classification', () => {
   });
 });
 
+describe('inbox watch — city permit mail is reported, never stored', () => {
+  const VB_LETTER = msg({
+    id: 'm-vb-1',
+    from: 'PBurns@vbgov.com',
+    subject: 'Tree Removal Request, SIM Residence, 404 Nowhere Lane, Accela Record: 2026-DSC-021566',
+    body: 'Please provide the labeled site map and photos to continue review. Record 2026-DSC-021566.',
+  });
+
+  it('a letter from the city is not a newsletter', async () => {
+    const r = await watchInbox(readerOf({ ok: true, messages: [VB_LETTER], unreadable: [] }), new SeenMessages(), AT);
+    expect(r.otherMail).toBe(0);
+    expect(r.cityMail).toHaveLength(1);
+    expect(r.cityMail[0]!.city).toBe('Virginia Beach');
+    expect(r.cityMail[0]!.caseRefs).toContain('2026-DSC-021566');
+    expect(watchLogLine(r)).toContain('city_mail=1');
+  });
+
+  it('carries the case ref but never the property address or the officer (§4.3)', async () => {
+    const r = await watchInbox(readerOf({ ok: true, messages: [VB_LETTER], unreadable: [] }), new SeenMessages(), AT);
+    const json = JSON.stringify(r);
+    expect(json).not.toContain('Nowhere Lane');
+    expect(json).not.toContain('PBurns');
+    expect(json).not.toContain('vbgov.com');
+  });
+
+  it('a real Accela case ref does not trip the PII guard', () => {
+    // 2026-DSC-021566 and J04-021654-RPA are digit-and-dash shaped. If the
+    // phone pattern ever widened, every city letter would take the pass down.
+    for (const ref of ['2026-DSC-021566', 'J04-021654-RPA', '2026-UTIL-10415']) {
+      const out = unavailablePass('2026-08-03T12:00:00Z', `case ${ref}`);
+      expect(out.reason).toContain(ref);
+    }
+  });
+
+  it('city mail is REPORTED, and the watch has nowhere to write it (R4, §3)', async () => {
+    // The structural half: the result is a value the caller renders. There is
+    // no repository import in this module and no writer on GmailReader, so
+    // "report only" is not a promise anyone has to keep by hand.
+    const r = await watchInbox(readerOf({ ok: true, messages: [VB_LETTER], unreadable: [] }), new SeenMessages(), AT);
+    // A VB "Tree Removal Request … Accela Record:" letter is a PPR review —
+    // the classifier's call, carried through unchanged.
+    expect(r.cityMail[0]!.kind).toBe('ppr_review');
+  });
+
+  it('the arithmetic still closes with city mail in the mix', async () => {
+    const messages = [
+      WEBSITE_LEAD,
+      VB_LETTER,
+      msg({ id: 'm-news-3', from: 'digest@arborist-weekly.test', subject: 'August issue' }),
+    ];
+    const r = await watchInbox(readerOf({ ok: true, messages, unreadable: [] }), new SeenMessages(), AT);
+    const off = Object.values(r.channelOff).reduce((a, b) => a + b, 0);
+    expect(
+      r.leads.length + off + r.unparsedKnownSenderIds.length + r.cityMail.length + r.otherMail,
+    ).toBe(r.scanned);
+  });
+});
+
 describe('inbox watch — dedupe', () => {
   it('reports a message once, then counts it as already seen', async () => {
     const seen = new SeenMessages();

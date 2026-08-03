@@ -72,6 +72,8 @@
 // customer data fails loudly instead of quietly leaking into a log line.
 
 import { classifyLeadMail, channelIsOff, type LeadMailProvider } from '../reception/leadMail.js';
+import { classifyPermitMail, type PermitMailKind } from '../permitting/permitMail.js';
+import type { ServiceCity } from '../lib/address.js';
 
 /**
  * One message, as ARBO needs to see it. Nothing here is stored; the shape
@@ -203,8 +205,32 @@ export interface InboxWatchResult {
    * knowing what a CallRail mail is, is not.
    */
   otherMail: number;
+  /**
+   * City permit correspondence (§6B / §5A #35). REPORTED, NEVER STORED — R4
+   * makes the sweep read-only and §3 forbids importing permit mail while the
+   * build is unfinished, so this says "Virginia Beach wrote, it looks like an
+   * intake request, here are the case refs" and stops there.
+   *
+   * Without this, a letter from vbgov.com would land in `otherMail` and be
+   * indistinguishable from a newsletter — and an intake request is the city
+   * WAITING ON MIKE.
+   *
+   * No address, no city-officer email. Case refs are city record numbers, not
+   * customer data; the address in the subject line is a customer's home
+   * (§4.3), so it does not cross into this report.
+   */
+  cityMail: CityMailSighting[];
   /** Mailboxes the reader could not open. Named every pass, never smoothed. */
   unreadable: string[];
+}
+
+/** A city letter, described without describing the property. */
+export interface CityMailSighting {
+  messageId: string;
+  city: ServiceCity;
+  kind: PermitMailKind | null;
+  caseRefs: string[];
+  receivedAtIso: string;
 }
 
 /**
@@ -362,6 +388,7 @@ export async function watchInbox(
   const leads: LeadSighting[] = [];
   const channelOff: Partial<Record<LeadMailProvider, number>> = {};
   const unparsedKnownSenderIds: string[] = [];
+  const cityMail: CityMailSighting[] = [];
   let otherMail = 0;
   let scanned = 0;
   let alreadySeen = 0;
@@ -391,8 +418,26 @@ export async function watchInbox(
       continue;
     }
     if (!c.isLeadNotification || c.provider === null) {
-      if (isKnownLeadSender(msg.from)) unparsedKnownSenderIds.push(msg.id);
-      else otherMail++;
+      if (isKnownLeadSender(msg.from)) {
+        unparsedKnownSenderIds.push(msg.id);
+        continue;
+      }
+      // Not a lead — but a letter from a city is not noise either. Checked
+      // here rather than before the lead classifier because a city never
+      // sends lead-notification mail, so the order cannot matter and this
+      // keeps the common path first.
+      const pm = classifyPermitMail({ from: msg.from, subject: msg.subject, body: msg.body });
+      if (pm.isCityCorrespondence && pm.city) {
+        cityMail.push({
+          messageId: msg.id,
+          city: pm.city,
+          kind: pm.kind,
+          caseRefs: pm.caseRefs,
+          receivedAtIso: msg.receivedAtIso,
+        });
+        continue;
+      }
+      otherMail++;
       continue;
     }
     // Belt and braces: a channel switched off must never reach the lead list
@@ -435,6 +480,7 @@ export async function watchInbox(
     channelOff,
     unparsedKnownSenderIds,
     otherMail,
+    cityMail,
     unreadable,
   };
   assertNoPii(out);
@@ -458,6 +504,7 @@ export function unavailablePass(ranAtIso: string, reason: string): InboxWatchRes
     channelOff: {},
     unparsedKnownSenderIds: [],
     otherMail: 0,
+    cityMail: [],
     unreadable: ['inbox unreadable'],
   };
   assertNoPii(out);
@@ -474,7 +521,8 @@ export function watchLogLine(r: InboxWatchResult): string {
   }
   const off = Object.entries(r.channelOff).map(([k, n]) => `${k}=${n}`).join(',');
   const base =
-    `scanned=${r.scanned} leads=${r.leads.length} seen_before=${r.alreadySeen} other=${r.otherMail}` +
+    `scanned=${r.scanned} leads=${r.leads.length} city_mail=${r.cityMail.length} ` +
+    `seen_before=${r.alreadySeen} other=${r.otherMail}` +
     (off ? ` channel_off=[${off}]` : '');
   if (r.status === 'ok') return `[inbox] ok — ${base}`;
   return (
