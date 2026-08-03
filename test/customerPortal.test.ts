@@ -243,3 +243,67 @@ describe('site information — power lines and the water meter (Mike, 2026-08-03
     expect(v.site.length).toBeGreaterThanOrEqual(3);
   });
 });
+
+describe('overlay flags on the portal view (Mike, 2026-08-03)', () => {
+  // These go through buildPortalView, not propertyOverlayFlags directly. The
+  // recurring defect here has been a test proving a function works while the
+  // app never calls it — propertyFlags.test.ts covers the logic, this covers
+  // the wire.
+  it('always carries CBPA, flood, reservoir and the overflow — a missing line reads as a no', () => {
+    const v = buildPortalView({ property: prop, trees: [], job: null, linkFor: noLink });
+    expect(v.flags.map((f) => f.key)).toEqual(['cbpa', 'flood', 'reservoir', 'other']);
+  });
+
+  it('an overlay none of the three named flags cover still reaches the customer', () => {
+    // Without the overflow flag this property renders as three not-found
+    // lines and the ordinance finding vanishes off the page.
+    const v = buildPortalView({
+      property: prop, trees: [], job: null, linkFor: noLink,
+      screen: {
+        ranAt: '2026-07-01',
+        overlays: [{ kind: 'CITY_TREE_ORDINANCE', layer: 'Norfolk Ch.45 protected trees', meaning: 'Protected street trees.' }],
+      },
+    });
+    const other = v.flags.find((f) => f.key === 'other')!;
+    expect(other.state).toBe('present');
+    expect(other.line).toContain('Norfolk Ch.45 protected trees');
+  });
+
+  it('an unscreened property says so, and it lands in the gaps list', () => {
+    const v = buildPortalView({ property: prop, trees: [], job: null, linkFor: noLink });
+    expect(v.flags.every((f) => f.state === 'unknown')).toBe(true);
+    expect(v.gaps.join(' ')).toMatch(/overlay check\(s\) have not been run/i);
+  });
+
+  it('a recorded permit screen comes through as a real finding', () => {
+    const v = buildPortalView({
+      property: prop, trees: [], job: null, linkFor: noLink,
+      screen: {
+        ranAt: '2026-07-01',
+        overlays: [{ kind: 'CBPA_RPA', layer: 'DEQ RPA layer 33', meaning: 'In the Bay buffer.' }],
+      },
+    });
+    const cbpa = v.flags.find((f) => f.key === 'cbpa')!;
+    expect(cbpa.state).toBe('present');
+    expect(cbpa.line).toContain('DEQ RPA layer 33');
+    // A clean screen on the OTHER layers is reported as a screen that found
+    // nothing, which is not the same as never having looked.
+    expect(v.flags.find((f) => f.key === 'flood')!.state).toBe('not_found_verify');
+  });
+
+  it('every tree card says whose land it is on', () => {
+    const v = buildPortalView({
+      property: prop, linkFor: noLink, job: null,
+      trees: [
+        tree({ id: 't1', onCityProperty: true, cityPropertyCheckedAt: '2026-07-02' }),
+        tree({ id: 't2', species: 'Red maple' }),
+      ],
+    });
+    const city = v.trees.find((c) => c.id === 't1')!;
+    const unknown = v.trees.find((c) => c.id === 't2')!;
+    expect(city.ownership.state).toBe('present');
+    expect(city.ownership.line).toMatch(/city, not the homeowner/i);
+    // A tree nobody has checked must not silently render as the customer's.
+    expect(unknown.ownership.state).toBe('unknown');
+  });
+});

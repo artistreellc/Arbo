@@ -69,6 +69,13 @@ export type OverlayKind =
   | 'LOCAL_FLOODPLAIN' // city floodplain ordinance / land-disturbance trigger
   | 'NORFOLK_CRO' // Norfolk Coastal Resilience Overlay (+ URO)
   | 'CITY_TREE_ORDINANCE' // e.g. Norfolk Ch.45 protected/street trees
+  // Reservoir / water-supply watershed (Mike, 2026-08-03: "on the edge of a
+  // reservoir"). NO GIS LAYER IS WIRED FOR THIS YET — see layers.ts, which has
+  // no RESERVOIR_WATERSHED entry for any city. The kind exists so a hit CAN be
+  // carried the day a layer is verified; until then nothing produces one and
+  // the portal flag stays at its honest "not screened" state rather than
+  // rendering an unchecked overlay as an absent one (§1B).
+  | 'RESERVOIR_WATERSHED'
   | 'OTHER_OVERLAY';
 
 export interface OverlayHit {
@@ -198,7 +205,12 @@ function scaleTierFor(ruleset: CityRuleset, treeCount?: number): string | undefi
  * result can never leak a bare "clear". Throws if the invariant is ever violated;
  * safe to call before surfacing any screen result to Mike or the crew.
  */
-const FORBIDDEN_CLEAR = /\b(you'?re clear|no permit needed|all clear|cleared|good to (?:go|cut)|no permit required)\b/i;
+// Exported so every surface that repeats an overlay finding — the screen
+// headline here, the customer-portal flags in src/portal/propertyFlags.ts —
+// is held to ONE definition of what a forbidden "clear" is. A second copy of
+// this regex somewhere else is how one surface drifts soft while the other
+// stays honest.
+export const FORBIDDEN_CLEAR = /\b(you'?re clear|no permit needed|all clear|cleared|good to (?:go|cut)|no permit required)\b/i;
 
 export function assertNeverClear(result: ScreenResult): void {
   if (result.verifyWithCity !== true) {
