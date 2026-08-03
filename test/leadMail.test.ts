@@ -736,3 +736,65 @@ describe('Angi subdomain senders (caught by the 15:21Z sweep)', () => {
     expect(r.provider).toBeNull();
   });
 });
+
+describe('CallRail: all five event subjects, not just "Call from"', () => {
+  // Found by the 18:40Z sweep. A real caller rang and then texted; both mails
+  // fell through to NOT_A_LEAD because the gate only matched "Call from".
+  // The runbook has specified all five since day one — the code implemented
+  // one. These are the two highest-intent events in the whole feed.
+  const cr = (subject: string) => classifyLeadMail({
+    from: 'no-reply@callrail.com', subject, body: CALLRAIL_BODY,
+  });
+  const S = (head: string) => `${head} from SIM Customer via TSP for Art-is-Tree LLC (VA)`;
+
+  it('recognises every event kind the runbook lists', () => {
+    for (const head of ['Call', 'Voicemail', 'Missed call', 'Abandoned call', 'TXT']) {
+      const r = cr(S(head));
+      expect(r.isLeadNotification, head).toBe(true);
+      expect(r.provider, head).toBe('callrail_call');
+    }
+  });
+
+  it('maps each subject to the kind the callback flag reads', () => {
+    // src/server.ts and api.ts compute needsCallback from
+    // qualification.kind ∈ missed/abandoned/voicemail. Nothing set `kind`
+    // before this, so the flag built for an abandoned call could never fire.
+    expect(cr(S('Call')).lead.kind).toBe('call');
+    expect(cr(S('Voicemail')).lead.kind).toBe('voicemail');
+    expect(cr(S('Missed call')).lead.kind).toBe('missed');
+    expect(cr(S('Abandoned call')).lead.kind).toBe('abandoned');
+    expect(cr(S('TXT')).lead.kind).toBe('text');
+  });
+
+  it('the three callback kinds are exactly the ones downstream acts on', () => {
+    const needsCallback = (k?: string) => ['missed', 'abandoned', 'voicemail'].includes(String(k));
+    expect(needsCallback(cr(S('Abandoned call')).lead.kind)).toBe(true);
+    expect(needsCallback(cr(S('Missed call')).lead.kind)).toBe(true);
+    expect(needsCallback(cr(S('Voicemail')).lead.kind)).toBe(true);
+    // A connected call and a text do not need chasing — someone got through.
+    expect(needsCallback(cr(S('Call')).lead.kind)).toBe(false);
+    expect(needsCallback(cr(S('TXT')).lead.kind)).toBe(false);
+  });
+
+  it('"Missed call" and "Abandoned call" are not swallowed by bare "Call"', () => {
+    // Alternation order is load-bearing: `^Call` would shadow both.
+    expect(cr(S('Missed call')).lead.kind).not.toBe('call');
+    expect(cr(S('Abandoned call')).lead.kind).not.toBe('call');
+  });
+
+  it('still refuses the summary mails that are not events', () => {
+    for (const subject of [
+      'Monthly Summary for Art-is-Tree LLC (VA)',
+      'Weekly Summary for Art-is-Tree LLC (VA)',
+      'Your CallRail recommendations were auto-applied',
+    ]) {
+      expect(cr(subject).isLeadNotification, subject).toBe(false);
+    }
+  });
+
+  it('still refuses marketing from the wrong CallRail sender', () => {
+    expect(classifyLeadMail({
+      from: 'learn@callrail.com', subject: S('Call'), body: CALLRAIL_BODY,
+    }).isLeadNotification).toBe(false);
+  });
+});

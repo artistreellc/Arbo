@@ -106,6 +106,20 @@ this document is the spec.
      description…`/`Campaign`).
    - `no-reply@callrail.com` + subject `Call/Voicemail/Missed call/Abandoned
      call/TXT from … via <TRACKER> for Art-is-Tree` → **callrail** event.
+
+     > **2026-08-03 — four of these five matched nothing in code.** The gate
+     > was `/^Call from .+/` alone. A real caller rang and then texted; both
+     > mails ("Abandoned call from …", "TXT from …") fell through to
+     > NOT_A_LEAD, silently, exactly like marketing. Fixed: `CALLRAIL_EVENT`
+     > in leadMail.ts now matches all five, and each sets
+     > `lead.kind` ∈ call / voicemail / missed / abandoned / text.
+     >
+     > `kind` was ALSO never set before. `src/server.ts` and
+     > `src/server/api.ts` both compute `needsCallback` from
+     > `qualification.kind` ∈ missed / abandoned / voicemail — so the callback
+     > flag built for an abandoned call could never fire. It can now. When
+     > ingest resumes, write `kind` into `qualification` and map
+     > `kind === 'text'` → lead `source: 'text'`, everything else → `'call'`.
      Tracker (TSP/TLT/…) = Mike's source tag; name+phone from subject/body;
      `New Caller` vs `Nth call` = first-timer signal. Subject `TXT from …` →
      source `text`.

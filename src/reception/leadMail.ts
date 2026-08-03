@@ -103,6 +103,18 @@ export interface ExtractedLead {
   details?: string;
   /** Mike's source tag: CallRail tracker (TSP/TLT/…) or campaign name. */
   source?: string;
+  /**
+   * WHAT KIND OF CALL EVENT THIS WAS. Set from the CallRail subject line.
+   *
+   * This exists because the downstream callback flag was unreachable:
+   * src/server.ts and src/server/api.ts both compute `needsCallback` from
+   * `qualification.kind` ∈ missed / abandoned / voicemail, and NOTHING ever
+   * set `kind`. An abandoned call — somebody who rang and hung up, the most
+   * time-sensitive lead there is — could never raise the flag built for it.
+   *
+   * 'text' maps to the lead row's `source: 'text'`; the rest map to 'call'.
+   */
+  kind?: 'call' | 'voicemail' | 'missed' | 'abandoned' | 'text';
   callDurationSec?: number;
   /** From CallRail's "New Caller" / "2nd call" counters. */
   isRepeatCaller?: boolean;
@@ -176,6 +188,20 @@ function parseGoogleAdsLeadForm(input: LeadMailInput): LeadMailResult {
   };
 }
 
+/** The five CallRail event subjects, and the kind each one means. */
+const CALLRAIL_EVENT = /^(Abandoned call|Missed call|Voicemail|Call|TXT)\s+from\s+.+\s+for\s+Art.?is.?Tree/i;
+
+function callRailKind(subject: string): NonNullable<ExtractedLead['kind']> {
+  // Order matters in the regex above: "Abandoned call" and "Missed call" must
+  // be tried BEFORE bare "Call", or `^Call` would never reach them.
+  const head = subject.match(CALLRAIL_EVENT)?.[1]?.toLowerCase() ?? 'call';
+  if (head === 'txt') return 'text';
+  if (head === 'abandoned call') return 'abandoned';
+  if (head === 'missed call') return 'missed';
+  if (head === 'voicemail') return 'voicemail';
+  return 'call';
+}
+
 function parseCallRail(input: LeadMailInput): LeadMailResult {
   const name = input.body.match(/^Name:\s*(.+)$/m)?.[1]?.trim();
   const phone = input.body.match(/^Number:\s*(.+)$/m)?.[1]?.trim();
@@ -204,6 +230,7 @@ function parseCallRail(input: LeadMailInput): LeadMailResult {
       callDurationSec: callDurationSec || undefined,
       isRepeatCaller,
       taggedAs,
+      kind: callRailKind(input.subject),
     },
     inServiceArea: cityRaw ? serviceCity !== undefined : null,
   };
@@ -469,7 +496,15 @@ export function classifyLeadMail(input: LeadMailInput): LeadMailResult {
   }
   // Strict sender + subject shape: learn@callrail.com marketing mail must not
   // become a phantom lead.
-  if (from.includes('no-reply@callrail.com') && /^Call from .+ for Art.?is.?Tree/i.test(input.subject)) {
+  //
+  // 2026-08-03: this used to be `/^Call from .+/` alone, which matched ONE of
+  // the five event subjects the runbook has always specified. A real caller
+  // rang and then texted; both mails arrived as "Abandoned call from …" and
+  // "TXT from …", matched nothing, and fell through to NOT_A_LEAD — silently,
+  // exactly like marketing. Found by the 18:40Z sweep, not by a test.
+  // The weekly/monthly summaries still do not match: they start "Monthly
+  // Summary for …", which is none of these five words.
+  if (from.includes('no-reply@callrail.com') && CALLRAIL_EVENT.test(input.subject)) {
     return parseCallRail(input);
   }
   // CallRail web-form alert. Distinct subject from the call alert; the monthly
