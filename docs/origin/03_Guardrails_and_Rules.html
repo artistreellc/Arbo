@@ -1,0 +1,48 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ARBOR — Guardrails &amp; Rules</title>
+<style>
+:root{--ink:#1c2b23;--moss:#2f6b4f;--bark:#5b4636;--line:#d8e0d8;--bg:#f6f8f5;--red:#a33;}
+*{box-sizing:border-box}
+body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg);margin:0;line-height:1.55}
+.wrap{max-width:820px;margin:0 auto;padding:40px 26px 80px}
+h1{font-size:28px;margin:0 0 4px;color:var(--moss)}
+.sub{color:var(--bark);font-size:15px;margin:0 0 24px}
+h2{color:var(--moss);border-bottom:2px solid var(--line);padding-bottom:6px;margin-top:30px;font-size:19px}
+.rule{background:#fff;border:1px solid var(--line);border-left:4px solid var(--red);border-radius:8px;padding:14px 16px;margin:12px 0}
+.rule b{color:var(--red)}
+.say{background:#eef3ee;border-radius:8px;padding:10px 14px;margin:8px 0;font-style:italic;color:var(--bark)}
+.foot{margin-top:40px;color:#8a978c;font-size:12px;border-top:1px solid var(--line);padding-top:14px}
+</style></head><body><div class="wrap">
+
+<h1>Guardrails &amp; Rules</h1>
+<p class="sub">The non-negotiables. In the build brief these are written as law — enforced before any feature runs.</p>
+
+<h2>Money</h2>
+<div class="rule"><b>Never quote a price — not even a rough estimate.</b> Every price question steers back to booking the free in-person estimate, which is where the job is actually won.</div>
+<div class="say">&ldquo;Tree work is really circumstantial — the price varies a lot depending on the situation, so we&#39;d need to take a look to give you an accurate number.&rdquo;</div>
+
+<h2>Diagnosis vs. education</h2>
+<div class="rule"><b>General education: yes. Specific diagnosis: no.</b> It can explain why topping a tree is bad or the best season to prune, but the moment it tips into &ldquo;diagnose <em>my</em> tree,&rdquo; it pivots to an in-person look. Firm knowledge in arboriculture, but never over-elaborate and never diagnose over the phone.</div>
+
+<h2>On the phone with you</h2>
+<div class="rule"><b>Go silent when you&#39;re on a real call.</b> When it detects you&#39;re on a live phone call, it stops talking until you pick the thread back up. (This rule was added after it kept talking over a live call during the session.)</div>
+
+<h2>Autonomy</h2>
+<div class="rule"><b>Recommends, never commits.</b> It suggests scheduling but never books. It never promises a firm date until you confirm. Anything that commits <em>you</em> stays in your hands.</div>
+<div class="rule"><b>No fully autonomous learning.</b> It does not silently rewrite its own rules. It improves through a reviewed loop: it logs calls, Claude analyzes the backlog, and you get a short summary of what went well, where it stumbled, and concrete tweaks — you approve the changes.</div>
+
+<h2>Conversation scope</h2>
+<div class="rule"><b>Stay on relevant topics.</b> No wandering into off-topic subjects. This was a direct lesson from past AI receptionists that talked about things you never wanted them discussing.</div>
+
+<h2>Permitting</h2>
+<div class="rule"><b>It is a screening aid, never the city&#39;s word.</b> It can flag a likely protected zone, but it can never tell you &ldquo;you&#39;re clear&rdquo; — its safe answer is always &ldquo;verify with the city,&rdquo; even when no overlay is found. A false &ldquo;clear&rdquo; is exactly what caused the Circle Drive violation.</div>
+<div class="rule"><b>Prepares and hands off — never auto-files.</b> It assembles the packet; a human submits through the city portal/email.</div>
+
+<h2>Legal / messaging compliance</h2>
+<div class="rule"><b>TCPA rules before any auto-texting:</b> consent, STOP handling, and quiet hours are engineered in from the start, not bolted on. (Worth an attorney&#39;s eyes at some point.)</div>
+
+<h2>Heavy equipment</h2>
+<div class="rule"><b>Crane load plans are estimates only.</b> The load-plan estimator supports planning and OSHA/ANSI documentation, but never replaces the operator&#39;s judgment or the certified load chart.</div>
+
+<p class="foot">These guardrails are the spine of the whole system — several features (the estimator, the permit engine, the auto-texting) only exist <em>because</em> a matching rule keeps them safe.</p>
+</div></body></html>

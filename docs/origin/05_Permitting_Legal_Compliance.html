@@ -1,0 +1,78 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ARBOR — Permitting, Legal &amp; Compliance</title>
+<style>
+:root{--ink:#1c2b23;--moss:#2f6b4f;--bark:#5b4636;--line:#d8e0d8;--bg:#f6f8f5;--amber:#b06a1e;--red:#a33;}
+*{box-sizing:border-box}
+body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg);margin:0;line-height:1.55}
+.wrap{max-width:840px;margin:0 auto;padding:40px 26px 80px}
+h1{font-size:28px;margin:0 0 4px;color:var(--moss)}
+.sub{color:var(--bark);font-size:15px;margin:0 0 24px}
+h2{color:var(--moss);border-bottom:2px solid var(--line);padding-bottom:6px;margin-top:30px;font-size:19px}
+h3{color:var(--bark);margin-bottom:2px}
+.card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:10px 0}
+table{width:100%;border-collapse:collapse;margin:8px 0;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);font-size:14px;vertical-align:top}
+th{background:#eef3ee;color:var(--bark)}tr:last-child td{border-bottom:none}
+.warn{background:#fff1f1;border:1px solid #f0c9c9;border-radius:10px;padding:12px 16px;font-size:14px;color:#7d2b2b}
+.foot{margin-top:40px;color:#8a978c;font-size:12px;border-top:1px solid var(--line);padding-top:14px}
+code{background:#eef3ee;padding:1px 5px;border-radius:4px;font-size:13px}
+</style></head><body><div class="wrap">
+
+<h1>Permitting, Legal &amp; Compliance</h1>
+<p class="sub">The regulatory backbone — the piece that keeps Art-is-Tree&#39;s name off a violation notice.</p>
+
+<h2>The permitting engine</h2>
+<div class="card">
+<h3>What it does</h3>
+<ul>
+<li><strong>CBPA / RPA screening.</strong> Geocodes the property and tests it against each city&#39;s GIS map layers (RPA / parcel) to flag whether it sits in a Chesapeake Bay&ndash;protected buffer. Cities covered: Virginia Beach, Norfolk, Chesapeake, Portsmouth.</li>
+<li><strong>Right-form retrieval + in-app fill.</strong> Pulls the correct city&#39;s current application and pre-fills it from the property record.</li>
+<li><strong>Map + tree-labeling tool.</strong> A parcel/aerial map where you drop a pin per tree and tag species, size, and remove / retain / replace, with the RPA line drawn on it — exported as a city-style site plan (the format VB and others expect).</li>
+<li><strong>Packet assembly + Gmail permit-history mining.</strong> Recognizes city contacts and links prior cases to properties.</li>
+</ul>
+</div>
+
+<div class="warn"><strong>Hard guardrails (see file 03):</strong> it never says &ldquo;you&#39;re clear&rdquo; — always &ldquo;verify with the city.&rdquo; GIS is unreliable at parcel edges, and a false &ldquo;clear&rdquo; is exactly what produced the Circle Drive violation. It prepares and hands off; a human submits through the city portal or email.</div>
+
+<h2>Real precedents pulled from your Gmail</h2>
+<table>
+<tr><th>City</th><th>Case</th><th>Details</th></tr>
+<tr><td>Norfolk</td><td>CBPA violation — 8562 Circle Drive</td><td>Flagged by Norfolk City Planning after the fact; onsite meeting. Contact: <strong>Seamus McCarthy</strong>, Environmental Service Manager. Contractor Andrew Jackson (GC); homeowner Karen. This is the nightmare the engine exists to prevent.</td></tr>
+<tr><td>Norfolk</td><td>Pine Energy — 3924 North Landing Rd</td><td>Full civil planset supplied — a good example of the site-plan format cities want.</td></tr>
+<tr><td>Virginia Beach</td><td>Rumford Residence — 2733 River Road</td><td>Tree Removal Request via <strong>Accela</strong>, filed as a <strong>Preliminary Project Request (PPR)</strong>. Accela record <code>2026-DSC-022678</code>. (Snag: city records hadn&#39;t updated the new owner yet.)</td></tr>
+<tr><td>Virginia Beach</td><td>Chaler Residence — 1032 Little Neck Road</td><td>Same flow; Accela record <code>2025-DSC-022209</code>.</td></tr>
+</table>
+
+<div class="card">
+<h3>Virginia Beach process, made concrete</h3>
+<p>VB runs through the <strong>Accela</strong> permitting system; the form is a <strong>Preliminary Project Request (PPR)</strong>, reviewed by <strong>Environmental Engineering</strong> under Planning, and each job gets an Accela record number to track. City contact on file: <strong>Shannon Heederik</strong>, Planning &amp; Community Development / Environmental Engineering — <code>sheederi@vbgov.com</code>, 757-385-8025.</p>
+<p style="color:var(--amber)"><strong>Note:</strong> you mentioned a &ldquo;Cole Fisher&rdquo; — that name didn&#39;t appear in the permit threads. The one &ldquo;Cole&rdquo; is <em>Cole Electric</em>. Your VB tree-permit contact of record is Shannon Heederik. Worth confirming who Cole Fisher is.</p>
+</div>
+
+<h2>Virginia tree law (verified in-session)</h2>
+<div class="card">
+<ul>
+<li><strong>Ownership follows the trunk.</strong> A tree belongs to whoever&#39;s land the trunk sits on, no matter where the branches hang — this never changed, and it&#39;s the point <em>you</em> raised and were right about.</li>
+<li><strong>Self-help on encroachment:</strong> <em>Fancher v. Fagella</em> (2007) is still current, good law on what a neighbor may do about branches/roots crossing the line.</li>
+</ul>
+</div>
+
+<h2>Messaging &amp; consent</h2>
+<div class="card">
+<ul>
+<li><strong>TCPA compliance</strong> for any automated texting — consent, STOP handling, quiet hours — engineered in from the start. Flagged as a real requirement, not a nice-to-have; worth an attorney&#39;s review.</li>
+<li><strong>Neighbor e-consent &ldquo;permission slip.&rdquo;</strong> A link the neighboring homeowner clicks to &ldquo;allow&rdquo; access/overhang work, creating a legal permission record.</li>
+</ul>
+</div>
+
+<h2>Safety &amp; equipment standards</h2>
+<div class="card">
+<ul>
+<li><strong>ANSI Z133</strong> — the arboriculture safety standard; source material for the crew clock-in safety quiz.</li>
+<li><strong>VA VOSH (VOCEA) training packet</strong> — the state occupational-safety basis for crew training gates.</li>
+<li><strong>OSHA / ANSI load-plan requirement</strong> — the crane estimator is built to support the requirement that a load plan be established before a lift (estimate only).</li>
+</ul>
+</div>
+
+<p class="foot">Case numbers, names, and contacts are reproduced from the chat&#39;s Gmail search results. Verify against the source emails and the city before relying on them officially.</p>
+</div></body></html>

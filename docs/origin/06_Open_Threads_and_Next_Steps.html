@@ -1,0 +1,51 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ARBOR — Open Threads &amp; Next Steps</title>
+<style>
+:root{--ink:#1c2b23;--moss:#2f6b4f;--bark:#5b4636;--line:#d8e0d8;--bg:#f6f8f5;--amber:#b06a1e;}
+*{box-sizing:border-box}
+body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg);margin:0;line-height:1.55}
+.wrap{max-width:820px;margin:0 auto;padding:40px 26px 80px}
+h1{font-size:28px;margin:0 0 4px;color:var(--moss)}
+.sub{color:var(--bark);font-size:15px;margin:0 0 24px}
+h2{color:var(--moss);border-bottom:2px solid var(--line);padding-bottom:6px;margin-top:30px;font-size:19px}
+.card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:10px 0}
+.q{border-left:4px solid var(--amber)}
+ul{margin:6px 0 6px 2px;padding-left:20px}li{margin:5px 0}
+.foot{margin-top:40px;color:#8a978c;font-size:12px;border-top:1px solid var(--line);padding-top:14px}
+</style></head><body><div class="wrap">
+
+<h1>Open Threads &amp; Next Steps</h1>
+<p class="sub">What was still unresolved when the call ended in the early hours — where to pick back up.</p>
+
+<h2>Where the conversation stopped</h2>
+<div class="card">The last thing on deck was building a <strong>work-order form</strong>. Claude called it a night (&ldquo;it&#39;s past six in the morning&hellip; we pick up with the work-order form whenever you&#39;re up&rdquo;). That&#39;s the natural resume point.</div>
+
+<h2>Decisions still open</h2>
+<div class="card q"><strong>App delivery.</strong> Web app off the website vs. a Play Store / app-store build. The stated goal is an app on your phone — the <em>how</em> is undecided.</div>
+<div class="card q"><strong>Per-city permit specifics.</strong> Claude offered to research the actual permit thresholds and form links for all four cities (VB, Norfolk, Chesapeake, Portsmouth) so they&#39;re baked into the brief instead of discovered mid-build. Not yet done.</div>
+<div class="card q"><strong>Camera / drone hardware.</strong> Parked pending FAA licensing and practicality — revisit later.</div>
+<div class="card q"><strong>Parked features to green-light or drop:</strong> after-hours triage, callback/overflow queue, crew dispatch summary, upsell prompter, materials/gear tracker, ChipDrop integration.</div>
+<div class="card q"><strong>Attorney review.</strong> TCPA/auto-text compliance and the neighbor-consent mechanism deserve a quick legal look.</div>
+
+<h2>Already produced (prior chat)</h2>
+<div class="card">
+<ul>
+<li><strong>ARBOR Master Build Brief</strong> — the staged, self-auditing spec for Claude Code (build &rarr; test &rarr; audit every 5 tasks). Generated as a PDF.</li>
+<li><strong>ARBOR kickoff prompt</strong> — the exact first message to paste into Claude Code, as plain text.</li>
+</ul>
+<em>These live in the original chat&#39;s downloads, not in this folder. This folder is the conversation breakdown; the brief is the build spec.</em>
+</div>
+
+<h2>Suggested first moves when you resume</h2>
+<div class="card">
+<ol>
+<li>Decide the <strong>app delivery path</strong> — it shapes the whole build.</li>
+<li>Let me <strong>research the four cities&#39; permit rules</strong> and fold them into the brief.</li>
+<li>Green-light or cut the <strong>parked features</strong> so the brief is final.</li>
+<li>Build the <strong>work-order form</strong> — the piece you were about to start.</li>
+<li>Start Claude Code at <strong>Phase 0</strong> and let it run the build&ndash;test&ndash;audit loop.</li>
+</ol>
+</div>
+
+<p class="foot">Say the word and I can pick up any of these — starting with the per-city permit research or finalizing the parked list.</p>
+</div></body></html>

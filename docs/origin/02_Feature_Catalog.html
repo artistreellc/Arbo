@@ -1,0 +1,130 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ARBOR — Feature Catalog</title>
+<style>
+:root{--ink:#1c2b23;--moss:#2f6b4f;--bark:#5b4636;--line:#d8e0d8;--bg:#f6f8f5;--amber:#b06a1e;--red:#a33;}
+*{box-sizing:border-box}
+body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg);margin:0;line-height:1.55}
+.wrap{max-width:880px;margin:0 auto;padding:40px 26px 80px}
+h1{font-size:28px;margin:0 0 4px;color:var(--moss)}
+.sub{color:var(--bark);font-size:15px;margin:0 0 22px}
+h2{color:var(--moss);border-bottom:2px solid var(--line);padding-bottom:6px;margin-top:32px;font-size:19px}
+table{width:100%;border-collapse:collapse;margin:8px 0 4px;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);font-size:14px;vertical-align:top}
+th{background:#eef3ee;color:var(--bark)}
+tr:last-child td{border-bottom:none}
+.s{white-space:nowrap;font-size:11px;font-weight:700;color:#fff;border-radius:20px;padding:2px 9px}
+.in{background:var(--moss)}.pk{background:var(--amber)}.ct{background:var(--red)}
+.legend{font-size:13px;color:var(--bark);margin:6px 0 0}
+.legend span{margin-right:14px}
+.foot{margin-top:40px;color:#8a978c;font-size:12px;border-top:1px solid var(--line);padding-top:14px}
+</style></head><body><div class="wrap">
+
+<h1>Feature Catalog</h1>
+<p class="sub">Every feature raised in the brainstorm, grouped by area.</p>
+<p class="legend"><span class="s in">LOCKED IN</span> agreed and in the brief &nbsp; <span class="s pk">PARKED</span> maybe / later / needs a decision &nbsp; <span class="s ct">CUT</span> deliberately dropped</p>
+
+<h2>A · Call handling &amp; lead capture</h2>
+<table>
+<tr><th>Feature</th><th>Detail</th><th>Status</th></tr>
+<tr><td>AI phone answering</td><td>Answers calls in your voice/standard, covering the office role your dad used to fill.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>Lead qualification</td><td>Asks tree type, rough size, proximity to house/power lines &rarr; signals climb vs bucket vs crane before you arrive.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>Photo capture by text</td><td>Texts a link so callers send photos of the tree.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>&ldquo;First time?&rdquo; question</td><td>Asks if they&#39;ve had tree work before; first-timers get more hand-holding.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>Company basics</td><td>States service area, licensed &amp; insured, BBB A+; sets expectations without quoting.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>Emergency flagging</td><td>Tree on a house or car &rarr; fast-tracked straight to your phone.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>After-hours triage / overflow &amp; callback queue</td><td>Handle or queue late-night calls; catch overflow when two calls hit at once.</td><td><span class="s pk">PARKED</span></td></tr>
+</table>
+
+<h2>B · Scheduling &amp; routing</h2>
+<table>
+<tr><th>Feature</th><th>Detail</th><th>Status</th></tr>
+<tr><td>Color-coded calendar booking</td><td>Books into Google Calendar matching your existing color system (Calendar color IDs).</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>ZIP-cluster routing</td><td>Groups estimates/jobs by area so same-ZIP work lands around the same time — no backtracking.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>Recommend, never book</td><td>Suggests slots based on how full the week is; you make the final call.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>Dead-time filler</td><td>On a cancellation, suggests nearby pending estimates you could slot in.</td><td><span class="s in">LOCKED IN</span></td></tr>
+</table>
+
+<h2>C · Follow-ups &amp; customer comms</h2>
+<table>
+<tr><th>Feature</th><th>Detail</th><th>Status</th></tr>
+<tr><td>2-day estimate follow-up</td><td>Nudges the customer two days after an estimate — the decision window.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>Auto proof-of-insurance</td><td>Certificate rides along with every post-estimate follow-up. <em>Your addition.</em></td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>Review requests</td><td>A day after a paid job, texts a friendly Google review link.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>Repeat-customer memory</td><td>Knows the property&#39;s history so conversations feel personal, not cold.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>Morning brief</td><td>Texts your day: stops in route order, first-timers vs repeats, red flags (power-line jobs).</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>Weather-aware rescheduler</td><td>Flags booked jobs threatened by incoming Hampton Roads storms, early.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>Seasonal / pre-storm outreach</td><td>Nudges past customers about pre-storm tree checks.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>Win-back nudge for old estimates</td><td>Circling back on months-old quotes.</td><td><span class="s ct">CUT</span> — &ldquo;skip it&rdquo;</td></tr>
+<tr><td>Referral asker</td><td>Nudging happy customers to refer a neighbor.</td><td><span class="s ct">CUT</span></td></tr>
+</table>
+
+<h2>D · Paperwork &amp; data capture</h2>
+<table>
+<tr><th>Feature</th><th>Detail</th><th>Status</th></tr>
+<tr><td>Text/email monitoring</td><td>Watches business texts and emails for leads and signed contracts.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>Signed-contract trigger</td><td>A photo of the signed contract (from you or the customer) = job booked &rarr; files it in the signed-contract Drive folder and advances the record.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>Photo&ndash;job linking</td><td>Links photos (yours or the client&#39;s) to the calendar job and the client master database.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>Client master database</td><td>Collects every scrap of info per property — the raw material for the predictive engine.</td><td><span class="s in">LOCKED IN</span></td></tr>
+</table>
+
+<h2>E · Location awareness</h2>
+<table>
+<tr><th>Feature</th><th>Detail</th><th>Status</th></tr>
+<tr><td>Geofenced arrival detection</td><td>Registers when you arrive at / leave a job site.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>Auto-reschedule when behind</td><td>Sees you&#39;re still across town past an appointment &rarr; proactively calls the customer to push the time.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>Working-hours-only tracking</td><td>Clear on/off; never tracks after hours.</td><td><span class="s in">LOCKED IN</span></td></tr>
+</table>
+
+<h2>F · Predictive property intelligence &nbsp;<span class="s in">CENTERPIECE</span></h2>
+<table>
+<tr><th>Feature</th><th>Detail</th><th>Status</th></tr>
+<tr><td>Property &ldquo;twin&rdquo;</td><td>A living per-address profile: trees, work done, photos, notes, soil, season.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>Predictive scheduling</td><td>Forecasts recurring work by growth cycles and queues outreach before the customer calls — fills the slow season, manufactures repeat business.</td><td><span class="s in">LOCKED IN</span></td></tr>
+</table>
+
+<h2>G · Heavy-equipment brain (crane / rigging)</h2>
+<table>
+<tr><th>Feature</th><th>Detail</th><th>Status</th></tr>
+<tr><td>Crane load-plan estimator</td><td>Photo &rarr; dissects tree into color-coded sections &rarr; estimated weight per section &rarr; estimated pick-by-pick load plan vs load chart &amp; reach. Adheres to OSHA/ANSI &ldquo;load plan must be established.&rdquo;</td><td><span class="s in">LOCKED IN</span> (estimate only)</td></tr>
+<tr><td>Knuckle-boom support</td><td>Same estimator extended to knuckle-boom cranes.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>First-pick calibration</td><td>Operator enters a photo + the actual weight of the first pick at the landing zone to sharpen the estimate.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>Aerial distance measurement</td><td>Satellite/aerial imagery to measure craning distances/reach for planning.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>Crane load-chart database</td><td>Enter a crane model number &rarr; factory load charts &rarr; capacity at a given reach.</td><td><span class="s in">LOCKED IN</span></td></tr>
+</table>
+
+<h2>H · Business intelligence &amp; pricing analytics</h2>
+<table>
+<tr><th>Feature</th><th>Detail</th><th>Status</th></tr>
+<tr><td>Neighborhood income + canopy map</td><td>On a call, surfaces the area&#39;s avg income and canopy % (e.g. &ldquo;$175k, 42% canopy&rdquo;).</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>Bid-accuracy logging</td><td>Year-end view of where you under/over-bid by neighborhood income &amp; canopy %, to sharpen estimates by area.</td><td><span class="s in">LOCKED IN</span></td></tr>
+</table>
+
+<h2>I · Crew, tools &amp; training</h2>
+<table>
+<tr><th>Feature</th><th>Detail</th><th>Status</th></tr>
+<tr><td>Safety-quiz clock-in gate</td><td>On certain days, crew must answer ~10 tree-safety questions (pulled from ANSI Z133 &amp; VA VOSH/VOCEA packet) to clock in/out.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>Tool inventory / accountability</td><td>Tracks tools (the disappearing rakes) so losses aren&#39;t invisible.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>Crew dispatch summary</td><td>Each morning the crew gets their stops and job types.</td><td><span class="s pk">PARKED</span></td></tr>
+<tr><td>Upsell prompter</td><td>After a removal, reminds you to offer stump grinding / cleanup.</td><td><span class="s pk">PARKED</span></td></tr>
+<tr><td>Materials / gear tracker</td><td>Flags the bucket truck, chipper, or grinder needed the night before.</td><td><span class="s pk">PARKED</span></td></tr>
+<tr><td>Permit / utility awareness at booking</td><td>Flags jobs near power lines or needing a utility notice.</td><td><span class="s in">LOCKED IN</span> (see file 05)</td></tr>
+</table>
+
+<h2>J · Integrations</h2>
+<table>
+<tr><th>Feature</th><th>Detail</th><th>Status</th></tr>
+<tr><td>Gmail + Google Calendar</td><td>Already baked in as the backbone.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>Google Business Profile / reviews</td><td>Attach GBP and a review platform.</td><td><span class="s in">LOCKED IN</span></td></tr>
+<tr><td>ChipDrop</td><td>Crew can log/manage wood-chip drops.</td><td><span class="s pk">PARKED</span></td></tr>
+<tr><td>Weather system</td><td>Feeds the weather-aware rescheduler.</td><td><span class="s in">LOCKED IN</span></td></tr>
+</table>
+
+<h2>K · Hardware ideas (raised &amp; set aside)</h2>
+<table>
+<tr><th>Feature</th><th>Detail</th><th>Status</th></tr>
+<tr><td>Mast / truck-mounted cameras</td><td>Cameras on chip boxes or bucket truck.</td><td><span class="s ct">CUT</span> — &ldquo;they&#39;ll get knocked off&rdquo;</td></tr>
+<tr><td>AI-flown drone</td><td>Autonomous drone for site/aerial capture.</td><td><span class="s pk">PARKED</span> — FAA requires a licensed remote pilot; &ldquo;further down the line&rdquo;</td></tr>
+</table>
+
+<p class="foot">&ldquo;Locked in&rdquo; reflects agreement in the conversation, not a technical guarantee. Parked items are worth a yes/no when you sit down to build.</p>
+</div></body></html>
