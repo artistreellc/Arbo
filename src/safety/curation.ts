@@ -146,6 +146,19 @@ export interface CuratedPiece {
    * showing would teach the hazard.
    */
   counterExample?: string;
+  /**
+   * WHY THIS IS BEING PUT IN FRONT OF HIM. Mike, 2026-08-04: "you come to me
+   * with questionable material and ill give an honest opinion."
+   *
+   * Not a summary of the piece — a statement of what I am unsure about.
+   * "The climb is clean but they are single-tied at 2:40, is that a no or is
+   * it fine for that species?" lets him answer in ten seconds. Handing him a
+   * cold link makes him do the work of finding the doubt I already had.
+   *
+   * Null means no specific doubt: still queued, still needs his eye, just
+   * nothing I want to point at.
+   */
+  queuedNote?: string;
 }
 
 /** Approved means it cleared ALL THREE — safe, smart and fast. */
@@ -186,9 +199,17 @@ export function servable(pieces: CuratedPiece[], sources: ApprovedProfessional[]
   return pieces.filter((p) => p.approval.state === 'approved' && ok.has(p.sourceId));
 }
 
-/** Waiting on Mike. Surfaced so the queue is visible, never served. */
+/**
+ * Waiting on Mike. Surfaced so the queue is visible, never served.
+ *
+ * Anything carrying a `queuedNote` sorts FIRST — those are the ones I have a
+ * specific doubt about, and his time is better spent on those than on
+ * material I only queued for completeness.
+ */
 export function awaitingReview(pieces: CuratedPiece[]): CuratedPiece[] {
-  return pieces.filter((p) => p.approval.state === 'queued');
+  return pieces
+    .filter((p) => p.approval.state === 'queued')
+    .sort((a, b) => Number(Boolean(b.queuedNote)) - Number(Boolean(a.queuedNote)));
 }
 
 /**
@@ -293,13 +314,16 @@ export function assertAllApproved(
 export function reviewQueueSummary(
   pieces: CuratedPiece[],
   sources: ApprovedProfessional[],
-): { approved: number; queued: number; rejected: number; sourcesQueued: number; line: string } {
+): { approved: number; queued: number; rejected: number; sourcesQueued: number; flagged: number; line: string } {
   const approved = pieces.filter((p) => p.approval.state === 'approved').length;
   const queued = pieces.filter((p) => p.approval.state === 'queued').length;
   const rej = pieces.filter((p) => p.approval.state === 'rejected').length;
   const sourcesQueued = sources.filter((s) => s.approval.state === 'queued').length;
+  const flagged = pieces.filter((p) => p.approval.state === 'queued' && p.queuedNote).length;
   const line = queued === 0 && sourcesQueued === 0
     ? `Nothing waiting. ${approved} approved, ${rej} turned down.`
-    : `${queued} piece(s) and ${sourcesQueued} source(s) waiting on you. ${approved} approved, ${rej} turned down.`;
-  return { approved, queued, rejected: rej, sourcesQueued, line };
+    : `${queued} piece(s) and ${sourcesQueued} source(s) waiting on you` +
+      (flagged > 0 ? ` — ${flagged} with a specific question` : '') +
+      `. ${approved} approved, ${rej} turned down.`;
+  return { approved, queued, rejected: rej, sourcesQueued, flagged, line };
 }

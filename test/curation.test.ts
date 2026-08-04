@@ -235,3 +235,27 @@ describe('curation — Mike\'s three bars (R13)', () => {
     expect(approve('Mike Campbell', ON).failed).toEqual([]);
   });
 });
+
+describe('curation — bringing Mike the questionable ones', () => {
+  // "you come to me with questionable material and ill give an honest opinion."
+  const doubt = piece({
+    id: 'p9', approval: QUEUED,
+    queuedNote: 'Climb is clean but they are single-tied at 2:40 — no, or fine for that species?',
+  });
+  const plain = piece({ id: 'p8', approval: QUEUED });
+
+  it('sorts the ones I have a specific doubt about to the front', () => {
+    expect(awaitingReview([plain, doubt]).map((p) => p.id)).toEqual(['p9', 'p8']);
+  });
+
+  it('counts them separately so he knows what is worth his time', () => {
+    const s = reviewQueueSummary([plain, doubt], [pro()]);
+    expect(s.flagged).toBe(1);
+    expect(s.line).toMatch(/1 with a specific question/);
+  });
+
+  it('a piece with no note is still queued — no doubt is not approval', () => {
+    expect(awaitingReview([plain]).map((p) => p.id)).toEqual(['p8']);
+    expect(servable([plain], [pro()])).toEqual([]);
+  });
+});
