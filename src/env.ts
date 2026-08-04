@@ -115,6 +115,13 @@ export const env = {
     mapsApiKey: get('GOOGLE_MAPS_API_KEY'),
     driveRootFolderId: get('ARBOR_DRIVE_ROOT_FOLDER_ID'),
   },
+  /**
+   * Signs customer portal sessions (task #35). Unset means the portal cannot
+   * mint OR verify a session, so nobody gets in — see src/portal/session.ts.
+   * Fails closed on purpose: a portal that cannot sign must never fall back
+   * to trusting an unsigned token.
+   */
+  portalSessionSecret: get('PORTAL_SESSION_SECRET'),
   ownerAlertPhone: get('OWNER_ALERT_PHONE'),
 } as const;
 
@@ -127,5 +134,6 @@ export function integrationStatus(): Record<string, boolean> {
     google: Boolean(env.google.clientEmail && env.google.privateKey),
     googleMaps: Boolean(env.google.mapsApiKey),
     ownerAlerts: Boolean(env.ownerAlertPhone),
+    portalSessions: Boolean(env.portalSessionSecret),
   };
 }
