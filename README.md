@@ -142,7 +142,7 @@ cockpit, wearables) are sequenced across phases 4–11.
 
 Node + TypeScript backend · **Supabase** (Postgres/storage, system of record) ·
 Google Calendar/Drive/Gmail/Maps · **Vapi + Twilio** (voice/SMS — wired at
-Phase 2 go-live) · **Vercel** hosting · **Expo/React Native** app (Phase 11).
+Phase 2 go-live) · **Railway** hosting · **Expo/React Native** app (Phase 11).
 Rationale for every choice is logged in `DECISIONS.md`.
 
 ---

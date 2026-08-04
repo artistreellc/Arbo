@@ -493,9 +493,18 @@ const consoleAlerter: Alerter = {
 };
 
 /**
- * The one request handler — identical behavior on node:http (Railway, local)
- * and as a serverless function (Vercel). Boot validation runs at construction:
- * the handler cannot exist with invalid law.
+ * The one request handler, used by node:http on Railway and locally.
+ *
+ * Boot validation runs at CONSTRUCTION, not on the first request: the handler
+ * cannot exist with invalid law.
+ *
+ * This used to be shared with a Vercel serverless entrypoint (D41), which is
+ * why it was written host-agnostic. Vercel is gone as of 2026-08-04 — Mike:
+ * "vercel is old" — and the reason it could never have carried ARBO anyway is
+ * worth leaving here: `startServer()` is what starts the hourly agent sweep
+ * and the five-minute inbox watch, and a serverless function has no process
+ * that lives between requests to run them in. A host for this app has to stay
+ * up.
  */
 export function createArborRequestHandler() {
   boot(); // validates guardrails + legal or throws
