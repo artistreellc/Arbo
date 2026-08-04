@@ -69,6 +69,34 @@ this document is the spec.
 - Run the mechanical work in ONE subagent per firing to keep the ops session
   lean; the subagent returns counts only.
 
+### Rulings that bind how a sweep CLASSIFIES and REPORTS (2026-08-04)
+
+- **R9 — a job is a filed contract, nothing else.** A contact is a LEAD from
+  first contact, through texting or emailing Mike, through a **signed
+  proposal**, through photos Mike takes himself on site. It becomes a job only
+  when a proposal turns into a contract in the Signed Contracts file. So a
+  sweep NEVER calls something a booked job on the strength of a calendar
+  entry. Checked live 2026-08-04: 11 job rows, all `booked`, **0 contracts** —
+  so by this ruling there are currently zero jobs, and every one of those rows
+  is a lead with a slot. *Carried by:* `src/ops/jobBoundary.ts`.
+- **R10 — LSA cannot be read from Gmail.** The Google LSA notification body
+  carries only "A potential customer called you on <date> at <time>" and a
+  link into the LSA console. No name, phone, address, or free text exists in
+  the mail. Report an LSA arrival as **"LSA lead arrived — details only in the
+  LSA console"**. Do NOT attempt to extract contact details, and do NOT report
+  the absence as a parse failure; there is nothing there to parse. Reaching
+  the real lead needs browser access to Google Ads LSA, which is a separate
+  build.
+- **R11 — the live channels, in Mike's words.** Organic website traffic, LSA,
+  Google Ads, Yelp, organic phone calls, referrals, repeat customers, and
+  **Tree Leads Today flyers**. `TSP` = Tree Leads Today and is one of Mike's
+  real, live channels — a CallRail form alert tagged "TSP National Lead Gen"
+  is a legitimate lead, not a mystery. HomeAdvisor and Angi remain OFF
+  (seasonal). **Referrals, repeat customers and the flyers have NO email
+  notification at all** — they arrive as phone calls through CallRail or as
+  direct texts. A report must never imply those channels are quiet just
+  because no mail names them (§1B).
+
 ## Step A — Lead inbox sweep (§5A #12/#13)
 
 1. Search Gmail (label id for `ARBOR/processed` is `Label_3`):
@@ -248,6 +276,17 @@ this document is the spec.
 3. For each event: address from location/title/description; parse city; ONLY
    proceed when it resolves to a service city — otherwise count as skipped.
    Kind: title containing estimate/est/quote/look → `estimate`; else `job`.
+
+   > **THIS RULE IS WRONG AND R9 IS WHY (open, task #46).** Falling through to
+   > `job` makes every untitled event a BOOKED JOB, which the crew door renders
+   > as a work order. Under R9 a job requires a filed contract, and there are
+   > zero contracts on file — so the fallback is backwards: the safe default is
+   > a lead with a slot, never work. Observed on three consecutive sweeps: 0 of
+   > 14–27 events matched an estimate keyword, so ALL of them would have been
+   > written as booked jobs. Two known false positives: an event whose
+   > *description* says estimate while its title does not, and a personal
+   > appointment at a commercial address that resolves to a service city.
+   > Do not run the write side of Step C until Mike rules on the rule.
 4. Upsert keyed on `calendar_event_id` (both tables have the column):
    - estimate: `scheduled_slot` = event start; property via
      address-normalized upsert; contact by name/phone when present in the
@@ -258,6 +297,15 @@ this document is the spec.
    vanished events — flag counts in the report instead (a calendar read
    failure must not wipe the schedule).
 
+   > **BLIND SPOT: the now→+14d window never sees a finished visit (task #47).**
+   > Any event Mike edits AFTER it has happened is invisible to every sweep,
+   > permanently. Caught 2026-08-04: two events were edited at 01:34Z and
+   > 01:36Z — write-ups of the previous day's visits — and no sweep will ever
+   > read them. That is the outcome data the loop most needs: did it convert,
+   > what was found, what comes next. A window keyed on `updated` rather than
+   > `start` (e.g. now-7d → +14d) would catch them. Runbook change, so Mike's
+   > call.
+
 ## Report format (end of every run)
 
 One short block, counts only, e.g.:
@@ -265,3 +313,10 @@ One short block, counts only, e.g.:
 mails, calendar: 5 upserts (3 est / 2 job), 2 skipped (no address). Errors: none.`
 If a step fails, say which and why (no PII) — a failed step is reported,
 never papered over.
+
+**Report DELTA, not the backlog.** Under R4 the sweep cannot apply
+`Label_3`, so `-label:Label_3` is inert and every run re-sees the same mail.
+Newness must be measured against the previous run's thread ids and against
+the `lead` table — never against mailbox state. Say plainly which items are
+carried over and which are genuinely new, or the same eight leads read as
+eight new leads every hour.
