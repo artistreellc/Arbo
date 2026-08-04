@@ -311,7 +311,7 @@ sections → estimated weight per section → pick-by-pick plan against the load
 chart and reach), knuckle-boom support, first-pick calibration, aerial
 distance measurement, and the crane load-chart database.
 
-**None of them belong to ARBO.** They were designed in the same July 31
+**They are not built in ARBO.** They were designed in the same July 31
 conversation, which is why they sit in the same catalog, but they are a
 different product with a different shape: image analysis, load-chart data,
 and an OSHA/ANSI documentation trail that has nothing to do with reception,
@@ -324,10 +324,31 @@ calling it one puts phantom work on the board and makes the build look
 further behind than it is. LOCKED IN in that catalog means "agreed in the
 conversation", not "belongs in this repo".
 
-**What still holds:** if the crane app is ever built, the guardrail from
-`docs/origin/03_Guardrails_and_Rules.html` travels with it — *crane load
-plans are estimates only, and never replace the operator's judgment or the
-certified load chart.* Same never-clear discipline as the permit engine.
+**BUT IT INTEGRATES.** Mike, immediately after: *"that intergrates."* So
+this is not "out of scope, forget it" — it is a separate build with a seam
+back to ARBO, and the seam is ARBO's responsibility to keep open even though
+the crane app is not built here.
+
+What the seam is made of, stated so a future decision does not close it by
+accident: ARBO already holds everything a load-plan estimator needs as INPUT
+— the property twin, the tree records, the risk assessment with its
+observations and geo data, the AR capture session, and the site access facts
+(power lines, structures, the water-meter run). A crane app would consume
+that and hand back a load plan, which lands on the ARBO side as a document
+against the job, alongside the permit packet.
+
+**The practical consequence for THIS repo:** do not build anything that makes
+that handoff harder. Specifically, tree and RA data must stay
+property-addressable and exportable rather than locked inside a screen, and
+the job record needs to be able to carry a document reference it did not
+generate itself. Both are true today. Nothing to build now; something to not
+break later.
+
+**The guardrail travels with the feature**, wherever it is built: from
+`docs/origin/03_Guardrails_and_Rules.html` — *crane load plans are estimates
+only, and never replace the operator's judgment or the certified load chart.*
+Same never-clear discipline as the permit engine, and the same reason: the
+system produces an estimate, a qualified human produces the decision.
 
 **What this does NOT excuse.** The other two findings from that audit are
 real ARBO gaps and stay open: the "go silent when Mike is on a real call"
