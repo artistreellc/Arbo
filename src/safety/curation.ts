@@ -69,6 +69,38 @@
 // having existed — it stops the same link being queued again next quarter,
 // and it is the clearest statement of the standard there is.
 
+/**
+ * ═══ THE HUB'S PILLARS ═══
+ * Mike, 2026-08-04: "i want these knowledges to be expansive. a true hub of
+ * knowledge, an industry leading hub for clips and articles that help better
+ * peoples careers."
+ *
+ * So the library is NOT only job-site safety. It is the trade — everything a
+ * person in this work needs to get better at it and get further in it. Safety
+ * is one pillar of seven, not the whole building.
+ *
+ * Still a closed list, because "only related materials" also still holds.
+ * Expansive means deep and wide WITHIN tree work, not unbounded. There is no
+ * 'general' and no 'other'; a piece that belongs to none of these is not
+ * trade material and does not enter.
+ */
+export type KnowledgeArea =
+  | 'safety' // job-site safety — the fifteen topics in knowledgeBase.ts
+  | 'climbing_craft' // technique, progression, footwork, efficiency on a rope
+  | 'rigging_mechanics' // forces, friction, load paths, why a thing holds
+  | 'tree_science' // biology, pathology, species behaviour, pruning response
+  | 'equipment' // saws, chippers, ropes, cranes: choosing, running, maintaining
+  | 'production' // getting the day done — the 'fast' bar, made teachable
+  | 'career'; // certification paths, running a crew, estimating, going out on your own
+
+export const KNOWLEDGE_AREAS: KnowledgeArea[] = [
+  'safety', 'climbing_craft', 'rigging_mechanics', 'tree_science',
+  'equipment', 'production', 'career',
+];
+
+/** Clips AND articles — he asked for both. */
+export type PieceFormat = 'clip' | 'article';
+
 /** Three states. Nothing defaults to approved, and there is no fourth. */
 export type ApprovalState = 'queued' | 'approved' | 'rejected';
 
@@ -210,6 +242,8 @@ export function mayApproveSource(p: ApprovedProfessional): SourceCheck {
 export interface CuratedPiece {
   id: string;
   sourceId: string;
+  area: KnowledgeArea;
+  format: PieceFormat;
   title: string;
   url: string;
   /** What it teaches, in the reviewer's words after watching or reading it. */
@@ -405,4 +439,47 @@ export function reviewQueueSummary(
       (flagged > 0 ? ` — ${flagged} with a specific question` : '') +
       `. ${approved} approved, ${rej} turned down.`;
   return { approved, queued, rejected: rej, sourcesQueued, flagged, line };
+}
+
+/**
+ * THE BOUNDARY THAT SURVIVES THE WIDENING.
+ *
+ * The hub got expansive; the COACHING surface did not. When ARBO answers a
+ * job-site photo it may draw only on `safety` material. An article about
+ * pricing a removal or getting your ISA cert is good career material and a
+ * terrible answer to "what position is this climber in" — surfacing it there
+ * would bury the one thing that matters under things that do not.
+ *
+ * Two different jobs: the hub is for a person choosing to learn, the coach is
+ * for a person mid-job with a question. Only the first one is expansive.
+ */
+export function coachableMaterial(pieces: CuratedPiece[]): CuratedPiece[] {
+  return pieces.filter((p) => p.area === 'safety');
+}
+
+/** Browse the hub by pillar — servable material only. */
+export function hubByArea(
+  pieces: CuratedPiece[],
+  sources: ApprovedProfessional[],
+): Record<KnowledgeArea, CuratedPiece[]> {
+  const live = servable(pieces, sources);
+  const out = {} as Record<KnowledgeArea, CuratedPiece[]>;
+  for (const area of KNOWLEDGE_AREAS) out[area] = live.filter((p) => p.area === area);
+  return out;
+}
+
+/**
+ * What the hub is thin on. §1B applied to a library: an empty pillar is a
+ * fact worth showing, because "we have nothing on rigging mechanics" and
+ * "rigging mechanics is covered" must never look the same to someone
+ * deciding what to study.
+ */
+export function hubGaps(
+  pieces: CuratedPiece[],
+  sources: ApprovedProfessional[],
+): { area: KnowledgeArea; count: number }[] {
+  const by = hubByArea(pieces, sources);
+  return KNOWLEDGE_AREAS
+    .map((area) => ({ area, count: by[area].length }))
+    .filter((a) => a.count === 0);
 }

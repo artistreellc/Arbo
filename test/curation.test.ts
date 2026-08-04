@@ -46,7 +46,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   approve, reject, servable, awaitingReview, rejected, STANDARDS,
-  mayApproveSource, DISCIPLINES,
+  mayApproveSource, DISCIPLINES, KNOWLEDGE_AREAS, coachableMaterial,
+  hubByArea, hubGaps,
   checkProgram, assertAllApproved, reviewQueueSummary, QUEUED,
   type CuratedPiece, type ApprovedProfessional, type TrainingProgram,
 } from '../src/safety/curation.js';
@@ -64,7 +65,7 @@ const pro = (over: Partial<ApprovedProfessional> = {}): ApprovedProfessional => 
   approval: approve('Mike Campbell', ON), ...over,
 });
 const piece = (over: Partial<CuratedPiece> = {}): CuratedPiece => ({
-  id: 'p1', sourceId: 'pro1', title: 'Chipper feed basics',
+  id: 'p1', sourceId: 'pro1', area: 'safety', format: 'clip', title: 'Chipper feed basics',
   url: 'https://example.test/x', teaches: 'Where to stand and where not to reach.',
   approval: approve('Mike Campbell', ON), ...over,
 });
@@ -317,5 +318,47 @@ describe('curation — who we learn from (the certificate is optional, the proof
     // A row approved before this rule existed does not get a free pass.
     const legacy = pro({ demonstrated: null });
     expect(servable([piece()], [legacy])).toEqual([]);
+  });
+});
+
+describe('curation — an expansive hub, with one boundary that survives', () => {
+  // "i want these knowledges to be expansive. a true hub of knowledge, an
+  // industry leading hub for clips and articles that help better peoples
+  // careers."
+  const career = piece({ id: 'pc', area: 'career', format: 'article', title: 'Pricing your first removal' });
+  const climb = piece({ id: 'pk', area: 'climbing_craft', format: 'clip', title: 'Footlock progression' });
+
+  it('covers the trade, not just safety — seven pillars', () => {
+    expect(KNOWLEDGE_AREAS).toHaveLength(7);
+    expect(KNOWLEDGE_AREAS).toContain('career');
+    expect(KNOWLEDGE_AREAS).toContain('tree_science');
+  });
+
+  it('is still closed — expansive means deep within tree work, not unbounded', () => {
+    expect(KNOWLEDGE_AREAS).not.toContain('general');
+    expect(KNOWLEDGE_AREAS).not.toContain('other');
+  });
+
+  it('holds clips AND articles', () => {
+    const by = hubByArea([career, climb], [pro()]);
+    expect(by.career[0]!.format).toBe('article');
+    expect(by.climbing_craft[0]!.format).toBe('clip');
+  });
+
+  it('THE COACH STAYS NARROW — a pricing article never answers a job-site photo', () => {
+    // The hub got expansive; the coaching surface did not. Good career
+    // material is a terrible answer to "what position is this climber in".
+    expect(coachableMaterial([piece(), career, climb]).map((p) => p.id)).toEqual(['p1']);
+  });
+
+  it('names the empty pillars rather than letting them look covered (§1B)', () => {
+    const gaps = hubGaps([piece()], [pro()]).map((g) => g.area);
+    expect(gaps).toContain('career');
+    expect(gaps).toContain('rigging_mechanics');
+    expect(gaps).not.toContain('safety');
+  });
+
+  it('an unapproved piece never appears in the hub either', () => {
+    expect(hubByArea([career.id === 'pc' ? { ...career, approval: QUEUED } : career], [pro()]).career).toEqual([]);
   });
 });
