@@ -45,7 +45,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  approve, reject, servable, awaitingReview, rejected,
+  approve, reject, servable, awaitingReview, rejected, STANDARDS,
   checkProgram, assertAllApproved, reviewQueueSummary, QUEUED,
   type CuratedPiece, type ApprovedProfessional, type TrainingProgram,
 } from '../src/safety/curation.js';
@@ -53,12 +53,12 @@ import {
 const ON = '2026-08-04';
 const pro = (over: Partial<ApprovedProfessional> = {}): ApprovedProfessional => ({
   id: 'pro1', name: 'A Rated Instructor', whyTrusted: 'Mike has watched them work.',
-  credentialsClaimed: 'ISA Certified Arborist', approval: approve('Mike Campbell', ON, 'both'), ...over,
+  credentialsClaimed: 'ISA Certified Arborist', approval: approve('Mike Campbell', ON), ...over,
 });
 const piece = (over: Partial<CuratedPiece> = {}): CuratedPiece => ({
   id: 'p1', sourceId: 'pro1', title: 'Chipper feed basics',
   url: 'https://example.test/x', teaches: 'Where to stand and where not to reach.',
-  approval: approve('Mike Campbell', ON, 'safety'), ...over,
+  approval: approve('Mike Campbell', ON), ...over,
 });
 
 describe('curation — nothing defaults to approved', () => {
@@ -68,16 +68,20 @@ describe('curation — nothing defaults to approved', () => {
   });
 
   it('an approval must have a name behind it', () => {
-    expect(() => approve('   ', ON, 'both')).toThrow(/no name/i);
+    expect(() => approve('   ', ON)).toThrow(/no name/i);
   });
 
   it('a rejection must have a REASON — "does not meet the standard" is not one', () => {
-    expect(() => reject('Mike', ON, 'safety', '  ')).toThrow(/needs a reason/i);
+    expect(() => reject('Mike', ON, ['safe'], '  ')).toThrow(/needs a reason/i);
   });
 
-  it('records which standard was applied — safety and knowledge fail differently', () => {
-    expect(approve('Mike', ON, 'knowledge').standard).toBe('knowledge');
-    expect(reject('Mike', ON, 'safety', 'Climber is tied in once.').standard).toBe('safety');
+  it('a rejection must name WHICH bar failed — a shrug is not a judgement', () => {
+    expect(() => reject('Mike', ON, [], 'Something felt off.')).toThrow(/which bar/i);
+  });
+
+  it('records the three bars independently — safe, smart and fast fail differently', () => {
+    expect(approve('Mike', ON).failed).toEqual([]);
+    expect(reject('Mike', ON, ['safe'], 'Climber is tied in once.').failed).toEqual(['safe']);
   });
 });
 
@@ -98,20 +102,20 @@ describe('curation — TWO gates, not one', () => {
   });
 
   it('a rejected piece is never served', () => {
-    const r = piece({ approval: reject('Mike', ON, 'safety', 'Shows a one-point tie-in.') });
+    const r = piece({ approval: reject('Mike', ON, ['safe'], 'Shows a one-point tie-in.') });
     expect(servable([r], [pro()])).toEqual([]);
   });
 
   it('withdrawing a source pulls its already-approved material', () => {
     // A professional Mike later stops rating takes their catalogue with them.
-    const withdrawn = pro({ approval: reject('Mike', ON, 'knowledge', 'No longer rate their teaching.') });
+    const withdrawn = pro({ approval: reject('Mike', ON, ['smart'], 'No longer rate their teaching.') });
     expect(servable([piece()], [withdrawn])).toEqual([]);
   });
 });
 
 describe('curation — a rejection is recorded, not erased (§1B)', () => {
   it('keeps the piece and the reason on file', () => {
-    const r = piece({ approval: reject('Mike', ON, 'safety', 'Climber is tied in once during the cut.') });
+    const r = piece({ approval: reject('Mike', ON, ['safe'], 'Climber is tied in once during the cut.') });
     const out = rejected([r, piece()]);
     expect(out).toHaveLength(1);
     expect(out[0]!.approval.reason).toMatch(/tied in once/);
@@ -125,7 +129,7 @@ describe('curation — a rejection is recorded, not erased (§1B)', () => {
 describe('curation — a program is blocked by ONE unreviewed step', () => {
   const program = (ids: string[], over: Partial<TrainingProgram> = {}): TrainingProgram => ({
     id: 'prog1', operation: 'Running the chipper', summary: 'Day one on the feed table.',
-    pieceIds: ids, approval: approve('Mike Campbell', ON, 'both'), ...over,
+    pieceIds: ids, approval: approve('Mike Campbell', ON), ...over,
   });
 
   it('publishes when every step is approved', () => {
@@ -150,7 +154,7 @@ describe('curation — a program is blocked by ONE unreviewed step', () => {
   it('names the rejection reason inline so Mike does not have to go looking', () => {
     const r = checkProgram(
       program(['p1']),
-      [piece({ approval: reject('Mike', ON, 'safety', 'No helmet on the groundie.') })],
+      [piece({ approval: reject('Mike', ON, ['safe'], 'No helmet on the groundie.') })],
       [pro()],
     );
     expect(r.publishable).toBe(false);
@@ -197,7 +201,7 @@ describe('curation — the structural check on the serving path', () => {
 describe('curation — the queue Mike actually reads', () => {
   it('says what is waiting on him', () => {
     const s = reviewQueueSummary(
-      [piece(), piece({ id: 'p2', approval: QUEUED }), piece({ id: 'p3', approval: reject('Mike', ON, 'safety', 'x') })],
+      [piece(), piece({ id: 'p2', approval: QUEUED }), piece({ id: 'p3', approval: reject('Mike', ON, ['safe'], 'x') })],
       [pro(), pro({ id: 'pro2', approval: QUEUED })],
     );
     expect(s).toMatchObject({ approved: 1, queued: 1, rejected: 1, sourcesQueued: 1 });
@@ -206,5 +210,28 @@ describe('curation — the queue Mike actually reads', () => {
 
   it('says so plainly when nothing is waiting', () => {
     expect(reviewQueueSummary([piece()], [pro()]).line).toMatch(/nothing waiting/i);
+  });
+});
+
+describe('curation — Mike\'s three bars (R13)', () => {
+  it('is safe, smart and fast — all three, in his words', () => {
+    expect(STANDARDS).toEqual(['safe', 'smart', 'fast']);
+  });
+
+  it('FAST is a real bar: safe and correct but unworkably slow still fails', () => {
+    // "we do things safe we doing things smart and we doing thing fast."
+    // A method a twelve-man crew loses money on is one this crew cannot use.
+    const r = reject('Mike Campbell', ON, ['fast'], 'Correct and safe, but it is a two-hour method for a twenty-minute piece.');
+    expect(r.state).toBe('rejected');
+    expect(r.failed).toEqual(['fast']);
+  });
+
+  it('can fail more than one bar at once', () => {
+    const r = reject('Mike Campbell', ON, ['safe', 'fast'], 'One-point tie-in AND it takes all morning.');
+    expect(r.failed).toEqual(['safe', 'fast']);
+  });
+
+  it('approval means all three cleared, so it names none', () => {
+    expect(approve('Mike Campbell', ON).failed).toEqual([]);
   });
 });

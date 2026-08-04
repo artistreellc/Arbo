@@ -380,13 +380,32 @@ running a twelve-man crew. That is someone who has personally seen most of
 the ways this work goes wrong, at speed, with a payroll depending on the day
 finishing.
 
-**The inference I am drawing, flagged as mine and not his** — worth checking
-before it hardens into a rule: his knowledge bar is *production-competent*,
-not merely *safe*. A great deal of published tree-work content is safe and
-unworkably slow. Material that would have a crew of twelve losing money is
-material this crew cannot use, and I read that as failing his knowledge
-standard even where it passes his safety one. **If that is wrong, say so** —
-it changes what gets queued.
+**The three bars, in his words:** *"we do things safe we doing things smart
+and we doing thing fast."* Not two. I had it as safety/knowledge and asked
+whether the second really meant production-competence; he answered by naming
+the third himself. FAST is a standard, not a nice-to-have — a method that is
+safe and correct but would have a twelve-man crew losing money is a method
+this crew cannot use.
+
+**AND THE STANDARD IS NOT WRITTEN DOWN HERE, BECAUSE IT CANNOT BE.** Mike,
+immediately after: *"no youll learn my standard as this is being built."*
+
+That is a correction to how I was working. I was trying to capture the bar in
+prose so the gate could point at a definition. Twenty years of judgement does
+not compress into a paragraph, and a paragraph pretending it does would be
+worse than nothing — it would let someone approve material by reading a
+summary instead of asking him.
+
+**So the mechanism is the record, not the definition.** Every rejection
+carries which bar failed and why, and those reasons accumulate into something
+more precise than any description: "no, the climber is tied in once", "no,
+that is a two-hour method for a twenty-minute piece". Read fifty of those and
+the standard is legible. That is why `reject()` refuses a rejection with no
+reason and refuses one that names no failed bar — those are not paperwork,
+they are the only way the standard ever gets learned.
+
+**What this means for me:** do not infer the bar and build to the inference.
+Queue material, ask, record the answer, and let the pattern emerge.
 
 **On the lineage claim.** Recorded as Mike's account of his own training, not
 as a credential ARBO asserts. §2 is strict about which credentials the

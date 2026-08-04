@@ -73,18 +73,33 @@
 export type ApprovalState = 'queued' | 'approved' | 'rejected';
 
 /**
- * Which of Mike's two bars a review was judged against. He named both, and
- * they fail differently: a technically-correct clip can still teach a habit
- * he does not want, and a safe clip can still be a poor explanation.
+ * MIKE'S THREE BARS, in his words (2026-08-04): "we do things safe, we doing
+ * things smart and we doing thing fast."
+ *
+ * Not two. I had this as safety/knowledge and asked whether his knowledge bar
+ * was really production-competence; he answered by naming the third himself.
+ * FAST is a standard here, not a nice-to-have — a method that is safe and
+ * correct but would have a twelve-man crew losing money is a method this crew
+ * cannot use, and material teaching it fails.
+ *
+ * They fail independently, which is why a rejection names WHICH:
+ *   safe  — would somebody get hurt doing it this way
+ *   smart — is the thinking right, is it the correct call for the situation
+ *   fast  — can a working crew actually make the day on it
  */
-export type StandardApplied = 'safety' | 'knowledge' | 'both';
+export type Standard = 'safe' | 'smart' | 'fast';
+export const STANDARDS: Standard[] = ['safe', 'smart', 'fast'];
 
 export interface ApprovalRecord {
   state: ApprovalState;
   /** WHO said yes or no. A name, never "the office". Null while queued. */
   decidedBy: string | null;
   decidedOnIso: string | null;
-  standard: StandardApplied | null;
+  /**
+   * On an APPROVAL: empty — approved means it cleared all three.
+   * On a REJECTION: which bar(s) it failed. Never empty on a rejection.
+   */
+  failed: Standard[];
   /**
    * Required on a rejection. "Does not meet the standard" is not a reason —
    * the next person queuing material needs to know WHICH thing was wrong.
@@ -93,7 +108,7 @@ export interface ApprovalRecord {
 }
 
 export const QUEUED: ApprovalRecord = {
-  state: 'queued', decidedBy: null, decidedOnIso: null, standard: null, reason: null,
+  state: 'queued', decidedBy: null, decidedOnIso: null, failed: [], reason: null,
 };
 
 /**
@@ -133,28 +148,32 @@ export interface CuratedPiece {
   counterExample?: string;
 }
 
-export function approve(
-  by: string,
-  onIso: string,
-  standard: StandardApplied,
-): ApprovalRecord {
+/** Approved means it cleared ALL THREE — safe, smart and fast. */
+export function approve(by: string, onIso: string): ApprovalRecord {
   if (!by.trim()) throw new Error('curation: an approval with no name behind it is not an approval.');
-  return { state: 'approved', decidedBy: by, decidedOnIso: onIso, standard, reason: null };
+  return { state: 'approved', decidedBy: by, decidedOnIso: onIso, failed: [], reason: null };
 }
 
+/**
+ * Rejected, naming WHICH of the three bars it failed. At least one — a
+ * rejection that names no failed bar is not a judgement, it is a shrug.
+ */
 export function reject(
   by: string,
   onIso: string,
-  standard: StandardApplied,
+  failed: Standard[],
   reason: string,
 ): ApprovalRecord {
   if (!by.trim()) throw new Error('curation: a rejection with no name behind it is not a rejection.');
+  if (failed.length === 0) {
+    throw new Error('curation: a rejection must name which bar it failed — safe, smart or fast.');
+  }
   if (!reason.trim()) {
     throw new Error(
       'curation: a rejection needs a reason. "Does not meet the standard" tells the next person nothing.',
     );
   }
-  return { state: 'rejected', decidedBy: by, decidedOnIso: onIso, standard, reason };
+  return { state: 'rejected', decidedBy: by, decidedOnIso: onIso, failed: [...failed], reason };
 }
 
 /**
@@ -233,7 +252,9 @@ export function checkProgram(
     if (piece.approval.state === 'queued') {
       refusals.push(`Step ${i + 1} ("${piece.title}") has not been reviewed yet.`);
     } else if (piece.approval.state === 'rejected') {
-      refusals.push(`Step ${i + 1} ("${piece.title}") was rejected: ${piece.approval.reason}`);
+      refusals.push(
+        `Step ${i + 1} ("${piece.title}") was rejected on ${piece.approval.failed.join('/')}: ${piece.approval.reason}`,
+      );
     } else if (!okSources.has(piece.sourceId)) {
       refusals.push(`Step ${i + 1} ("${piece.title}") comes from a source that is not an approved professional.`);
     }
