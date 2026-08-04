@@ -349,6 +349,20 @@ nav button .ico{font-size:20px;line-height:1}
   .sheet{max-width:760px;left:50%;transform:translateX(-50%);border-left:1px solid var(--border);
     border-right:1px solid var(--border)}
 }
+.permit-hud{display:flex;gap:10px;margin:0 0 14px}
+.pstat{flex:1;border-radius:12px;padding:12px 10px;text-align:center;border:1px solid var(--line)}
+.pstat.bad{background:#3a1414;border-color:#7a2b2b}
+.pstat.warn{background:#3a2e14;border-color:#7a662b}
+.pstat.ok{background:#14301f;border-color:#2b6a45}
+.pstat.neutral{background:var(--panel)}
+.pnum{font-size:26px;font-weight:800;line-height:1}
+.plabel{font-size:11px;opacity:.8;margin-top:4px;text-transform:uppercase;letter-spacing:.04em}
+.permit-row.blocked_scheduled{border-left:4px solid #c0392b}
+.permit-row.never_screened{border-left:4px solid #d68910}
+.phead{font-weight:700;margin:6px 0 2px}
+.pnext{font-size:13px;opacity:.85}
+.b-screen{background:#243447}
+.b-warn{background:#5c4813}
 </style>
 </head>
 <body>
@@ -378,6 +392,7 @@ nav button .ico{font-size:20px;line-height:1}
   <div id="view-book" class="view"></div>
   <div id="view-followups" class="view"></div>
   <div id="view-calls" class="view"></div>
+  <div id="view-permits" class="view"></div>
   <div id="view-perf" class="view"></div>
 </main>
 
@@ -443,6 +458,7 @@ nav button .ico{font-size:20px;line-height:1}
   <button id="tab-book"><span class="navpill"><span class="ico">&#127794;</span>Book</span></button>
   <button id="tab-followups"><span class="navpill"><span class="ico">&#8634;</span>Queue</span></button>
   <button id="tab-calls"><span class="navpill"><span class="ico">&#9742;</span>Calls</span></button>
+  <button id="tab-permits"><span class="navpill"><span class="ico">&#128220;</span>Permits</span></button>
   <button id="tab-perf"><span class="navpill"><span class="ico">&#128200;</span>Numbers</span></button>
 </nav>
 
@@ -2230,17 +2246,93 @@ $('keygo').addEventListener('click', async () => {
 });
 $('keyinput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('keygo').click(); });
 
+/**
+ * §6B THE PERMIT BOARD. The screen for the one part of this job that can cost
+ * Mike a violation before a saw ever starts.
+ *
+ * TWO RULES CARRIED FROM THE ENGINE, because a screen can break them just as
+ * easily as a handler can:
+ *
+ *  1. NEVER A CLEAR. `assertBoardNeverClear` runs server-side, and nothing
+ *     here adds a reassuring word of its own. Every row shows the engine's
+ *     own headline and next step verbatim — no summarising, no "looks fine".
+ *
+ *  2. A ROW THAT IS BLOCKED SAYS SO LOUDLY. Blocked and never-screened sort
+ *     to the top because those are the two states that stop a crew, and
+ *     burying them under resolved rows is how a screen lies by layout.
+ */
+async function renderPermits() {
+  const v = $('view-permits');
+  v.replaceChildren();
+  let board;
+  try {
+    board = await api('/api/permits');
+  } catch (e) {
+    if (e.code === 401) return showKeywall();
+    // §1B: "we could not read the board" is not "no permits outstanding".
+    v.appendChild(state('Permit board unavailable', e.code === 503
+      ? 'Database not connected — the board fills in the moment it is.'
+      : 'Could not load the permit board. This is NOT the same as nothing being outstanding.'));
+    return;
+  }
+
+  const rows = board.rows || [];
+  const blocked = Number(board.blockedCount || 0);
+  const never = Number(board.neverScreenedCount || 0);
+
+  // The headline counts, so the two numbers that matter are readable from
+  // across a truck cab.
+  const hud = el('div', 'permit-hud');
+  const mk = (n, label, cls) => {
+    const b = el('div', 'pstat ' + cls);
+    b.appendChild(el('div', 'pnum', String(n)));
+    b.appendChild(el('div', 'plabel', label));
+    return b;
+  };
+  hud.appendChild(mk(blocked, 'crew blocked', blocked > 0 ? 'bad' : 'ok'));
+  hud.appendChild(mk(never, 'never screened', never > 0 ? 'warn' : 'ok'));
+  hud.appendChild(mk(rows.length, 'properties', 'neutral'));
+  v.appendChild(hud);
+
+  if (!rows.length) {
+    // Even the empty state refuses to imply a clear.
+    v.appendChild(state('No properties on the board',
+      'Nothing has been screened yet. That is not the same as nothing needing a permit.'));
+    return;
+  }
+
+  for (const r of rows) {
+    const c = el('div', 'card permit-row ' + (r.bucket || ''));
+    const top = el('div', 'toprow');
+    top.appendChild(el('div', 'who', r.address || 'Address not recorded'));
+    if (r.city) top.appendChild(el('div', 'when', r.city));
+    c.appendChild(top);
+
+    // The engine's words, verbatim. The screen never rewrites a permit line.
+    if (r.headline) c.appendChild(el('div', 'phead', r.headline));
+    if (r.nextStep) c.appendChild(el('div', 'pnext', r.nextStep));
+
+    const b = el('div', 'badges');
+    if (r.bucket) b.appendChild(badge(String(r.bucket).replace(/_/g, ' ').toUpperCase(), 'b-' + r.bucket));
+    if (r.screenStatus) b.appendChild(badge(String(r.screenStatus).replace(/_/g, ' '), 'b-screen'));
+    if (r.inRpa) b.appendChild(badge('IN RPA', 'b-emg'));
+    if (r.rulesetStale) b.appendChild(badge('RULES STALE', 'b-warn'));
+    c.appendChild(b);
+    v.appendChild(c);
+  }
+}
+
 function switchTab(which) {
-  for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf']) {
+  for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'permits', 'perf']) {
     $('view-' + t).classList.toggle('active', which === t);
     $('tab-' + t).classList.toggle('active', which === t);
   }
 }
-for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf']) {
+for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'permits', 'perf']) {
   $('tab-' + t).addEventListener('click', () => switchTab(t));
 }
 
-function refreshAll() { renderToday(); renderLeads(); renderCalendar(); renderBook(); renderFollowUps(); renderCalls(); renderPerformance(); }
+function refreshAll() { renderToday(); renderLeads(); renderCalendar(); renderBook(); renderFollowUps(); renderCalls(); renderPermits(); renderPerformance(); }
 $('refresh').addEventListener('click', refreshAll);
 
 $('dateline').textContent = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });

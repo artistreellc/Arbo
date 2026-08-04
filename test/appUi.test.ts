@@ -91,6 +91,37 @@ describe('ARBOR app shell', () => {
     expect(html).toContain('PERMIT SCREEN PENDING');
   });
 
+  // ── §6B THE PERMIT BOARD TAB. The screen for the part of the job that can
+  // cost a violation before a saw starts. A screen can break the never-clear
+  // rule just as easily as a handler can.
+  it('has a Permits tab wired into the nav, the views and the refresh loop', () => {
+    // The recurring defect this catches: an endpoint with no door. /api/permits
+    // shipped hours before anything called it.
+    expect(html).toContain('id="tab-permits"');
+    expect(html).toContain('id="view-permits"');
+    expect(html).toContain("'/api/permits'");
+    expect(html).toContain('renderPermits()');
+    // Registered in BOTH loops — a tab missing from either is dead or stale.
+    const switchLoop = html.slice(html.indexOf('function switchTab'), html.indexOf('function switchTab') + 400);
+    expect(switchLoop).toContain("'permits'");
+  });
+
+  it('the permit board renders the engine\'s words, never its own reassurance', () => {
+    const fn = html.slice(html.indexOf('async function renderPermits'), html.indexOf('function switchTab'));
+    // Headline and next step come straight from the server, unsummarised.
+    expect(fn).toContain('r.headline');
+    expect(fn).toContain('r.nextStep');
+    // And the screen adds no clear of its own.
+    expect(fn.toLowerCase()).not.toMatch(/all clear|you'?re clear|no permit (needed|required)|good to cut/);
+  });
+
+  it('an unreadable permit board is NOT reported as nothing outstanding (§1B)', () => {
+    const fn = html.slice(html.indexOf('async function renderPermits'), html.indexOf('function switchTab'));
+    expect(fn).toMatch(/NOT the same as nothing being outstanding/i);
+    // Even the empty state refuses to imply a clear.
+    expect(fn).toMatch(/not the same as nothing needing a permit/i);
+  });
+
   it('renders user-sourced text via textContent, never innerHTML', () => {
     expect(html).not.toContain('innerHTML');
   });
