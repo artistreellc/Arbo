@@ -63,6 +63,15 @@
 //   5. Arbo never assesses a tree. The portal shows what MIKE recorded. An
 //      empty assessment stays empty; nothing is inferred from silence.
 
+import {
+  propertyOverlayFlags,
+  treeOwnershipFlag,
+  assertFlagsNeverClear,
+  type PropertyFlag,
+  type RecordedScreen,
+  type ReservoirRecord,
+} from './propertyFlags.js';
+
 export interface PortalTree {
   id: string;
   species: string | null;
@@ -72,6 +81,14 @@ export interface PortalTree {
   conditionNotes: string | null;
   lastServiceDate: string | null;
   nextDueForecast: string | null;
+  /**
+   * Mike, 2026-08-03: "if the tree rests on city property". Optional because
+   * every existing caller predates migration 0017 — absent reads as
+   * undetermined, which is the honest default and the same thing a NULL
+   * column means.
+   */
+  onCityProperty?: boolean | null;
+  cityPropertyCheckedAt?: string | null;
 }
 
 export interface PortalProperty {
@@ -160,6 +177,8 @@ export interface TreeCard {
   scheduleKnown: boolean;
   lastServiceDate: string | null;
   nextDueForecast: string | null;
+  /** Whose land it stands on — a fact, or a named absence. Never blank. */
+  ownership: PropertyFlag;
 }
 
 export const NOT_ASSESSED =
@@ -185,6 +204,14 @@ export function toTreeCard(t: PortalTree): TreeCard {
     scheduleKnown,
     lastServiceDate: t.lastServiceDate,
     nextDueForecast: t.nextDueForecast,
+    // `?? null` collapses "field absent" and "column is NULL" to the one
+    // thing they both mean: nobody determined it. treeOwnershipFlag takes
+    // `boolean | null` and would land undefined in its unknown branch anyway
+    // — this makes that the stated intent rather than a lucky fallthrough.
+    ownership: treeOwnershipFlag({
+      onCityProperty: t.onCityProperty ?? null,
+      checkedAt: t.cityPropertyCheckedAt ?? null,
+    }),
   };
 }
 
@@ -246,6 +273,8 @@ export interface PortalView {
   project: { status: string; line: string; scheduledFor: string | null };
   /** Power lines, the water meter cap and its run — Mike's list. */
   site: SiteFeature[];
+  /** CBPA, flood zone, reservoir edge — read off the recorded permit screen. */
+  flags: PropertyFlag[];
   payment: PaymentState;
   /** What is NOT known, stated plainly to the customer. */
   gaps: string[];
@@ -256,6 +285,13 @@ export function buildPortalView(input: {
   trees: PortalTree[];
   job: PortalJob | null;
   linkFor: (jobId: string, amount: number) => string | null;
+  /**
+   * The recorded permit screen for this property (the `permit` row's
+   * overlay_source + created_at). Omitted or null = never screened, which
+   * renders as "not screened", never as "no overlay".
+   */
+  screen?: RecordedScreen | null;
+  reservoir?: ReservoirRecord;
 }): PortalView {
   const cards = input.trees
     .map(toTreeCard)
@@ -274,6 +310,18 @@ export function buildPortalView(input: {
   if (unnamed > 0) gaps.push(`${unnamed} have no species recorded.`);
   const siteUnknown = siteFeatures(input.property).filter((f) => !f.known).length;
   if (siteUnknown > 0) gaps.push(`${siteUnknown} piece(s) of site information are not recorded yet.`);
+
+  // Built here rather than at the call site so no caller can render the
+  // portal WITHOUT them — a page missing the CBPA line entirely reads exactly
+  // like a page saying there is no CBPA.
+  const flags = propertyOverlayFlags(input.screen ?? null, input.reservoir);
+  // The structural check runs on the REAL path, not only in a test. The
+  // recurring defect in this codebase is a test exercising a path the app
+  // never takes; an assertion the app itself runs cannot drift out from
+  // under one.
+  assertFlagsNeverClear([...flags, ...cards.map((c) => c.ownership)]);
+  const overlayUnknown = flags.filter((f) => f.state === 'unknown').length;
+  if (overlayUnknown > 0) gaps.push(`${overlayUnknown} overlay check(s) have not been run on this address.`);
 
   const job = input.job;
   const project = job
@@ -305,6 +353,7 @@ export function buildPortalView(input: {
     },
     project,
     site: siteFeatures(input.property),
+    flags,
     payment: paymentState(job, input.linkFor),
     gaps,
   };

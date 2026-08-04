@@ -47,6 +47,8 @@
 import { getDb } from './client.js';
 import { parseAddress, type ServiceCity, type OffFocusCity } from '../lib/address.js';
 import type { PermitRecordInput, PermitLifecycle } from '../permitting/permitRecord.js';
+import type { PermitTrackRow } from '../permitting/permitBoard.js';
+import type { OverlayHit, ScreenStatus } from '../permitting/screening.js';
 
 /**
  * Thrown when an address is in no city Art-is-Tree works — NOT merely outside
@@ -385,6 +387,119 @@ export async function getLatestPermitForProperty(propertyId: string): Promise<Pe
     .maybeSingle();
   if (res.error) throw res.error;
   return (res.data as PermitRow | null) ?? null;
+}
+
+/**
+ * The lifecycle state on file for one permit, or null if there is no such
+ * permit. Exists so the §6B.3 clearance step validates a move against the
+ * DATABASE rather than against whatever the caller's screen was showing —
+ * a stale board must not be able to walk a permit backwards off a clearance
+ * while claiming it was never cleared.
+ */
+export async function permitStateById(
+  id: string,
+): Promise<{ status: PermitLifecycle; notes: string | null } | null> {
+  const db = getDb();
+  const res = await db.from('permit').select('status, notes').eq('id', id).maybeSingle();
+  if (res.error) throw res.error;
+  // `notes` rides along because the clearance step APPENDS to it rather than
+  // replacing it: `permit` has one notes column, and a second clearance that
+  // overwrote the first would erase the evidence behind the state the crew
+  // was working under. Read it here so there is only one round trip.
+  return (res.data as { status: PermitLifecycle; notes: string | null } | null) ?? null;
+}
+
+/**
+ * R9 — which of these job ids have a SIGNED CONTRACT FILED behind them.
+ *
+ * Returns the subset that do. A job id absent from the result is a job with
+ * no filed contract, which under Mike's ruling is still a lead and must not
+ * reach a crew phone as a work order.
+ *
+ * `drive_file_id` is required, not just `signed`: the ruling is "those
+ * contracts that you're putting in the signed contract file". A contract row
+ * flagged signed with nothing filed does not clear the bar.
+ */
+export async function jobIdsWithFiledContract(jobIds: string[]): Promise<Set<string>> {
+  if (jobIds.length === 0) return new Set();
+  const db = getDb();
+  const res = await db
+    .from('contract')
+    .select('job_id')
+    .in('job_id', jobIds)
+    .eq('signed', true)
+    .not('drive_file_id', 'is', null);
+  if (res.error) throw res.error;
+  const rows = (res.data ?? []) as Array<{ job_id: string | null }>;
+  return new Set(rows.map((r) => r.job_id).filter((id): id is string => Boolean(id)));
+}
+
+/**
+ * Everything `assemblePacket` needs about one permit, in one round trip.
+ *
+ * WHAT IS DELIBERATELY ABSENT: which city forms have actually been filled
+ * out. Nothing in the schema records that, so nothing here invents it — the
+ * API says so out loud rather than letting an untracked fact render as a
+ * finished checklist item.
+ *
+ * NOR is the number of trees BEING REMOVED. The property's tree rows are not
+ * that number — they are every tree on the lot — and the packet multiplies
+ * the removal count by the city's replacement ratio. Feeding it the wrong one
+ * would overstate what the city requires of Mike, on the document he hands
+ * the city. It is left out until something records the real figure.
+ *
+ * The owner is whoever is linked to the property as 'owner'. If the caller
+ * and the owner are different people (§5.9), the CALLER is not who goes on a
+ * city form, so this asks for the owner role specifically and returns nothing
+ * rather than substituting.
+ */
+export interface PacketSourceRow {
+  permit: {
+    id: string;
+    city: string;
+    screen_status: string;
+    in_rpa: boolean;
+    form_ref: string | null;
+    labeled_map_file: string | null;
+    property_id: string;
+  };
+  property: { address: string; zip: string | null };
+  owner: { name: string | null; phones: string[]; emails: string[] } | null;
+  photos: Array<{ drive_file_id: string | null }>;
+}
+
+export async function packetSource(permitId: string): Promise<PacketSourceRow | null> {
+  const db = getDb();
+  const p = await db
+    .from('permit')
+    .select('id, city, screen_status, in_rpa, form_ref, labeled_map_file, property_id')
+    .eq('id', permitId)
+    .maybeSingle();
+  if (p.error) throw p.error;
+  const permit = p.data as PacketSourceRow['permit'] | null;
+  if (!permit) return null;
+
+  const [prop, link, photos] = await Promise.all([
+    db.from('property').select('address, zip').eq('id', permit.property_id).maybeSingle(),
+    db.from('contact_property').select('contact_id').eq('property_id', permit.property_id).eq('role', 'owner').maybeSingle(),
+    db.from('photo').select('drive_file_id').eq('property_id', permit.property_id),
+  ]);
+  for (const r of [prop, link, photos]) if (r.error) throw r.error;
+
+  const contactId = (link.data as { contact_id: string } | null)?.contact_id;
+  let owner: PacketSourceRow['owner'] = null;
+  if (contactId) {
+    const c = await db.from('contact').select('name, phones, emails').eq('id', contactId).maybeSingle();
+    if (c.error) throw c.error;
+    owner = (c.data as PacketSourceRow['owner']) ?? null;
+  }
+
+  return {
+    permit,
+    property: (prop.data as PacketSourceRow['property'] | null) ?? { address: '', zip: null },
+    owner,
+    photos: (photos.data as Array<{ drive_file_id: string | null }>) ?? [],
+  };
 }
 
 /**
@@ -2301,4 +2416,73 @@ export async function crewSkillLevel(crewMemberId: string): Promise<number | nul
     .maybeSingle();
   if (res.error) throw res.error;
   return res.data ? Number(res.data.competency_level) : null;
+}
+
+/**
+ * Every property with a permit track, plus the ones that have NO track at all.
+ *
+ * The second half is the point. A LEFT JOIN from property, not a SELECT from
+ * permit: a property nobody ever screened has no permit row, and if this
+ * queried `permit` it would return exactly the properties that are already
+ * handled and silently omit the ones that are not. That is the §1B failure at
+ * the query layer — the board would look calm because the unscreened
+ * properties fell out of the FROM clause.
+ *
+ * Only properties with a service city are returned; the DB CHECK already keeps
+ * out-of-area properties out, so this is belt and braces on the city cast.
+ */
+export async function listPermitTracks(): Promise<PermitTrackRow[]> {
+  const db = getDb();
+  const [props, permits, jobs] = await Promise.all([
+    db.from('property').select('id, address, city').order('address', { ascending: true }),
+    db.from('permit')
+      .select('id, property_id, job_id, city, screen_status, in_rpa, overlay_source, form_ref, status, ruleset_last_verified, created_at')
+      .order('created_at', { ascending: false }),
+    db.from('job').select('property_id, scheduled_for').eq('status', 'booked'),
+  ]);
+  if (props.error) throw props.error;
+  if (permits.error) throw permits.error;
+  if (jobs.error) throw jobs.error;
+
+  // Newest permit per property. The ordering above is DESC, so the first one
+  // seen for a property is the current track.
+  const latest = new Map<string, Record<string, unknown>>();
+  for (const p of permits.data ?? []) {
+    const pid = p.property_id as string;
+    if (!latest.has(pid)) latest.set(pid, p as Record<string, unknown>);
+  }
+
+  // Soonest booked job per property — what makes a blocked row urgent.
+  const soonest = new Map<string, string>();
+  for (const j of jobs.data ?? []) {
+    const pid = j.property_id as string | null;
+    const at = j.scheduled_for as string | null;
+    if (!pid || !at) continue;
+    const cur = soonest.get(pid);
+    if (!cur || at < cur) soonest.set(pid, at);
+  }
+
+  return (props.data ?? []).map((prop) => {
+    const pid = prop.id as string;
+    const pm = latest.get(pid);
+    return {
+      permitId: (pm?.id as string) ?? null,
+      propertyId: pid,
+      addressLabel: (prop.address as string) ?? '(no address on file)',
+      city: prop.city as PermitTrackRow['city'],
+      jobId: (pm?.job_id as string) ?? null,
+      screen: pm
+        ? {
+          status: pm.screen_status as ScreenStatus,
+          inRpa: pm.in_rpa === true,
+          overlays: (pm.overlay_source as OverlayHit[]) ?? [],
+          ranAt: String(pm.created_at ?? ''),
+          rulesetLastVerified: (pm.ruleset_last_verified as string) ?? null,
+        }
+        : null,
+      status: (pm?.status as PermitTrackRow['status']) ?? 'needed',
+      formRef: (pm?.form_ref as string) ?? null,
+      scheduledFor: soonest.get(pid) ?? null,
+    };
+  });
 }

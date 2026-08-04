@@ -50,12 +50,26 @@ const job = (over: Partial<CrewJobSource> = {}): CrewJobSource => ({
   propertyId: 'p1', ...over,
 });
 
-function crewSource(jobs: CrewJobSource[], onAck?: (i: unknown) => void): DataSource {
+/**
+ * R9: every job here has a filed contract unless a test says otherwise.
+ * Under Mike's ruling (2026-08-04) a job IS a proposal that became a filed
+ * contract, so a fixture without one is not a work order — which is exactly
+ * what the boundary tests below check.
+ */
+function crewSource(
+  jobs: CrewJobSource[],
+  onAck?: (i: unknown) => void,
+  contracted: 'all' | 'none' | string[] = 'all',
+): DataSource {
   return {
     ready: () => true,
     stopsBetween: async () => [],
     newLeads: async () => [],
     crewJobs: async () => jobs,
+    jobsWithFiledContract: async (ids) =>
+      contracted === 'all' ? new Set(ids)
+      : contracted === 'none' ? new Set<string>()
+      : new Set(contracted),
     recordBriefingAck: async (input) => {
       onAck?.(input);
       return { trainingEventId: 'te1', timeEntryId: 'time1' };
@@ -103,6 +117,66 @@ describe('crew work orders (§6F) — the API cannot leak admin data', () => {
   it('503s honestly when the database is not configured', async () => {
     const api = createApi({ ready: () => false, stopsBetween: async () => [], newLeads: async () => [] });
     expect((await api.crewWorkOrders('2026-08-05')).status).toBe(503);
+  });
+
+  // ── R9, the lead/job boundary. Mike, 2026-08-04: "Booked jobs are those
+  // contracts that you're putting in the signed contract file... Everything
+  // else is a potential lead." This is the last gate before a row becomes a
+  // work order on a crew phone, so these are the tests that matter most.
+  it('a scheduled job with NO filed contract is not a work order', async () => {
+    const api = createApi(crewSource([job({ jobId: 'nocontract' })], undefined, 'none'));
+    const res = await api.crewWorkOrders('2026-08-05');
+    const body = res.body as { workOrders: unknown[]; notWorkOrders: number; boundaryNote: string };
+    expect(body.workOrders).toHaveLength(0);
+    // NAMED, not silently dropped — a short day Mike cannot explain is its
+    // own §1B failure.
+    expect(body.notWorkOrders).toBe(1);
+    expect(body.boundaryNote).toMatch(/no signed contract/i);
+  });
+
+  it('dispatches only the jobs that have one, and counts the rest', async () => {
+    const api = createApi(crewSource(
+      [job({ jobId: 'signed' }), job({ jobId: 'unsigned' })],
+      undefined,
+      ['signed'],
+    ));
+    const body = (await api.crewWorkOrders('2026-08-05')).body as
+      { workOrders: Array<{ jobId: string }>; notWorkOrders: number };
+    expect(body.workOrders.map((w) => w.jobId)).toEqual(['signed']);
+    expect(body.notWorkOrders).toBe(1);
+  });
+
+  it('FAILS CLOSED when the contract table cannot be read', async () => {
+    // An unreadable contract table is not evidence of a contract. The
+    // expensive failure is a crew cutting a tree with nothing behind it.
+    const api = createApi({
+      ready: () => true,
+      stopsBetween: async () => [],
+      newLeads: async () => [],
+      crewJobs: async () => [job({ jobId: 'x' })],
+      jobsWithFiledContract: async () => {
+        throw new Error('contract table unreadable');
+      },
+    });
+    const body = (await api.crewWorkOrders('2026-08-05')).body as
+      { workOrders: unknown[]; boundaryNote: string };
+    expect(body.workOrders).toHaveLength(0);
+    // And it says WHICH failure this is — not an empty day, an unreadable one.
+    expect(body.boundaryNote).toMatch(/could not read/i);
+    expect(body.boundaryNote).toMatch(/not an empty day/i);
+  });
+
+  it('a source with no contract lookup at all dispatches nothing', async () => {
+    // The 11 rows already in production have zero contracts behind them. A
+    // source that cannot answer the question must not be read as a yes.
+    const api = createApi({
+      ready: () => true,
+      stopsBetween: async () => [],
+      newLeads: async () => [],
+      crewJobs: async () => [job({ jobId: 'x' })],
+    });
+    const body = (await api.crewWorkOrders('2026-08-05')).body as { workOrders: unknown[] };
+    expect(body.workOrders).toHaveLength(0);
   });
 });
 

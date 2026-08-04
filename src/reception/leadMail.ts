@@ -58,7 +58,34 @@
 
 import { resolveServiceCity, serviceCityForZip, extractZip, type ServiceCity } from '../lib/address.js';
 
-export type LeadMailProvider = 'google_ads_lead_form' | 'callrail_call' | 'callrail_web_form' | 'lsa_call' | 'home_advisor' | 'yelp';
+export type LeadMailProvider = 'google_ads_lead_form' | 'callrail_call' | 'callrail_web_form' | 'lsa_call' | 'home_advisor' | 'yelp' | 'website_form';
+
+/**
+ * CHANNELS MIKE HAS SWITCHED OFF. Owner instruction, 2026-08-03:
+ *   "Not worried about Angi or homeadivsor we are not going after them
+ *    currently so don't add them to Arbo I'll let you know when as we use
+ *    them seasonally"
+ *
+ * HomeAdvisor and Angi are the same company, so the sender match below covers
+ * both domains — otherwise Angi mail would arrive as unrecognised noise the
+ * day they send any.
+ *
+ * WHY THIS IS A SWITCH AND NOT A DELETION. Mike said "I'll let you know when",
+ * so this comes back. Deleting the parser would mean rebuilding it — and
+ * rebuilding a lead parser from memory is how a channel comes back subtly
+ * wrong. Flip the array; the rule is already written and already tested.
+ *
+ * WHAT IT DOES NOT DO. It does not make the mail invisible. The classifier
+ * still recognises it and returns `channelOff: 'home_advisor'`, so a sweep
+ * can say "4 HomeAdvisor mails, channel off" instead of either counting them
+ * as leads or silently dropping them (§3.7). Off is a stated fact, not a
+ * blind spot.
+ */
+export const SEASONAL_CHANNELS_OFF: LeadMailProvider[] = ['home_advisor'];
+
+export function channelIsOff(p: LeadMailProvider): boolean {
+  return SEASONAL_CHANNELS_OFF.includes(p);
+}
 
 export interface LeadMailInput {
   from: string;
@@ -76,6 +103,18 @@ export interface ExtractedLead {
   details?: string;
   /** Mike's source tag: CallRail tracker (TSP/TLT/…) or campaign name. */
   source?: string;
+  /**
+   * WHAT KIND OF CALL EVENT THIS WAS. Set from the CallRail subject line.
+   *
+   * This exists because the downstream callback flag was unreachable:
+   * src/server.ts and src/server/api.ts both compute `needsCallback` from
+   * `qualification.kind` ∈ missed / abandoned / voicemail, and NOTHING ever
+   * set `kind`. An abandoned call — somebody who rang and hung up, the most
+   * time-sensitive lead there is — could never raise the flag built for it.
+   *
+   * 'text' maps to the lead row's `source: 'text'`; the rest map to 'call'.
+   */
+  kind?: 'call' | 'voicemail' | 'missed' | 'abandoned' | 'text';
   callDurationSec?: number;
   /** From CallRail's "New Caller" / "2nd call" counters. */
   isRepeatCaller?: boolean;
@@ -94,6 +133,12 @@ export interface ExtractedLead {
    * auto-booked as a tree job.
    */
   serviceOffScope?: boolean;
+  /**
+   * The website form's own urgency picker ("Just getting a quote",
+   * "Emergency", ...). Kept verbatim — it is the customer's self-report, not
+   * a triage decision, and Arbo does not upgrade or downgrade it.
+   */
+  urgency?: string;
 }
 
 export interface LeadMailResult {
@@ -102,6 +147,15 @@ export interface LeadMailResult {
   lead: ExtractedLead;
   /** False when a captured city is clearly outside the 4 cities — review, don't auto-lead. */
   inServiceArea: boolean | null;
+  /**
+   * Set when the mail WAS recognised but its channel is switched off (see
+   * SEASONAL_CHANNELS_OFF). This is NOT the same as `isLeadNotification:
+   * false` on unrecognised mail: we know exactly what this is, and we are
+   * deliberately not treating it as a lead. Surfaces name the channel and
+   * count it — §3.7 forbids a silent drop, and "we ignored 4 of these on
+   * purpose" is a different fact from "nothing arrived".
+   */
+  channelOff?: LeadMailProvider;
 }
 
 const NOT_A_LEAD: LeadMailResult = { isLeadNotification: false, provider: null, lead: {}, inServiceArea: null };
@@ -134,6 +188,20 @@ function parseGoogleAdsLeadForm(input: LeadMailInput): LeadMailResult {
   };
 }
 
+/** The five CallRail event subjects, and the kind each one means. */
+const CALLRAIL_EVENT = /^(Abandoned call|Missed call|Voicemail|Call|TXT)\s+from\s+.+\s+for\s+Art.?is.?Tree/i;
+
+function callRailKind(subject: string): NonNullable<ExtractedLead['kind']> {
+  // Order matters in the regex above: "Abandoned call" and "Missed call" must
+  // be tried BEFORE bare "Call", or `^Call` would never reach them.
+  const head = subject.match(CALLRAIL_EVENT)?.[1]?.toLowerCase() ?? 'call';
+  if (head === 'txt') return 'text';
+  if (head === 'abandoned call') return 'abandoned';
+  if (head === 'missed call') return 'missed';
+  if (head === 'voicemail') return 'voicemail';
+  return 'call';
+}
+
 function parseCallRail(input: LeadMailInput): LeadMailResult {
   const name = input.body.match(/^Name:\s*(.+)$/m)?.[1]?.trim();
   const phone = input.body.match(/^Number:\s*(.+)$/m)?.[1]?.trim();
@@ -162,6 +230,7 @@ function parseCallRail(input: LeadMailInput): LeadMailResult {
       callDurationSec: callDurationSec || undefined,
       isRepeatCaller,
       taggedAs,
+      kind: callRailKind(input.subject),
     },
     inServiceArea: cityRaw ? serviceCity !== undefined : null,
   };
@@ -206,6 +275,100 @@ function parseCallRailWebForm(input: LeadMailInput): LeadMailResult {
     // A ZIP we do not recognize is UNKNOWN, not out-of-area: national lead-gen
     // forms send from everywhere, and §3.7 says flag for review, never drop.
     inServiceArea: zip ? (serviceCity !== undefined ? true : false) : null,
+  };
+}
+
+/**
+ * THE WEBSITE CONTACT FORM (FormSubmit), Mike 2026-08-03: "Arbo can address
+ * the form submitted on website via Gmail access no need for site".
+ *
+ * That instruction is what unblocks this. R7 keeps the WEBSITE and Resend out
+ * of scope — his rankings are a live business asset. Reading the notification
+ * email that FormSubmit already sends to his inbox touches none of that: no
+ * DNS, no site config, no form endpoint change. Gmail only.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * THIS MAIL IS HTML-ONLY. THERE IS NO PLAINTEXT PART.
+ * ─────────────────────────────────────────────────────────────────────────
+ * Verified against the real messages on 2026-08-03. The ops runbook tells the
+ * sweep to read `plaintextBody`, which for FormSubmit is EMPTY — so a sweep
+ * following the runbook literally would extract nothing and record a lead with
+ * no name, no phone and no address. That is the §1B failure exactly: absence
+ * of data rendering as absence of a customer. So this parser reads the HTML
+ * table, and `fieldFromHtml` is written for the shape FormSubmit actually
+ * sends rather than a tidied-up idea of it.
+ *
+ * The real shape:
+ *   subject  "New estimate request from <name> — <service>"  (em dash)
+ *   body     <tr><td><strong>KEY</strong></td><td><pre>VALUE</pre></td></tr>
+ *   keys     name · phone · email · address · serviceNeeded · urgency · message
+ *
+ * WHAT IT DOES NOT CARRY: city, state, ZIP. The address is a bare street line
+ * ("4500 Medford Ct"), so `inServiceArea` stays NULL — unknown, never false.
+ * Same rule as LSA: a form with no city is not an out-of-area form.
+ */
+function decodeEntities(text: string): string {
+  return text
+    .replace(/&#0?39;|&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    // Ampersand LAST: decoding it first would let "&amp;lt;" become "<".
+    .replace(/&amp;/g, '&');
+}
+
+function parseWebsiteForm(input: LeadMailInput): LeadMailResult {
+  const body = input.body;
+
+  /**
+   * Pull one row out of the FormSubmit table. Tolerates the <pre> wrapper
+   * being present or absent (FormSubmit omits it on some field types) and
+   * tolerates arbitrary inline styles and whitespace between the tags.
+   */
+  const field = (key: string): string | undefined => {
+    const re = new RegExp(
+      `<strong>\\s*${key}\\s*</strong>\\s*</td>[\\s\\S]*?<td[^>]*>([\\s\\S]*?)</td>`,
+      'i',
+    );
+    const cell = body.match(re)?.[1];
+    if (cell === undefined) return undefined;
+    const v = decodeEntities(cell.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+    return v && v !== 'N/A' ? v : undefined;
+  };
+
+  // Subject is the fallback for name and service — if the table shape ever
+  // changes, the subject still carries both, so a real lead is never reduced
+  // to a blank row.
+  const subj = input.subject.match(/^New estimate request from\s+(.+?)\s*[—–-]\s*(.+)$/i);
+
+  const name = field('name') ?? subj?.[1]?.trim();
+  const phone = field('phone');
+  const email = field('email');
+  const address = field('address');
+  const serviceRequested = field('serviceNeeded') ?? subj?.[2]?.trim();
+  const urgency = field('urgency');
+  // The customer's own words about their tree. Kept VERBATIM. They often say
+  // "it is dead or dying" — that is the customer describing it, and it must
+  // reach Mike unedited. Arbo neither repeats it as a finding nor strips it.
+  const message = field('message');
+
+  const offScope = serviceRequested !== undefined
+    && OFF_SCOPE.test(serviceRequested) && !TREE_WORK.test(serviceRequested);
+
+  const details = [serviceRequested, urgency ? `Urgency: ${urgency}` : undefined, message]
+    .filter(Boolean).join(' — ') || undefined;
+
+  return {
+    isLeadNotification: true,
+    provider: 'website_form',
+    lead: {
+      name, phone, email, address, serviceRequested, urgency, details,
+      ...(offScope ? { serviceOffScope: true } : {}),
+    },
+    // NULL, not false. The form carries no city/ZIP at all, so we do not know
+    // — and "we cannot tell" must never be stored as "outside the area".
+    inServiceArea: null,
   };
 }
 
@@ -333,7 +496,15 @@ export function classifyLeadMail(input: LeadMailInput): LeadMailResult {
   }
   // Strict sender + subject shape: learn@callrail.com marketing mail must not
   // become a phantom lead.
-  if (from.includes('no-reply@callrail.com') && /^Call from .+ for Art.?is.?Tree/i.test(input.subject)) {
+  //
+  // 2026-08-03: this used to be `/^Call from .+/` alone, which matched ONE of
+  // the five event subjects the runbook has always specified. A real caller
+  // rang and then texted; both mails arrived as "Abandoned call from …" and
+  // "TXT from …", matched nothing, and fell through to NOT_A_LEAD — silently,
+  // exactly like marketing. Found by the 18:40Z sweep, not by a test.
+  // The weekly/monthly summaries still do not match: they start "Monthly
+  // Summary for …", which is none of these five words.
+  if (from.includes('no-reply@callrail.com') && CALLRAIL_EVENT.test(input.subject)) {
     return parseCallRail(input);
   }
   // CallRail web-form alert. Distinct subject from the call alert; the monthly
@@ -348,10 +519,32 @@ export function classifyLeadMail(input: LeadMailInput): LeadMailResult {
   if (isLsaSender && /potential customer/i.test(input.subject)) {
     return parseLsaRequest(input);
   }
-  // HomeAdvisor: marketing mail also comes from homeadvisor.com, so anchor on
-  // the lead sender AND the Opportunity subject shape.
-  if (from.includes('@homeadvisor.com') && /^New Opportunity/i.test(input.subject)) {
+  // HomeAdvisor / Angi — same company, both domains. Marketing mail also comes
+  // from these senders, so anchor on the lead sender AND the Opportunity
+  // subject shape. RECOGNISED FIRST, then gated: Mike switched this channel
+  // off on 2026-08-03 and will switch it back on seasonally, so the mail is
+  // named and counted rather than ignored (§3.7).
+  // Subdomains matter: Angi sends from `angi@em.angi.com`, which an
+  // `@angi.com` substring test MISSES entirely. Match the domain suffix
+  // instead. Widening the SENDER is safe because the subject gate below
+  // still requires "New Opportunity" — their marketing mail comes from the
+  // same domains and must not become a phantom lead.
+  // `\b` after .com is NOT enough — it lets `newlead@angi.com.evil.test`
+  // through, which would make a lookalike domain a trusted lead source the
+  // day this channel is switched back on. Anchor to the END of the address:
+  // end-of-string, a closing angle bracket, or whitespace.
+  const isHomeAdvisorSender = /@(?:[\w-]+\.)*(?:homeadvisor|angi|angieslist)\.com(?:>|\s|$)/i.test(from.trim());
+  if (isHomeAdvisorSender && /^New Opportunity/i.test(input.subject)) {
+    if (channelIsOff('home_advisor')) {
+      return { isLeadNotification: false, provider: 'home_advisor', lead: {}, inServiceArea: null, channelOff: 'home_advisor' };
+    }
     return parseHomeAdvisor(input);
+  }
+  // The website contact form, via the FormSubmit notification only (Mike,
+  // 2026-08-03). Sender is exact; the subject shape keeps FormSubmit's own
+  // marketing/sponsor mail from becoming a phantom lead.
+  if (from.includes('@formsubmit.co') && /^New estimate request from/i.test(input.subject)) {
+    return parseWebsiteForm(input);
   }
   // Yelp uses a per-thread reply+<token>@messaging.yelp.com sender.
   if (/@messaging\.yelp\.com/.test(from) && /^Message from .+ for Art.?is.?Tree/i.test(input.subject)) {

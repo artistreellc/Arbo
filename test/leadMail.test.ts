@@ -40,8 +40,8 @@
 
   Remember the marker: SLOW::ARBO
 */
-import { describe, it, expect } from 'vitest';
-import { classifyLeadMail } from '../src/reception/leadMail.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { classifyLeadMail, SEASONAL_CHANNELS_OFF } from '../src/reception/leadMail.js';
 import { buildFollowUpQueue, clampToQuietHours, type EstimateState, type JobState } from '../src/ops/followUps.js';
 import { loadLegal } from '../src/config/loadConfig.js';
 
@@ -354,47 +354,96 @@ Postal Code
 23456
 Bi-weekly lawn mowing service for a small yard. Include edging and weed control.`;
 
-describe('HomeAdvisor (§5A #12) — a whole channel Arbo could not see', () => {
-  const r = classifyLeadMail({
+describe('HomeAdvisor / Angi — SWITCHED OFF (Mike, 2026-08-03)', () => {
+  // "Not worried about Angi or homeadivsor we are not going after them
+  // currently so don't add them to Arbo I'll let you know when as we use them
+  // seasonally". Off, not deleted — he will turn it back on.
+  const ha = (over: Partial<{ from: string; subject: string; body: string }> = {}) => classifyLeadMail({
     from: 'newlead@homeadvisor.com',
     subject: 'New Opportunity: Trees - Trim',
     body: HA_BODY,
+    ...over,
   });
 
-  it('is recognised, with the service and the city', () => {
-    expect(r.isLeadNotification).toBe(true);
+  it('is recognised but NOT treated as a lead', () => {
+    const r = ha();
+    expect(r.isLeadNotification).toBe(false);
+    // Recognised, so the sweep can say what it ignored and how much of it.
     expect(r.provider).toBe('home_advisor');
+    expect(r.channelOff).toBe('home_advisor');
+  });
+
+  it('extracts nothing while the channel is off', () => {
+    // No point parsing a channel we are not working. Empty lead, and the
+    // reason is on the result rather than implied by the emptiness.
+    expect(ha().lead).toEqual({});
+  });
+
+  it('covers Angi too — same company, both domains', () => {
+    for (const from of ['newlead@angi.com', 'leads@angieslist.com']) {
+      const r = ha({ from });
+      expect(r.channelOff, from).toBe('home_advisor');
+    }
+  });
+
+  it('"off" is a stated fact, never a silent drop (§3.7)', () => {
+    // The distinction that matters: unrecognised mail has provider null;
+    // a switched-off channel names itself. A sweep must be able to report
+    // "4 HomeAdvisor, channel off" rather than showing nothing at all.
+    const off = ha();
+    const unknown = classifyLeadMail({ from: 'someone@nowhere.test', subject: 'hello', body: '' });
+    expect(off.provider).not.toBeNull();
+    expect(unknown.provider).toBeNull();
+    expect(unknown.channelOff).toBeUndefined();
+  });
+
+  it('their marketing mail is still not a lead, off or on', () => {
+    expect(ha({ from: 'news@homeadvisor.com', subject: 'Your monthly pro report', body: 'stats' })
+      .isLeadNotification).toBe(false);
+  });
+});
+
+describe('HomeAdvisor parser still works for the day Mike switches it back on', () => {
+  // The parser is dormant, not deleted. These tests keep it from rotting
+  // while the channel is off — rebuilding a lead parser from memory months
+  // later is how a channel comes back subtly wrong.
+  let restore: string[];
+  beforeEach(() => {
+    restore = [...SEASONAL_CHANNELS_OFF];
+    SEASONAL_CHANNELS_OFF.length = 0;
+  });
+  afterEach(() => {
+    SEASONAL_CHANNELS_OFF.length = 0;
+    SEASONAL_CHANNELS_OFF.push(...(restore as typeof SEASONAL_CHANNELS_OFF));
+  });
+
+  const on = (body = HA_BODY) => classifyLeadMail({
+    from: 'newlead@homeadvisor.com', subject: 'New Opportunity: Trees - Trim', body,
+  });
+
+  it('reads the service and the city', () => {
+    const r = on();
+    expect(r.isLeadNotification).toBe(true);
+    expect(r.channelOff).toBeUndefined();
     expect(r.lead.serviceRequested).toBe('Trees - Trim');
     expect(r.lead.serviceCity).toBe('Norfolk');
     expect(r.inServiceArea).toBe(true);
   });
 
-  it('keeps HomeAdvisor\'s own lead number so Mike can find it in their app', () => {
-    expect(r.lead.externalRef).toBe('327955820');
-    expect(r.lead.details).toMatch(/HomeAdvisor app/);
+  it('keeps their lead number so Mike can find it in their app', () => {
+    expect(on().lead.externalRef).toBe('327955820');
+    expect(on().lead.details).toMatch(/HomeAdvisor app/);
   });
 
   it('does NOT invent a name or phone it was never given', () => {
-    expect(r.lead.name).toBeUndefined();
-    expect(r.lead.phone).toBeUndefined();
+    expect(on().lead.name).toBeUndefined();
+    expect(on().lead.phone).toBeUndefined();
   });
 
   it('an out-of-area city is flagged for review, not dropped (§3.7)', () => {
-    const far = classifyLeadMail({
-      from: 'newlead@homeadvisor.com',
-      subject: 'New Opportunity: Trees - Trim',
-      body: HA_BODY.replace(/Norfolk/g, 'Richmond'),
-    });
+    const far = on(HA_BODY.replace(/Norfolk/g, 'Richmond'));
     expect(far.isLeadNotification).toBe(true);
     expect(far.inServiceArea).toBe(false);
-  });
-
-  it('HomeAdvisor marketing mail is not a lead', () => {
-    expect(classifyLeadMail({
-      from: 'news@homeadvisor.com',
-      subject: 'Your monthly pro report',
-      body: 'stats',
-    }).isLeadNotification).toBe(false);
   });
 });
 
@@ -533,5 +582,219 @@ describe('follow-up engine (§5A #16–20) — recommend-only, legally gated', (
     );
     expect(q.due.length).toBeGreaterThanOrEqual(3);
     expect(q.due.every((a) => a.recommendOnly === true)).toBe(true);
+  });
+});
+
+describe('the website contact form (FormSubmit) — Mike, 2026-08-03', () => {
+  // Built from the REAL message shape read out of Mike's inbox on 2026-08-03,
+  // not from a tidied-up idea of it. The two things that matter: the body is
+  // HTML-ONLY (no plaintext part at all), and the address carries no city.
+  const htmlBody = (rows: Array<[string, string]>) => `<!doctype html><html><body>
+<p>Someone just submitted your form on https://artistreevabeach.com/.</p>
+<table>
+  <tr><th>Name</th><th>Value</th></tr>
+  ${rows.map(([k, v]) => `<tr>
+      <td style="border: 1px solid #ddd; padding: 8px;"><strong>${k}</strong></td>
+      <td style="border: 1px solid #ddd; padding: 8px;">
+        <pre style="margin: 0;white-space: pre-wrap">${v}</pre>
+      </td>
+    </tr>`).join('\n')}
+</table></body></html>`;
+
+  const realShape = {
+    from: 'submissions@formsubmit.co',
+    subject: 'New estimate request from SIM Customer — Tree Removal',
+    body: htmlBody([
+      ['name', 'SIM Customer'],
+      ['phone', '(555) 010-1234'],
+      ['email', 'sim@example.com'],
+      ['address', '101 Simulation Row'],
+      ['serviceNeeded', 'Tree Removal'],
+      ['urgency', 'Just getting a quote'],
+      ['message', 'Pine in the back, I believe it&#039;s dead or dying. Quote to remove it and it&#039;s stump.'],
+    ]),
+  };
+
+  it('classifies the real message shape as a website form lead', () => {
+    const r = classifyLeadMail(realShape);
+    expect(r.isLeadNotification).toBe(true);
+    expect(r.provider).toBe('website_form');
+  });
+
+  it('pulls every field out of the HTML table — there is no plaintext to read', () => {
+    // This is the whole point. The runbook tells the sweep to read
+    // plaintextBody; FormSubmit sends none, so a plaintext-only parser
+    // records a lead with no name, no phone and no address — §1B, absence of
+    // data rendering as absence of a customer.
+    const { lead } = classifyLeadMail(realShape);
+    expect(lead.name).toBe('SIM Customer');
+    expect(lead.phone).toBe('(555) 010-1234');
+    expect(lead.email).toBe('sim@example.com');
+    expect(lead.address).toBe('101 Simulation Row');
+    expect(lead.serviceRequested).toBe('Tree Removal');
+    expect(lead.urgency).toBe('Just getting a quote');
+  });
+
+  it('decodes HTML entities so the customer’s words read as they typed them', () => {
+    expect(classifyLeadMail(realShape).lead.details).toContain("it's dead or dying");
+    expect(classifyLeadMail(realShape).lead.details).not.toContain('&#039;');
+  });
+
+  it('keeps the customer’s own description verbatim in the details', () => {
+    // "I believe it's dead or dying" is the CUSTOMER describing their tree.
+    // It must reach Mike unedited — Arbo neither strips it nor repeats it as
+    // a finding of its own.
+    const { lead } = classifyLeadMail(realShape);
+    expect(lead.details).toContain('Pine in the back');
+    expect(lead.details).toContain('Urgency: Just getting a quote');
+  });
+
+  it('leaves service area UNKNOWN — the form carries no city, state or ZIP', () => {
+    // NULL, never false. Same rule as LSA: a form with no city is not an
+    // out-of-area form, and storing it as one would silently bin a real lead.
+    const r = classifyLeadMail(realShape);
+    expect(r.inServiceArea).toBeNull();
+    expect(r.lead.serviceCity).toBeUndefined();
+  });
+
+  it('falls back to the subject when the table shape changes', () => {
+    // FormSubmit controls this template and can change it. If the table stops
+    // parsing, the subject still carries name and service, so a real lead is
+    // never reduced to a blank row.
+    const r = classifyLeadMail({ ...realShape, body: '<html><body>something else entirely</body></html>' });
+    expect(r.isLeadNotification).toBe(true);
+    expect(r.lead.name).toBe('SIM Customer');
+    expect(r.lead.serviceRequested).toBe('Tree Removal');
+  });
+
+  it('flags an off-scope request rather than booking it as tree work', () => {
+    const r = classifyLeadMail({
+      ...realShape,
+      subject: 'New estimate request from SIM Customer — Lawn Mowing',
+      body: htmlBody([['name', 'SIM Customer'], ['serviceNeeded', 'Lawn Mowing']]),
+    });
+    expect(r.lead.serviceOffScope).toBe(true);
+    expect(r.isLeadNotification).toBe(true);
+  });
+
+  it('does not flag tree work that merely mentions an off-scope word', () => {
+    const r = classifyLeadMail({
+      ...realShape,
+      body: htmlBody([['name', 'SIM'], ['serviceNeeded', 'Tree removal near the fence line']]),
+    });
+    expect(r.lead.serviceOffScope).toBeUndefined();
+  });
+
+  it('ignores FormSubmit mail that is not a submission', () => {
+    // Their sponsor/marketing mail comes from the same domain.
+    expect(classifyLeadMail({
+      from: 'noreply@formsubmit.co',
+      subject: 'Upgrade your FormSubmit plan',
+      body: '<html><body>promo</body></html>',
+    }).isLeadNotification).toBe(false);
+  });
+
+  it('handles an en dash or hyphen in the subject, not just the em dash', () => {
+    for (const dash of ['—', '–', '-']) {
+      const r = classifyLeadMail({
+        ...realShape,
+        subject: `New estimate request from SIM Customer ${dash} Tree Removal`,
+        body: '<html><body>no table</body></html>',
+      });
+      expect(r.lead.name, dash).toBe('SIM Customer');
+    }
+  });
+});
+
+describe('Angi subdomain senders (caught by the 15:21Z sweep)', () => {
+  // `angi@em.angi.com` is a real sender on Mike's inbox and an `@angi.com`
+  // substring test misses it completely. When the channel comes back on that
+  // would have meant Angi leads arriving and never being recognised.
+  it('matches the domain SUFFIX, so subdomains are covered', () => {
+    for (const from of ['angi@em.angi.com', 'leads@mail.angieslist.com', 'newlead@homeadvisor.com']) {
+      const r = classifyLeadMail({ from, subject: 'New Opportunity: Trees - Trim', body: HA_BODY });
+      expect(r.provider, from).toBe('home_advisor');
+      expect(r.channelOff, from).toBe('home_advisor');
+    }
+  });
+
+  it('a wider sender match does NOT turn their marketing into a lead', () => {
+    // The subject gate is what keeps this safe — widening the sender alone
+    // would otherwise let promo mail from the same domains through.
+    const r = classifyLeadMail({
+      from: 'angi@em.angi.com', subject: 'Save 20% on your Angi membership', body: 'promo',
+    });
+    expect(r.isLeadNotification).toBe(false);
+    expect(r.provider).toBeNull();
+    expect(r.channelOff).toBeUndefined();
+  });
+
+  it('does not match a lookalike domain', () => {
+    const r = classifyLeadMail({
+      from: 'newlead@angi.com.evil.test', subject: 'New Opportunity: Trees - Trim', body: HA_BODY,
+    });
+    expect(r.provider).toBeNull();
+  });
+});
+
+describe('CallRail: all five event subjects, not just "Call from"', () => {
+  // Found by the 18:40Z sweep. A real caller rang and then texted; both mails
+  // fell through to NOT_A_LEAD because the gate only matched "Call from".
+  // The runbook has specified all five since day one — the code implemented
+  // one. These are the two highest-intent events in the whole feed.
+  const cr = (subject: string) => classifyLeadMail({
+    from: 'no-reply@callrail.com', subject, body: CALLRAIL_BODY,
+  });
+  const S = (head: string) => `${head} from SIM Customer via TSP for Art-is-Tree LLC (VA)`;
+
+  it('recognises every event kind the runbook lists', () => {
+    for (const head of ['Call', 'Voicemail', 'Missed call', 'Abandoned call', 'TXT']) {
+      const r = cr(S(head));
+      expect(r.isLeadNotification, head).toBe(true);
+      expect(r.provider, head).toBe('callrail_call');
+    }
+  });
+
+  it('maps each subject to the kind the callback flag reads', () => {
+    // src/server.ts and api.ts compute needsCallback from
+    // qualification.kind ∈ missed/abandoned/voicemail. Nothing set `kind`
+    // before this, so the flag built for an abandoned call could never fire.
+    expect(cr(S('Call')).lead.kind).toBe('call');
+    expect(cr(S('Voicemail')).lead.kind).toBe('voicemail');
+    expect(cr(S('Missed call')).lead.kind).toBe('missed');
+    expect(cr(S('Abandoned call')).lead.kind).toBe('abandoned');
+    expect(cr(S('TXT')).lead.kind).toBe('text');
+  });
+
+  it('the three callback kinds are exactly the ones downstream acts on', () => {
+    const needsCallback = (k?: string) => ['missed', 'abandoned', 'voicemail'].includes(String(k));
+    expect(needsCallback(cr(S('Abandoned call')).lead.kind)).toBe(true);
+    expect(needsCallback(cr(S('Missed call')).lead.kind)).toBe(true);
+    expect(needsCallback(cr(S('Voicemail')).lead.kind)).toBe(true);
+    // A connected call and a text do not need chasing — someone got through.
+    expect(needsCallback(cr(S('Call')).lead.kind)).toBe(false);
+    expect(needsCallback(cr(S('TXT')).lead.kind)).toBe(false);
+  });
+
+  it('"Missed call" and "Abandoned call" are not swallowed by bare "Call"', () => {
+    // Alternation order is load-bearing: `^Call` would shadow both.
+    expect(cr(S('Missed call')).lead.kind).not.toBe('call');
+    expect(cr(S('Abandoned call')).lead.kind).not.toBe('call');
+  });
+
+  it('still refuses the summary mails that are not events', () => {
+    for (const subject of [
+      'Monthly Summary for Art-is-Tree LLC (VA)',
+      'Weekly Summary for Art-is-Tree LLC (VA)',
+      'Your CallRail recommendations were auto-applied',
+    ]) {
+      expect(cr(subject).isLeadNotification, subject).toBe(false);
+    }
+  });
+
+  it('still refuses marketing from the wrong CallRail sender', () => {
+    expect(classifyLeadMail({
+      from: 'learn@callrail.com', subject: S('Call'), body: CALLRAIL_BODY,
+    }).isLeadNotification).toBe(false);
   });
 });

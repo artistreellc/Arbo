@@ -72,7 +72,41 @@ this document is the spec.
 ## Step A — Lead inbox sweep (§5A #12/#13)
 
 1. Search Gmail (label id for `ARBOR/processed` is `Label_3`):
-   `{from:ads-account-noreply@google.com from:no-reply@callrail.com from:localservices-noreply@google.com from:awexpress.google.com from:homeadvisor.com from:messaging.yelp.com from:formsubmit.co} newer_than:2d -label:Label_3`
+   `{from:ads-account-noreply@google.com from:no-reply@callrail.com from:localservices-noreply@google.com from:awexpress.google.com from:homeadvisor.com from:angi.com from:angieslist.com from:messaging.yelp.com from:formsubmit.co} newer_than:2d -label:Label_3`
+
+   > **2026-08-03 — Angi domains were missing from this query.** The
+   > classifier gated `angi.com` / `angieslist.com` while the SEARCH never
+   > fetched them, so the gate could never fire on real Angi mail. Harmless
+   > only because the channel is off; the day Mike switches it on, Angi
+   > leads would have been invisible. Both domains are in the query above
+   > now. Caught by the 15:21Z sweep, not by a test.
+
+   > **SPAM IS NOT VISIBLE THROUGH THIS CONNECTOR.** `in:spam`, `label:spam`
+   > and `in:anywhere` all return nothing. A lead that Google files as spam
+   > is invisible to every sweep. Do NOT report spam as "nothing relevant" —
+   > report it as UNVERIFIABLE. §1B: "we cannot see it" and "there is
+   > nothing there" are different facts.
+
+   > **Cadence: every 5 minutes** (Mike, 2026-08-03), not hourly. The website
+   > form is the reason — a homeowner who fills it in is shopping, and an hour
+   > of silence is an hour a competitor answers first. The window stays 2 days;
+   > only the firing interval changed.
+
+   > **THIS SWEEP CANNOT DO EITHER OF THOSE THINGS, AND THE APP CAN.** The
+   > platform scheduler rejects `*/5 * * * *` (one-hour floor) and a routine
+   > created from a session carries no Gmail connector, so the five-minute
+   > cadence lives in ARBO instead: `startInboxWatch` in
+   > `src/ops/inboxWatch.ts`, on a 5-minute in-process timer, read-only by
+   > the shape of its `GmailReader` interface. Its reader
+   > (`src/integrations/gmail.ts`) also passes `includeSpamTrash=true`, which
+   > closes the spam hole above — the Gmail API can read spam even though
+   > this connector cannot.
+   >
+   > **It is not switched on.** The reader is wired to `null` pending a
+   > consumer-Gmail OAuth token (backlog #36); the service-account keys in
+   > env cannot reach a personal mailbox. Until then the watch reports
+   > UNAVAILABLE hourly and `GET /api/inbox` says the same — never "0 new
+   > leads". This manual sweep stays the live one in the meantime.
 
    > **2026-08-02 — this query used to miss real leads.** LSA does NOT send
    > from `localservices-noreply@`; every LSA lead arrives from a per-lead
@@ -88,6 +122,20 @@ this document is the spec.
      description…`/`Campaign`).
    - `no-reply@callrail.com` + subject `Call/Voicemail/Missed call/Abandoned
      call/TXT from … via <TRACKER> for Art-is-Tree` → **callrail** event.
+
+     > **2026-08-03 — four of these five matched nothing in code.** The gate
+     > was `/^Call from .+/` alone. A real caller rang and then texted; both
+     > mails ("Abandoned call from …", "TXT from …") fell through to
+     > NOT_A_LEAD, silently, exactly like marketing. Fixed: `CALLRAIL_EVENT`
+     > in leadMail.ts now matches all five, and each sets
+     > `lead.kind` ∈ call / voicemail / missed / abandoned / text.
+     >
+     > `kind` was ALSO never set before. `src/server.ts` and
+     > `src/server/api.ts` both compute `needsCallback` from
+     > `qualification.kind` ∈ missed / abandoned / voicemail — so the callback
+     > flag built for an abandoned call could never fire. It can now. When
+     > ingest resumes, write `kind` into `qualification` and map
+     > `kind === 'text'` → lead `source: 'text'`, everything else → `'call'`.
      Tracker (TSP/TLT/…) = Mike's source tag; name+phone from subject/body;
      `New Caller` vs `Nth call` = first-timer signal. Subject `TXT from …` →
      source `text`.
@@ -107,8 +155,22 @@ this document is the spec.
      an address if it ends in a real street suffix ("1000 works if possible"
      is a budget, not a street). LSA gives no city on the wire, so
      `inServiceArea` stays UNKNOWN unless a ZIP resolves it.
-   - `newlead@homeadvisor.com` + subject `New Opportunity: <service>` →
-     **home_advisor**. Carries service, city, and HomeAdvisor's lead number —
+   - `newlead@homeadvisor.com` / `@angi.com` / `@angieslist.com` + subject
+     `New Opportunity: <service>` → **home_advisor — CHANNEL OFF.**
+
+     > **Mike, 2026-08-03:** *"Not worried about Angi or homeadivsor we are
+     > not going after them currently so don't add them to Arbo I'll let you
+     > know when as we use them seasonally"*. HomeAdvisor and Angi are the
+     > same company, so both domains are gated.
+     >
+     > The classifier still RECOGNISES these and returns
+     > `channelOff: 'home_advisor'`. Report them as a single suppressed
+     > count — "N HomeAdvisor/Angi, channel off" — never as leads and never
+     > as nothing (§3.7). Off is a stated fact, not a blind spot. Flip
+     > `SEASONAL_CHANNELS_OFF` in leadMail.ts when Mike says the season is on.
+
+     The dormant parser, for when it comes back on, carries service, city and
+     HomeAdvisor's own lead number —
      but NO name or phone (those are behind "View all details" in their app),
      so the row points Mike there instead of pretending to hold contact
      details. Other `@homeadvisor.com` senders are marketing → not a lead.
@@ -121,9 +183,25 @@ this document is the spec.
    - Weekly/monthly summaries, "recommendations auto-applied", any
      `learn@callrail.com` marketing → **not a lead**. Label processed, no row.
 
-   > **Still unhandled as of 2026-08-02:** FormSubmit
-   > (`submissions@formsubmit.co`, "New estimate request from …") — the
-   > website contact page. Leave unlabeled and report until a rule exists.
+   - `submissions@formsubmit.co` + subject `New estimate request from <name>
+     — <service>` → **website_form**. The WEBSITE CONTACT PAGE, handled since
+     Mike's 2026-08-03 instruction: *"Arbo can address the form submitted on
+     website via Gmail access no need for site"*. R7 still stands — nothing
+     here touches the site, the DNS, or the form endpoint; the rule reads the
+     notification FormSubmit already sends to the inbox.
+
+     > **THIS MAIL IS HTML-ONLY — there is NO plaintext part.** Verified on
+     > the real messages 2026-08-03. Feeding `plaintextBody` to the parser
+     > yields an EMPTY body and therefore a lead row with no name, no phone
+     > and no address — a real customer stored as a blank. For this sender
+     > pass the **htmlBody**; `parseWebsiteForm` reads the HTML table.
+
+     Fields sit in a `<tr><td><strong>KEY</strong></td><td><pre>VALUE</pre>`
+     table: `name` / `phone` / `email` / `address` / `serviceNeeded` /
+     `urgency` / `message`. Entities are HTML-encoded (`&#039;`) and the
+     parser decodes them. The form carries **no city, state or ZIP** — the
+     address is a bare street line — so `inServiceArea` stays UNKNOWN, never
+     false. A form with no city is not an out-of-area form.
 3. Ingest (Supabase `execute_sql`, parameter-safe quoting):
    - Contact: match `select id from contact where phones @> array['<E164ish>']`;
      else insert (`name`, `phones`, `consent_source` = `'inbound_call'` for

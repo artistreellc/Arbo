@@ -86,6 +86,11 @@ import {
   recordBriefingAck,
   todaysBriefing,
   listUnits,
+  listPermitTracks,
+  packetSource,
+  jobIdsWithFiledContract,
+  permitStateById,
+  updatePermitStatus,
   listUnitParts,
   unitOpenTaskCount,
   unitStatus,
@@ -145,6 +150,11 @@ import type { Alerter } from './reception/receptionist.js';
 import { loadAppHtml, loadCrewHtml } from './server/appPage.js';
 import { emitSafe } from './binder/eventBus.js';
 import { runAgentSweep, startAgentScheduler } from './agents/sweep.js';
+import {
+  startInboxWatch,
+  unavailablePass,
+  type InboxWatchHandle,
+} from './ops/inboxWatch.js';
 import { createSimSource } from './dev/simSource.js';
 
 /**
@@ -374,6 +384,15 @@ export function createLiveSource(): DataSource {
     recordBriefingAck: (input) => recordBriefingAck(input),
     todaysBriefing: () => todaysBriefing(),
     units: () => listUnits(),
+    permitTracks: () => listPermitTracks(),
+    // §6B.3 clearance. Two functions, and the WRITE is deliberately the
+    // thinnest possible wrapper: every rule about whether a move is
+    // allowed lives in clearance.ts, where it can be tested without a
+    // database, and none of it lives down here where it cannot.
+    packetSource: (id) => packetSource(id),
+    jobsWithFiledContract: (ids) => jobIdsWithFiledContract(ids),
+    permitState: (id) => permitStateById(id),
+    movePermitStatus: (m) => updatePermitStatus(m.permitId, m.to, m.patch),
     unitParts: (id) => listUnitParts(id),
     unitOpenTaskCount: (id) => unitOpenTaskCount(id),
     unitStatus: (id) => unitStatus(id),
@@ -474,9 +493,18 @@ const consoleAlerter: Alerter = {
 };
 
 /**
- * The one request handler — identical behavior on node:http (Railway, local)
- * and as a serverless function (Vercel). Boot validation runs at construction:
- * the handler cannot exist with invalid law.
+ * The one request handler, used by node:http on Railway and locally.
+ *
+ * Boot validation runs at CONSTRUCTION, not on the first request: the handler
+ * cannot exist with invalid law.
+ *
+ * This used to be shared with a Vercel serverless entrypoint (D41), which is
+ * why it was written host-agnostic. Vercel is gone as of 2026-08-04 — Mike:
+ * "vercel is old" — and the reason it could never have carried ARBO anyway is
+ * worth leaving here: `startServer()` is what starts the hourly agent sweep
+ * and the five-minute inbox watch, and a serverless function has no process
+ * that lives between requests to run them in. A host for this app has to stay
+ * up.
  */
 export function createArborRequestHandler() {
   boot(); // validates guardrails + legal or throws
@@ -668,6 +696,36 @@ export function createArborRequestHandler() {
         return send(...unpack(await api.ackBriefing((await readJson(req)) as Record<string, unknown>)));
       }
       // §6E fleet surface.
+      // §6B — the permitting board. Read-only; the lifecycle only moves by a
+      // human, and there is no handler here that could move it.
+      if (req.method === 'GET' && url.pathname === '/api/permits') {
+        return send(...unpack(await api.permitBoard()));
+      }
+      // §6B.3 — the human clearance step. The only route in the app that can
+      // move a permit's lifecycle, and so the only one that can unblock a
+      // crew on protected work. Every rule about whether a move is allowed
+      // lives in clearance.ts; this line only carries the request there.
+      // §6B.1 step 6 — the submission packet for one permit. GET only: there
+      // is no filing endpoint here and there is not going to be one.
+      {
+        const m = url.pathname.match(/^\/api\/permits\/([^/]+)\/packet$/);
+        if (req.method === 'GET' && m) {
+          return send(...unpack(await api.permitPacket(decodeURIComponent(m[1]!))));
+        }
+      }
+      if (req.method === 'POST' && url.pathname === '/api/permits/status') {
+        return send(...unpack(await api.movePermit((await readJson(req)) as Record<string, unknown>)));
+      }
+      // The five-minute inbox watch's last pass (Mike, 2026-08-03). READ-ONLY
+      // in both directions: this reports what the watch already saw and can
+      // neither trigger a pass nor touch the mailbox.
+      //
+      // A watch that never started answers UNAVAILABLE, not an empty pass. On
+      // a screen those two look the same and mean opposite things.
+      if (req.method === 'GET' && url.pathname === '/api/inbox') {
+        const last = inboxWatch?.last();
+        return send(200, last ?? unavailablePass(new Date().toISOString(), 'inbox watch has not completed a pass'));
+      }
       if (req.method === 'GET' && url.pathname === '/api/fleet/units') {
         return send(...unpack(await api.fleetUnits()));
       }
@@ -844,9 +902,28 @@ export function createArborRequestHandler() {
   };
 }
 
+/**
+ * The running inbox watch, if one was started. Module-level and nullable on
+ * purpose — the handler needs to read the last pass, and threading a handle
+ * through createApi to reach one route is the kind of cleverness this
+ * codebase keeps being told to stop doing.
+ */
+let inboxWatch: InboxWatchHandle | null = null;
+
 export function startServer(port: number) {
   const summary = boot();
   const server = createServer(createArborRequestHandler());
+  // Mike, 2026-08-03: "it needs to run a sweep every 5 mins". The platform
+  // scheduler floors at an hour and its routines carry no Gmail connector,
+  // so the loop lives here instead.
+  //
+  // THE READER IS NULL UNTIL A TOKEN EXISTS, and that is the honest state,
+  // not a stub: `createGoogleGmailReader(getAccessToken)` is written and
+  // tested, and the one thing missing is a consumer-Gmail OAuth token
+  // (backlog #36 — Mike's call, see src/integrations/gmail.ts). Started
+  // anyway, because a watch reporting UNAVAILABLE every hour is a fact an
+  // operator can act on; a watch that was never started is silence.
+  inboxWatch = startInboxWatch(null);
   // §8A.6f: the agents run on their own clock, not only when Mike taps.
   startAgentScheduler(
     createApi(createServerSource(), { alerts: createNwsAlertsProvider((u, i) => fetch(u, i)) }),

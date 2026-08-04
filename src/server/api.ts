@@ -81,6 +81,14 @@ import { buildActionPlan, isSchedulable, type BreakdownReport, type KnownPart, t
 import type { TtsClient } from '../voice/elevenlabsTts.js';
 import { scoreLead, type LeadQualityResult } from '../reception/leadQuality.js';
 import { integrationStatus } from '../env.js';
+import { buildPermitBoard, assertBoardNeverClear, type PermitTrackRow } from '../permitting/permitBoard.js';
+import { authorizeClearance, assertUnblockingSetMatchesGate } from '../permitting/clearance.js';
+import { splitByContract, assertEveryWorkOrderHasContract } from '../ops/jobBoundary.js';
+import { assemblePacket } from '../permitting/packet.js';
+import type { ScreenStatus } from '../permitting/screening.js';
+import type { ServiceCity } from '../lib/address.js';
+import type { PacketSourceRow as PacketSource } from '../db/repositories.js';
+import { crewMayStart, type PermitLifecycle } from '../permitting/permitRecord.js';
 
 /** Postgres uuid shape. Non-UUID ids must be rejected BEFORE any write. */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -160,8 +168,39 @@ export interface DataSource {
   calendarEvents?(fromIso: string, toIso: string): Promise<unknown[]>;
   /** §6F crew surface: the day's jobs with the site facts a crew may see. */
   crewJobs?(fromIso: string, toIso: string): Promise<CrewJobSource[]>;
+  /**
+   * R9 — of these job ids, which have a SIGNED CONTRACT FILED behind them.
+   * Absent from the returned set means no filed contract, which means it is
+   * still a lead and no crew is dispatched on it.
+   */
+  jobsWithFiledContract?(jobIds: string[]): Promise<Set<string>>;
   /** §6E fleet: units with their open-task counts. */
   units?(): Promise<unknown[]>;
+  /**
+   * §6B permitting board: EVERY property, with its latest permit track or
+   * null. Must include properties that have never been screened — they are
+   * the loudest rows on the board, and a source that only returns permit
+   * rows would silently drop exactly those (§1B).
+   */
+  permitTracks?(): Promise<PermitTrackRow[]>;
+  /**
+   * §6B.3 clearance: the CURRENT state of one permit, so a move is validated
+   * against what is actually on file rather than against whatever state the
+   * caller's screen was showing. A stale tab must not be able to walk a
+   * permit backwards without saying why.
+   */
+  permitState?(permitId: string): Promise<{ status: PermitLifecycle; notes: string | null } | null>;
+  /**
+   * §6B.1 step 6 — everything the packet needs about one permit. Null when
+   * there is no such permit.
+   */
+  packetSource?(permitId: string): Promise<PacketSource | null>;
+  /** Record a human's lifecycle move. The only writer of permit status. */
+  movePermitStatus?(input: {
+    permitId: string;
+    to: PermitLifecycle;
+    patch: { formRef?: string; notes: string };
+  }): Promise<void>;
   /** This unit's OWN parts history — the only source a suggestion may draw on. */
   unitParts?(unitId: string): Promise<KnownPart[]>;
   /** Open maintenance tasks on this unit — NOT a schedule check (see §1B note). */
@@ -776,7 +815,38 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       // a 9pm-ET open must not hand them tomorrow's sheet.
       const day = dateIso && /^\d{4}-\d{2}-\d{2}$/.test(dateIso) ? dateIso : etToday();
       const { startUtc, endUtc } = etDayWindow(day);
-      const rows = await source.crewJobs(startUtc.toISOString(), endUtc.toISOString());
+      const scheduled = await source.crewJobs(startUtc.toISOString(), endUtc.toISOString());
+
+      // ═══ R9 — THE LEAD/JOB BOUNDARY, ENFORCED WHERE IT MATTERS ═══
+      // Mike, 2026-08-04: a job is a proposal that became a contract in the
+      // Signed Contracts file. Everything else is a lead. This is the last
+      // gate before a row becomes a work order on a crew phone, so it is the
+      // one that has to hold.
+      //
+      // FAILS CLOSED. If the contract lookup itself fails we do NOT fall back
+      // to dispatching everything — an unreadable contract table is not
+      // evidence of a contract. Nothing becomes a work order, and the note
+      // says why (§1B). The expensive failure is a crew cutting a tree with
+      // no contract behind it, not a crew waiting for Mike to check.
+      let filed: Set<string>;
+      let lookupFailed = false;
+      try {
+        filed = source.jobsWithFiledContract
+          ? await source.jobsWithFiledContract(scheduled.map((r) => r.jobId))
+          : new Set<string>();
+        if (!source.jobsWithFiledContract) lookupFailed = true;
+      } catch (err) {
+        console.error('[crew] contract lookup failed:', err instanceof Error ? err.message : 'error');
+        filed = new Set<string>();
+        lookupFailed = true;
+      }
+      const hasFiledContract = (r: { jobId: string }) => !lookupFailed && filed.has(r.jobId);
+      const split = splitByContract(scheduled, hasFiledContract);
+      // Structural, on the real path: if the split is ever bypassed or handed
+      // the wrong predicate, this throws instead of dispatching a crew.
+      assertEveryWorkOrderHasContract(split.workOrders, hasFiledContract);
+
+      const rows = split.workOrders;
       const sources: WorkOrderSource[] = rows.map((r, i) => ({
         jobId: r.jobId,
         routeOrder: i + 1,
@@ -794,7 +864,17 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       }));
       return {
         status: 200,
-        body: { date: day, workOrders: sequenceRoute(sources).map(buildCrewPayload) },
+        body: {
+          date: day,
+          workOrders: sequenceRoute(sources).map(buildCrewPayload),
+          // NAMED, never silently dropped. A crew looking at a short day has
+          // to be able to tell "there is little on today" from "the app is
+          // holding rows back", and Mike has to see the count either way.
+          notWorkOrders: split.notWorkOrders.length,
+          boundaryNote: lookupFailed
+            ? 'Could not read the contract file, so NOTHING is dispatched as a work order. This is not an empty day — it is an unreadable one.'
+            : split.note,
+        },
       };
     },
 
@@ -856,6 +936,160 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       });
       if (source.emit) await source.emit('briefing.acknowledged', { crewMemberId, trainingEventId: saved.trainingEventId });
       return { status: 200, body: { unlocked: true, payableMinutes: ack.payableMinutes, ...saved } };
+    },
+
+    /**
+     * GET /api/permits — the §6B permitting board.
+     *
+     * The date is passed in rather than read from a clock inside the board so
+     * the whole thing stays a pure function and testable offline, the same
+     * shape as the screening engine.
+     *
+     * assertBoardNeverClear runs HERE, on the real response path, not only in
+     * a test. The recurring defect in this codebase has been a test proving a
+     * behaviour the app never exercises; an assertion the handler itself runs
+     * cannot drift out from under one. It throws rather than returning a soft
+     * row — a 500 is a cheaper failure than a permitting screen that reads
+     * like a clearance.
+     */
+    async permitBoard(): Promise<ApiResult> {
+      if (!source.ready() || !source.permitTracks) return { status: 503, body: { error: 'db_not_configured' } };
+      const board = buildPermitBoard(await source.permitTracks(), etToday());
+      assertBoardNeverClear(board);
+      return { status: 200, body: board };
+    },
+
+    /**
+     * GET /api/permits/:id/packet — §6B.1 step 6. Assemble the submission
+     * packet for a human to file. There is no submit here and there never
+     * will be: `assemblePacket` returns `neverAutoFiled: true` as a literal,
+     * and ARBO prepares and hands off (§6B.3).
+     *
+     * §1B lives in `notTracked`. Nothing in the schema records which city
+     * forms have actually been filled out, so the checklist cannot know —
+     * and "we have no record" must not render as "not done" without saying
+     * which of the two it is. The forms read as outstanding (the safe
+     * direction for a checklist whose job is to stop a filing with a gap),
+     * and the response names the reason.
+     */
+    async permitPacket(permitId: string): Promise<ApiResult> {
+      if (!source.ready() || !source.packetSource) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!UUID_RE.test(permitId)) return { status: 400, body: { error: 'bad_permit_id' } };
+      const src = await source.packetSource(permitId);
+      if (!src) return { status: 404, body: { error: 'no_such_permit' } };
+
+      const packet = assemblePacket({
+        city: src.permit.city as ServiceCity,
+        permit: {
+          id: src.permit.id,
+          screenStatus: src.permit.screen_status as ScreenStatus,
+          inRpa: src.permit.in_rpa,
+          formRef: src.permit.form_ref,
+          labeledMapFile: src.permit.labeled_map_file,
+        },
+        property: { address: src.property.address, zip: src.property.zip },
+        // The OWNER, not the caller. A city form names the person who owns
+        // the tree; §5.9 makes the distinction binding, so an absent owner
+        // link is an absent owner, never the caller standing in.
+        owner: {
+          name: src.owner?.name ?? null,
+          phone: src.owner?.phones[0] ?? null,
+          email: src.owner?.emails[0] ?? null,
+        },
+        photos: src.photos
+          .map((p) => p.drive_file_id)
+          .filter((id): id is string => Boolean(id))
+          .map((driveFileId) => ({ driveFileId })),
+        // Not tracked anywhere — see the note above. An empty list is the
+        // honest input; the response says why it is empty.
+        preparedForms: [],
+        // treeCount is the number of trees BEING REMOVED, which multiplies
+        // the city's replacement ratio. The property's tree rows are every
+        // tree on the lot, not that number, and nothing records the real one
+        // — so it is omitted and the mitigation note stays general rather
+        // than quoting a replacement count that is wrong on a city document.
+      });
+
+      return {
+        status: 200,
+        body: {
+          ...packet,
+          notTracked: [
+            'Which city forms are already filled out — ARBO has no record of that, so every form reads as outstanding.',
+            'How many trees are being removed — the mitigation note stays general rather than quoting a replacement count ARBO cannot know.',
+            ...(src.owner ? [] : ['Who owns this property — no owner is linked, so the owner line cannot be filled.']),
+          ],
+        },
+      };
+    },
+
+    /**
+     * POST /api/permits/status — §6B.3, the human clearance step. The ONLY
+     * path that moves a permit's lifecycle, and therefore the only thing in
+     * the app that can unblock a crew on protected work.
+     *
+     * The `from` state is read from the database, never taken from the
+     * caller. A phone with a stale board open would otherwise be able to
+     * report a move from a state that has already changed — and the check
+     * that guards walking backwards off a clearance depends entirely on
+     * `from` being true.
+     */
+    async movePermit(body: Record<string, unknown>): Promise<ApiResult> {
+      if (!source.ready() || !source.movePermitStatus || !source.permitState) {
+        return { status: 503, body: { error: 'db_not_configured' } };
+      }
+      // The gate and the evidence bar must agree about which states open the
+      // door. Run on the real path, not only in a test.
+      assertUnblockingSetMatchesGate(crewMayStart);
+
+      const permitId = String(body.permitId ?? '');
+      if (!UUID_RE.test(permitId)) return { status: 400, body: { error: 'bad_permit_id' } };
+      const current = await source.permitState(permitId);
+      if (current === null) return { status: 404, body: { error: 'no_such_permit' } };
+      const from = current.status;
+
+      const w = body.cityWord as Record<string, unknown> | undefined;
+      const outcome = authorizeClearance({
+        permitId,
+        from,
+        to: String(body.to ?? '') as PermitLifecycle,
+        // Not read from the body: there is one kind of author and it is a
+        // human. A caller cannot declare itself something else.
+        author: { kind: 'human', name: String(body.recordedBy ?? '') },
+        ...(w
+          ? {
+              cityWord: {
+                contactName: String(w.contactName ?? ''),
+                saidOnIso: String(w.saidOnIso ?? ''),
+                reference: w.reference == null || String(w.reference).trim() === '' ? null : String(w.reference),
+                noReferenceIssued: w.noReferenceIssued === true,
+                note: String(w.note ?? ''),
+              },
+            }
+          : {}),
+      });
+
+      if (!outcome.ok) {
+        // 422, not 400: the request was understood perfectly and refused on
+        // its merits. The refusals are sentences a person can act on — "the
+        // city needs a name" beats "bad_request" at 7am with a crew waiting.
+        return { status: 422, body: { error: 'clearance_refused', refusals: outcome.refusals } };
+      }
+
+      // APPEND, never replace. `permit` has one notes column; a second
+      // clearance that overwrote the first would erase the evidence behind
+      // the state a crew already worked under. Newest first, so the note that
+      // explains the CURRENT state reads at the top.
+      const notes = [outcome.move.patch.notes, current.notes].filter((n) => n && n.trim()).join('\n');
+      await source.movePermitStatus({ ...outcome.move, patch: { ...outcome.move.patch, notes } });
+      // On the binder (§8A). This is the most consequential write in the app
+      // — it is what lets a crew start protected work — so it does not get to
+      // be the one that leaves no trace. States and ids only; the recorder is
+      // an employee and attribution IS the point of the record.
+      if (source.emit) {
+        await source.emit('permit.status.moved', { permitId, from, to: outcome.move.to, recordedBy: String(body.recordedBy ?? '') });
+      }
+      return { status: 200, body: { moved: true, permitId, from, to: outcome.move.to } };
     },
 
     /** GET /api/fleet/units — the fleet with what each unit still owes (§6E). */
