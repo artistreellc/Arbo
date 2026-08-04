@@ -112,6 +112,35 @@ export const QUEUED: ApprovalRecord = {
 };
 
 /**
+ * The three trades Mike named. A closed list — material from outside these
+ * is not tree-work material, whatever else it might be.
+ */
+export type Discipline = 'climber' | 'arborist' | 'logger';
+export const DISCIPLINES: Discipline[] = ['climber', 'arborist', 'logger'];
+
+/**
+ * PROOF THEY CAN ACTUALLY DO THE WORK — shown, not claimed.
+ *
+ * Mike, 2026-08-04: "if they are not a isa certified arborist, that doesnt
+ * stop us from learning from them but they need to show in video or picture
+ * that they are a safe production climber."
+ *
+ * This inverts the usual gate. Most systems would check for a certificate;
+ * this one checks that the person is visibly good on a rope, and treats the
+ * certificate as optional. That is the right way round for a trade where the
+ * best loggers and climbers in the world are frequently uncertified and the
+ * certificate says nothing about whether someone is safe at production speed.
+ */
+export interface DemonstratedCompetence {
+  /** Where they show it — their own video or photographs. */
+  evidenceUrl: string;
+  /** What it shows, in the reviewer's words, after actually watching it. */
+  whatItShows: string;
+  reviewedBy: string;
+  reviewedOnIso: string;
+}
+
+/**
  * A professional whose material may even be CONSIDERED. Gate one.
  *
  * Approving somebody here does not approve their back catalogue — it only
@@ -121,11 +150,57 @@ export interface ApprovedProfessional {
   id: string;
   /** Person or organisation, as they publish. */
   name: string;
+  discipline: Discipline;
   /** Why Mike rates them — his words, kept so the standard stays legible. */
   whyTrusted: string;
-  /** Credentials as claimed by them. ARBO never asserts a credential itself. */
+  /**
+   * ISA or otherwise, as CLAIMED by them. Optional, and deliberately not
+   * sufficient: see `mayApproveSource`. ARBO never asserts anyone's
+   * credential as verified fact — including its own company's (§2).
+   */
   credentialsClaimed: string | null;
+  /**
+   * THE ACTUAL BAR. Null means nobody has seen them work, and a source in
+   * that state cannot be approved no matter what they are certified in.
+   */
+  demonstrated: DemonstratedCompetence | null;
   approval: ApprovalRecord;
+}
+
+export type SourceCheck = { ok: true } | { ok: false; refusals: string[] };
+
+/**
+ * May this person be approved as a source? Enforces the inversion.
+ *
+ * A certificate with no demonstration is refused. A demonstration with no
+ * certificate is fine. That is the rule as Mike stated it.
+ */
+export function mayApproveSource(p: ApprovedProfessional): SourceCheck {
+  const refusals: string[] = [];
+  if (!p.name.trim()) refusals.push('The source has no name.');
+  if (!DISCIPLINES.includes(p.discipline)) {
+    refusals.push(`"${p.discipline}" is not one of the trades we learn from.`);
+  }
+  if (!p.demonstrated) {
+    refusals.push(
+      p.credentialsClaimed
+        ? `${p.name} claims "${p.credentialsClaimed}", and that is not the bar. ` +
+          'They need to SHOW safe production work in video or pictures before we learn from them.'
+        : `Nobody has seen ${p.name} work. They need to show safe production work in video or pictures.`,
+    );
+  } else {
+    if (!p.demonstrated.evidenceUrl.trim()) refusals.push('The proof has no link to it.');
+    if (!p.demonstrated.whatItShows.trim()) {
+      refusals.push('Say what the footage actually shows — "he is good" is not a reviewed judgement.');
+    }
+    if (!p.demonstrated.reviewedBy.trim()) {
+      refusals.push('Nobody is named as having watched the proof.');
+    }
+  }
+  if (!p.whyTrusted.trim()) {
+    refusals.push('Say why we rate them. The reasons are how the standard stays legible.');
+  }
+  return refusals.length === 0 ? { ok: true } : { ok: false, refusals };
 }
 
 /**
@@ -195,7 +270,11 @@ export function reject(
  * source that was never approved or was later withdrawn — is not served.
  */
 export function servable(pieces: CuratedPiece[], sources: ApprovedProfessional[]): CuratedPiece[] {
-  const ok = new Set(sources.filter((s) => s.approval.state === 'approved').map((s) => s.id));
+  // Approved AND demonstrated. A source row that was approved before the
+  // demonstration rule existed does not get grandfathered in.
+  const ok = new Set(
+    sources.filter((s) => s.approval.state === 'approved' && s.demonstrated).map((s) => s.id),
+  );
   return pieces.filter((p) => p.approval.state === 'approved' && ok.has(p.sourceId));
 }
 

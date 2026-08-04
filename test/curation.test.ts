@@ -46,14 +46,22 @@
 import { describe, it, expect } from 'vitest';
 import {
   approve, reject, servable, awaitingReview, rejected, STANDARDS,
+  mayApproveSource, DISCIPLINES,
   checkProgram, assertAllApproved, reviewQueueSummary, QUEUED,
   type CuratedPiece, type ApprovedProfessional, type TrainingProgram,
 } from '../src/safety/curation.js';
 
 const ON = '2026-08-04';
+const shown = {
+  evidenceUrl: 'https://example.test/their-reel',
+  whatItShows: 'Full removal, tied in twice throughout, groundie never in the drop zone.',
+  reviewedBy: 'Mike Campbell', reviewedOnIso: ON,
+};
 const pro = (over: Partial<ApprovedProfessional> = {}): ApprovedProfessional => ({
-  id: 'pro1', name: 'A Rated Instructor', whyTrusted: 'Mike has watched them work.',
-  credentialsClaimed: 'ISA Certified Arborist', approval: approve('Mike Campbell', ON), ...over,
+  id: 'pro1', name: 'A Rated Instructor', discipline: 'climber',
+  whyTrusted: 'Mike has watched them work.',
+  credentialsClaimed: 'ISA Certified Arborist', demonstrated: shown,
+  approval: approve('Mike Campbell', ON), ...over,
 });
 const piece = (over: Partial<CuratedPiece> = {}): CuratedPiece => ({
   id: 'p1', sourceId: 'pro1', title: 'Chipper feed basics',
@@ -257,5 +265,57 @@ describe('curation — bringing Mike the questionable ones', () => {
   it('a piece with no note is still queued — no doubt is not approval', () => {
     expect(awaitingReview([plain]).map((p) => p.id)).toEqual(['p8']);
     expect(servable([plain], [pro()])).toEqual([]);
+  });
+});
+
+describe('curation — who we learn from (the certificate is optional, the proof is not)', () => {
+  // Mike, 2026-08-04: "if they are not a isa certified arborist, that doesnt
+  // stop us from learning from them but they need to show in video or picture
+  // that they are a safe production climber."
+
+  it('the trades are climber, arborist, logger', () => {
+    expect(DISCIPLINES).toEqual(['climber', 'arborist', 'logger']);
+  });
+
+  it('an UNCERTIFIED person who shows the work is approvable', () => {
+    const uncertified = pro({ credentialsClaimed: null, demonstrated: shown });
+    expect(mayApproveSource(uncertified)).toEqual({ ok: true });
+  });
+
+  it('a CERTIFIED person who shows nothing is REFUSED — and told why', () => {
+    // The inversion. Most systems would pass this one.
+    const paperOnly = pro({ credentialsClaimed: 'ISA Certified Arborist', demonstrated: null });
+    const r = mayApproveSource(paperOnly);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.refusals.join(' ')).toMatch(/that is not the bar/i);
+    expect(r.refusals.join(' ')).toMatch(/SHOW safe production work/i);
+  });
+
+  it('nobody having seen them work is refused even with no claim at all', () => {
+    const unknown = pro({ credentialsClaimed: null, demonstrated: null });
+    const r = mayApproveSource(unknown);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.refusals.join(' ')).toMatch(/Nobody has seen/i);
+  });
+
+  it('"he is good" is not a reviewed judgement', () => {
+    const vague = pro({ demonstrated: { ...shown, whatItShows: '   ' } });
+    const r = mayApproveSource(vague);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.refusals.join(' ')).toMatch(/what the footage actually shows/i);
+  });
+
+  it('the proof must name who watched it', () => {
+    const r = mayApproveSource(pro({ demonstrated: { ...shown, reviewedBy: '' } }));
+    expect(r.ok).toBe(false);
+  });
+
+  it('an approved source with no demonstration serves NOTHING — no grandfathering', () => {
+    // A row approved before this rule existed does not get a free pass.
+    const legacy = pro({ demonstrated: null });
+    expect(servable([piece()], [legacy])).toEqual([]);
   });
 });
