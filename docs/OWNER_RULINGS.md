@@ -357,6 +357,51 @@ from the code, and the dead-time filler is LOCKED IN and absent.
 
 ---
 
+## R13 — Whose standard the curation gate is. Mike's, and here is what it means.
+**Ruling: 2026-08-04.** Asked what "my safety or knowledge standards" means,
+in his words:
+
+> "my standards are that of a 20 year highly skilled professional tree climber
+> that did 5-10k a day in production while leading an outfit of 12 men for 7
+> years before i started art is tree"
+
+and:
+
+> "i was trained by the 75th arborist ever"
+
+**Why this is written down rather than assumed.** `src/safety/curation.ts`
+gates every piece of training material on "approved by Mike against his
+standards". Until now that phrase pointed at nothing a reader could check. It
+now points here.
+
+**What the bar actually is.** Not a hobbyist's caution and not a compliance
+checkbox. Twenty years climbing at $5–10k/day production, seven of them
+running a twelve-man crew. That is someone who has personally seen most of
+the ways this work goes wrong, at speed, with a payroll depending on the day
+finishing.
+
+**The inference I am drawing, flagged as mine and not his** — worth checking
+before it hardens into a rule: his knowledge bar is *production-competent*,
+not merely *safe*. A great deal of published tree-work content is safe and
+unworkably slow. Material that would have a crew of twelve losing money is
+material this crew cannot use, and I read that as failing his knowledge
+standard even where it passes his safety one. **If that is wrong, say so** —
+it changes what gets queued.
+
+**On the lineage claim.** Recorded as Mike's account of his own training, not
+as a credential ARBO asserts. §2 is strict about which credentials the
+company states — licensed and insured, BBB A+, and nothing else — and that
+does not change because the training behind the standard is unusually good.
+This line explains the reviewer's authority internally; it is not marketing
+copy and must not become customer-facing.
+
+**Practical consequence:** the reviewer of record is Mike. A delegate can be
+named later, but `approve()` requires a name and the name means something —
+the gate is only as good as the person behind it, and that person's
+qualification is now on file.
+
+---
+
 ## Open — Mike has not ruled yet
 
 - **Friday questionnaire length: 10 or 15 questions.** Built PARAMETERISED
