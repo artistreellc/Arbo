@@ -302,6 +302,40 @@ reports "channels seen" must not imply those are quiet.
 
 ---
 
+## R12 — The crane brain is a SEPARATE APP. It is not an ARBO gap.
+**Ruling: 2026-08-04.** Mike: *"crane brain is a whole other app."*
+
+Catalog area G in `docs/origin/02_Feature_Catalog.html` lists five features
+marked LOCKED IN — the crane load-plan estimator (photo → colour-coded
+sections → estimated weight per section → pick-by-pick plan against the load
+chart and reach), knuckle-boom support, first-pick calibration, aerial
+distance measurement, and the crane load-chart database.
+
+**None of them belong to ARBO.** They were designed in the same July 31
+conversation, which is why they sit in the same catalog, but they are a
+different product with a different shape: image analysis, load-chart data,
+and an OSHA/ANSI documentation trail that has nothing to do with reception,
+scheduling, permitting, or the property twin.
+
+**Correcting my own report.** Hours before this ruling I audited the LOCKED IN
+list and called area G "the largest single gap between the brief and the
+build". That framing was wrong — an out-of-scope feature is not a gap, and
+calling it one puts phantom work on the board and makes the build look
+further behind than it is. LOCKED IN in that catalog means "agreed in the
+conversation", not "belongs in this repo".
+
+**What still holds:** if the crane app is ever built, the guardrail from
+`docs/origin/03_Guardrails_and_Rules.html` travels with it — *crane load
+plans are estimates only, and never replace the operator's judgment or the
+certified load chart.* Same never-clear discipline as the permit engine.
+
+**What this does NOT excuse.** The other two findings from that audit are
+real ARBO gaps and stay open: the "go silent when Mike is on a real call"
+guardrail (file 03, added because Claude talked over a live call) is absent
+from the code, and the dead-time filler is LOCKED IN and absent.
+
+---
+
 ## Open — Mike has not ruled yet
 
 - **Friday questionnaire length: 10 or 15 questions.** Built PARAMETERISED
