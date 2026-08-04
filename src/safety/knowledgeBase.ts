@@ -149,8 +149,15 @@ export interface TrainingClip {
   startSec: number | null;
   endSec: number | null;
   /**
-   * WHO WATCHED IT. Null until a human has. A clip with null here is queued,
-   * not available — see `usableClips`.
+   * WHO APPROVED IT — not merely who watched it.
+   *
+   * Mike, 2026-08-04: "i want every single piece gone through and flagged for
+   * approval. if it doesnt meet my safety or knowledge standards" it does not
+   * get in. My first pass recorded "a named human watched this", which is a
+   * weaker rule and would have served a clip somebody pressed play on and
+   * disliked. Approval is a judgement against his two standards; watching is
+   * not. See src/safety/curation.ts for the full gate, including the second
+   * one — the clip's SOURCE must also be an approved professional.
    */
   verifiedBy: string | null;
   verifiedOnIso: string | null;
@@ -162,7 +169,11 @@ export interface TrainingClip {
   counterExample?: string;
 }
 
-/** Only clips a named human has actually watched. */
+/**
+ * Only clips that cleared review. Kept as the topic-layer filter; the
+ * authoritative two-gate check (approved piece AND approved source) lives in
+ * src/safety/curation.ts — this one cannot see sources.
+ */
 export function usableClips(all: TrainingClip[]): TrainingClip[] {
   return all.filter((c) => Boolean(c.verifiedBy && c.verifiedOnIso));
 }
