@@ -120,6 +120,13 @@ import {
   draftReferenceEntries,
   createReferenceEntry,
   publishReferenceEntry,
+  knowledgeSources,
+  knowledgePieces,
+  trainingPrograms,
+  queueKnowledgeSource,
+  queueKnowledgePiece,
+  decideKnowledgeSource,
+  decideKnowledgePiece,
   areaJobFacts,
   campaignFacts,
   recordSiteCondition,
@@ -431,6 +438,14 @@ export function createLiveSource(): DataSource {
     draftReferenceEntries: () => draftReferenceEntries(),
     createReferenceEntry: (input) => createReferenceEntry(input),
     publishReferenceEntry: (id, vettedBy) => publishReferenceEntry(id, vettedBy),
+    // The knowledge hub (0020). Reads return every state; the handlers filter.
+    knowledgeSources: () => knowledgeSources(),
+    knowledgePieces: () => knowledgePieces(),
+    trainingPrograms: () => trainingPrograms(),
+    queueKnowledgeSource: (input) => queueKnowledgeSource(input),
+    queueKnowledgePiece: (input) => queueKnowledgePiece(input),
+    decideKnowledgeSource: (id, d) => decideKnowledgeSource(id, d),
+    decideKnowledgePiece: (id, d) => decideKnowledgePiece(id, d),
     areaJobFacts: (since) => areaJobFacts(since),
     campaignFacts: () => campaignFacts(),
     // §6 site conditions + change orders.
@@ -749,6 +764,29 @@ export function createArborRequestHandler() {
         const m = url.pathname.match(/^\/api\/invoices\/([^/]+)\/status$/);
         if (req.method === 'POST' && m) {
           return send(...unpack(await api.setInvoiceStatus(m[1]!, (await readJson(req)) as Record<string, unknown>)));
+        }
+      }
+      // The knowledge hub — the training library's door (0020, R14).
+      if (req.method === 'GET' && url.pathname === '/api/hub') {
+        return send(...unpack(await api.hub()));
+      }
+      if (req.method === 'GET' && url.pathname === '/api/hub/queue') {
+        return send(...unpack(await api.hubQueue()));
+      }
+      if (req.method === 'POST' && url.pathname === '/api/hub/sources') {
+        return send(...unpack(await api.queueHubSource((await readJson(req)) as Record<string, unknown>)));
+      }
+      if (req.method === 'POST' && url.pathname === '/api/hub/pieces') {
+        return send(...unpack(await api.queueHubPiece((await readJson(req)) as Record<string, unknown>)));
+      }
+      {
+        const m = url.pathname.match(/^\/api\/hub\/(sources|pieces)\/([^/]+)\/decision$/);
+        if (req.method === 'POST' && m) {
+          return send(...unpack(await api.decideHubItem(
+            m[1] === 'sources' ? 'source' : 'piece',
+            m[2]!,
+            (await readJson(req)) as Record<string, unknown>,
+          )));
         }
       }
       // §6V safety spine.

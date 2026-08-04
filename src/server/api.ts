@@ -64,6 +64,13 @@ import {
 } from '../ops/invoicing.js';
 import { fileNearMiss, NearMissRejected, type NearMissReport } from '../safety/nearMiss.js';
 import { findCertProblems, type CertRow, type CrewMemberRef } from '../safety/certifications.js';
+import {
+  approve, reject, servable, awaitingReview, rejected as rejectedPieces, checkProgram,
+  assertAllApproved, hubByArea, hubGaps, reviewQueueSummary, mayApproveSource,
+  KNOWLEDGE_AREAS, STANDARDS, DISCIPLINES,
+  type ApprovalRecord, type ApprovedProfessional, type CuratedPiece, type Standard,
+  type TrainingProgram, type KnowledgeArea,
+} from '../safety/curation.js';
 import { buildLessonDraft } from '../training/fromNearMiss.js';
 import {
   selectQuestionnaire, buildGateCompletion, updateProfile, GateRejected,
@@ -279,6 +286,27 @@ export interface DataSource {
     crewMemberId: string; itemIds: string[];
     startedAtIso: string; completedAtIso: string; payableMinutes: number;
   }): Promise<{ trainingEventId: string; timeEntryId: string }>;
+  /**
+   * The knowledge hub (0020). All three read methods return EVERY state —
+   * queued, approved and rejected. The handlers filter. A source that
+   * pre-filtered to approved would make the review queue unreachable and
+   * would quietly hide the rejection record, which is the written form of
+   * Mike's standard.
+   */
+  knowledgeSources?(): Promise<ApprovedProfessional[]>;
+  knowledgePieces?(): Promise<CuratedPiece[]>;
+  trainingPrograms?(): Promise<TrainingProgram[]>;
+  queueKnowledgeSource?(input: {
+    name: string; discipline: string; whyTrusted: string; credentialsClaimed: string | null;
+    demonstrated: { evidenceUrl: string; whatItShows: string; reviewedBy: string; reviewedOnIso: string } | null;
+  }): Promise<string>;
+  queueKnowledgePiece?(input: {
+    sourceId: string; area: string; format: string; title: string; url: string;
+    teaches: string; counterExample: string | null; queuedNote: string | null;
+  }): Promise<string>;
+  /** False when the row is gone or already decided — never a silent no-op. */
+  decideKnowledgeSource?(id: string, decision: ApprovalRecord): Promise<boolean>;
+  decideKnowledgePiece?(id: string, decision: ApprovalRecord): Promise<boolean>;
 }
 
 /** What the crew work-order builder needs from storage. */
@@ -1450,6 +1478,385 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
           checkedAtIso: new Date().toISOString(),
         },
       };
+    },
+
+    /**
+     * GET /api/hub — the knowledge hub as a crew member sees it.
+     *
+     * ═══ §1B IS THE WHOLE DESIGN OF THIS HANDLER ═══
+     * Three states have to stay distinguishable and they are trivially easy
+     * to collapse into one:
+     *
+     *   a) we could not read the library,
+     *   b) the library reads fine and nothing has been approved into it yet,
+     *   c) the library has material.
+     *
+     * (a) and (b) both produce zero rows. If this handler returned `[]` for
+     * both, a crew member opening the hub during an outage would be told the
+     * company has no training material — a confident zero from a dead feed,
+     * the exact failure §1B exists to prevent. So on a failed read every
+     * countable field is NULL and `blindSpots` is populated, and the UI shows
+     * a different sentence.
+     *
+     * The same trap sits inside `gaps`. `hubGaps` on an unread library
+     * returns all seven pillars as empty, which would render as "we have
+     * nothing on rigging, nothing on felling, nothing on…" — seven confident
+     * lies. It is null unless the read actually succeeded.
+     */
+    async hub(): Promise<ApiResult> {
+      if (!source.ready()) return { status: 503, body: { error: 'db_not_configured' } };
+      const blindSpots: string[] = [];
+
+      let sources: ApprovedProfessional[] = [];
+      let pieces: CuratedPiece[] = [];
+      let libraryRead = false;
+      if (!source.knowledgeSources || !source.knowledgePieces) {
+        blindSpots.push('library: no source wired');
+      } else {
+        try {
+          [sources, pieces] = await Promise.all([source.knowledgeSources(), source.knowledgePieces()]);
+          libraryRead = true;
+        } catch {
+          blindSpots.push('library: could not read the knowledge hub');
+        }
+      }
+
+      // Programs are a SEPARATE read and therefore a separate blind spot. A
+      // hub that could list its pieces but not its curricula is a different
+      // fact from one that could read neither, and merging the two would hide
+      // half a working library behind the other half's outage.
+      let programs: TrainingProgram[] = [];
+      let programsRead = false;
+      if (!source.trainingPrograms) {
+        blindSpots.push('programs: no source wired');
+      } else {
+        try {
+          programs = await source.trainingPrograms();
+          programsRead = true;
+        } catch {
+          blindSpots.push('programs: could not read the curricula');
+        }
+      }
+
+      const live = libraryRead ? servable(pieces, sources) : [];
+      // The gate, on the real path. If a future edit ever widens `servable`,
+      // this throws rather than putting unvetted material in front of a crew
+      // member. Cheap here: the list is already filtered, so this only fires
+      // when the filter itself is wrong.
+      assertAllApproved(live, sources);
+
+      const byArea = libraryRead ? hubByArea(pieces, sources) : null;
+      const gaps = libraryRead ? hubGaps(pieces, sources) : null;
+      const queuedCount = libraryRead ? pieces.filter((p) => p.approval.state === 'queued').length : null;
+
+      // A program is only offered when every step in it cleared both gates.
+      const publishable = programsRead && libraryRead
+        ? programs
+          .map((p) => checkProgram(p, pieces, sources))
+          .filter((c): c is Extract<typeof c, { publishable: true }> => c.publishable)
+          .map((c) => ({
+            id: c.program.id,
+            operation: c.program.operation,
+            summary: c.program.summary,
+            steps: c.pieces.map((p) => ({
+              id: p.id, title: p.title, format: p.format, url: p.url,
+              teaches: p.teaches, counterExample: p.counterExample ?? null,
+            })),
+          }))
+        : null;
+
+      // Blocked curricula are SHOWN, not hidden. "Chipper basics is three
+      // clips away from being ready" is worth more to Mike than the program
+      // silently not appearing — that is how a half-built curriculum sits
+      // unnoticed for a month.
+      const blocked = programsRead && libraryRead
+        ? programs
+          .map((p) => ({ program: p, check: checkProgram(p, pieces, sources) }))
+          .filter((x) => !x.check.publishable)
+          .map((x) => ({
+            id: x.program.id,
+            operation: x.program.operation,
+            // `refusals` only exists on the false branch; the filter above
+            // guarantees it, and TS needs the narrow spelled out.
+            refusals: x.check.publishable ? [] : x.check.refusals,
+          }))
+        : null;
+
+      const headline = !libraryRead
+        ? 'The hub could not be read. This is not an empty library — it is an unread one.'
+        : live.length === 0
+          ? (queuedCount && queuedCount > 0
+            ? `Nothing is approved into the hub yet. ${queuedCount} piece(s) are waiting on Mike.`
+            : 'The hub is empty. No material has been queued yet.')
+          : `${live.length} piece(s) approved across ${KNOWLEDGE_AREAS.length - (gaps?.length ?? 0)} of ${KNOWLEDGE_AREAS.length} pillars.`;
+
+      return {
+        status: 200,
+        body: {
+          headline,
+          areas: byArea,
+          gaps,
+          programs: publishable,
+          blockedPrograms: blocked,
+          counts: libraryRead
+            ? {
+              servable: live.length,
+              queued: queuedCount,
+              approvedSources: sources.filter((s) => s.approval.state === 'approved').length,
+            }
+            : null,
+          // Empty is the ONLY all-clear. A populated list means part of this
+          // screen is guesswork and the UI must say so (§1B).
+          blindSpots,
+          checkedAtIso: new Date().toISOString(),
+        },
+      };
+    },
+
+    /**
+     * GET /api/hub/queue — what is waiting on Mike, and what he has already
+     * turned down.
+     *
+     * REJECTIONS ARE RETURNED, not filtered out. He said the standard is
+     * learned as this is built rather than written down in prose up front —
+     * which makes the rejection reasons the only written record of it. A
+     * queue that showed only pending work would throw away the document.
+     */
+    async hubQueue(): Promise<ApiResult> {
+      if (!source.ready()) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.knowledgeSources || !source.knowledgePieces) {
+        return { status: 503, body: { error: 'hub_not_wired' } };
+      }
+      let sources: ApprovedProfessional[];
+      let pieces: CuratedPiece[];
+      try {
+        [sources, pieces] = await Promise.all([source.knowledgeSources(), source.knowledgePieces()]);
+      } catch {
+        // NOT an empty queue. A read failure here would otherwise render as
+        // "nothing waiting on you", and Mike would stop checking.
+        return { status: 200, body: { unreadable: true, line: 'The review queue could not be read.' } };
+      }
+
+      const summary = reviewQueueSummary(pieces, sources);
+      const byId = new Map(sources.map((s) => [s.id, s]));
+
+      return {
+        status: 200,
+        body: {
+          unreadable: false,
+          line: summary.line,
+          counts: summary,
+          // `awaitingReview` already sorts the ones carrying a specific doubt
+          // to the front — his time goes on those first.
+          pieces: awaitingReview(pieces).map((p) => ({
+            id: p.id,
+            title: p.title,
+            area: p.area,
+            format: p.format,
+            url: p.url,
+            teaches: p.teaches,
+            queuedNote: p.queuedNote ?? null,
+            sourceName: byId.get(p.sourceId)?.name ?? '(source not on file)',
+            // Whether the source itself has cleared gate one. A piece from an
+            // unapproved source is not servable even if he approves it, and
+            // saying so here stops him approving into a dead end.
+            sourceApproved: byId.get(p.sourceId)?.approval.state === 'approved',
+          })),
+          sources: sources
+            .filter((s) => s.approval.state === 'queued')
+            .map((s) => {
+              const check = mayApproveSource(s);
+              return {
+                id: s.id,
+                name: s.name,
+                discipline: s.discipline,
+                whyTrusted: s.whyTrusted,
+                credentialsClaimed: s.credentialsClaimed,
+                demonstratedUrl: s.demonstrated?.evidenceUrl ?? null,
+                demonstratedShows: s.demonstrated?.whatItShows ?? null,
+                // What is stopping this one being approvable at all. Shown so
+                // he is never asked to approve somebody the gate will refuse.
+                blockers: check.ok ? [] : check.refusals,
+              };
+            }),
+          turnedDown: rejectedPieces(pieces).map((p) => ({
+            id: p.id,
+            title: p.title,
+            failed: p.approval.failed,
+            reason: p.approval.reason,
+            decidedBy: p.approval.decidedBy,
+            decidedOnIso: p.approval.decidedOnIso,
+          })),
+          checkedAtIso: new Date().toISOString(),
+        },
+      };
+    },
+
+    /** POST /api/hub/sources — put a professional in the queue. Never approved. */
+    async queueHubSource(body: Record<string, unknown>): Promise<ApiResult> {
+      if (!source.ready() || !source.queueKnowledgeSource) {
+        return { status: 503, body: { error: 'db_not_configured' } };
+      }
+      const name = String(body.name ?? '').trim();
+      const discipline = String(body.discipline ?? '').trim();
+      const whyTrusted = String(body.whyTrusted ?? '').trim();
+      if (!name) return { status: 400, body: { error: 'name_required' } };
+      if (!(DISCIPLINES as string[]).includes(discipline)) {
+        return { status: 400, body: { error: 'bad_discipline', allowed: DISCIPLINES } };
+      }
+      if (!whyTrusted) return { status: 400, body: { error: 'why_trusted_required' } };
+
+      // The demonstration is all-or-nothing — a half-filled proof is not a
+      // proof, and 0020 refuses the row anyway. Caught here so the caller
+      // gets a sentence instead of a constraint violation.
+      const d = body.demonstrated as Record<string, unknown> | null | undefined;
+      let demonstrated: { evidenceUrl: string; whatItShows: string; reviewedBy: string; reviewedOnIso: string } | null = null;
+      if (d) {
+        const evidenceUrl = String(d.evidenceUrl ?? '').trim();
+        const whatItShows = String(d.whatItShows ?? '').trim();
+        const reviewedBy = String(d.reviewedBy ?? '').trim();
+        if (!evidenceUrl || !whatItShows || !reviewedBy) {
+          return { status: 400, body: { error: 'incomplete_demonstration' } };
+        }
+        demonstrated = {
+          evidenceUrl,
+          whatItShows,
+          reviewedBy,
+          reviewedOnIso: String(d.reviewedOnIso ?? new Date().toISOString()),
+        };
+      }
+
+      const id = await source.queueKnowledgeSource({
+        name,
+        discipline,
+        whyTrusted,
+        credentialsClaimed: body.credentialsClaimed ? String(body.credentialsClaimed).trim() : null,
+        demonstrated,
+      });
+      return { status: 200, body: { id, state: 'queued' } };
+    },
+
+    /** POST /api/hub/pieces — queue one clip or article. Never approved. */
+    async queueHubPiece(body: Record<string, unknown>): Promise<ApiResult> {
+      if (!source.ready() || !source.queueKnowledgePiece) {
+        return { status: 503, body: { error: 'db_not_configured' } };
+      }
+      const sourceId = String(body.sourceId ?? '').trim();
+      const area = String(body.area ?? '').trim();
+      const format = String(body.format ?? '').trim();
+      const title = String(body.title ?? '').trim();
+      const url = String(body.url ?? '').trim();
+      const teaches = String(body.teaches ?? '').trim();
+
+      if (!UUID_RE.test(sourceId)) return { status: 400, body: { error: 'bad_source_id' } };
+      if (!KNOWLEDGE_AREAS.includes(area as KnowledgeArea)) {
+        return { status: 400, body: { error: 'bad_area', allowed: KNOWLEDGE_AREAS } };
+      }
+      if (format !== 'clip' && format !== 'article') {
+        return { status: 400, body: { error: 'bad_format', allowed: ['clip', 'article'] } };
+      }
+      if (!title) return { status: 400, body: { error: 'title_required' } };
+      if (!url) return { status: 400, body: { error: 'url_required' } };
+      // "What it teaches, in the reviewer's words AFTER watching or reading
+      // it." Required, because a piece queued without it is a cold link and
+      // hands Mike the job of working out what he is even looking at.
+      if (!teaches) return { status: 400, body: { error: 'teaches_required' } };
+
+      // 0020 makes `url` unique so a rejected piece cannot quietly reappear
+      // next quarter as a fresh queued row. That constraint firing is not a
+      // server fault, it is the system working — so it comes back as a
+      // sentence about what already happened to this link, not a 500.
+      let id: string;
+      try {
+        id = await source.queueKnowledgePiece({
+          sourceId,
+          area,
+          format,
+          title,
+          url,
+          teaches,
+          counterExample: body.counterExample ? String(body.counterExample).trim() : null,
+          queuedNote: body.queuedNote ? String(body.queuedNote).trim() : null,
+        });
+      } catch (err) {
+        if ((err as { code?: string } | null)?.code === '23505') {
+          return { status: 409, body: { error: 'already_on_file', url } };
+        }
+        throw err;
+      }
+      return { status: 200, body: { id, state: 'queued' } };
+    },
+
+    /**
+     * POST /api/hub/sources/:id/decision and /api/hub/pieces/:id/decision.
+     *
+     * One handler for both because the rule is identical and duplicating it
+     * would give the standard two places to drift. `approve()` and
+     * `reject()` do the judging — this only parses and routes, so a rejection
+     * that names no failed bar throws there and comes back as a 400 rather
+     * than being written as a shrug.
+     */
+    async decideHubItem(
+      kind: 'source' | 'piece',
+      id: string,
+      body: Record<string, unknown>,
+    ): Promise<ApiResult> {
+      if (!source.ready()) return { status: 503, body: { error: 'db_not_configured' } };
+      const write = kind === 'source' ? source.decideKnowledgeSource : source.decideKnowledgePiece;
+      if (!write) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!UUID_RE.test(id)) return { status: 400, body: { error: 'bad_id' } };
+
+      const decidedBy = String(body.decidedBy ?? '').trim();
+      if (!decidedBy) return { status: 400, body: { error: 'decided_by_required' } };
+      const verdict = String(body.verdict ?? '').trim();
+      const nowIso = new Date().toISOString();
+
+      let record: ApprovalRecord;
+      if (verdict === 'approve') {
+        record = approve(decidedBy, nowIso);
+      } else if (verdict === 'reject') {
+        const failed = Array.isArray(body.failed) ? body.failed.map(String) : [];
+        const bad = failed.filter((f) => !STANDARDS.includes(f as Standard));
+        if (bad.length > 0) {
+          return { status: 400, body: { error: 'bad_standard', allowed: STANDARDS } };
+        }
+        if (failed.length === 0) {
+          return { status: 400, body: { error: 'failed_bar_required', allowed: STANDARDS } };
+        }
+        const reason = String(body.reason ?? '').trim();
+        if (!reason) return { status: 400, body: { error: 'reason_required' } };
+        record = reject(decidedBy, nowIso, failed as Standard[], reason);
+      } else {
+        return { status: 400, body: { error: 'bad_verdict', allowed: ['approve', 'reject'] } };
+      }
+
+      // Gate one, before the write. Approving a source that has never been
+      // seen working would put a row in the database that `servable()` then
+      // silently ignores — the decision would look taken and change nothing.
+      //
+      // FAILS CLOSED. Written first as `&& source.knowledgeSources`, which
+      // meant an unwired read silently skipped the gate and let an
+      // undemonstrated source through. The check not being runnable is a
+      // reason to refuse, never a reason to proceed — same law as §3.
+      if (kind === 'source' && verdict === 'approve') {
+        if (!source.knowledgeSources) return { status: 503, body: { error: 'could_not_read_source' } };
+        try {
+          const rows = await source.knowledgeSources();
+          const row = rows.find((s) => s.id === id);
+          if (!row) return { status: 404, body: { error: 'not_found' } };
+          const check = mayApproveSource({ ...row, approval: record });
+          if (!check.ok) return { status: 400, body: { error: 'cannot_approve', refusals: check.refusals } };
+        } catch {
+          return { status: 503, body: { error: 'could_not_read_source' } };
+        }
+      }
+
+      const applied = await write(id, record);
+      // False means the row was gone or already decided. Reported, never
+      // swallowed as a success — a decision Mike thinks he made and did not
+      // is worse than an error message.
+      if (!applied) return { status: 409, body: { error: 'already_decided_or_missing' } };
+      return { status: 200, body: { id, state: record.state } };
     },
 
     /**

@@ -49,6 +49,9 @@ import { parseAddress, type ServiceCity, type OffFocusCity } from '../lib/addres
 import type { PermitRecordInput, PermitLifecycle } from '../permitting/permitRecord.js';
 import type { PermitTrackRow } from '../permitting/permitBoard.js';
 import type { OverlayHit, ScreenStatus } from '../permitting/screening.js';
+import type {
+  ApprovalRecord, ApprovedProfessional, CuratedPiece, Standard, TrainingProgram,
+} from '../safety/curation.js';
 
 /**
  * Thrown when an address is in no city Art-is-Tree works — NOT merely outside
@@ -2485,4 +2488,205 @@ export async function listPermitTracks(): Promise<PermitTrackRow[]> {
       scheduledFor: soonest.get(pid) ?? null,
     };
   });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THE KNOWLEDGE HUB (migration 0020). Reads and writes for the training
+// library that `src/safety/curation.ts` has been gating since cycle 31 with
+// nowhere to store anything.
+//
+// THESE FUNCTIONS DO NOT DECIDE ANYTHING. They move rows. Every rule about
+// what may be approved, what may be served, and what a rejection must name
+// lives in curation.ts and in 0020's CHECK constraints. A repository that
+// started making judgements would be a third place for the standard to live
+// and the first one to drift.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Row shape shared by all three hub tables. Mapped, never interpreted. */
+function toApproval(r: Record<string, unknown>): ApprovalRecord {
+  return {
+    state: r.approval_state as ApprovalRecord['state'],
+    decidedBy: (r.decided_by as string | null) ?? null,
+    decidedOnIso: (r.decided_at as string | null) ?? null,
+    failed: ((r.failed as string[] | null) ?? []) as Standard[],
+    reason: (r.decision_reason as string | null) ?? null,
+  };
+}
+
+/** Approval columns for a write. Mirrors `toApproval` in the other direction. */
+function approvalColumns(a: ApprovalRecord): Record<string, unknown> {
+  return {
+    approval_state: a.state,
+    decided_by: a.decidedBy,
+    decided_at: a.decidedOnIso,
+    failed: a.failed,
+    decision_reason: a.reason,
+  };
+}
+
+/**
+ * Every source on file — queued, approved and rejected alike.
+ *
+ * ALL THREE STATES, deliberately. The caller filters; a repository that
+ * returned only the approved ones would make the review queue and the
+ * rejection record unreachable, and the rejections ARE the written form of
+ * Mike's standard.
+ */
+export async function knowledgeSources(): Promise<ApprovedProfessional[]> {
+  const db = getDb();
+  const res = await db.from('knowledge_source')
+    .select('id, name, discipline, why_trusted, credentials_claimed, demo_evidence_url, demo_what_it_shows, demo_reviewed_by, demo_reviewed_at, approval_state, decided_by, decided_at, failed, decision_reason')
+    .order('name', { ascending: true });
+  if (res.error) throw res.error;
+  return (res.data ?? []).map((r) => ({
+    id: r.id as string,
+    name: r.name as string,
+    discipline: r.discipline as ApprovedProfessional['discipline'],
+    whyTrusted: r.why_trusted as string,
+    credentialsClaimed: (r.credentials_claimed as string | null) ?? null,
+    // All four columns move together (0020 enforces it), so one null means
+    // nobody has seen this person work.
+    demonstrated: r.demo_evidence_url
+      ? {
+        evidenceUrl: r.demo_evidence_url as string,
+        whatItShows: r.demo_what_it_shows as string,
+        reviewedBy: r.demo_reviewed_by as string,
+        reviewedOnIso: r.demo_reviewed_at as string,
+      }
+      : null,
+    approval: toApproval(r as Record<string, unknown>),
+  }));
+}
+
+/** Every piece on file, all three states. Same reasoning as `knowledgeSources`. */
+export async function knowledgePieces(): Promise<CuratedPiece[]> {
+  const db = getDb();
+  const res = await db.from('knowledge_piece')
+    .select('id, source_id, area, format, title, url, teaches, counter_example, queued_note, approval_state, decided_by, decided_at, failed, decision_reason')
+    .order('created_at', { ascending: true });
+  if (res.error) throw res.error;
+  return (res.data ?? []).map((r) => ({
+    id: r.id as string,
+    sourceId: r.source_id as string,
+    area: r.area as CuratedPiece['area'],
+    format: r.format as CuratedPiece['format'],
+    title: r.title as string,
+    url: r.url as string,
+    teaches: r.teaches as string,
+    ...(r.counter_example ? { counterExample: r.counter_example as string } : {}),
+    ...(r.queued_note ? { queuedNote: r.queued_note as string } : {}),
+    approval: toApproval(r as Record<string, unknown>),
+  }));
+}
+
+/** Every curriculum on file, all three states. */
+export async function trainingPrograms(): Promise<TrainingProgram[]> {
+  const db = getDb();
+  const res = await db.from('training_program')
+    .select('id, operation, summary, step_piece_ids, approval_state, decided_by, decided_at, failed, decision_reason')
+    .order('operation', { ascending: true });
+  if (res.error) throw res.error;
+  return (res.data ?? []).map((r) => ({
+    id: r.id as string,
+    operation: r.operation as string,
+    summary: r.summary as string,
+    pieceIds: ((r.step_piece_ids as string[] | null) ?? []),
+    approval: toApproval(r as Record<string, unknown>),
+  }));
+}
+
+/**
+ * Put a professional in front of Mike. ALWAYS QUEUED — `approval_state` is
+ * never accepted from a caller, the same shape as `createReferenceEntry`
+ * refusing `published`. The only way anything becomes approved is
+ * `decideKnowledgeSource`, which needs a name.
+ */
+export async function queueKnowledgeSource(input: {
+  name: string;
+  discipline: string;
+  whyTrusted: string;
+  credentialsClaimed: string | null;
+  demonstrated: {
+    evidenceUrl: string; whatItShows: string; reviewedBy: string; reviewedOnIso: string;
+  } | null;
+}): Promise<string> {
+  const db = getDb();
+  const res = await db.from('knowledge_source')
+    .insert({
+      name: input.name.trim(),
+      discipline: input.discipline,
+      why_trusted: input.whyTrusted.trim(),
+      credentials_claimed: input.credentialsClaimed,
+      demo_evidence_url: input.demonstrated?.evidenceUrl ?? null,
+      demo_what_it_shows: input.demonstrated?.whatItShows ?? null,
+      demo_reviewed_by: input.demonstrated?.reviewedBy ?? null,
+      demo_reviewed_at: input.demonstrated?.reviewedOnIso ?? null,
+      approval_state: 'queued',
+    })
+    .select('id')
+    .single();
+  if (res.error) throw res.error;
+  return (res.data as { id: string }).id;
+}
+
+/** Put one clip or article in the queue. Always queued, same reason. */
+export async function queueKnowledgePiece(input: {
+  sourceId: string;
+  area: string;
+  format: string;
+  title: string;
+  url: string;
+  teaches: string;
+  counterExample: string | null;
+  queuedNote: string | null;
+}): Promise<string> {
+  const db = getDb();
+  const res = await db.from('knowledge_piece')
+    .insert({
+      source_id: input.sourceId,
+      area: input.area,
+      format: input.format,
+      title: input.title.trim(),
+      url: input.url.trim(),
+      teaches: input.teaches.trim(),
+      counter_example: input.counterExample,
+      queued_note: input.queuedNote,
+      approval_state: 'queued',
+    })
+    .select('id')
+    .single();
+  if (res.error) throw res.error;
+  return (res.data as { id: string }).id;
+}
+
+/**
+ * Record Mike's decision on a source.
+ *
+ * `.eq('approval_state', 'queued')` so a decision only ever lands on
+ * something still waiting — two tabs open on the same review cannot have the
+ * second one silently overwrite the first, and re-deciding an approved source
+ * returns false rather than quietly flipping it. Same shape as
+ * `publishReferenceEntry`.
+ */
+export async function decideKnowledgeSource(id: string, decision: ApprovalRecord): Promise<boolean> {
+  const db = getDb();
+  const res = await db.from('knowledge_source')
+    .update({ ...approvalColumns(decision), updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('approval_state', 'queued')
+    .select('id');
+  if (res.error) throw res.error;
+  return (res.data ?? []).length > 0;
+}
+
+/** Record Mike's decision on one piece. Same single-shot rule. */
+export async function decideKnowledgePiece(id: string, decision: ApprovalRecord): Promise<boolean> {
+  const db = getDb();
+  const res = await db.from('knowledge_piece')
+    .update({ ...approvalColumns(decision), updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('approval_state', 'queued')
+    .select('id');
+  if (res.error) throw res.error;
+  return (res.data ?? []).length > 0;
 }
