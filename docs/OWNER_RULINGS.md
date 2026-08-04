@@ -421,6 +421,42 @@ qualification is now on file.
 
 ---
 
+## R14 — The mission. Why the training hub is the centrepiece, not a module.
+**Stated 2026-08-04.** Asked what the point of all of it is, Mike:
+
+> "tree work is one of the most dangerous jobs and what if we can help change
+> that man thats the goal. helping to easily train people and educate safety
+> with hopes to stop the stupid deaths that happen, while adding profits to
+> the company owners bottom line by reducing fuck ups and mishaps that should
+> never happen."
+
+**This ranks the backlog.** The training hub and the safety coach are not one
+feature among thirty. They are the thing the rest of the app exists to fund
+and feed. When two pieces of work compete for a night, the one that gets a
+lesson in front of a crew member wins.
+
+**And it settles an argument the design kept having with itself.** Safe,
+smart and fast read like three bars to balance. They are not. Every serious
+injury in this trade has a trail of small preventable things behind it, and
+every one of those also cost money — the rework, the limb through a fence,
+the lost day, the premium. Reducing mishaps IS the margin. Any feature here
+built as a trade-off between being safe and being profitable has
+misunderstood the job.
+
+**Two consequences that are constraints, not sentiment:**
+
+- *"Easily train"* is a hard requirement. A training system a tired crew will
+  not open on a Tuesday morning prevents nothing. Friction on that surface is
+  not a UX preference — it decides whether the lesson lands.
+- The never-certify rule gets **harder** to relax, not easier, because of the
+  mission. A tool built to stop deaths that reassures somebody wrongly is
+  worse than no tool: it spends the trust it was given on a guess.
+
+*Carried by:* the header of `src/safety/knowledgeBase.ts`, where it will be
+read by whoever changes that file next.
+
+---
+
 ## Open — Mike has not ruled yet
 
 - **Friday questionnaire length: 10 or 15 questions.** Built PARAMETERISED

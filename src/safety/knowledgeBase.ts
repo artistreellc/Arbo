@@ -42,6 +42,37 @@
 */
 // THE SAFETY KNOWLEDGE BASE — the training centre's library.
 //
+// ═══ WHY THIS FILE EXISTS. READ THIS BEFORE CHANGING ANYTHING IN IT. ═══
+// Mike, 2026-08-04, asked why any of this matters:
+//
+//   "tree work is one of the most dangerous jobs and what if we can help
+//    change that man thats the goal. helping to easily train people and
+//    educate safety with hopes to stop the stupid deaths that happen, while
+//    adding profits to the company owners bottom line by reducing fuck ups
+//    and mishaps that should never happen."
+//
+// That is the point of the whole module and it is not decoration. Three
+// things follow from it, and they are design constraints, not sentiment:
+//
+// 1. SAFETY AND PROFIT ARE THE SAME FEATURE HERE. Every serious injury in
+//    this trade has a trail of small preventable things behind it, and every
+//    one of those also cost money — the rework, the dropped limb through a
+//    fence, the day lost, the premium. So `safe` and `fast` are not opposing
+//    bars to balance. Reducing mishaps IS the margin. Anything built here
+//    that treats them as a trade-off has misunderstood the job.
+//
+// 2. "EASILY TRAIN" IS A HARD REQUIREMENT. A training system a tired crew
+//    will not open on a Tuesday morning prevents nothing. Friction is not a
+//    UX preference on this surface — it is the difference between the
+//    material being read and not being read, and therefore between the
+//    lesson landing and not landing.
+//
+// 3. AND IT IS WHY THIS FILE REFUSES TO SAY "SAFE". A system built to stop
+//    deaths that reassures somebody wrongly is worse than no system, because
+//    it spends the trust it was given on a guess. The never-certify rule
+//    below is not caution for its own sake — it is the only way a tool with
+//    this purpose can be honest about what a photograph can and cannot show.
+//
 // MIKE, 2026-08-04: "i want that agent to be able to learn with strict
 // regards towards job site safety and only related materials... links to
 // reputable or industry leading sponsor video clips... exact clips of highly
