@@ -213,7 +213,14 @@ describe('reference library on the crew door (§6U)', () => {
   it('is OUTSIDE the briefing gate — reachable before the day starts', () => {
     // renderLibrary() runs on boot, not from renderWork(). Somebody who needs
     // to look a technique up is already standing at the trunk.
-    expect(html).toMatch(/renderLibrary\(\);\s*\n\s*renderNearMiss\(\);/);
+    //
+    // ASSERTED STRUCTURALLY, not by adjacency. This was written as
+    // /renderLibrary\(\);\s*\n\s*renderNearMiss\(\);/ and broke the moment a
+    // third unlocked surface (the knowledge hub) was added between them —
+    // which is a false alarm, because the rule is "called on boot", not
+    // "called immediately before the near-miss form".
+    const boot = html.slice(html.indexOf('if (renderWhoAmI())'));
+    expect(boot).toContain('renderLibrary();');
     expect(html).not.toMatch(/GATE\.unlocked[\s\S]{0,200}renderLibrary/);
   });
 
@@ -292,5 +299,52 @@ describe('arrival record + change order on the job card (§6)', () => {
 
   it('keeps field-sized targets on the new job actions', () => {
     expect(html).toMatch(/\.jobbtn\{[^}]*min-height:52px/);
+  });
+});
+
+describe('the knowledge hub on the crew door (R14) — the lesson reaches the phone', () => {
+  it('is OUTSIDE the briefing gate, like the library and the near-miss form', () => {
+    // A crew member wanting to learn something at 6am should not have to
+    // clear a briefing first. "Easily train" is a hard requirement.
+    const boot = html.slice(html.indexOf('if (renderWhoAmI())'));
+    expect(boot).toContain('renderHub();');
+    expect(html).not.toMatch(/GATE\.unlocked[\s\S]{0,200}renderHub/);
+  });
+
+  it('a hub it could not read is NEVER drawn as an empty one (§1B)', () => {
+    expect(html).toContain('That is NOT "no material"');
+    expect(html).toContain('not reachable right now');
+  });
+
+  it('an empty pillar is NAMED, not quietly omitted', () => {
+    // "We have nothing on rigging" and "rigging is covered" must not look
+    // the same to somebody deciding what to study.
+    expect(html).toContain('That is a gap in the library');
+  });
+
+  it('renders the server headline verbatim rather than recomputing it', () => {
+    // The server is the only place that knows whether zero means unread or
+    // empty. A second opinion on this page would eventually disagree.
+    expect(html).toContain('res.headline');
+    expect(html).toContain('hub-head');
+  });
+
+  it('a counter-example is shown LOUDLY and BEFORE the link', () => {
+    // Approved material that demonstrates what not to do. Somebody who taps
+    // first and reads after would otherwise be taught the hazard.
+    expect(html).toContain('WHAT NOT TO DO');
+    const counterAt = html.indexOf("'WHAT NOT TO DO — ' + p.counterExample");
+    const linkAt = html.indexOf('const link = hubLink(p.url);');
+    expect(counterAt).toBeGreaterThan(-1);
+    expect(linkAt).toBeGreaterThan(counterAt);
+  });
+
+  it('part-built curricula are surfaced, not silently absent', () => {
+    expect(html).toContain('part-built and not ready yet');
+  });
+
+  it('only opens http(s) links — a stored javascript: url never becomes an href', () => {
+    expect(html).toMatch(/function hubLink\(url\)[\s\S]{0,200}\/\^https\?:/);
+    expect(html).toContain("rel = 'noopener noreferrer'");
   });
 });

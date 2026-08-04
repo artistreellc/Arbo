@@ -199,6 +199,41 @@ main{padding:16px;max-width:640px;margin:0 auto}
 .lib-clause{font-size:13px;color:var(--muted);font-weight:700;letter-spacing:.04em;margin-top:12px;line-height:1.5}
 .lib-src{display:inline-block;margin-top:10px;color:var(--info);font-size:14px;font-weight:700}
 
+/* The knowledge hub (R14). Chips, not a menu: pick a pillar, see what is in
+   it. "Easily train" is a hard requirement, not a UX preference — a training
+   surface a tired crew will not open on a Tuesday morning prevents nothing,
+   so the whole thing is two taps from the top of the page. */
+#hub{margin-top:28px}
+#hub-card{border:1px solid var(--border);border-radius:14px;padding:16px;background:var(--surface)}
+#hub-card .why{color:var(--muted);font-size:14px;line-height:1.5;margin-bottom:12px}
+.hub-head{font-size:15px;font-weight:800;line-height:1.5;margin-bottom:12px}
+.hub-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.hub-chip{min-height:48px;padding:0 14px;border-radius:24px;border:1.5px solid var(--border);
+  background:var(--surface-alt);color:var(--ink);font-size:15px;font-weight:800;
+  font-family:inherit;cursor:pointer}
+.hub-chip.on{border-color:var(--forest);background:rgba(124,58,237,.18);color:#fff}
+.hub-chip.empty{opacity:.5}
+.hub-chip .n{color:var(--muted);font-weight:700;margin-left:6px}
+.hub-chip.on .n{color:var(--canopy)}
+.hub-piece{border:1px solid var(--border);border-left:4px solid var(--forest);
+  border-radius:var(--r-md);padding:14px;margin-top:12px;background:var(--surface-alt)}
+.hub-fmt{font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:6px}
+.hub-title{font-size:18px;font-weight:900;line-height:1.3}
+.hub-teach{font-size:16px;line-height:1.55;margin-top:8px}
+.hub-by{font-size:13px;color:var(--muted);font-weight:700;margin-top:10px}
+/* A counter-example is APPROVED material that shows what NOT to do. Rendered
+   in the emergency colour on purpose: serving it quietly would teach the
+   hazard, which is the exact opposite of why it is on file. */
+.hub-counter{background:#2A0E0C;border:1.5px solid var(--emergency);color:#FFB3AE;
+  border-radius:var(--r-md);padding:12px;margin-top:12px;font-size:15px;font-weight:700;line-height:1.5}
+.hub-open{display:inline-block;margin-top:10px;color:var(--info);font-size:15px;font-weight:800}
+.hub-prog{border:1px solid var(--canopy);border-radius:var(--r-md);padding:14px;
+  margin-top:12px;background:var(--surface-alt)}
+.hub-prog-name{font-size:17px;font-weight:900}
+.hub-prog-sum{font-size:15px;color:var(--muted);line-height:1.5;margin-top:6px}
+.hub-step{font-size:15px;line-height:1.5;margin-top:8px;padding-left:22px;text-indent:-22px}
+
 /* Near-miss filing. Deliberately plain and always reachable — a report that
    takes effort is a report that never happens. */
 #nearmiss{margin-top:28px}
@@ -225,6 +260,7 @@ main{padding:16px;max-width:640px;margin:0 auto}
   <div id="quiz"></div>
   <div id="work"></div>
   <div id="library"></div>
+  <div id="hub"></div>
   <div id="nearmiss"></div>
 </main>
 
@@ -787,6 +823,160 @@ function libEntry(e) {
   return c;
 }
 
+// ---- The knowledge hub (R14). The training library, on the phone in the
+// pocket of the person who needs it.
+//
+// Mike's mission, in his words: tree work is one of the most dangerous jobs,
+// and the goal is to help change that — easily train people, educate safety,
+// stop the stupid deaths, and add to the owner's bottom line by reducing the
+// mishaps that should never have happened. That is why "easily" is treated
+// here as a requirement and not a preference: a hub a tired crew will not
+// open on a Tuesday morning prevents nothing.
+//
+// Two laws render here rather than living in a doc:
+//   §1B  A hub Arbo could not READ is never drawn as an empty hub, and an
+//        empty pillar is NAMED rather than quietly omitted — "we have
+//        nothing on rigging" and "rigging is covered" must not look alike.
+//   Curation  Everything below cleared BOTH gates server-side. This page
+//        cannot widen that; it only draws what it was handed.
+const HUB_AREA_LABEL = {
+  safety: 'Safety',
+  climbing_craft: 'Climbing',
+  rigging_mechanics: 'Rigging',
+  tree_science: 'Tree science',
+  equipment: 'Equipment',
+  production: 'Production',
+  career: 'Career',
+};
+
+async function renderHub() {
+  const box = $('hub');
+  box.replaceChildren();
+  box.appendChild(el('div', 'panel-title', 'Learn'));
+  const card = el('div');
+  card.id = 'hub-card';
+  box.appendChild(card);
+
+  let res;
+  try {
+    res = await api('/api/crew/hub');
+  } catch (e) {
+    // NOT an empty hub. Somebody who reads "nothing here" once stops coming
+    // back, and this is the surface the whole thing exists for.
+    card.appendChild(el('div', 'lib-warn', e.code === 503
+      ? 'The training hub is not reachable right now. That is NOT "no material" — ask the office.'
+      : 'Could not load the training hub. That is NOT "no material" — ask the office.'));
+    return;
+  }
+
+  // Everything Arbo could not do goes ABOVE the material, never underneath.
+  for (const spot of res.blindSpots || []) {
+    card.appendChild(el('div', 'lib-warn', 'Part of this screen is missing: ' + spot));
+  }
+  // The server owns this sentence. It is the one place that knows whether
+  // zero means unread or empty, so it is rendered verbatim, not recomputed.
+  card.appendChild(el('div', 'hub-head', res.headline || ''));
+
+  if (!res.areas) return; // the warning above already said why.
+
+  // ── Programs first. A sequence to work through beats a pile of links, and
+  // "training programs for basic operations of tree work" is what was asked
+  // for. Only fully-approved curricula appear; one unvetted step blocks the
+  // whole thing server-side.
+  for (const p of res.programs || []) {
+    const c = el('div', 'hub-prog');
+    c.appendChild(el('div', 'hub-prog-name', p.operation));
+    c.appendChild(el('div', 'hub-prog-sum', p.summary));
+    (p.steps || []).forEach((s, i) => {
+      const row = el('div', 'hub-step', (i + 1) + '. ' + s.title);
+      c.appendChild(row);
+      if (s.counterExample) {
+        c.appendChild(el('div', 'hub-counter', 'WHAT NOT TO DO — ' + s.counterExample));
+      }
+      const link = hubLink(s.url);
+      if (link) c.appendChild(link);
+    });
+    card.appendChild(c);
+  }
+  if ((res.blockedPrograms || []).length > 0) {
+    // Shown, not hidden. A half-built curriculum that simply does not appear
+    // sits unnoticed for a month.
+    card.appendChild(el('div', 'lib-note',
+      res.blockedPrograms.length + ' program(s) are part-built and not ready yet: '
+      + res.blockedPrograms.map((b) => b.operation).join(', ') + '.'));
+  }
+
+  // ── Browse by pillar.
+  const chips = el('div', 'hub-chips');
+  const out = el('div');
+  const areas = Object.keys(HUB_AREA_LABEL);
+  let picked = areas.find((a) => (res.areas[a] || []).length > 0) || 'safety';
+
+  const draw = () => {
+    for (const b of chips.children) b.className = 'hub-chip' + (b.dataset.area === picked ? ' on' : '')
+      + ((res.areas[b.dataset.area] || []).length === 0 ? ' empty' : '');
+    out.replaceChildren();
+    const list = res.areas[picked] || [];
+    if (list.length === 0) {
+      // An empty pillar on a hub that READ fine is a real gap, and saying so
+      // is the point — it is how the library gets filled.
+      out.appendChild(el('div', 'lib-note',
+        'Nothing approved in ' + HUB_AREA_LABEL[picked] + ' yet. That is a gap in the library, '
+        + 'not a sign there is nothing to know. Tell Mike what you want in here.'));
+      return;
+    }
+    for (const p of list) out.appendChild(hubPiece(p));
+  };
+
+  for (const a of areas) {
+    const n = (res.areas[a] || []).length;
+    const b = el('button', 'hub-chip', '');
+    b.dataset.area = a;
+    b.appendChild(document.createTextNode(HUB_AREA_LABEL[a]));
+    b.appendChild(el('span', 'n', String(n)));
+    b.addEventListener('click', () => { picked = a; draw(); });
+    chips.appendChild(b);
+  }
+  card.appendChild(chips);
+  card.appendChild(out);
+  draw();
+}
+
+function hubPiece(p) {
+  const c = el('div', 'hub-piece');
+  c.appendChild(el('div', 'hub-fmt', p.format === 'article' ? 'Read' : 'Watch'));
+  c.appendChild(el('div', 'hub-title', p.title));
+  c.appendChild(el('div', 'hub-teach', p.teaches));
+  // A counter-example is approved material that shows what NOT to do. It
+  // renders BEFORE the link, loudly, because a crew member who taps first and
+  // reads after would be taught the hazard.
+  if (p.counterExample) {
+    c.appendChild(el('div', 'hub-counter', 'WHAT NOT TO DO — ' + p.counterExample));
+  }
+  const link = hubLink(p.url);
+  if (link) c.appendChild(link);
+  else if (p.url) {
+    c.appendChild(el('div', 'lib-note', 'A link is on file but not one Arbo will open — ask the office.'));
+  }
+  return c;
+}
+
+/**
+ * Only ever an http(s) link. textContent makes the rest of this page XSS-safe
+ * by construction; an href is the one place a stored 'javascript:' string
+ * would still run, so it is filtered rather than trusted. Same rule as
+ * libEntry — deliberately duplicated instead of shared, because a helper that
+ * both call is a helper somebody later "simplifies".
+ */
+function hubLink(url) {
+  if (!url || !/^https?:\/\//i.test(url)) return null;
+  const a = el('a', 'hub-open', 'Open it →');
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  return a;
+}
+
 // ---- Near-miss filing (§6V). Deliberately OUTSIDE the briefing gate: a
 // near miss must be reportable at any moment, including before the day has
 // started. Nothing here records blame, because nothing anywhere in Arbo does.
@@ -890,6 +1080,7 @@ $('dateline').textContent = new Date().toLocaleDateString([], { weekday: 'long',
 if (renderWhoAmI()) {
   renderWork();
   renderLibrary();
+  renderHub();
   renderNearMiss();
   api('/api/crew/briefing').then(renderGate).catch(() => {
     $('gate-slot').appendChild(el('div', 'state', 'No briefing published for today yet — check with the office.'));

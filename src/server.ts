@@ -767,7 +767,12 @@ export function createArborRequestHandler() {
         }
       }
       // The knowledge hub — the training library's door (0020, R14).
-      if (req.method === 'GET' && url.pathname === '/api/hub') {
+      //
+      // The crew read sits under /api/crew/ deliberately. §8C.1 keeps the two
+      // doors apart and `test/crewPage.test.ts` enforces it by scanning every
+      // api() call on the crew page — a crew surface reaching an admin path is
+      // the shape that leaks price and customer contact onto a job phone.
+      if (req.method === 'GET' && url.pathname === '/api/crew/hub') {
         return send(...unpack(await api.hub()));
       }
       if (req.method === 'GET' && url.pathname === '/api/hub/queue') {
