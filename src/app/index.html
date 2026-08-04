@@ -363,6 +363,28 @@ nav button .ico{font-size:20px;line-height:1}
 .pnext{font-size:13px;opacity:.85}
 .b-screen{background:#243447}
 .b-warn{background:#5c4813}
+
+/* The review queue (R14). Mike's half of the knowledge hub. */
+.hub-line{font-weight:700;margin:0 0 14px;line-height:1.5}
+/* A piece carrying a specific doubt is marked on the CARD, not just sorted
+   first — the sort is invisible once you are scrolling. */
+.card.hub-flagged{border-left:4px solid #d68910}
+.hub-doubt{margin-top:8px;padding:10px;border-radius:8px;background:#3a2e14;
+  border:1px solid #7a662b;font-size:14px;line-height:1.5;font-weight:600}
+.hub-block{margin-top:8px;font-size:13px;line-height:1.45;color:#e8a33d}
+.hub-claim{margin-top:6px;font-size:13px;opacity:.8}
+.hub-open{display:inline-block;margin-top:8px;color:#6cb6ff;font-size:14px;font-weight:700}
+.hub-decide{margin-top:12px;border-top:1px solid var(--line);padding-top:12px}
+.hub-orr{font-size:12px;opacity:.7;margin:10px 0 6px;text-transform:uppercase;letter-spacing:.08em}
+.hub-bars-pick{display:flex;gap:8px;margin-bottom:8px}
+.barbtn{flex:1;min-height:40px;border-radius:8px;border:1.5px solid var(--line);
+  background:transparent;color:inherit;font-size:14px;font-weight:800;
+  font-family:inherit;text-transform:uppercase;letter-spacing:.06em;cursor:pointer}
+.barbtn.on{border-color:#c0392b;background:#3a1414;color:#ffb3ae}
+.actbtn.warn{background:#5c1f1f;border-color:#7a2b2b}
+.card.hub-down{opacity:.85;border-left:4px solid #7a2b2b}
+.hub-bars{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;
+  color:#e08b84;margin:4px 0 6px}
 </style>
 </head>
 <body>
@@ -393,6 +415,7 @@ nav button .ico{font-size:20px;line-height:1}
   <div id="view-followups" class="view"></div>
   <div id="view-calls" class="view"></div>
   <div id="view-permits" class="view"></div>
+  <div id="view-hub" class="view"></div>
   <div id="view-perf" class="view"></div>
 </main>
 
@@ -459,6 +482,7 @@ nav button .ico{font-size:20px;line-height:1}
   <button id="tab-followups"><span class="navpill"><span class="ico">&#8634;</span>Queue</span></button>
   <button id="tab-calls"><span class="navpill"><span class="ico">&#9742;</span>Calls</span></button>
   <button id="tab-permits"><span class="navpill"><span class="ico">&#128220;</span>Permits</span></button>
+  <button id="tab-hub"><span class="navpill"><span class="ico">&#127891;</span>Hub</span></button>
   <button id="tab-perf"><span class="navpill"><span class="ico">&#128200;</span>Numbers</span></button>
 </nav>
 
@@ -2322,22 +2346,300 @@ async function renderPermits() {
   }
 }
 
+// ---- THE REVIEW QUEUE (R14). Mike's half of the knowledge hub.
+//
+// Mike, 2026-08-04: "i want every single piece gone through and flagged for
+// approval. if it doesnt meet my safety or knowledge standards..." and "you
+// come to me with questionable material and ill give an honest opinion."
+//
+// This screen is built around that second sentence. Every queued piece can
+// carry a SPECIFIC DOUBT written by whoever queued it — "the climb is clean
+// but they are single-tied at 2:40, is that a no or is it fine for that
+// species?" — and those sort to the front. Handing him a cold link makes him
+// do the work of finding the doubt somebody already had.
+//
+// THE REJECTIONS ARE THE DOCUMENT. He said the standard is learned as this is
+// built rather than written down in prose up front, so the turned-down list
+// with its named bar and its reason is the only written record of it. It is
+// shown here, not filed away.
+const REVIEWER_KEY = 'arborReviewer';
+
+/**
+ * @param {{auto?: boolean}} [opts] `auto` marks the sixty-second timer, as
+ * opposed to a tab switch or the refresh button.
+ *
+ * ═══ WHY THE TIMER IS ALLOWED TO SKIP THIS ONE ═══
+ * Every other view is read-only, so redrawing it under the user costs
+ * nothing. This one is not: a rejection needs a bar and a typed reason, and
+ * `v.replaceChildren()` mid-sentence throws that away. Sixty seconds is
+ * shorter than it takes to write "the climb is clean but they are single-tied
+ * at 2:40", so the timer would reliably eat exactly the careful rejections
+ * that are worth the most — the ones that are the written record of the
+ * standard.
+ *
+ * Found by reviewing this diff, not by using it, which is the only reason it
+ * is not in the shipped build.
+ */
+async function renderHubQueue(opts) {
+  const v = $('view-hub');
+  if (opts && opts.auto && hubMidDecision(v)) return;
+  v.replaceChildren();
+
+  let q;
+  try {
+    q = await api('/api/hub/queue');
+  } catch (e) {
+    if (e.code === 401) return showKeywall();
+    // §1B: "we could not read the queue" is not "nothing waiting on you".
+    v.appendChild(state('Review queue unavailable', e.code === 503
+      ? 'Database not connected — the queue fills in the moment it is.'
+      : 'Could not load the review queue. This is NOT the same as nothing waiting.'));
+    return;
+  }
+  if (q.unreadable) {
+    // The server said so itself. Same reason: if this read "nothing waiting
+    // on you", he would stop checking.
+    v.appendChild(state('Review queue unavailable', q.line || 'The queue could not be read.'));
+    return;
+  }
+
+  // The server owns this sentence — it is the only place that knows whether
+  // zero means unread or empty.
+  v.appendChild(el('div', 'hub-line', q.line || ''));
+
+  // ── Who is deciding. Asked once and remembered, because retyping a name on
+  // every card is friction that ends with the queue not getting worked. It is
+  // still required: an approval with no name behind it is not an approval.
+  const who = el('div', 'card');
+  who.appendChild(el('div', 'loop-kind', 'Decisions are recorded against'));
+  const nameIn = document.createElement('input');
+  nameIn.type = 'text';
+  nameIn.placeholder = 'Your name — every yes and no is signed';
+  nameIn.value = localStorage.getItem(REVIEWER_KEY) || '';
+  nameIn.addEventListener('change', () => localStorage.setItem(REVIEWER_KEY, nameIn.value.trim()));
+  who.appendChild(nameIn);
+  v.appendChild(who);
+  const reviewer = () => (localStorage.getItem(REVIEWER_KEY) || nameIn.value || '').trim();
+
+  // ── Sources first. Approving a piece from a source that has not cleared
+  // gate one changes nothing — servable() still drops it — so the people come
+  // before the material.
+  const sources = q.sources || [];
+  if (sources.length) {
+    v.appendChild(el('div', 'panel-title', 'People waiting on you'));
+    for (const s of sources) v.appendChild(sourceCard(s, reviewer));
+  }
+
+  const pieces = q.pieces || [];
+  if (pieces.length) {
+    v.appendChild(el('div', 'panel-title', 'Material waiting on you'));
+    for (const p of pieces) v.appendChild(pieceCard(p, reviewer));
+  }
+
+  if (!sources.length && !pieces.length) {
+    v.appendChild(state('Nothing waiting',
+      'The queue is clear. Anything turned down stays below — that list is the standard.'));
+  }
+
+  // ── The record.
+  const down = q.turnedDown || [];
+  if (down.length) {
+    v.appendChild(el('div', 'panel-title', 'Turned down — and why'));
+    for (const t of down) {
+      const c = el('div', 'card hub-down');
+      c.appendChild(el('div', 'who', t.title));
+      c.appendChild(el('div', 'hub-bars', 'Failed: ' + (t.failed || []).join(' · ')));
+      c.appendChild(el('div', 'scope', t.reason || ''));
+      if (t.decidedBy) c.appendChild(el('div', 'when', t.decidedBy + ' · ' + hubDate(t.decidedOnIso)));
+      v.appendChild(c);
+    }
+  }
+}
+
+function sourceCard(s, reviewer) {
+  const c = el('div', 'card');
+  c.appendChild(el('div', 'who', s.name));
+  c.appendChild(el('div', 'when', s.discipline));
+  c.appendChild(el('div', 'scope', s.whyTrusted));
+
+  // The inversion, said out loud on the card: the certificate is optional,
+  // the proof is not.
+  if (s.credentialsClaimed) {
+    c.appendChild(el('div', 'hub-claim', 'Claims: ' + s.credentialsClaimed + ' (claimed, not verified)'));
+  }
+  if (s.demonstratedShows) {
+    c.appendChild(el('div', 'scope', 'Proof watched: ' + s.demonstratedShows));
+  }
+  const link = hubHref(s.demonstratedUrl, 'See them work →');
+  if (link) c.appendChild(link);
+
+  // What is stopping this one being approvable at all. Shown so he is never
+  // asked to approve somebody the gate will refuse.
+  for (const b of (s.blockers || [])) c.appendChild(el('div', 'hub-block', '⚠ ' + b));
+
+  c.appendChild(decisionRow('sources', s.id, reviewer, (s.blockers || []).length > 0));
+  return c;
+}
+
+function pieceCard(p, reviewer) {
+  const c = el('div', 'card' + (p.queuedNote ? ' hub-flagged' : ''));
+  c.appendChild(el('div', 'who', p.title));
+  c.appendChild(el('div', 'when', p.area.replace(/_/g, ' ') + ' · ' + p.format + ' · ' + p.sourceName));
+  c.appendChild(el('div', 'scope', p.teaches));
+
+  // The specific doubt, loudest thing on the card. This is the whole point of
+  // "come to me with questionable material" — he answers in ten seconds
+  // instead of hunting for what somebody was unsure about.
+  if (p.queuedNote) c.appendChild(el('div', 'hub-doubt', p.queuedNote));
+
+  if (!p.sourceApproved) {
+    c.appendChild(el('div', 'hub-block',
+      '⚠ This source has not cleared gate one — approving the clip alone will not put it in front of anybody.'));
+  }
+  const link = hubHref(p.url, 'Open it →');
+  if (link) c.appendChild(link);
+  c.appendChild(decisionRow('pieces', p.id, reviewer, false));
+  return c;
+}
+
+/**
+ * Approve, or turn down naming which of the three bars failed.
+ *
+ * The bars are three separate toggles, not a dropdown, because they fail
+ * INDEPENDENTLY: a clip can be safe and correct and still have a twelve-man
+ * crew losing money on it. Forcing one choice would flatten his standard into
+ * something it is not.
+ */
+function decisionRow(kind, id, reviewer, blocked) {
+  const wrap = el('div', 'hub-decide');
+  const err = el('div', 'errline', '');
+
+  const yes = el('button', 'actbtn', 'Approve — clears all three');
+  if (blocked) {
+    // Not merely disabled: say WHY, or the button reads as broken.
+    yes.disabled = true;
+    yes.title = 'Blocked above';
+  }
+
+  const bars = new Set();
+  const barRow = el('div', 'hub-bars-pick');
+  for (const bar of ['safe', 'smart', 'fast']) {
+    const b = el('button', 'barbtn', bar);
+    b.addEventListener('click', () => {
+      if (bars.has(bar)) { bars.delete(bar); b.className = 'barbtn'; }
+      else { bars.add(bar); b.className = 'barbtn on'; }
+    });
+    barRow.appendChild(b);
+  }
+  const why = document.createElement('input');
+  why.type = 'text';
+  why.placeholder = 'Why — the next person queuing needs to know which thing was wrong';
+  const no = el('button', 'actbtn warn', 'Turn it down');
+
+  const post = async (body) => {
+    err.textContent = '';
+    const decidedBy = reviewer();
+    if (!decidedBy) {
+      err.textContent = 'Put your name in the box at the top — a decision with nobody behind it is not a decision.';
+      return;
+    }
+    yes.disabled = true; no.disabled = true;
+    try {
+      await api('/api/hub/' + kind + '/' + id + '/decision',
+        { method: 'POST', body: Object.assign({ decidedBy }, body) });
+      renderHubQueue();
+    } catch (ex) {
+      yes.disabled = Boolean(blocked); no.disabled = false;
+      err.textContent = ex.code === 409
+        ? 'Already decided — nothing was changed.'
+        : ex.code === 400
+          ? 'That decision was refused: ' + (ex.message || 'check the bar and the reason.')
+          : 'Could not record that. Nothing was changed.';
+    }
+  };
+
+  yes.addEventListener('click', () => post({ verdict: 'approve' }));
+  no.addEventListener('click', () => {
+    if (bars.size === 0) {
+      err.textContent = 'Name which bar it failed — safe, smart or fast. A rejection naming none is a shrug.';
+      return;
+    }
+    if (!why.value.trim()) {
+      err.textContent = 'Say why. "Does not meet the standard" tells the next person nothing.';
+      return;
+    }
+    post({ verdict: 'reject', failed: [...bars], reason: why.value.trim() });
+  });
+
+  wrap.appendChild(yes);
+  wrap.appendChild(el('div', 'hub-orr', 'or turn it down —'));
+  wrap.appendChild(barRow);
+  wrap.appendChild(why);
+  wrap.appendChild(no);
+  wrap.appendChild(err);
+  return wrap;
+}
+
+/**
+ * Only ever an http(s) link. Everything else on this page is textContent and
+ * therefore XSS-safe by construction; an href is the one place a stored
+ * 'javascript:' string would still run.
+ */
+function hubDate(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+// Hoisted out of the `if` deliberately. Inline, the closing delimiter of this
+// pattern runs straight into the method call, and the resulting characters
+// read to `test/appUi.test.ts` as an outbound hostname — so it fails a page
+// that added no host at all. The rule that check enforces is real (this page
+// is allowed three hosts and no more), so the CODE moves, not the check.
+// Same reason this comment does not quote the sequence.
+/** True while somebody is part-way through a decision on this screen. */
+function hubMidDecision(v) {
+  if (v.contains(document.activeElement)) return true;
+  // SCOPED to the decision rows. Written first as every input on the view,
+  // which was wrong: the reviewer's name box is populated from localStorage on
+  // every draw, so the screen would have stopped auto-refreshing forever the
+  // moment a name was saved.
+  for (const i of v.querySelectorAll('.hub-decide input')) if (i.value.trim()) return true;
+  // A picked bar with nothing typed yet is still a decision in progress.
+  return v.querySelectorAll('.barbtn.on').length > 0;
+}
+
+const HTTP_LINK = /^https?:\/\//i;
+
+function hubHref(url, label) {
+  if (!url || !HTTP_LINK.test(url)) return null;
+  const a = el('a', 'hub-open', label);
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  return a;
+}
+
 function switchTab(which) {
-  for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'permits', 'perf']) {
+  for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'permits', 'hub', 'perf']) {
     $('view-' + t).classList.toggle('active', which === t);
     $('tab-' + t).classList.toggle('active', which === t);
   }
 }
-for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'permits', 'perf']) {
+for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'permits', 'hub', 'perf']) {
   $('tab-' + t).addEventListener('click', () => switchTab(t));
 }
 
-function refreshAll() { renderToday(); renderLeads(); renderCalendar(); renderBook(); renderFollowUps(); renderCalls(); renderPermits(); renderPerformance(); }
-$('refresh').addEventListener('click', refreshAll);
+function refreshAll(opts) {
+  renderToday(); renderLeads(); renderCalendar(); renderBook(); renderFollowUps();
+  renderCalls(); renderPermits(); renderHubQueue(opts); renderPerformance();
+}
+// Wrapped, NOT passed directly: a listener hands its handler the click Event,
+// which would arrive as `opts` and make every manual refresh look automatic.
+$('refresh').addEventListener('click', () => refreshAll());
 
 $('dateline').textContent = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
 refreshAll();
-setInterval(refreshAll, 60000);
+setInterval(() => refreshAll({ auto: true }), 60000);
 </script>
 </body>
 </html>

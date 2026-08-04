@@ -300,3 +300,86 @@ describe('ARBOR app shell', () => {
     expect(html).toMatch(/min-height:\s*(48|56)px/);
   });
 });
+
+describe('the review queue (R14) — Mike\'s half of the knowledge hub', () => {
+  const html = loadAppHtml();
+
+  it('is a tab of its own, wired into switching and the refresh cycle', () => {
+    expect(html).toContain('id="tab-hub"');
+    expect(html).toContain('id="view-hub"');
+    expect(html).toContain('renderHubQueue()');
+    // Both switchTab lists must know about it or the tab renders and never shows.
+    const lists = [...html.matchAll(/'today', 'leads', 'cal', 'book', 'followups', 'calls', 'permits', ([^\]]*)'perf'/g)];
+    expect(lists.length).toBe(2);
+    for (const m of lists) expect(m[1]).toContain("'hub'");
+  });
+
+  it('a queue it could not read is NEVER drawn as an empty one (§1B)', () => {
+    expect(html).toContain('This is NOT the same as nothing waiting');
+    // The server can also say so itself; the page must honour that flag.
+    expect(html).toContain('q.unreadable');
+  });
+
+  it('every decision carries a name, and says so when it does not', () => {
+    expect(html).toContain('a decision with nobody behind it is not a decision');
+    expect(html).toContain('decidedBy');
+  });
+
+  it('a rejection must name a bar AND give a reason before it can be sent', () => {
+    expect(html).toContain('A rejection naming none is a shrug');
+    expect(html).toContain('tells the next person nothing');
+  });
+
+  it('the three bars are independent toggles, not one choice', () => {
+    // safe / smart / fast fail separately. A dropdown would flatten the
+    // standard into something it is not.
+    expect(html).toMatch(/for \(const bar of \['safe', 'smart', 'fast'\]\)/);
+  });
+
+  it('surfaces the specific doubt on the card, not just in the sort order', () => {
+    expect(html).toContain('hub-flagged');
+    expect(html).toContain('queuedNote');
+  });
+
+  it('warns when approving a piece would change nothing because gate one is open', () => {
+    expect(html).toContain('approving the clip alone will not put it in front of anybody');
+  });
+
+  it('a blocked source says WHY it is blocked rather than just disabling the button', () => {
+    expect(html).toContain('s.blockers');
+    expect(html).toContain('Blocked above');
+  });
+
+  it('KEEPS the turned-down list on screen — it is the written form of the standard', () => {
+    expect(html).toContain('Turned down — and why');
+    expect(html).toContain('turnedDown');
+  });
+
+  it('a claimed credential is labelled as claimed, never as verified', () => {
+    expect(html).toContain('(claimed, not verified)');
+  });
+});
+
+describe('the review queue: two defects the review of this diff caught', () => {
+  const html = loadAppHtml();
+
+  it('the sixty-second timer does not wipe a half-written rejection', () => {
+    // Every other view is read-only, so redrawing under the user is free.
+    // This one needs a bar and a typed reason, and replaceChildren() mid-
+    // sentence throws it away — reliably eating the careful rejections that
+    // are worth the most, since they are the record of the standard.
+    expect(html).toContain('hubMidDecision');
+    expect(html).toContain('refreshAll({ auto: true })');
+  });
+
+  it('the manual refresh button is WRAPPED, so a click Event is not read as auto', () => {
+    expect(html).toContain("addEventListener('click', () => refreshAll())");
+    expect(html).not.toMatch(/addEventListener\('click', refreshAll\)/);
+  });
+
+  it('the mid-decision check is scoped to the decision rows, not every input', () => {
+    // The reviewer's name box is refilled from localStorage on every draw. An
+    // unscoped check would see it as typing and stop refreshing forever.
+    expect(html).toContain(".hub-decide input");
+  });
+});
