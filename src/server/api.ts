@@ -83,6 +83,7 @@ import { scoreLead, type LeadQualityResult } from '../reception/leadQuality.js';
 import { integrationStatus } from '../env.js';
 import { buildPermitBoard, assertBoardNeverClear, type PermitTrackRow } from '../permitting/permitBoard.js';
 import { authorizeClearance, assertUnblockingSetMatchesGate } from '../permitting/clearance.js';
+import { splitByContract, assertEveryWorkOrderHasContract } from '../ops/jobBoundary.js';
 import { assemblePacket } from '../permitting/packet.js';
 import type { ScreenStatus } from '../permitting/screening.js';
 import type { ServiceCity } from '../lib/address.js';
@@ -167,6 +168,12 @@ export interface DataSource {
   calendarEvents?(fromIso: string, toIso: string): Promise<unknown[]>;
   /** §6F crew surface: the day's jobs with the site facts a crew may see. */
   crewJobs?(fromIso: string, toIso: string): Promise<CrewJobSource[]>;
+  /**
+   * R9 — of these job ids, which have a SIGNED CONTRACT FILED behind them.
+   * Absent from the returned set means no filed contract, which means it is
+   * still a lead and no crew is dispatched on it.
+   */
+  jobsWithFiledContract?(jobIds: string[]): Promise<Set<string>>;
   /** §6E fleet: units with their open-task counts. */
   units?(): Promise<unknown[]>;
   /**
@@ -808,7 +815,38 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       // a 9pm-ET open must not hand them tomorrow's sheet.
       const day = dateIso && /^\d{4}-\d{2}-\d{2}$/.test(dateIso) ? dateIso : etToday();
       const { startUtc, endUtc } = etDayWindow(day);
-      const rows = await source.crewJobs(startUtc.toISOString(), endUtc.toISOString());
+      const scheduled = await source.crewJobs(startUtc.toISOString(), endUtc.toISOString());
+
+      // ═══ R9 — THE LEAD/JOB BOUNDARY, ENFORCED WHERE IT MATTERS ═══
+      // Mike, 2026-08-04: a job is a proposal that became a contract in the
+      // Signed Contracts file. Everything else is a lead. This is the last
+      // gate before a row becomes a work order on a crew phone, so it is the
+      // one that has to hold.
+      //
+      // FAILS CLOSED. If the contract lookup itself fails we do NOT fall back
+      // to dispatching everything — an unreadable contract table is not
+      // evidence of a contract. Nothing becomes a work order, and the note
+      // says why (§1B). The expensive failure is a crew cutting a tree with
+      // no contract behind it, not a crew waiting for Mike to check.
+      let filed: Set<string>;
+      let lookupFailed = false;
+      try {
+        filed = source.jobsWithFiledContract
+          ? await source.jobsWithFiledContract(scheduled.map((r) => r.jobId))
+          : new Set<string>();
+        if (!source.jobsWithFiledContract) lookupFailed = true;
+      } catch (err) {
+        console.error('[crew] contract lookup failed:', err instanceof Error ? err.message : 'error');
+        filed = new Set<string>();
+        lookupFailed = true;
+      }
+      const hasFiledContract = (r: { jobId: string }) => !lookupFailed && filed.has(r.jobId);
+      const split = splitByContract(scheduled, hasFiledContract);
+      // Structural, on the real path: if the split is ever bypassed or handed
+      // the wrong predicate, this throws instead of dispatching a crew.
+      assertEveryWorkOrderHasContract(split.workOrders, hasFiledContract);
+
+      const rows = split.workOrders;
       const sources: WorkOrderSource[] = rows.map((r, i) => ({
         jobId: r.jobId,
         routeOrder: i + 1,
@@ -826,7 +864,17 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       }));
       return {
         status: 200,
-        body: { date: day, workOrders: sequenceRoute(sources).map(buildCrewPayload) },
+        body: {
+          date: day,
+          workOrders: sequenceRoute(sources).map(buildCrewPayload),
+          // NAMED, never silently dropped. A crew looking at a short day has
+          // to be able to tell "there is little on today" from "the app is
+          // holding rows back", and Mike has to see the count either way.
+          notWorkOrders: split.notWorkOrders.length,
+          boundaryNote: lookupFailed
+            ? 'Could not read the contract file, so NOTHING is dispatched as a work order. This is not an empty day — it is an unreadable one.'
+            : split.note,
+        },
       };
     },
 

@@ -88,6 +88,7 @@ import {
   listUnits,
   listPermitTracks,
   packetSource,
+  jobIdsWithFiledContract,
   permitStateById,
   updatePermitStatus,
   listUnitParts,
@@ -389,6 +390,7 @@ export function createLiveSource(): DataSource {
     // allowed lives in clearance.ts, where it can be tested without a
     // database, and none of it lives down here where it cannot.
     packetSource: (id) => packetSource(id),
+    jobsWithFiledContract: (ids) => jobIdsWithFiledContract(ids),
     permitState: (id) => permitStateById(id),
     movePermitStatus: (m) => updatePermitStatus(m.permitId, m.to, m.patch),
     unitParts: (id) => listUnitParts(id),

@@ -226,6 +226,82 @@ cross-platform app for everything non-AR. Android AR waits.
 
 ---
 
+## R9 — Everything is a LEAD until a signed contract is in the file
+**Ruling: 2026-08-04.** Mike, in his own words:
+
+> "when a customer contacts us, initially, it is a lead. Then after they text
+> me or email me, a signed proposal or I take a picture myself on-site, it is
+> still simply just a lead. Booked jobs are those contracts that you're
+> putting in the signed contract file. Those are proposals that turn to
+> contracts. That is the money. Those are what we want. Everything else is a
+> potential lead. Then we will figure out which ones are the moneymakers from
+> there."
+
+So the line is not "we have talked a lot", not "it is on the calendar", and
+**not "they signed the proposal"**. It is one fact: a proposal became a
+contract and that contract is filed in Signed Contracts.
+
+**Why this ruling is load-bearing.** The app already got it wrong with his
+money. Eleven ingested leads landed in `job` at status `booked`, which the
+crew door renders as work orders. Checked live on 2026-08-04: **11 jobs, all
+booked, 0 contracts, 0 signed** — so every one of them is a job by the schema
+and a lead by this ruling. He said cut, not delete, so the rows stay. What
+changed is that nothing downstream is allowed to believe them.
+
+**Fails closed.** An unreadable contract table is not evidence of a contract.
+If the lookup fails, or a data source cannot answer the question at all,
+NOTHING is dispatched and the note says which failure it is — an unreadable
+day, not an empty one (§1B).
+
+*Carried by:* `src/ops/jobBoundary.ts` (`authorizeBooking`, `splitByContract`,
+`assertEveryWorkOrderHasContract`), the `crewWorkOrders` handler,
+`jobIdsWithFiledContract()`, `test/jobBoundary.test.ts`, `test/crewApi.test.ts`.
+
+---
+
+## R10 — LSA cannot be read from Gmail. It needs the browser.
+**Ruling: 2026-08-04.** Mike: *"You cannot access LSA from the email, the
+Gmail. You need to have a web browser attachment and be able to get into our
+Google Ads LSA."*
+
+Verified against a real message the same night: the Google LSA notification
+body carries only *"A potential customer called you on 08/03/2026 at 10:12
+AM"* plus a link into the LSA console. No name, no phone, no address, no
+free text. There is nothing in the mail to parse.
+
+**So stop trying to parse it.** The notification is good for exactly one
+thing — "an LSA lead landed at 10:12, go open LSA" — and any parser that
+appears to extract more is extracting nothing and storing a blank row. That
+is the failure the FormSubmit HTML-body note already exists to prevent, and
+HomeAdvisor's parser already handles it correctly by pointing at their app
+instead of pretending to hold details.
+
+**Real LSA access is a separate build:** browser access into Google Ads LSA,
+not an email classifier. Not started; needs Mike's word on how.
+
+---
+
+## R11 — The live advertising channels, in Mike's list
+**Ruling: 2026-08-04.** Asked what is actually running:
+
+> "Organic Website Traffic, LSA, Google Ads, Yelp, organic phone calls,
+> referrals, and repeat customers. Oh, and the Tree Leads Today flyers."
+
+And separately: **"TSP is Tree Leads Today as well."** So the CallRail
+form-submission lead tagged *"TSP National Lead Gen Facebook"* — flagged in
+the 23:00Z sweep as an unrecognised paid channel — is Mike's, and live. It
+arrives through CallRail's form alert, not its own sender.
+
+**Not on the list:** HomeAdvisor and Angi, consistent with them being
+switched off seasonally on 2026-08-03.
+
+**What has no email notification at all:** referrals, repeat customers, and
+the flyers. Those arrive as phone calls through CallRail or as direct texts,
+so no classifier can ever see them as a distinct channel — a sweep that
+reports "channels seen" must not imply those are quiet.
+
+---
+
 ## Open — Mike has not ruled yet
 
 - **Friday questionnaire length: 10 or 15 questions.** Built PARAMETERISED

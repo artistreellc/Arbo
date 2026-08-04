@@ -410,6 +410,31 @@ export async function permitStateById(
 }
 
 /**
+ * R9 — which of these job ids have a SIGNED CONTRACT FILED behind them.
+ *
+ * Returns the subset that do. A job id absent from the result is a job with
+ * no filed contract, which under Mike's ruling is still a lead and must not
+ * reach a crew phone as a work order.
+ *
+ * `drive_file_id` is required, not just `signed`: the ruling is "those
+ * contracts that you're putting in the signed contract file". A contract row
+ * flagged signed with nothing filed does not clear the bar.
+ */
+export async function jobIdsWithFiledContract(jobIds: string[]): Promise<Set<string>> {
+  if (jobIds.length === 0) return new Set();
+  const db = getDb();
+  const res = await db
+    .from('contract')
+    .select('job_id')
+    .in('job_id', jobIds)
+    .eq('signed', true)
+    .not('drive_file_id', 'is', null);
+  if (res.error) throw res.error;
+  const rows = (res.data ?? []) as Array<{ job_id: string | null }>;
+  return new Set(rows.map((r) => r.job_id).filter((id): id is string => Boolean(id)));
+}
+
+/**
  * Everything `assemblePacket` needs about one permit, in one round trip.
  *
  * WHAT IS DELIBERATELY ABSENT: which city forms have actually been filled
