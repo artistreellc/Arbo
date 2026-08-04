@@ -514,10 +514,36 @@ async function renderWork() {
     v.appendChild(el('div', 'state', 'Could not load your work orders. Pull to refresh.'));
     return;
   }
+  // §1B ON THE SCREEN, not just in the JSON. R9 gives the API three different
+  // facts — an empty day, rows held back with no signed contract, and a
+  // contract table it could not read — and before this they all painted the
+  // same "Nothing scheduled". A crew cannot tell "there is little on today"
+  // from "the app is holding rows back" unless the screen says which.
+  //
+  // Caught by adversarial review of my own diff: I built notWorkOrders and
+  // boundaryNote into the handler, wrote a comment claiming the crew would
+  // see them, and wired them to nothing. Same defect this codebase keeps
+  // hitting — claimed in the comment, never reread to confirm it took.
+  const heldBack = Number(data.notWorkOrders || 0);
+  const note = typeof data.boundaryNote === 'string' ? data.boundaryNote : '';
+  if (note) {
+    const b = el('div', 'state boundary');
+    b.appendChild(el('b', '', heldBack > 0 ? 'Not everything scheduled is a work order' : 'Heads up'));
+    b.appendChild(document.createTextNode(note));
+    v.appendChild(b);
+  }
   if (!data.workOrders.length) {
     const s = el('div', 'state');
-    s.appendChild(el('b', '', 'Nothing scheduled'));
-    s.appendChild(document.createTextNode('Check with the office.'));
+    // "Nothing scheduled" is only honest when nothing is being withheld and
+    // nothing failed to read. Otherwise the note above is the real answer and
+    // this line must not contradict it.
+    if (note) {
+      s.appendChild(el('b', '', 'No work orders for you today'));
+      s.appendChild(document.createTextNode('See the note above, then check with the office.'));
+    } else {
+      s.appendChild(el('b', '', 'Nothing scheduled'));
+      s.appendChild(document.createTextNode('Check with the office.'));
+    }
     v.appendChild(s);
     return;
   }

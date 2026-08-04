@@ -107,6 +107,29 @@ describe('the crew door (§8C.1) — one app, two doors', () => {
     expect(html).toContain('verify on site');
   });
 
+  // R9 + §1B on the SCREEN. The API distinguishes an empty day, rows held
+  // back for having no signed contract, and a contract table it could not
+  // read. Before this the page painted all three as "Nothing scheduled" —
+  // found by adversarial review, and it is the exact spine violation the
+  // boundary work was written to prevent.
+  it('renders the R9 boundary note — a held-back day is not an empty one', () => {
+    expect(html).toContain('boundaryNote');
+    expect(html).toContain('notWorkOrders');
+  });
+
+  it('does not say "Nothing scheduled" when rows are being withheld', () => {
+    // The empty branch must be conditional on there being no note. If this
+    // regresses, "the app is holding 11 rows back" and "your day is clear"
+    // become the same sentence again.
+    // Structural, not positional: slicing around the copy is brittle because
+    // "Nothing scheduled" appears more than once in this file.
+    expect(html).toMatch(/if \(note\)\s*\{/);
+    expect(html).toContain('No work orders for you today');
+    // And the withheld branch must come from the note, not from a count that
+    // could be zero while the note is still saying the table was unreadable.
+    expect(html).toMatch(/const note = typeof data\.boundaryNote === 'string'/);
+  });
+
   it('renders all server text via textContent (XSS-safe by construction)', () => {
     expect(html).not.toMatch(/innerHTML/);
   });
