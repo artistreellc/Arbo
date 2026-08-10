@@ -529,3 +529,41 @@ while §3 holds.
 Standing limitation, stated not hidden: the counter is in memory and
 per-process. One Railway service is exactly right for that; a second instance
 would give each its own counters and this needs revisiting.
+
+### Cycle 13 + audit: what else is built and connected to nothing — 2026-08-10
+The portal find raised an obvious question: if one complete, tested feature
+could sit unwired for weeks, how many others are there? Swept every exported
+symbol in `src/` for references outside its own file.
+
+**Five whole engines are built, tested, and imported by nothing but their own
+tests:**
+| module | lines | what it is | task |
+|---|---|---|---|
+| `reception/knowledgeBase.ts` | 253 | ARBO answering basic tree questions | #34 — **marked COMPLETE** |
+| `legal/propertyAccess.ts` | — | access letters, consent, neighbour approval | #42 |
+| `permitting/permitBoard.ts` (`boardClearance`) | — | §6B.3 clearance | #44 |
+| `assessment/pruneEstimate.ts` | 20 exports | the §6J2 prune-estimate engine | — |
+| `assessment/utilityMarkings.ts` | 6 exports | 811 / dig-marking rendering | — |
+
+The one that matters most is #34, because it is **marked completed and is
+not**: on a real call ARBO had none of that material. Not a safety hole —
+`guardReply` already blocks price and diagnosis on the way out — but a
+capability that was reported as delivered and could not run.
+
+**Wired this cycle:** `knowledgePromptBlock()` renders the vetted answers, the
+tree-term definitions and both refusal lines into the receptionist system
+prompt (11,837 chars total). Tests now assert the block is actually IN the
+prompt, so this cannot silently come loose again.
+
+**The fork I did not take, and why.** There were two ways to connect it:
+(a) intercept the turn and speak the matched answer verbatim, or (b) give the
+model Mike's approved wording and let it answer in flow. (a) is exact but
+blunt — `answerBasicQuestion` always returns something, so a caller saying
+"my tree is leaning over the driveway" during qualification would get the
+diagnosis pivot instead of the next question, and lead capture derails on the
+most common sentence in this business. That is a product decision with real
+consequences, so it is Mike's. (b) is additive, reversible, and correct under
+either ruling, so (b) shipped. `answerBasicQuestion` stays exported and tested
+— it is exactly what (a) would use.
+
+1279 → 1283 tests.

@@ -41,6 +41,38 @@
   Remember the marker: SLOW::ARBO
 */
 import { describe, it, expect } from 'vitest';
+import { knowledgePromptBlock } from '../src/reception/knowledgeBase.js';
+import { loadAllConfig } from '../src/config/loadConfig.js';
+import { buildReceptionistSystemPrompt } from '../src/reception/systemPrompt.js';
+
+describe('the knowledge base actually reaches a call (task #34, cycle 13)', () => {
+  // It shipped tested and imported by NOTHING: answerBasicQuestion was called
+  // by its own tests and by no source file, so on a real call ARBO had none
+  // of this material. These tests exist so that cannot silently recur.
+  const { guardrails, legal } = loadAllConfig();
+  const prompt = buildReceptionistSystemPrompt(guardrails, legal);
+
+  it('puts the vetted answers in the receptionist system prompt', () => {
+    const block = knowledgePromptBlock();
+    expect(prompt).toContain(block);
+    expect(block.length).toBeGreaterThan(200);
+  });
+
+  it('carries the topping answer and a term definition', () => {
+    expect(prompt.toLowerCase()).toContain('topping');
+    expect(prompt).toContain('Crown reduction means');
+  });
+
+  it('carries both refusals, so the model is told where to stop', () => {
+    expect(prompt).toContain('That\'s really something we\'d want to see in person');
+    expect(prompt).toContain('more of an arborist question');
+  });
+
+  it('tells the model to hand over rather than guess', () => {
+    expect(prompt).toMatch(/Never guess about somebody's tree/);
+  });
+});
+
 import {
   answerBasicQuestion, lookupTerm, isDiagnosisQuestion, isArboristLevelQuestion,
   TREE_TERMS, KNOWLEDGE_BASE, DIAGNOSIS_PIVOT, ARBORIST_DEFLECTION,

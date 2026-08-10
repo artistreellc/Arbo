@@ -219,6 +219,51 @@ export interface KbResult {
  * confident guess about somebody's tree. Making something up here is exactly
  * the §1.4 failure the VA brief calls the master rule.
  */
+/**
+ * The vetted material, rendered for the receptionist's system prompt
+ * (task #34, wired in cycle 13).
+ *
+ * WHY THE PROMPT AND NOT A HARD OVERRIDE. This module was built with no
+ * insertion point and sat unimported for weeks: `answerBasicQuestion` was
+ * called by its tests and by nothing else, so on a real call ARBO had none of
+ * it. There are two ways to connect it, and they are different products:
+ *
+ *   (a) intercept the turn and SAY the matched answer verbatim, or
+ *   (b) hand the model Mike's approved wording and let it answer in flow.
+ *
+ * (a) is exact but blunt: `answerBasicQuestion` always returns something, and
+ * a caller saying "my tree is leaning over the driveway" during qualification
+ * would be met with the diagnosis pivot instead of the next question — the
+ * lead capture derails on the most common sentence in the business. That is a
+ * product decision with real consequences, so it is Mike's, not mine.
+ *
+ * (b) is additive and safe under either ruling: the answers have to reach the
+ * model regardless, `guardReply` still blocks price/diagnosis/forbidden terms
+ * on the way out, and nothing about the conversation flow changes. So (b)
+ * ships now and (a) waits for a ruling.
+ *
+ * `answerBasicQuestion` stays exported and tested — it is what (a) would use.
+ */
+export function knowledgePromptBlock(): string {
+  const answers = KNOWLEDGE_BASE
+    .map((e) => `   - Asked about ${e.triggers[0]}: "${e.answer}"`)
+    .join('\n');
+  const terms = Object.entries(TREE_TERMS)
+    .map(([term, def]) => `   - ${term}: ${def}`)
+    .join('\n');
+  return [
+    `QUESTIONS YOU MAY ANSWER YOURSELF. This is the vetted wording — stay close to it rather than improvising, and keep it to spoken length:`,
+    answers,
+    ``,
+    `TREE-CARE TERMS you should know and may define. Defining a term is NOT recommending it — "what is cabling" is a definition, "should I cable my tree" is a recommendation about their tree and you do not make it:`,
+    terms,
+    ``,
+    `IF THEY ASK ABOUT THEIR OWN TREE'S CONDITION — dead, dying, sick, hollow, safe, leaning, going to fall — you do NOT answer it, however confident you feel. Say: "${DIAGNOSIS_PIVOT}"`,
+    `IF IT IS CERTIFIED-ARBORIST TERRITORY — species identification, disease, fungus, pests, treatment, cabling or bracing advice, root pruning, formal risk assessment — say: "${ARBORIST_DEFLECTION}"`,
+    `IF YOU DO NOT HAVE A VETTED ANSWER, say so and hand it to Mike. Never guess about somebody's tree.`,
+  ].join('\n');
+}
+
 export function answerBasicQuestion(text: string): KbResult {
   // Diagnosis check FIRST. "Is topping bad" and "is my tree bad" are one word
   // apart, and only one of them is answerable.

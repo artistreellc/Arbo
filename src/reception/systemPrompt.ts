@@ -47,6 +47,7 @@
 
 import type { Guardrails } from '../config/guardrails.schema.js';
 import type { LegalConfig } from '../config/legal.schema.js';
+import { knowledgePromptBlock } from './knowledgeBase.js';
 
 export function buildReceptionistSystemPrompt(g: Guardrails, legal: LegalConfig): string {
   const cities = g.serviceArea.cities.join(', ');
@@ -94,6 +95,11 @@ export function buildReceptionistSystemPrompt(g: Guardrails, legal: LegalConfig)
         ``,
       ]
       : []),
+    // Task #34's knowledge base, finally connected (cycle 13). It shipped
+    // tested and unimported — see knowledgePromptBlock() for why it lands
+    // here rather than intercepting the turn.
+    knowledgePromptBlock(),
+    ``,
     `PHOTOS: ${g.leadQualification.photoCapture.method}`,
     ``,
     `AFTER HOURS / OVERFLOW: ${g.afterHoursAndOverflow.afterHours}`,
