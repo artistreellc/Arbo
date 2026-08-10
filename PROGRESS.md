@@ -535,15 +535,27 @@ The portal find raised an obvious question: if one complete, tested feature
 could sit unwired for weeks, how many others are there? Swept every exported
 symbol in `src/` for references outside its own file.
 
-**Five whole engines are built, tested, and imported by nothing but their own
-tests:**
-| module | lines | what it is | task |
-|---|---|---|---|
-| `reception/knowledgeBase.ts` | 253 | ARBO answering basic tree questions | #34 — **marked COMPLETE** |
-| `legal/propertyAccess.ts` | — | access letters, consent, neighbour approval | #42 |
-| `permitting/permitBoard.ts` (`boardClearance`) | — | §6B.3 clearance | #44 |
-| `assessment/pruneEstimate.ts` | 20 exports | the §6J2 prune-estimate engine | — |
-| `assessment/utilityMarkings.ts` | 6 exports | 811 / dig-marking rendering | — |
+**CORRECTED 2026-08-10T23:55Z — the first version of this table overstated
+the finding, and the correction matters more than the original.** The sweep
+was symbol-based, which flags a module when no *other* file references its
+exports. That is the right detector for dead code but the wrong one for
+"feature not wired": a module can be reached through a single entry point
+while most of its exports exist only for tests. Re-checked every row by
+import path. What actually holds:
+
+| module | state | task |
+|---|---|---|
+| `reception/knowledgeBase.ts` (253 ln) | **was unwired — task #34 marked COMPLETE and was not.** Wired this cycle. | #34 |
+| `legal/propertyAccess.ts` | **imported by nothing. Genuinely unwired.** | #42 |
+| `assessment/pruneEstimate.ts` (20 exports) | **imported by nothing. Genuinely unwired.** | — |
+| `assessment/utilityMarkings.ts` | reachable ONLY through `pruneEstimate`, which is itself dead — so dead as a unit | — |
+| ~~`permitting/permitBoard.ts` (`boardClearance`)~~ | **WRONG. Retracted.** `authorizeClearance` IS wired at `server/api.ts:1080`, and `crewMayStart` is the live gate. `boardClearance` is an unused convenience wrapper, not a missing feature. §6B.3 is connected. | ~~#44~~ |
+
+So: **three modules unwired, not five**, and one of the five was a working
+feature I reported as broken. Flagging a live system as dead is the same
+class of error as reporting a dead feed as a confident zero (§1B) — it just
+points the other way, and it wastes exactly the attention the honesty rules
+exist to protect.
 
 The one that matters most is #34, because it is **marked completed and is
 not**: on a real call ARBO had none of that material. Not a safety hole —
