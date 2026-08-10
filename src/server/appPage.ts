@@ -70,3 +70,12 @@ export function loadAppHtml(): string {
 export function loadCrewHtml(): string {
   return load('crew.html');
 }
+
+/**
+ * The CUSTOMER door (§8C, task #35) — the third surface. Served to anyone who
+ * asks for it, because it is the sign-in page; everything BEHIND it is gated
+ * by a portal session, never by this file.
+ */
+export function loadPortalHtml(): string {
+  return load('portal.html');
+}

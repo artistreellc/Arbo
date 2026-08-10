@@ -120,3 +120,41 @@ describe('the data-link switch', () => {
     expect(c.hasDb()).toBe(false);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THE CUSTOMER PORTAL IS BEHIND THE SAME SWITCH (task #35, cycle 11).
+//
+// The portal is the only surface a stranger can reach, so it gets its own
+// §3 proof rather than inheriting the guarantee by assumption. The route
+// layer checks hasDb() before calling any of these — this block proves the
+// SECOND door holds even when that check is skipped entirely.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('the portal cannot reach a live table while the links are cut', () => {
+  async function portalRepoWith(link: string | undefined) {
+    vi.resetModules();
+    process.env.SUPABASE_URL = REAL_LOOKING_URL;
+    process.env.SUPABASE_SERVICE_ROLE_KEY = REAL_LOOKING_KEY;
+    if (link === undefined) delete process.env.ARBO_DATA_LINKS;
+    else process.env.ARBO_DATA_LINKS = link;
+    return import('../src/db/portalRepo.js');
+  }
+
+  it('refuses to look up an account', async () => {
+    const repo = await portalRepoWith('off');
+    await expect(repo.findPortalAccountByEmail('someone@example.com')).rejects.toThrow(/links are CUT/i);
+  });
+
+  it('refuses to build a customer view', async () => {
+    const repo = await portalRepoWith(undefined);
+    await expect(repo.loadPortalView('11111111-2222-3333-4444-555555555555')).rejects.toThrow(/links are CUT/i);
+  });
+
+  it('records no sign-in, and does not throw doing it', async () => {
+    // recordPortalSignIn swallows its own failure ON PURPOSE: a customer who
+    // authenticated correctly must not be bounced because a bookkeeping
+    // UPDATE could not run. What matters for §3 is that nothing is written,
+    // and getDb() throwing inside is exactly what guarantees that.
+    const repo = await portalRepoWith('off');
+    await expect(repo.recordPortalSignIn('11111111-2222-3333-4444-555555555555')).resolves.toBeUndefined();
+  });
+});

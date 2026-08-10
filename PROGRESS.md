@@ -455,3 +455,47 @@ arborgrow.app to the project: the app now serves on his own domain.
 Still open from §9/6B: permit packet builder + tree-labeling map, photos
 in the twin, installable PWA wrapper, spoken-brief button (needs the
 ElevenLabs key).
+
+### Cycle 11: the third door is wired (task #35) — 2026-08-10, offline
+Mike: "keep build the app offline, keep building and auditing... till its a
+masterpiece." The sweeps stopped; this is build work.
+
+The audit target picked itself. The customer portal had a COMPLETE spine and
+was connected to nothing: `session.ts` (stateless HMAC, fails closed with no
+secret), `account.ts` (scrypt, single-use invites, timing-safe sign-in),
+`customerView.ts` (a whole page shaped, every absence named), `propertyFlags.ts`,
+and migration `0019_portal_accounts.sql` — 1,064 lines of reviewed code, 450
+lines of tests, and **no route, no repository, no page**. `buildPortalView` was
+called from nowhere in the entire repo.
+
+Added, tests first: `src/portal/routes.ts` (sign-in / sign-out / view, with the
+session as the ONLY thing that names a property), `src/db/portalRepo.ts` (both
+§3 doors — the route checks `hasDb()`, `getDb()` refuses on its own),
+`src/app/portal.html` (self-contained, no CDN, no external host), and the
+server wiring under `/portal/` — deliberately NOT `/api/`, whose gate wants
+Mike's key.
+
+Verified live offline: `/portal` 200, `/portal/view` 401, `/portal/signin`
+**503 portal_unconfigured**. It fails closed with no secret, exactly as designed.
+
+1217 → 1266 tests. Three defects found and fixed inside the cycle:
+- **Timestamps compared as strings.** `scheduled_for >= new Date().toISOString()`
+  mixed Postgres `+00:00` against JS `Z`, so a booking at `08:00-04:00` (three
+  hours in the future) sorted as past and vanished off the customer's page.
+  Now compared as instants. Regression test in `portalJobChoice.test.ts`.
+- **A known site fact wore the warning colour** — a recorded water-meter
+  location rendered amber, same as a real constraint.
+- **A tree's ownership line was greyed unconditionally**, so "stands on your
+  land as recorded" looked identical to "nobody has checked".
+
+The last two were found by LOOKING at a rendered screenshot, not by a test.
+Both are the §1B lie running backwards: dressing a known fact in the costume
+of an absence. Tests now pin all three.
+
+Open for Mike (flagged, not decided): no rate limit on the portal login
+(scrypt's ~100ms is the only throttle); no payment provider wired, so
+`linkFor` honestly returns null and the page says "arrange payment with Mike"
+rather than rendering a dead button; the page shows ONE job, so an unpaid
+finished job hides an upcoming booking (the safer of the two wrong answers);
+and the customer door is LIGHT where the two operator doors are dark cockpit —
+every colour is a token at `:root` and flips back in one line.

@@ -154,7 +154,9 @@ import { env } from './env.js';
 import { createVoiceLlm } from './voice/anthropicLlm.js';
 import { createElevenLabsBridge, type BridgeRequestBody } from './voice/elevenlabsBridge.js';
 import type { Alerter } from './reception/receptionist.js';
-import { loadAppHtml, loadCrewHtml } from './server/appPage.js';
+import { loadAppHtml, loadCrewHtml, loadPortalHtml } from './server/appPage.js';
+import { handlePortal, type PortalDeps } from './portal/routes.js';
+import { findPortalAccountByEmail, loadPortalView, recordPortalSignIn } from './db/portalRepo.js';
 import { emitSafe } from './binder/eventBus.js';
 import { runAgentSweep, startAgentScheduler } from './agents/sweep.js';
 import {
@@ -498,6 +500,23 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
 }
 
 /**
+ * The customer portal's dependencies (task #35). Assembled once, here, so the
+ * handler module never imports a repository and physically cannot reach a
+ * table on its own — it gets exactly these five capabilities and no others.
+ *
+ * `secret` is read through a getter rather than captured: it keeps this object
+ * honest if the environment is ever reloaded, and it means an unset secret is
+ * seen as unset at request time rather than at import time.
+ */
+const portalDeps: PortalDeps = {
+  get secret() { return env.portalSessionSecret; },
+  hasDb,
+  findAccountByEmail: findPortalAccountByEmail,
+  loadView: loadPortalView,
+  recordSignIn: recordPortalSignIn,
+};
+
+/**
  * Emergency path until Twilio is wired at deploy (O2): loud in the server log,
  * reason only — caller text/PII never hits logs (§4.3).
  */
@@ -571,6 +590,29 @@ export function createArborRequestHandler() {
       if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/app')) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
         return res.end(loadAppHtml());
+      }
+      // §8C the CUSTOMER door (task #35) — the third surface.
+      //
+      // The PAGE is public because it is the sign-in screen; everything behind
+      // it is gated by a portal session inside handlePortal(). Deliberately
+      // NOT under /api/: that gate wants Mike's key, which no customer has and
+      // none should ever be given. This is why the session cookie is scoped
+      // Path=/portal — a customer's cookie never rides an admin request.
+      if (req.method === 'GET' && (url.pathname === '/portal' || url.pathname === '/portal/')) {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+        return res.end(loadPortalHtml());
+      }
+      if (url.pathname.startsWith('/portal/')) {
+        const body = req.method === 'POST' ? await readJson(req) : undefined;
+        const out = await handlePortal({
+          method: req.method ?? 'GET',
+          path: url.pathname,
+          cookie: req.headers.cookie,
+          body,
+          nowMs: Date.now(),
+        }, portalDeps);
+        res.writeHead(out.status, { 'content-type': 'application/json', ...out.headers });
+        return res.end(JSON.stringify(out.body));
       }
       // §9 / iOS: both doors install to the iPhone home screen and open
       // full-screen. Two manifests because they are two different apps — Mike

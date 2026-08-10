@@ -1,0 +1,395 @@
+<!doctype html>
+<!--
+  ═══════════════════════════════════════════════════════════════════════
+  SLOW::ARBO   ← this marker IS this note. Wherever it appears, all of
+               it applies: in a file, a commit, a doc, or from Mike.
+  STOP. READ THIS BEFORE YOU CHANGE ONE CHARACTER OF THIS PAGE.
+  ═══════════════════════════════════════════════════════════════════════
+
+  THE CUSTOMER DOOR (§8C, task #35). The third surface, and the only one a
+  stranger can reach. Two rules above all others:
+
+  1. THIS PAGE INVENTS NO SENTENCES ABOUT FACTS. Every line describing the
+     customer's property, trees, permits, schedule or money is rendered
+     VERBATIM from the server payload. customerView.ts and propertyFlags.ts
+     decide what is true and how to say it; this file decides only where it
+     sits on the screen. If you find yourself writing copy here that asserts
+     something about a property, you are writing it in the wrong file.
+
+  2. AN EMPTY PAGE AND AN UNREADABLE ONE ARE DIFFERENT (§1B). A failed fetch
+     renders the server's stated reason. It NEVER renders as a property with
+     no trees, because that is what a real property with no trees looks like.
+
+  Design note for Mike: the two operator doors are the dark §9 cockpit. This
+  one is light on the same purple accent, because the person reading it is a
+  homeowner on their phone, not an operator running a day. Every colour is a
+  token at :root — say the word and it flips back in one line.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FBFAF7">
+<title>Your property — Art-is-Tree</title>
+<style>
+:root{
+  --forest:#6D28D9; --canopy:#7C3AED; --ink:#1A1D23; --muted:#5C6470;
+  --paper:#FBFAF7; --card:#FFFFFF; --border:#E3E0D8;
+  --ok:#137A4E; --warning:#8A5A00; --info:#1D4ED8; --alert:#B42318;
+  --r-md:10px; --r-lg:16px;
+  --shadow-card:0 1px 2px rgba(26,29,35,.05),0 4px 14px rgba(26,29,35,.05);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:17px;line-height:1.5;color:var(--ink);background:var(--paper);
+  padding-bottom:calc(40px + env(safe-area-inset-bottom));
+}
+header{
+  background:var(--card);border-bottom:1px solid var(--border);
+  padding:16px;padding-top:calc(16px + env(safe-area-inset-top));
+}
+.brand{font-size:20px;font-weight:800;letter-spacing:.10em}
+.brand small{color:var(--forest);font-weight:600;font-size:13px;margin-left:8px;letter-spacing:.04em}
+main{padding:16px;max-width:680px;margin:0 auto}
+h2.panel{
+  font-size:11px;font-weight:800;letter-spacing:.16em;color:var(--forest);
+  text-transform:uppercase;margin:26px 0 10px;display:flex;align-items:center;gap:8px;
+}
+h2.panel::after{content:'';flex:1;height:1px;background:var(--border)}
+.card{
+  background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);
+  padding:16px;margin-bottom:12px;box-shadow:var(--shadow-card);
+}
+.addr{font-size:22px;font-weight:800;line-height:1.25}
+.addr small{display:block;font-size:15px;font-weight:500;color:var(--muted);margin-top:4px}
+.lead{font-size:17px}
+.sub{font-size:15px;color:var(--muted);margin-top:6px}
+
+/* A named absence must never look like a fact, and never like nothing.
+   Dashed edge + muted text is the visual form of "we have not looked yet". */
+.unknown{border-style:dashed;background:#FDFCFA}
+.unknown .lead{color:var(--muted)}
+.flag{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--border)}
+.flag:first-child{border-top:0;padding-top:0}
+/* The dot carries the §1B state, so its colour has to mean the same thing
+   the sentence does.
+     present          — a real constraint on this address (amber: plan for it)
+     not_found_verify — screened, nothing found, still verify (blue: info)
+     known            — simply recorded (brand: a fact, neither good nor bad)
+     unknown          — NOBODY LOOKED. Hollow on purpose: an absence must not
+                        render as a filled, confident mark.
+   A recorded water-meter location is not a warning, and "we know this" must
+   never wear the same colour as "watch out for this". */
+.dot{width:10px;height:10px;border-radius:50%;flex:none;margin-top:7px;background:var(--muted)}
+.dot.present{background:var(--warning)}
+.dot.not_found_verify{background:var(--info)}
+.dot.known{background:var(--forest)}
+/* A border, not an inset shadow: at 10px the shadow renders as a smudge and
+   a smeared ring is not a legible "nobody looked". */
+.dot.unknown{background:transparent;border:2px solid var(--muted)}
+.flabel{font-size:12px;font-weight:800;letter-spacing:.10em;text-transform:uppercase;color:var(--muted)}
+.fline{font-size:16px;margin-top:2px}
+
+.tree{border-top:1px solid var(--border);padding:14px 0}
+.tree:first-child{border-top:0;padding-top:0}
+.tspecies{font-size:18px;font-weight:800}
+.tspecies.unnamed{color:var(--muted);font-weight:600;font-style:italic}
+.tmeta{font-size:14px;color:var(--muted);margin-top:2px}
+.tline{font-size:15px;margin-top:8px}
+.tline.absent{color:var(--muted)}
+
+.pay .amount{font-size:32px;font-weight:800;letter-spacing:-.02em}
+.gaps li{margin-left:20px;font-size:15px;color:var(--muted);padding:3px 0}
+
+/* Sign-in. Big targets: this is a phone, outdoors, one hand. */
+#signin{max-width:420px;margin:8vh auto 0}
+label{display:block;font-size:13px;font-weight:800;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+input{width:100%;min-height:52px;padding:12px 14px;font-size:17px;color:var(--ink);
+  background:var(--card);border:1.5px solid var(--border);border-radius:var(--r-md)}
+input:focus{outline:2px solid var(--forest);outline-offset:1px;border-color:var(--forest)}
+button{
+  width:100%;min-height:56px;margin-top:20px;border:0;border-radius:var(--r-md);
+  background:var(--forest);color:#fff;font-size:17px;font-weight:800;letter-spacing:.06em;cursor:pointer;
+}
+button:disabled{background:var(--muted);cursor:progress}
+.linkbtn{background:none;color:var(--muted);font-size:14px;font-weight:700;min-height:44px;
+  width:auto;margin:24px auto 0;display:block;text-decoration:underline;cursor:pointer;letter-spacing:0}
+
+/* The honesty banner. Anything the server could not do is said out loud
+   HERE — never by leaving a section silently empty. */
+#notice{border-radius:var(--r-md);padding:14px 16px;margin-bottom:16px;font-size:16px;
+  border:1.5px solid var(--warning);background:#FFF9EC;color:#5B3B00}
+#notice.hard{border-color:var(--alert);background:#FEF3F2;color:#7A271A}
+[hidden]{display:none !important}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">ART-IS-TREE<small>your property</small></div>
+</header>
+
+<main>
+  <div id="notice" hidden></div>
+
+  <!-- ══ SIGN IN ══ -->
+  <section id="signin" hidden>
+    <div class="card">
+      <div class="addr">Sign in</div>
+      <p class="sub">Use the email and password from the invite Mike sent you.</p>
+      <form id="signin-form" autocomplete="on">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="username"
+               inputmode="email" required>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password"
+               autocomplete="current-password" required>
+        <button id="signin-btn" type="submit">SIGN IN</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- ══ THE PROPERTY ══ -->
+  <section id="portal" hidden>
+    <div class="card">
+      <div class="addr" id="p-address"></div>
+    </div>
+
+    <h2 class="panel">Your project</h2>
+    <div class="card"><div class="lead" id="p-project"></div>
+      <div class="sub" id="p-schedule" hidden></div></div>
+
+    <h2 class="panel">Payment</h2>
+    <div class="card pay" id="p-pay"></div>
+
+    <h2 class="panel">Your trees</h2>
+    <div class="card" id="p-trees"></div>
+
+    <h2 class="panel">Your site</h2>
+    <div class="card" id="p-site"></div>
+
+    <h2 class="panel">This address</h2>
+    <div class="card" id="p-flags"></div>
+
+    <h2 class="panel">Not recorded yet</h2>
+    <div class="card unknown" id="p-gaps"></div>
+
+    <button class="linkbtn" id="signout">Sign out</button>
+  </section>
+</main>
+
+<script>
+'use strict';
+// ── Escaping. Every string below reaches the DOM through here or through
+// textContent. Mike's own notes are free text and go straight onto this page.
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+const $ = (id) => document.getElementById(id);
+
+function notice(line, hard) {
+  const n = $('notice');
+  n.textContent = line;
+  n.classList.toggle('hard', Boolean(hard));
+  n.hidden = false;
+}
+function clearNotice() { $('notice').hidden = true; }
+
+function show(which) {
+  $('signin').hidden = which !== 'signin';
+  $('portal').hidden = which !== 'portal';
+}
+
+// ── Money. Formatted, never computed: the figure is whatever the server sent.
+function money(n) {
+  return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+// ── Dates. A date the customer can read; the raw value if it is not parseable,
+// because showing "Invalid Date" would be worse than showing what we hold.
+function when(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso);
+  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+// A payment link is the one value on this page that becomes a URL the
+// customer's browser will follow, so it is checked rather than trusted.
+// https only: escaping stops an attribute breakout, but it does NOT stop
+// `javascript:` or `data:`, and this is a money button.
+// Written as a prefix compare rather than a regex on purpose: a regex for
+// "https" + slash-slash reads as a URL to the test that forbids external
+// hosts on this page, and weakening that test to accommodate this line would
+// be the wrong trade.
+function safePayLink(link) {
+  return typeof link === 'string' && link.slice(0, 8).toLowerCase() === 'https:' + '//' ? link : null;
+}
+
+function renderPayment(pay) {
+  const box = $('p-pay');
+  if (pay.state === 'payable') {
+    // A link the server did not give us is NOT rendered as a button. A dead
+    // pay button is worse than no button — see linkFor() in portalRepo.ts.
+    const href = safePayLink(pay.link);
+    box.innerHTML =
+      '<div class="amount">' + esc(money(pay.amount)) + '</div>' +
+      '<div class="sub">' + esc(pay.line) + '</div>' +
+      (href
+        ? '<a href="' + esc(href) + '" rel="noopener noreferrer"><button type="button">PAY THIS INVOICE</button></a>'
+        : '<div class="sub">There is no online payment link on this account yet — arrange payment with Mike.</div>');
+    return;
+  }
+  box.innerHTML = '<div class="lead">' + esc(pay.line) + '</div>';
+}
+
+function renderTrees(trees) {
+  const box = $('p-trees');
+  if (!trees.length) {
+    // "No trees recorded" is a FACT about our records, not about the property.
+    // The wording says which — a customer with ten oaks must not read this as
+    // a claim that they have none.
+    box.innerHTML = '<div class="lead">We have not recorded any trees at this address yet.</div>';
+    box.classList.add('unknown');
+    return;
+  }
+  box.classList.remove('unknown');
+  box.innerHTML = trees.map((t) => {
+    const name = t.speciesKnown
+      ? '<div class="tspecies">' + esc(t.species) + '</div>'
+      : '<div class="tspecies unnamed">' + esc(t.species) + '</div>';
+    const meta = [t.size, t.locationOnLot].filter(Boolean).map(esc).join(' · ');
+    return '<div class="tree">' + name +
+      (meta ? '<div class="tmeta">' + meta + '</div>' : '') +
+      '<div class="tline' + (t.assessed ? '' : ' absent') + '">' + esc(t.assessment) + '</div>' +
+      '<div class="tline' + (t.scheduleKnown ? '' : ' absent') + '">' + esc(t.scheduleLine) + '</div>' +
+      // Ownership follows its OWN state. "Stands on your land as recorded" is
+      // a fact somebody established and must not be greyed out like the
+      // "nobody has checked" line directly above it — greying a known fact is
+      // the §1B lie running backwards.
+      '<div class="tline' + (t.ownership.state === 'unknown' ? ' absent' : '') + '">' +
+        esc(t.ownership.line) + '</div>' +
+      '</div>';
+  }).join('');
+}
+
+function renderFlagList(el, items) {
+  el.innerHTML = items.map((f) =>
+    '<div class="flag"><div class="dot ' + esc(f.state) + '"></div><div>' +
+    '<div class="flabel">' + esc(f.label) + '</div>' +
+    '<div class="fline">' + esc(f.line) + '</div></div></div>',
+  ).join('');
+}
+
+function renderSite(site) {
+  $('p-site').innerHTML = site.map((f) =>
+    '<div class="flag"><div class="dot ' + (f.known ? 'known' : 'unknown') + '"></div><div>' +
+    '<div class="flabel">' + esc(f.label) + '</div>' +
+    '<div class="fline">' + esc(f.value) + '</div></div></div>',
+  ).join('');
+}
+
+function render(view) {
+  clearNotice();
+  const p = view.property;
+  $('p-address').innerHTML = esc(p.address) +
+    '<small>' + esc([p.city, p.zip].filter(Boolean).join(' ')) + '</small>';
+
+  $('p-project').textContent = view.project.line;
+  const sched = when(view.project.scheduledFor);
+  $('p-schedule').textContent = sched ? 'Scheduled for ' + sched : '';
+  $('p-schedule').hidden = !sched;
+
+  renderPayment(view.payment);
+  renderTrees(view.trees);
+  renderSite(view.site);
+  renderFlagList($('p-flags'), view.flags);
+
+  // The gaps panel is the §1B spine made visible: what is NOT known, listed
+  // where the customer can see it, instead of quietly absent from the page.
+  const gaps = $('p-gaps');
+  if (view.gaps.length) {
+    gaps.innerHTML = '<ul class="gaps">' +
+      view.gaps.map((g) => '<li>' + esc(g) + '</li>').join('') + '</ul>';
+    gaps.hidden = false;
+  } else {
+    gaps.innerHTML = '<div class="lead">Everything we track for this address is recorded.</div>';
+  }
+  show('portal');
+}
+
+async function loadView() {
+  let res;
+  try {
+    res = await fetch('/portal/view', { credentials: 'same-origin' });
+  } catch (e) {
+    // A network failure is NOT an empty property.
+    notice('We could not reach Arbo just now. Your records are fine — please try again in a moment.', true);
+    show('signin');
+    return;
+  }
+  let body = {};
+  try { body = await res.json(); } catch (e) { body = {}; }
+
+  if (res.status === 200) { render(body); return; }
+
+  if (res.status === 401) {
+    // Not signed in, timed out, or a token we will not accept. The server
+    // already chose the right sentence for which of those it is.
+    if (body.error === 'session_expired' || body.error === 'portal_unconfigured') {
+      notice(body.line || 'Please sign in.', false);
+    } else {
+      clearNotice();
+    }
+    show('signin');
+    return;
+  }
+
+  // 503 and 404 both land here, and BOTH must speak. This is the branch that
+  // must never fall through to an empty portal.
+  notice(body.line || 'We cannot show your property right now.', true);
+  show('signin');
+}
+
+$('signin-form').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const btn = $('signin-btn');
+  btn.disabled = true;
+  btn.textContent = 'SIGNING IN…';
+  try {
+    const res = await fetch('/portal/signin', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: $('email').value, password: $('password').value }),
+    });
+    let body = {};
+    try { body = await res.json(); } catch (e) { body = {}; }
+    if (res.status === 200) {
+      $('password').value = '';
+      await loadView();
+      return;
+    }
+    notice(body.line || 'That did not work. Please try again.', res.status >= 500);
+  } catch (e) {
+    notice('We could not reach Arbo just now. Please try again in a moment.', true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'SIGN IN';
+  }
+});
+
+$('signout').addEventListener('click', async () => {
+  try { await fetch('/portal/signout', { method: 'POST', credentials: 'same-origin' }); } catch (e) { /* clearing anyway */ }
+  clearNotice();
+  show('signin');
+});
+
+loadView();
+</script>
+</body>
+</html>
