@@ -499,3 +499,33 @@ rather than rendering a dead button; the page shows ONE job, so an unpaid
 finished job hides an upcoming booking (the safer of the two wrong answers);
 and the customer door is LIGHT where the two operator doors are dark cockpit —
 every colour is a token at `:root` and flips back in one line.
+
+### Cycle 12: a lock on the third door (task #35) — 2026-08-10, offline
+Cycle 11 shipped a publicly reachable login with nothing in front of it but
+scrypt's ~100ms — a floor on throughput, not a lock. I flagged it in my own
+report; this closes it rather than leaving it flagged.
+
+`src/portal/throttle.ts`: MAX_FAILURES=8 inside a 15-minute window, per email
+address, checked BEFORE the account lookup and before scrypt (a locked address
+costs an attacker a Map read, not a database round trip). A correct password
+wipes the count. Expired buckets are pruned so a spray of made-up addresses
+cannot leak memory on a server that runs for weeks.
+
+**It counts emails, not IP addresses, deliberately.** Behind Railway's proxy
+the socket address is the proxy, so an IP bucket would put every customer in
+one counter — eight wrong guesses by anybody and the portal locks for
+everyone. Trusting `x-forwarded-for` instead only throttles attackers who opt
+in. A self-inflicted global lockout is a worse bug than the one being fixed,
+so the trade is written down in the file rather than discovered later.
+
+`throttle` is a REQUIRED field on PortalDeps, not optional — a caller who
+forgets it should get a type error, not a silent downgrade to no lock.
+
+1266 → 1279 tests. Verified live offline: the server boots, `/portal` 200, and
+sign-in returns 503 *before* the throttle because the links are cut — correct
+ordering, and it means the lock is exercised by tests rather than by hand
+while §3 holds.
+
+Standing limitation, stated not hidden: the counter is in memory and
+per-process. One Railway service is exactly right for that; a second instance
+would give each its own counters and this needs revisiting.

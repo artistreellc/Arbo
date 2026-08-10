@@ -42,6 +42,7 @@
 //    No email, no property id, no name, no address, ever.
 
 import type { PortalView } from './customerView.js';
+import type { SignInThrottle } from './throttle.js';
 import { signIn } from './account.js';
 import {
   clearedCookie,
@@ -71,6 +72,13 @@ export interface PortalAccountRow {
 export interface PortalDeps {
   secret: string | undefined;
   hasDb: () => boolean;
+  /**
+   * Brute-force lock, keyed on the normalised email. Required rather than
+   * optional on purpose: a caller who forgets to pass one would get a login
+   * with nothing in front of it but scrypt, which is exactly the hole this
+   * closes. Make the omission a type error, not a silent downgrade.
+   */
+  throttle: SignInThrottle;
   findAccountByEmail(email: string): Promise<PortalAccountRow | null>;
   /** Null means the property is gone. Distinct from a throw, which is an outage. */
   loadView(propertyId: string): Promise<PortalView | null>;
@@ -164,6 +172,20 @@ async function signInRoute(req: PortalRequest, deps: PortalDeps): Promise<Portal
   // would never be found and every correct password would look wrong.
   const normalised = email.trim().toLowerCase();
 
+  // The lock goes BEFORE the lookup and before scrypt: a locked address costs
+  // an attacker a Map read, not a database round trip and 100ms of hashing.
+  const gate = deps.throttle.check(normalised, req.nowMs);
+  if (!gate.allowed) {
+    return {
+      status: 429,
+      headers: { ...BASE_HEADERS, 'retry-after': String(gate.retryAfterSec) },
+      body: {
+        error: 'too_many_attempts',
+        line: `Too many sign-in attempts for that email. Please wait about ${Math.ceil(gate.retryAfterSec / 60)} minute(s) and try again, or call Mike.`,
+      },
+    };
+  }
+
   const account = await deps.findAccountByEmail(normalised);
 
   // A passwordless row is passed through as `null`. signIn() spends the same
@@ -176,7 +198,10 @@ async function signInRoute(req: PortalRequest, deps: PortalDeps): Promise<Portal
       : null,
     password,
   );
-  if (!result.ok) return signInRejected(result.line);
+  if (!result.ok) {
+    deps.throttle.recordFailure(normalised, req.nowMs);
+    return signInRejected(result.line);
+  }
 
   const token = mintSession(result.propertyId, req.nowMs, deps.secret);
   if (!token) {
@@ -184,6 +209,10 @@ async function signInRoute(req: PortalRequest, deps: PortalDeps): Promise<Portal
     // UUIDs, handled anyway: a null token must never become a signed-in state.
     return fail(500, 'session_failed', 'We could not start your session. Please try again.');
   }
+
+  // Right password: wipe the count so an earlier run of typos cannot leave
+  // this customer one slip from a lockout for the rest of the window.
+  deps.throttle.recordSuccess(normalised);
 
   await deps.recordSignIn(result.propertyId);
 

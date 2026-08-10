@@ -156,6 +156,7 @@ import { createElevenLabsBridge, type BridgeRequestBody } from './voice/elevenla
 import type { Alerter } from './reception/receptionist.js';
 import { loadAppHtml, loadCrewHtml, loadPortalHtml } from './server/appPage.js';
 import { handlePortal, type PortalDeps } from './portal/routes.js';
+import { createSignInThrottle } from './portal/throttle.js';
 import { findPortalAccountByEmail, loadPortalView, recordPortalSignIn } from './db/portalRepo.js';
 import { emitSafe } from './binder/eventBus.js';
 import { runAgentSweep, startAgentScheduler } from './agents/sweep.js';
@@ -511,6 +512,10 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
 const portalDeps: PortalDeps = {
   get secret() { return env.portalSessionSecret; },
   hasDb,
+  // One throttle for the process lifetime — see src/portal/throttle.ts for
+  // why it counts emails rather than IPs, and why in-memory is the right
+  // answer for a single Railway service.
+  throttle: createSignInThrottle(),
   findAccountByEmail: findPortalAccountByEmail,
   loadView: loadPortalView,
   recordSignIn: recordPortalSignIn,

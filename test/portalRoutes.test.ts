@@ -19,6 +19,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { mintSession, SESSION_COOKIE } from '../src/portal/session.js';
 import { handlePortal, type PortalDeps, type PortalRequest } from '../src/portal/routes.js';
+import { createSignInThrottle, MAX_FAILURES } from '../src/portal/throttle.js';
 import type { PortalView } from '../src/portal/customerView.js';
 
 const SECRET = 'test-portal-secret-not-a-real-one';
@@ -44,6 +45,7 @@ function deps(over: Partial<PortalDeps> = {}): PortalDeps {
   return {
     secret: SECRET,
     hasDb: () => true,
+    throttle: createSignInThrottle(),
     findAccountByEmail: async () => ({
       // scrypt hash of 'correct-horse-battery' — see hashPassword(); the test
       // builds it at runtime below so no hash is hard-coded here.
@@ -249,6 +251,73 @@ describe('portal routes — sign-in', () => {
       deps({ findAccountByEmail }),
     );
     expect(findAccountByEmail).toHaveBeenCalledWith('someone@example.com');
+  });
+});
+
+describe('portal routes — brute force', () => {
+  function attempt(d: PortalDeps, password: string, at = NOW) {
+    return handlePortal(
+      req({ method: 'POST', path: '/portal/signin', body: { email: 'someone@example.com', password }, nowMs: at }),
+      d,
+    );
+  }
+
+  it('locks the address after enough wrong guesses', async () => {
+    const d = deps();
+    for (let i = 0; i < MAX_FAILURES; i++) {
+      const res = await attempt(d, 'wrong-password-' + i, NOW + i * 1000);
+      expect(res.status).toBe(401);
+    }
+    const locked = await attempt(d, 'wrong-again', NOW + 10_000);
+    expect(locked.status).toBe(429);
+    expect(locked.headers['retry-after']).toBeDefined();
+  });
+
+  it('refuses the RIGHT password while locked — the lock is not a hint filter', async () => {
+    const d = deps();
+    for (let i = 0; i < MAX_FAILURES; i++) await attempt(d, 'wrong-' + i, NOW + i * 1000);
+    const res = await attempt(d, PASSWORD, NOW + 10_000);
+    expect(res.status).toBe(429);
+    expect(res.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('never reaches the database once an address is locked', async () => {
+    const findAccountByEmail = vi.fn(async () => null);
+    const d = deps({ findAccountByEmail });
+    for (let i = 0; i < MAX_FAILURES; i++) await attempt(d, 'wrong-' + i, NOW + i * 1000);
+    const before = findAccountByEmail.mock.calls.length;
+    await attempt(d, 'wrong-again', NOW + 10_000);
+    expect(findAccountByEmail.mock.calls.length).toBe(before);
+  });
+
+  it('lets a correct password clear the slate', async () => {
+    const d = deps();
+    for (let i = 0; i < MAX_FAILURES - 1; i++) await attempt(d, 'wrong-' + i, NOW + i * 1000);
+    expect((await attempt(d, PASSWORD, NOW + 9_000)).status).toBe(200);
+    // Back to a full allowance rather than one slip from a lockout.
+    for (let i = 0; i < MAX_FAILURES - 1; i++) await attempt(d, 'wrong-again-' + i, NOW + 20_000 + i * 1000);
+    expect((await attempt(d, PASSWORD, NOW + 40_000)).status).toBe(200);
+  });
+
+  it('locks one address without locking anybody else out', async () => {
+    const d = deps();
+    for (let i = 0; i < MAX_FAILURES + 2; i++) await attempt(d, 'wrong-' + i, NOW + i * 1000);
+    const other = await handlePortal(
+      req({ method: 'POST', path: '/portal/signin', body: { email: 'different@example.com', password: PASSWORD }, nowMs: NOW + 10_000 }),
+      d,
+    );
+    // The only thing being asserted is that the lock did not SPILL: a
+    // different address is still allowed to try. (The stub account resolver
+    // ignores which email it was handed, so this particular attempt also
+    // succeeds — irrelevant here, and not what is being proved.)
+    expect(other.status).not.toBe(429);
+  });
+
+  it('puts no email in the lockout message', async () => {
+    const d = deps();
+    for (let i = 0; i < MAX_FAILURES; i++) await attempt(d, 'wrong-' + i, NOW + i * 1000);
+    const locked = await attempt(d, 'wrong', NOW + 10_000);
+    expect(JSON.stringify(locked.body)).not.toContain('someone@example.com');
   });
 });
 
