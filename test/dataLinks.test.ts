@@ -149,6 +149,29 @@ describe('the portal cannot reach a live table while the links are cut', () => {
     await expect(repo.loadPortalView('11111111-2222-3333-4444-555555555555')).rejects.toThrow(/links are CUT/i);
   });
 
+  it('will not store or read a neighbour access consent (task #42, cycle 14)', async () => {
+    // The consent table holds a bystander's email — somebody who is not even
+    // a customer. It gets the same §3 door as everything else, proved rather
+    // than assumed.
+    vi.resetModules();
+    process.env.SUPABASE_URL = REAL_LOOKING_URL;
+    process.env.SUPABASE_SERVICE_ROLE_KEY = REAL_LOOKING_KEY;
+    process.env.ARBO_DATA_LINKS = 'off';
+    const repo = await import('../src/db/accessConsentRepo.js');
+    await expect(repo.latestConsentForJob('11111111-2222-3333-4444-555555555555'))
+      .rejects.toThrow(/links are CUT/i);
+    await expect(repo.jobSiteAddress('11111111-2222-3333-4444-555555555555'))
+      .rejects.toThrow(/links are CUT/i);
+    await expect(repo.saveAccessConsent({
+      jobId: '11111111-2222-3333-4444-555555555555',
+      neighborEmail: 'neighbour@example.com',
+      letterHash: 'a'.repeat(64),
+      channel: 'crew_device',
+      crewMemberId: '22222222-3333-4444-5555-666666666666',
+      acceptedAt: '2026-08-11T00:00:00.000Z',
+    })).rejects.toThrow(/links are CUT/i);
+  });
+
   it('records no sign-in, and does not throw doing it', async () => {
     // recordPortalSignIn swallows its own failure ON PURPOSE: a customer who
     // authenticated correctly must not be bounced because a bookkeeping

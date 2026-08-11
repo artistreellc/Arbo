@@ -579,3 +579,30 @@ either ruling, so (b) shipped. `answerBasicQuestion` stays exported and tested
 — it is exactly what (a) would use.
 
 1279 → 1283 tests.
+
+### Cycle 14 (PART 1 of 2): storage for the neighbour's permission — 2026-08-11
+Task #42. `src/legal/propertyAccess.ts` (335 ln, 216 ln of tests) is one of the
+three modules the corrected audit found genuinely unwired: it can compose the
+access letter, hash it, and validate an acceptance, and **none of that could be
+saved or shown to anyone**. Table `property_access_consent` (migration 0017)
+has been sitting empty for the same reason.
+
+`src/db/accessConsentRepo.ts` is the join: `saveAccessConsent`,
+`latestConsentForJob`, `jobSiteAddress`. Two deliberate choices —
+- `saveAccessConsent` takes the **validated `AccessConsent`**, not raw fields,
+  so a caller cannot skip `recordAcceptance()`'s rules and still reach the
+  table. The database CHECK on crew_device witnesses is the third door.
+- `latestConsentForJob` returns WITHDRAWN rows rather than filtering them out.
+  `consentStanding()` renders "permission given then pulled" differently from
+  "nobody ever asked", and dropping withdrawn rows collapses those two into
+  the same silence — the §1B failure, on the one record a crew has to be right
+  about before crossing somebody else's land.
+
+**This is half the cycle and is being logged as half.** The routes are not
+written: the house pattern here is `createApi` + the `DataSource` interface,
+which is three more files, and I stopped rather than start a wiring I could
+not finish and verify in one pass. The engine is still not reachable from any
+door — #42 stays open. Next: the two API methods, the crew-phone screen.
+
+1283 → 1284 tests (§3 proof that the consent table stays unreachable while the
+links are cut — a bystander's email gets the same door as everything else).
