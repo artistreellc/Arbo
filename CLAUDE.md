@@ -166,6 +166,14 @@ Deploy by **FULL SHA** via `railway-agent`. The agent call often times out at
 60s even when the deploy succeeds — do not retry blindly, read
 `list-deployments` instead.
 
+**Auto-deploy is OFF, held off by a watch pattern (D68).** The service's
+Railway watch pattern `.no-autodeploy-see-DECISIONS-D68` names a path that
+exists nowhere in this repo, so a push to `main` matches nothing and Railway
+skips the build. That pattern is **load-bearing**: do not remove it, do not
+"tidy" it, and never commit a file by that name — any of those silently
+re-arms auto-deploy. The dashboard toggle may still read "enabled"; the
+pattern is what makes it inert.
+
 **Then verify all three:**
 1. build log `git_ref` matches your SHA,
 2. `db connected` in the deploy log,
