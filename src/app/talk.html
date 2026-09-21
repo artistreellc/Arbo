@@ -1,0 +1,32 @@
+<!doctype html>
+<!--
+  Talk to Arbo (Mike, 2026-09-21: "i need to be able to talk to arbo
+  directly via voice"). This page is DELIBERATELY separate from the cockpit
+  shell: the shell's law is no external scripts, ever — so the ElevenLabs
+  widget (which must come from their CDN to stay current with their
+  platform) lives here, one tap away, instead of inside it. Same agent,
+  same guarded Opus brain, same rules as the phone line.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Talk to Arbo — Art-is-Tree</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #0B0D10; color: #E8EAED; font-family: -apple-system, system-ui, sans-serif;
+         min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px 16px; text-align: center; }
+  .brand { font-size: 26px; font-weight: 900; letter-spacing: .12em; }
+  .brand small { color: #7C3AED; font-weight: 600; font-size: 15px; margin-left: 8px; }
+  p { max-width: 420px; opacity: .85; line-height: 1.5; margin: 0; }
+  a { color: #7C3AED; }
+</style>
+</head>
+<body>
+  <div class="brand">ARBO<small>Art-is-Tree</small></div>
+  <p>Tap the widget to talk — this is the same guarded brain that answers the phone line. Allow the microphone when asked.</p>
+  <p><a href="/">&larr; Back to the dashboard</a></p>
+  <elevenlabs-convai agent-id="agent_1901kyyxyj2sf9nsx9jascy2ssxj"></elevenlabs-convai>
+  <script src="https://elevenlabs.io/convai-widget/index.js" async></script>
+</body>
+</html>

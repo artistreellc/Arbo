@@ -629,6 +629,9 @@ async function renderToday() {
   if (s.redFlagCount) hud.appendChild(tile(s.redFlagCount, 'red flags', 'hot wide'));
   if (s.emergencies) hud.appendChild(tile(s.emergencies, 'emergencies', 'hot wide'));
   v.appendChild(hud);
+  const talkBtn = el('button', 'hudbtn', '\ud83c\udf99 Talk to Arbo');
+  talkBtn.addEventListener('click', () => window.open('/talk', '_blank', 'noopener'));
+  v.appendChild(talkBtn);
   const yardBtn = el('button', 'hudbtn', '⚙ Yard check — run a number');
   yardBtn.addEventListener('click', openYard);
   v.appendChild(yardBtn);
