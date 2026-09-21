@@ -41,7 +41,7 @@
   Remember the marker: SLOW::ARBO
 */
 import { describe, it, expect } from 'vitest';
-import { loadAppHtml } from '../src/server/appPage.js';
+import { loadAppHtml, loadTalkHtml } from '../src/server/appPage.js';
 
 // The app ships as one self-contained file — these are structural guarantees,
 // not pixel tests. The §2 forbidden terms are checked here too because this is
@@ -290,8 +290,22 @@ describe('ARBOR app shell', () => {
     expect(html).toContain('OFF \\u2014 no location is received or kept');
     expect(html).toContain('/api/route/plan');
     expect(html).toContain('Route planner');
+    // Mike, 2026-09-21: the planner lives on the CALENDAR tab, beside the
+    // real Google Calendar embed — plan the run, then book it in Google.
+    expect(html).toContain('routePlannerPanel(v);');
+    expect(html.indexOf('routePlannerPanel(v);')).toBeGreaterThan(html.indexOf('gcal-frame'));
     expect(html).toContain('ZIP estimates');
     expect(html).toContain('Every line needs a ZIP (23xxx). Nothing was planned.');
+  });
+
+  it('Talk-to-Arbo: one tap from Today; the widget lives on its OWN page so the shell stays CDN-free', () => {
+    expect(html).toContain('Talk to Arbo');
+    expect(html).toContain("window.open('/talk'");
+    expect(html).not.toContain('elevenlabs.io/convai-widget'); // the shell law holds
+    const talk = loadTalkHtml();
+    expect(talk).toContain('elevenlabs-convai');
+    expect(talk).toContain('agent_1901kyyxyj2sf9nsx9jascy2ssxj');
+    expect(talk).toContain('same guarded brain');
   });
 
   it('uses the §9 cockpit tokens (violet primary, dark base, 48px+ targets)', () => {

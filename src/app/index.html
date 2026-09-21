@@ -629,6 +629,9 @@ async function renderToday() {
   if (s.redFlagCount) hud.appendChild(tile(s.redFlagCount, 'red flags', 'hot wide'));
   if (s.emergencies) hud.appendChild(tile(s.emergencies, 'emergencies', 'hot wide'));
   v.appendChild(hud);
+  const talkBtn = el('button', 'hudbtn', '\ud83c\udf99 Talk to Arbo');
+  talkBtn.addEventListener('click', () => window.open('/talk', '_blank', 'noopener'));
+  v.appendChild(talkBtn);
   const yardBtn = el('button', 'hudbtn', '⚙ Yard check — run a number');
   yardBtn.addEventListener('click', openYard);
   v.appendChild(yardBtn);
@@ -838,6 +841,55 @@ async function renderLeads() {
   }
 }
 
+// ---------- Route planner (R16) — lives with the calendar (Mike, 2026-09-21) ----------
+function routePlannerPanel(v) {
+  v.appendChild(el('div', 'panel-title', 'Route planner'));
+  v.appendChild(el('div', 'storm-muted', 'One stop per line: address, city, ZIP. Twenty minutes on site each; Saturdays run Norfolk/Chesapeake/Portsmouth mornings and Virginia Beach after 12; weekdays start after 4.'));
+  const ta = document.createElement('textarea');
+  ta.id = 'route-stops';
+  ta.placeholder = '555 Synthetic Ave, Virginia Beach, 23451\n88 Sample St, Norfolk, 23503';
+  ta.style.cssText = 'width:100%;min-height:110px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:inherit;padding:10px;font-size:15px';
+  v.appendChild(ta);
+  const prow = el('div', 'loc-strip');
+  const daySel = document.createElement('select');
+  daySel.id = 'route-day';
+  daySel.style.cssText = 'min-height:48px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:inherit;padding:0 10px;font-size:15px';
+  for (const [val, label] of [['saturday', 'Saturday'], ['weekday', 'Weekday (after 4)']]) {
+    const o = document.createElement('option'); o.value = val; o.textContent = label; daySel.appendChild(o);
+  }
+  const pbtn = el('button', 'loc-toggle on', 'Plan route');
+  const pout = el('div');
+  pbtn.onclick = async () => {
+    pbtn.disabled = true;
+    pout.replaceChildren();
+    const cities = /virginia\s*beach|norfolk|chesapeake|portsmouth/i;
+    const stops = ta.value.split('\n').map((l) => l.trim()).filter(Boolean).map((line) => {
+      const zip = (line.match(/\b23\d{3}\b/) || [])[0];
+      const cm = line.match(cities);
+      return zip ? { label: line, zip: zip, city: cm ? cm[0] : undefined } : null;
+    });
+    if (stops.some((s) => !s)) {
+      pout.appendChild(el('div', 'storm', 'Every line needs a ZIP (23xxx). Nothing was planned.'));
+      pbtn.disabled = false;
+      return;
+    }
+    let plan;
+    try { plan = await api('/api/route/plan', { method: 'POST', body: { stops, day: daySel.value } }); }
+    catch (e) { pout.appendChild(el('div', 'storm', 'Could not plan the route \u2014 nothing was changed.')); pbtn.disabled = false; return; }
+    pout.appendChild(el('div', 'storm-muted', (plan.mode === 'live_traffic' ? '\ud83d\udea6 Live traffic \u00b7 ' : '\u2139 ZIP estimates \u00b7 ') + plan.note));
+    for (const w of plan.warnings) pout.appendChild(el('div', 'storm', '\u26a0 ' + w));
+    for (const vt of plan.visits) {
+      const row = el('div', 'loc-strip');
+      row.appendChild(el('span', '', vt.order + '. ' + vt.startTime + '\u2013' + vt.endTime + ' \u2014 ' + vt.label));
+      pout.appendChild(row);
+    }
+    pbtn.disabled = false;
+  };
+  prow.appendChild(daySel); prow.appendChild(pbtn);
+  v.appendChild(prow);
+  v.appendChild(pout);
+}
+
 // ---------- Calendar: the ACTUAL Google Calendar, embedded ----------
 // Not a rebuild, not a mirror view — Mike's own Art-is-Tree calendar rendered
 // by Google inside the app. He edits it here exactly like he does anywhere
@@ -883,6 +935,9 @@ function renderCalendar() {
   v.appendChild(frame);
   v.appendChild(el('div', 'cal-src',
     'Blank above? You are signed out of Google on this device \u2014 use the button.'));
+  // R16 (Mike): the planner belongs with the calendar — plan the run, then
+  // put it on the real Google Calendar with the button above.
+  routePlannerPanel(v);
 }
 
 // ---------- The Book (§6/#36: every property, tap into its twin) ----------
@@ -2329,53 +2384,6 @@ async function renderSettings() {
     v.appendChild(lrow);
   }
 
-  // R16: the route planner — live traffic when the Maps key exists, and the
-  // plan itself says which mode produced it.
-  v.appendChild(el('div', 'panel-title', 'Route planner'));
-  v.appendChild(el('div', 'storm-muted', 'One stop per line: address, city, ZIP. Twenty minutes on site each; Saturdays run Norfolk/Chesapeake/Portsmouth mornings and Virginia Beach after 12; weekdays start after 4.'));
-  const ta = document.createElement('textarea');
-  ta.id = 'route-stops';
-  ta.placeholder = '555 Synthetic Ave, Virginia Beach, 23451\n88 Sample St, Norfolk, 23503';
-  ta.style.cssText = 'width:100%;min-height:110px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:inherit;padding:10px;font-size:15px';
-  v.appendChild(ta);
-  const prow = el('div', 'loc-strip');
-  const daySel = document.createElement('select');
-  daySel.id = 'route-day';
-  daySel.style.cssText = 'min-height:48px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:inherit;padding:0 10px;font-size:15px';
-  for (const [val, label] of [['saturday', 'Saturday'], ['weekday', 'Weekday (after 4)']]) {
-    const o = document.createElement('option'); o.value = val; o.textContent = label; daySel.appendChild(o);
-  }
-  const pbtn = el('button', 'loc-toggle on', 'Plan route');
-  const pout = el('div');
-  pbtn.onclick = async () => {
-    pbtn.disabled = true;
-    pout.replaceChildren();
-    const cities = /virginia\s*beach|norfolk|chesapeake|portsmouth/i;
-    const stops = ta.value.split('\n').map((l) => l.trim()).filter(Boolean).map((line) => {
-      const zip = (line.match(/\b23\d{3}\b/) || [])[0];
-      const cm = line.match(cities);
-      return zip ? { label: line, zip: zip, city: cm ? cm[0] : undefined } : null;
-    });
-    if (stops.some((s) => !s)) {
-      pout.appendChild(el('div', 'storm', 'Every line needs a ZIP (23xxx). Nothing was planned.'));
-      pbtn.disabled = false;
-      return;
-    }
-    let plan;
-    try { plan = await api('/api/route/plan', { method: 'POST', body: { stops, day: daySel.value } }); }
-    catch (e) { pout.appendChild(el('div', 'storm', 'Could not plan the route \u2014 nothing was changed.')); pbtn.disabled = false; return; }
-    pout.appendChild(el('div', 'storm-muted', (plan.mode === 'live_traffic' ? '\ud83d\udea6 Live traffic \u00b7 ' : '\u2139 ZIP estimates \u00b7 ') + plan.note));
-    for (const w of plan.warnings) pout.appendChild(el('div', 'storm', '\u26a0 ' + w));
-    for (const vt of plan.visits) {
-      const row = el('div', 'loc-strip');
-      row.appendChild(el('span', '', vt.order + '. ' + vt.startTime + '\u2013' + vt.endTime + ' \u2014 ' + vt.label));
-      pout.appendChild(row);
-    }
-    pbtn.disabled = false;
-  };
-  prow.appendChild(daySel); prow.appendChild(pbtn);
-  v.appendChild(prow);
-  v.appendChild(pout);
 }
 
 function switchTab(which) {

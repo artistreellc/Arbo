@@ -154,7 +154,7 @@ import { planRouteLive } from './ops/routePlanner.js';
 import { fetchDriveMinutesMatrix } from './integrations/googleRoutes.js';
 import { withinWorkingHours } from './ops/locationIntel.js';
 import type { Alerter } from './reception/receptionist.js';
-import { loadAppHtml, loadCrewHtml } from './server/appPage.js';
+import { loadAppHtml, loadCrewHtml, loadTalkHtml } from './server/appPage.js';
 import { emitSafe } from './binder/eventBus.js';
 import { runAgentSweep, startAgentScheduler } from './agents/sweep.js';
 import {
@@ -559,6 +559,12 @@ export function createArborRequestHandler() {
     try {
       // §8C.1 the CREW door. Separate surface, separate shell — a crew phone
       // never loads the admin cockpit.
+      // Talk to Arbo — the voice widget page (Mike, 2026-09-21). Served like
+      // the other shells; the agent itself is public-id, so no key gate.
+      if (req.method === 'GET' && (url.pathname === '/talk' || url.pathname === '/talk/')) {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+        return res.end(loadTalkHtml());
+      }
       if (req.method === 'GET' && (url.pathname === '/crew' || url.pathname === '/crew/')) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
         return res.end(loadCrewHtml());

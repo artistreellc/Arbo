@@ -70,3 +70,13 @@ export function loadAppHtml(): string {
 export function loadCrewHtml(): string {
   return load('crew.html');
 }
+
+/**
+ * Talk-to-Arbo page (Mike, 2026-09-21). Its own file ON PURPOSE: it carries
+ * the ElevenLabs widget from their CDN, which the cockpit shell's
+ * no-external-scripts law forbids — so the widget lives one tap away
+ * instead of inside the shell.
+ */
+export function loadTalkHtml(): string {
+  return load('talk.html');
+}
