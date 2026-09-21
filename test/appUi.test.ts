@@ -263,6 +263,21 @@ describe('ARBOR app shell', () => {
     expect(html).toContain('if (p.campaignsKnown) v.appendChild(campaignComposer(campSlot))');
   });
 
+  it('the reception instrument is on the home surface and never renders a dead feed as quiet', () => {
+    expect(html).toContain('/api/reception/status');
+    expect(html).toContain('Reception: status unavailable right now');
+    expect(html).toContain('no calls since deploy');
+    expect(html).toContain('rejected call attempt');
+    expect(html).toContain('receptionStrip().then((b) => { if (b) recSlot.appendChild(b); });');
+  });
+
+  it('the settings screen exists, is honest about persistence, and fails safe', () => {
+    expect(html).toContain('id="settings-btn"');
+    expect(html).toContain('/api/settings/channels');
+    expect(html).toContain('reset to the coded defaults on a redeploy');
+    expect(html).toContain('Could not load the channel switches. Nothing was changed.');
+  });
+
   it('uses the §9 cockpit tokens (violet primary, dark base, 48px+ targets)', () => {
     expect(html).toContain('#7C3AED'); // luminous purple accent
     expect(html).toContain('#0B0D10'); // near-black base

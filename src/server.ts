@@ -146,6 +146,9 @@ import { loadAllConfig } from './config/loadConfig.js';
 import { env } from './env.js';
 import { createVoiceLlm } from './voice/anthropicLlm.js';
 import { createElevenLabsBridge, type BridgeRequestBody } from './voice/elevenlabsBridge.js';
+import { createGoogleGmailReader } from './integrations/gmail.js';
+import { createRefreshTokenProvider } from './integrations/googleOAuth.js';
+import { LEAD_CHANNELS, channelIsOff, setChannelOff } from './reception/leadMail.js';
 import type { Alerter } from './reception/receptionist.js';
 import { loadAppHtml, loadCrewHtml } from './server/appPage.js';
 import { emitSafe } from './binder/eventBus.js';
@@ -878,6 +881,30 @@ export function createArborRequestHandler() {
         if (!hasDb()) return send(503, { error: 'db_not_configured' });
         return send(200, await runAgentSweep(api, alertsProvider));
       }
+      // Lead channel switches (cycle 34): Mike toggles each channel from the
+      // Settings screen. Runtime state over the classifier's own OFF array —
+      // applies to the next sweep instantly, resets to code defaults on
+      // redeploy (said on the screen, not hidden). Behind the /api gate.
+      if (req.method === 'GET' && url.pathname === '/api/settings/channels') {
+        return send(200, {
+          channels: LEAD_CHANNELS.map((c) => ({ id: c.id, label: c.label, on: !channelIsOff(c.id) })),
+          note: 'Switches apply immediately and reset to the coded defaults on a redeploy.',
+        });
+      }
+      if (req.method === 'POST' && url.pathname === '/api/settings/channels') {
+        const body = (await readJson(req)) as { id?: unknown; on?: unknown };
+        const ch = LEAD_CHANNELS.find((c) => c.id === body.id);
+        if (!ch || typeof body.on !== 'boolean') return send(400, { error: 'unknown_channel_or_bad_toggle' });
+        setChannelOff(ch.id, !body.on);
+        console.error(`[settings] lead channel ${ch.id} switched ${body.on ? 'ON' : 'OFF'}`); // audit line — channel id only, no PII
+        return send(200, { id: ch.id, on: !channelIsOff(ch.id) });
+      }
+      // Reception instrument for the cockpit (§9): counts and timestamps only
+      // — no caller text, no numbers, nothing §4.3 forbids. In-memory since
+      // boot; llmKeyPresent is the "callers hear the fallback line" tell.
+      if (req.method === 'GET' && url.pathname === '/api/reception/status') {
+        return send(200, { ...bridge.status(), llmKeyPresent: Boolean(env.anthropic.apiKey) });
+      }
       // ElevenLabs custom-LLM endpoint (the agent's Server URL points at
       // /voice/llm; the platform appends the OpenAI-style path).
       if (req.method === 'POST' && (url.pathname === '/voice/llm/chat/completions' || url.pathname === '/voice/llm/v1/chat/completions')) {
@@ -917,13 +944,20 @@ export function startServer(port: number) {
   // scheduler floors at an hour and its routines carry no Gmail connector,
   // so the loop lives here instead.
   //
-  // THE READER IS NULL UNTIL A TOKEN EXISTS, and that is the honest state,
-  // not a stub: `createGoogleGmailReader(getAccessToken)` is written and
-  // tested, and the one thing missing is a consumer-Gmail OAuth token
-  // (backlog #36 — Mike's call, see src/integrations/gmail.ts). Started
-  // anyway, because a watch reporting UNAVAILABLE every hour is a fact an
-  // operator can act on; a watch that was never started is silence.
-  inboxWatch = startInboxWatch(null);
+  // THE READER GOES LIVE WHEN ALL THREE GMAIL_OAUTH_* VARS EXIST — the
+  // refresh token is Mike's one-time gmail.readonly consent (backlog #36).
+  // With any of the three absent the reader stays null, and that is the
+  // honest state, not a stub: the watch reports UNAVAILABLE every hour,
+  // which an operator can act on; a watch never started is silence.
+  const g = env.google;
+  const gmailReader = g.gmailOauthClientId && g.gmailOauthClientSecret && g.gmailOauthRefreshToken
+    ? createGoogleGmailReader(createRefreshTokenProvider({
+        clientId: g.gmailOauthClientId,
+        clientSecret: g.gmailOauthClientSecret,
+        refreshToken: g.gmailOauthRefreshToken,
+      }))
+    : null;
+  inboxWatch = startInboxWatch(gmailReader);
   // §8A.6f: the agents run on their own clock, not only when Mike taps.
   startAgentScheduler(
     createApi(createServerSource(), { alerts: createNwsAlertsProvider((u, i) => fetch(u, i)) }),

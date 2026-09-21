@@ -194,7 +194,7 @@ export const KNOWLEDGE_BASE: KbEntry[] = [
   },
   {
     triggers: ['insurance', 'insured', 'licensed', 'bonded'],
-    answer: "We're fully licensed and insured, and BBB A+ rated. Mike can bring proof of insurance out with him if you'd like a copy.",
+    answer: "We're fully licensed and insured, and Google Verified, 5 star rated. Mike can bring proof of insurance out with him if you'd like a copy.",
   },
   {
     triggers: ['permit', 'do i need a permit', 'city permit'],

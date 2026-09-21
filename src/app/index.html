@@ -83,11 +83,11 @@ header{
 .brand small{color:var(--canopy)}
 .brand small{font-weight:600;font-size:15px;opacity:.85;margin-left:8px}
 #dateline{font-size:15px;opacity:.9;margin-top:2px}
-#refresh{
+#refresh,#settings-btn{
   min-width:48px;min-height:48px;border:1px solid var(--border);border-radius:var(--r-md);
   background:var(--surface);color:var(--canopy);font-size:20px;cursor:pointer;
 }
-#refresh:active{opacity:.7}
+#refresh:active,#settings-btn:active{opacity:.7}
 main{padding:16px;max-width:640px;margin:0 auto}
 .view{display:none}
 .view.active{display:block}
@@ -367,7 +367,10 @@ nav button .ico{font-size:20px;line-height:1}
       <div class="brand">ARBO<small>Art-is-Tree</small></div>
       <div id="dateline"></div>
     </div>
-    <button id="refresh" title="Refresh" aria-label="Refresh">&#8635;</button>
+    <div style="display:flex;gap:8px">
+      <button id="settings-btn" title="Settings" aria-label="Settings">&#9881;</button>
+      <button id="refresh" title="Refresh" aria-label="Refresh">&#8635;</button>
+    </div>
   </div>
 </header>
 
@@ -379,6 +382,7 @@ nav button .ico{font-size:20px;line-height:1}
   <div id="view-followups" class="view"></div>
   <div id="view-calls" class="view"></div>
   <div id="view-perf" class="view"></div>
+  <div id="view-settings" class="view"></div>
 </main>
 
 <div id="twin" class="sheet">
@@ -554,6 +558,31 @@ async function locationStrip() {
   return wrap;
 }
 
+// ---------- Reception strip (the phone line as an instrument — §1B: counts, or the reason there are none) ----------
+async function receptionStrip() {
+  let s;
+  try { s = await api('/api/reception/status'); }
+  catch (e) { return e.code === 401 ? null : el('div', 'storm-muted', '\u260e Reception: status unavailable right now.'); }
+  const wrap = el('div');
+  if (!s.configured) {
+    wrap.appendChild(el('div', 'storm', '\u260e Reception bridge NOT configured \u2014 no bridge secret on the server. Calls cannot reach ARBO.'));
+    return wrap;
+  }
+  if (s.unauthorizedSinceBoot > 0) {
+    // The repoint tripwire: a wrong ElevenLabs key otherwise fails SILENTLY into the platform's fallback model.
+    wrap.appendChild(el('div', 'storm', '\u260e ' + s.unauthorizedSinceBoot + ' rejected call attempt(s) since deploy \u2014 the ElevenLabs key does not match the bridge secret. Callers are NOT reaching the guarded brain.'));
+  }
+  const strip = el('div', 'loc-strip');
+  strip.appendChild(el('span', '', s.turnsSinceBoot === 0
+    ? '\u260e Reception ready \u2014 no calls since deploy (' + fmtTime(s.bootedAt) + ')'
+    : '\u260e ' + s.callsSinceBoot + ' call(s) \u00b7 ' + s.turnsSinceBoot + ' turn(s) since deploy \u00b7 last ' + fmtTime(s.lastTurnAt)));
+  wrap.appendChild(strip);
+  if (!s.llmKeyPresent) wrap.appendChild(el('div', 'storm-muted', 'LLM key missing on the server \u2014 callers hear only the safe fallback line.'));
+  if (s.emergencyCallsSinceBoot > 0) wrap.appendChild(el('div', 'storm', '\ud83d\udea8 ' + s.emergencyCallsSinceBoot + ' emergency call(s) since deploy \u2014 details are in the ElevenLabs dashboard, not here.'));
+  if (s.guardBlockedTurnsSinceBoot > 0) wrap.appendChild(el('div', 'storm-muted', '\ud83d\udee1 Guard intervened on ' + s.guardBlockedTurnsSinceBoot + ' turn(s) \u2014 blocked replies were replaced with approved lines.'));
+  return wrap;
+}
+
 // ---------- Today (Morning Brief) ----------
 async function renderToday() {
   const v = $('view-today');
@@ -562,6 +591,9 @@ async function renderToday() {
   const locSlot = el('div');
   v.appendChild(locSlot);
   locationStrip().then((b) => { if (b) locSlot.appendChild(b); });
+  const recSlot = el('div');
+  v.appendChild(recSlot);
+  receptionStrip().then((b) => { if (b) recSlot.appendChild(b); });
   const start = new Date(); start.setHours(0, 0, 0, 0);
   const end = new Date(start); end.setDate(end.getDate() + 1);
   let brief;
@@ -2230,10 +2262,40 @@ $('keygo').addEventListener('click', async () => {
 });
 $('keyinput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('keygo').click(); });
 
+// ---------- Settings (cycle 34): every lead channel gets its own switch ----------
+async function renderSettings() {
+  const v = $('view-settings');
+  v.replaceChildren();
+  v.appendChild(el('div', 'panel-title', 'Lead channel switches'));
+  let s;
+  try { s = await api('/api/settings/channels'); }
+  catch (e) {
+    if (e.code === 401) return showKeywall();
+    // A dead settings feed is NAMED — and nothing was changed (§1B).
+    v.appendChild(state('Settings unavailable', 'Could not load the channel switches. Nothing was changed.'));
+    return;
+  }
+  // The honesty line: these are runtime switches until the data links carry a durable home.
+  v.appendChild(el('div', 'storm-muted', 'Switches apply to the inbox check immediately. They reset to the coded defaults on a redeploy \u2014 a durable home comes with the data links.'));
+  for (const c of s.channels) {
+    const row = el('div', 'loc-strip');
+    const btn = el('button', 'loc-toggle' + (c.on ? ' on' : ''), c.on ? 'ON' : 'OFF');
+    btn.onclick = async () => {
+      btn.disabled = true;
+      try { await api('/api/settings/channels', { method: 'POST', body: { id: c.id, on: !c.on } }); } catch (e) {}
+      renderSettings();
+    };
+    row.appendChild(btn);
+    row.appendChild(el('span', '', c.label));
+    v.appendChild(row);
+  }
+}
+
 function switchTab(which) {
-  for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf']) {
+  for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf', 'settings']) {
     $('view-' + t).classList.toggle('active', which === t);
-    $('tab-' + t).classList.toggle('active', which === t);
+    const tb = $('tab-' + t); // Settings opens from the header gear — it has no nav tab
+    if (tb) tb.classList.toggle('active', which === t);
   }
 }
 for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf']) {
@@ -2242,6 +2304,7 @@ for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf'])
 
 function refreshAll() { renderToday(); renderLeads(); renderCalendar(); renderBook(); renderFollowUps(); renderCalls(); renderPerformance(); }
 $('refresh').addEventListener('click', refreshAll);
+$('settings-btn').addEventListener('click', () => { switchTab('settings'); renderSettings(); });
 
 $('dateline').textContent = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
 refreshAll();
