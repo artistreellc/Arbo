@@ -154,7 +154,7 @@ import { planRouteLive } from './ops/routePlanner.js';
 import { fetchDriveMinutesMatrix } from './integrations/googleRoutes.js';
 import { withinWorkingHours } from './ops/locationIntel.js';
 import type { Alerter } from './reception/receptionist.js';
-import { loadAppHtml, loadCrewHtml, loadTalkHtml } from './server/appPage.js';
+import { loadAppHtml, loadCrewHtml, loadTalkHtml, loadTalkWidgetJs } from './server/appPage.js';
 import { emitSafe } from './binder/eventBus.js';
 import { runAgentSweep, startAgentScheduler } from './agents/sweep.js';
 import {
@@ -564,6 +564,11 @@ export function createArborRequestHandler() {
       if (req.method === 'GET' && (url.pathname === '/talk' || url.pathname === '/talk/')) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
         return res.end(loadTalkHtml());
+      }
+      // The widget code itself, from OUR server — vendored npm bundle, no CDN.
+      if (req.method === 'GET' && url.pathname === '/talk/widget.js') {
+        res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'public, max-age=3600' });
+        return res.end(loadTalkWidgetJs());
       }
       if (req.method === 'GET' && (url.pathname === '/crew' || url.pathname === '/crew/')) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });

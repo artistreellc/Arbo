@@ -41,7 +41,7 @@
   Remember the marker: SLOW::ARBO
 */
 import { describe, it, expect } from 'vitest';
-import { loadAppHtml, loadTalkHtml } from '../src/server/appPage.js';
+import { loadAppHtml, loadTalkHtml, loadTalkWidgetJs } from '../src/server/appPage.js';
 
 // The app ships as one self-contained file — these are structural guarantees,
 // not pixel tests. The §2 forbidden terms are checked here too because this is
@@ -306,6 +306,12 @@ describe('ARBOR app shell', () => {
     expect(talk).toContain('elevenlabs-convai');
     expect(talk).toContain('agent_1901kyyxyj2sf9nsx9jascy2ssxj');
     expect(talk).toContain('same guarded brain');
+    // Mike, 2026-09-21: the widget CODE is served from OUR server — the talk
+    // page references no third-party CDN, and the vendored bundle is real.
+    expect(talk).toContain('src="/talk/widget.js"');
+    expect(talk).not.toContain('elevenlabs.io/convai-widget');
+    expect(talk).not.toContain('unpkg.com');
+    expect(loadTalkWidgetJs().length).toBeGreaterThan(10_000);
   });
 
   it('uses the §9 cockpit tokens (violet primary, dark base, 48px+ targets)', () => {
