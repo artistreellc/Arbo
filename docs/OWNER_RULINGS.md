@@ -314,3 +314,23 @@ reports "channels seen" must not imply those are quiet.
   scanned address matching no existing property is HELD for Mike to match
   rather than creating a possibly-duplicate twin. See
   `docs/DOC_SCAN_RECONCILIATION.md`.
+
+---
+
+## R12 — The inbox check's channels, in Mike's words
+**Ruling: 2026-09-21.** Mike: *"the gmail inbox check needs to be for only
+cailrail, form submissions from tree leads today and the website and direct
+emails only requesting an estiamate or sending in an approved work order"* —
+then, corrected the same day when the exclusion was flagged back to him:
+*"lsa and google ads and yelp stay on."*
+
+**Net effect:** every previously-live channel stays live (CallRail call+form
+— Tree Leads Today arrives through the CallRail form alert per R11 — website
+form, LSA, Google Ads lead form, Yelp; HomeAdvisor/Angi stays seasonally off
+per the 2026-08-03 ruling). The one ADDITION is **direct email**: a person
+writing in to request an estimate, or sending an approved work order, is now
+recognised (`provider: 'direct_email'`) instead of falling into "other mail".
+Containment, since a direct email has no sender anchor: never a platform
+sender (the D65 alarm path must keep working), never mail with an
+unsubscribe footer (marketing), and only an actual ask. City permit mail
+sighting stays — flagged to Mike with the ruling and not objected to.

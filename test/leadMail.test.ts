@@ -798,3 +798,73 @@ describe('CallRail: all five event subjects, not just "Call from"', () => {
     }).isLeadNotification).toBe(false);
   });
 });
+
+// Mike, 2026-09-21: the inbox check covers CallRail, Tree Leads Today forms
+// (which arrive through CallRail per R11), the website form, and "direct
+// emails only requesting an estimate or sending in an approved work order."
+// LSA, Google Ads and Yelp STAY ON (his correction, same day). Direct email
+// is the one NEW channel: no sender anchor exists by definition, so the
+// containment is (a) never a platform sender, (b) never marketing mail
+// (unsubscribe footer), (c) an actual ask, not the word "quote" in passing.
+describe('direct email — estimate requests and approved work orders (Mike, 2026-09-21)', () => {
+  it('recognises a first-person estimate request from a person', () => {
+    const r = classifyLeadMail({
+      from: 'Jane Tester <jane.tester@example.com>',
+      subject: 'Tree work',
+      body: 'Hi, I need an estimate for taking down two oaks in my backyard in Norfolk. Thanks, Jane',
+    });
+    expect(r.isLeadNotification).toBe(true);
+    expect(r.provider).toBe('direct_email');
+    expect(r.lead.email).toBe('jane.tester@example.com');
+    expect(r.lead.name).toBe('Jane Tester');
+    expect(r.lead.details).toContain('estimate request');
+  });
+
+  it('recognises a request-shaped subject line', () => {
+    const r = classifyLeadMail({
+      from: 'bob@example.net',
+      subject: 'Requesting a quote for stump grinding',
+      body: 'Two stumps, front yard.',
+    });
+    expect(r.provider).toBe('direct_email');
+  });
+
+  it('recognises an approved work order', () => {
+    const r = classifyLeadMail({
+      from: 'Sam Tester <sam@example.org>',
+      subject: 'Work order #14',
+      body: 'Approved — go ahead with the work order as written.',
+    });
+    expect(r.provider).toBe('direct_email');
+    expect(r.lead.details).toContain('approved work order');
+  });
+
+  it('does NOT lead-ify marketing mail that dangles a free quote', () => {
+    const r = classifyLeadMail({
+      from: 'deals@solarblast.example.com',
+      subject: 'Get a free quote on solar today!',
+      body: 'We are offering free quotes all month. Unsubscribe at any time.',
+    });
+    expect(r.isLeadNotification).toBe(false);
+    expect(r.provider).toBeNull();
+  });
+
+  it('never claims a platform sender as direct email — the known-sender alarm path must keep working (D65)', () => {
+    const r = classifyLeadMail({
+      from: 'learn@callrail.com',
+      subject: 'Need a quote on our new plan?',
+      body: 'I want to show you our estimate features.',
+    });
+    expect(r.isLeadNotification).toBe(false);
+    expect(r.provider).toBeNull();
+  });
+
+  it('a plain email with no ask stays not-a-lead', () => {
+    const r = classifyLeadMail({
+      from: 'neighbor@example.com',
+      subject: 'Saturday',
+      body: 'Great seeing you at the game.',
+    });
+    expect(r.isLeadNotification).toBe(false);
+  });
+});

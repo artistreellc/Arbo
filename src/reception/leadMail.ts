@@ -58,7 +58,7 @@
 
 import { resolveServiceCity, serviceCityForZip, extractZip, type ServiceCity } from '../lib/address.js';
 
-export type LeadMailProvider = 'google_ads_lead_form' | 'callrail_call' | 'callrail_web_form' | 'lsa_call' | 'home_advisor' | 'yelp' | 'website_form';
+export type LeadMailProvider = 'google_ads_lead_form' | 'callrail_call' | 'callrail_web_form' | 'lsa_call' | 'home_advisor' | 'yelp' | 'website_form' | 'direct_email';
 
 /**
  * CHANNELS MIKE HAS SWITCHED OFF. Owner instruction, 2026-08-03:
@@ -550,5 +550,54 @@ export function classifyLeadMail(input: LeadMailInput): LeadMailResult {
   if (/@messaging\.yelp\.com/.test(from) && /^Message from .+ for Art.?is.?Tree/i.test(input.subject)) {
     return parseYelp(input);
   }
-  return NOT_A_LEAD;
+  return classifyDirectEmail(input, from);
+}
+
+// Direct email (Mike, 2026-09-21): "direct emails only requesting an estimate
+// or sending in an approved work order." The one channel with NO sender
+// anchor, so containment comes from three gates instead:
+//   1. never a platform sender — unmatched platform mail must keep flowing to
+//      the known-sender alarm path (D65), not become a phantom direct lead;
+//   2. never marketing — commercial mail carries an unsubscribe footer
+//      (CAN-SPAM), a customer writing in does not;
+//   3. an actual ask — a request-shaped sentence or an approved work order,
+//      not the word "quote" in passing.
+const PLATFORM_SENDER = /@(?:[\w-]+\.)*(?:google\.com|callrail\.com|homeadvisor\.com|angi\.com|angieslist\.com|yelp\.com|formsubmit\.co)(?:>|\s|$)/i;
+const MARKETING_FOOTER = /unsubscribe|view (?:this )?(?:e-?mail )?in (?:your )?browser|manage (?:your )?(?:email )?preferences|opt[ -]?out/i;
+const WORK_ORDER = /\bwork\s*order\b/i;
+const WORK_ORDER_GO = /\bapprov\w*\b|\baccept\w*\b|\bsigned?\b|\bgo[- ]ahead\b/i;
+const ASK_SUBJECT = /\b(?:estimate|quote|bid)\b/i;
+const ASK_WORD = /\b(?:request\w*|need|want|looking|interested|schedule|can you|could you|please)\b/i;
+const ASK_FIRST_PERSON = /\b(?:i|we)\b[^.!?\n]{0,80}\b(?:estimate|quote|bid)\b/i;
+
+function classifyDirectEmail(input: LeadMailInput, from: string): LeadMailResult {
+  if (PLATFORM_SENDER.test(from.trim())) return NOT_A_LEAD;
+  const both = `${input.subject}\n${input.body}`;
+  if (MARKETING_FOOTER.test(both)) return NOT_A_LEAD;
+
+  const isWorkOrder = WORK_ORDER.test(both) && WORK_ORDER_GO.test(both);
+  const isEstimateAsk =
+    (ASK_SUBJECT.test(input.subject) && ASK_WORD.test(both)) || ASK_FIRST_PERSON.test(input.body);
+  if (!isWorkOrder && !isEstimateAsk) return NOT_A_LEAD;
+
+  // Display name and address from the ORIGINAL From header — `from` arrives
+  // lowercased for matching, which would mangle a person's name.
+  const raw = input.from.trim();
+  const angle = raw.match(/^\s*"?([^"<]+?)"?\s*<([^>]+)>\s*$/);
+  const email = (angle ? angle[2] : raw).trim().toLowerCase();
+  const name = angle ? angle[1].trim() : undefined;
+
+  return {
+    isLeadNotification: true,
+    provider: 'direct_email',
+    lead: {
+      source: 'Direct email',
+      ...(name ? { name } : {}),
+      email,
+      // Which of Mike's two rules matched — the report line, not a triage
+      // decision. A mail matching both is a work order (the stronger fact).
+      details: isWorkOrder ? 'Direct email — approved work order' : 'Direct email — estimate request',
+    },
+    inServiceArea: null,
+  };
 }
