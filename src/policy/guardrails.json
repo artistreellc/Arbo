@@ -95,6 +95,7 @@
     "captureConversationally": [
       "name",
       "address",
+      "zipCode",
       "phone",
       "bestCallback"
     ],

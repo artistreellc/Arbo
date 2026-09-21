@@ -83,6 +83,11 @@ describe('receptionist system prompt (built from config, §3)', () => {
     expect(prompt).toContain('who do I have the pleasure');
   });
 
+  it('always gathers the ZIP code (Mike, 2026-09-21)', () => {
+    expect(prompt).toContain('ZIP code');
+    expect(prompt).toContain('always gather the ZIP code, every call');
+  });
+
   it("carries Mike's business facts (R14) — payments, insurance, Saturday windows, lead time, exclusions", () => {
     expect(prompt).toContain('4% processing surcharge');
     for (const s of ['Zelle', 'Venmo', 'Cash App', 'PayPal']) expect(prompt).toContain(s);
