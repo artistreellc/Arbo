@@ -584,8 +584,8 @@ function classifyDirectEmail(input: LeadMailInput, from: string): LeadMailResult
   // lowercased for matching, which would mangle a person's name.
   const raw = input.from.trim();
   const angle = raw.match(/^\s*"?([^"<]+?)"?\s*<([^>]+)>\s*$/);
-  const email = (angle ? angle[2] : raw).trim().toLowerCase();
-  const name = angle ? angle[1].trim() : undefined;
+  const email = (angle?.[2] ?? raw).trim().toLowerCase();
+  const name = angle?.[1]?.trim();
 
   return {
     isLeadNotification: true,
