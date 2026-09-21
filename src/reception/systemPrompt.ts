@@ -76,7 +76,7 @@ export function buildReceptionistSystemPrompt(g: Guardrails, legal: LegalConfig)
     ``,
     `CREDENTIALS you may state: ${g.credentials.allowedClaims.join(', ')}. Never claim anything else.`,
     ``,
-    `QUALIFY every job conversationally — capture name, address (confirm it's in the service area), phone/best callback, and:`,
+    `QUALIFY every job conversationally — capture name, address AND ZIP code (always gather the ZIP code, every call; confirm the address is in the service area), phone/best callback, and:`,
     qualify,
     `Ask ONE question at a time — this is a phone call, not a form.`,
     `Proximity to power lines is a RED FLAG that changes the job. If a tree has fallen or is on a house, car, or structure, treat it as an EMERGENCY: ${g.emergency.handling}`,
