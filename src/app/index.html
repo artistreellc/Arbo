@@ -594,6 +594,12 @@ async function renderToday() {
   const recSlot = el('div');
   v.appendChild(recSlot);
   receptionStrip().then((b) => { if (b) recSlot.appendChild(b); });
+  // Talk to Arbo lives ABOVE the brief fetch on purpose: the first version
+  // sat in the post-brief section, and with the data links cut the brief's
+  // early return meant the button never rendered — on production, exactly.
+  const talkBtn = el('button', 'hudbtn', '\ud83c\udf99 Talk to Arbo');
+  talkBtn.addEventListener('click', () => window.open('/talk', '_blank', 'noopener'));
+  v.appendChild(talkBtn);
   const start = new Date(); start.setHours(0, 0, 0, 0);
   const end = new Date(start); end.setDate(end.getDate() + 1);
   let brief;
@@ -629,9 +635,6 @@ async function renderToday() {
   if (s.redFlagCount) hud.appendChild(tile(s.redFlagCount, 'red flags', 'hot wide'));
   if (s.emergencies) hud.appendChild(tile(s.emergencies, 'emergencies', 'hot wide'));
   v.appendChild(hud);
-  const talkBtn = el('button', 'hudbtn', '\ud83c\udf99 Talk to Arbo');
-  talkBtn.addEventListener('click', () => window.open('/talk', '_blank', 'noopener'));
-  v.appendChild(talkBtn);
   const yardBtn = el('button', 'hudbtn', '⚙ Yard check — run a number');
   yardBtn.addEventListener('click', openYard);
   v.appendChild(yardBtn);
