@@ -96,6 +96,41 @@ export function hintContextLine(h: ProximityHint): string | null {
   return `CALL CONTEXT: this caller's property is ${why}, so a weekday estimate after 4 THIS WEEK is easy to make happen — offer it with confidence. NEVER tell the caller where Mike is, works, lives, or drives; the reason stays internal. You still never promise an exact time.`;
 }
 
+// ── Live office-phone location (Mike, 2026-09-21): the phone posts its ZIP
+// during the 8am–8pm Mon–Sat window; a Settings toggle can shut the whole
+// thing off. In-memory like everything else here — a stale ping says nothing
+// about where Mike is NOW, so freshness is enforced, not assumed. ──
+export const LIVE_ZIP_FRESH_MS = 60 * 60 * 1000;
+
+let locationEnabled = true; // Mike's ruling: on by default, toggle in Settings
+let livePing: { zip: string; atMs: number } | null = null;
+
+export function setLocationEnabled(on: boolean): void {
+  locationEnabled = on;
+  if (!on) livePing = null; // off means OFF — nothing retained
+}
+export function isLocationEnabled(): boolean {
+  return locationEnabled;
+}
+export function setLivePingZip(zip: string, atMs: number): void {
+  if (!locationEnabled) return;
+  livePing = { zip, atMs };
+}
+/** The live anchor, or null when the toggle is off / no fresh ping exists. */
+export function getLiveWorkZip(nowMs: number): string | null {
+  if (!locationEnabled || livePing === null) return null;
+  return nowMs - livePing.atMs <= LIVE_ZIP_FRESH_MS ? livePing.zip : null;
+}
+/** Admin-screen state: the owner sees his own toggle and freshness plainly. */
+export function liveLocationState(nowMs: number): { enabled: boolean; zip: string | null; ageMinutes: number | null } {
+  const zip = getLiveWorkZip(nowMs);
+  return {
+    enabled: locationEnabled,
+    zip,
+    ageMinutes: zip && livePing ? Math.round((nowMs - livePing.atMs) / 60000) : null,
+  };
+}
+
 // ── Today's work ZIP: in-memory, Settings-set, honest about resetting. ──
 let todayWorkZip: string | null = null;
 export function setTodayWorkZip(zip: string | null): void {

@@ -285,6 +285,15 @@ describe('ARBOR app shell', () => {
     expect(html).toContain('Work-ZIP setting unavailable right now. Nothing was changed.');
   });
 
+  it('the location toggle and route planner are on the settings screen, honest in both modes (R15/R16)', () => {
+    expect(html).toContain('/api/settings/location');
+    expect(html).toContain('OFF \\u2014 no location is received or kept');
+    expect(html).toContain('/api/route/plan');
+    expect(html).toContain('Route planner');
+    expect(html).toContain('ZIP estimates');
+    expect(html).toContain('Every line needs a ZIP (23xxx). Nothing was planned.');
+  });
+
   it('uses the §9 cockpit tokens (violet primary, dark base, 48px+ targets)', () => {
     expect(html).toContain('#7C3AED'); // luminous purple accent
     expect(html).toContain('#0B0D10'); // near-black base

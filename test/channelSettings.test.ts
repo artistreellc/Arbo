@@ -44,7 +44,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { createArborRequestHandler } from '../src/server.js';
 import { channelIsOff, SEASONAL_CHANNELS_OFF } from '../src/reception/leadMail.js';
-import { getTodayWorkZip, setTodayWorkZip } from '../src/reception/routingHint.js';
+import { getTodayWorkZip, setTodayWorkZip, setLocationEnabled, getLiveWorkZip } from '../src/reception/routingHint.js';
 
 // Mike's channel switches (cycle 34). The switch state is module-global and
 // shared with every other suite in this process, so each test restores what
@@ -134,5 +134,33 @@ describe('today work ZIP settings API (R15)', () => {
     });
     expect(await clear.json()).toEqual({ workZip: null });
     setTodayWorkZip(null);
+  });
+});
+
+describe('live location intake + toggle (R15/R16)', () => {
+  it('toggle OFF refuses pings with a NAMED reason and clears state; ON accepts in-window', async () => {
+    const base = server ? `http://127.0.0.1:${(server.address() as { port: number }).port}` : await listen();
+    await fetch(`${base}/api/settings/location`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: false }),
+    });
+    const refused = await fetch(`${base}/api/location/zip`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ zip: '23452' }),
+    });
+    expect(refused.status).toBe(403);
+    expect(await refused.json()).toEqual({ error: 'location_off' });
+    expect(getLiveWorkZip(Date.now())).toBeNull();
+
+    await fetch(`${base}/api/settings/location`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: true }),
+    });
+    const g = await (await fetch(`${base}/api/settings/route`)).json() as { location: { enabled: boolean } };
+    expect(g.location.enabled).toBe(true);
+    // In-window acceptance is covered by the pure-store tests; the endpoint
+    // itself is clock-dependent here, so only the named refusals are pinned.
+    const bad = await fetch(`${base}/api/location/zip`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ zip: 'nope' }),
+    });
+    expect([400, 403]).toContain(bad.status); // bad zip in-window, or after_hours when CI runs at night — both refuse
+    setLocationEnabled(true);
   });
 });

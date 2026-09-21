@@ -2311,7 +2311,71 @@ async function renderSettings() {
     };
     zrow.appendChild(zin); zrow.appendChild(zbtn);
     v.appendChild(zrow);
+
+    // R15/R16: the live office-phone location — one honest toggle.
+    v.appendChild(el('div', 'panel-title', 'Live location (office phone)'));
+    const loc = rz.location || { enabled: false, zip: null, ageMinutes: null };
+    const lrow = el('div', 'loc-strip');
+    const lbtn = el('button', 'loc-toggle' + (loc.enabled ? ' on' : ''), loc.enabled ? 'ON' : 'OFF');
+    lbtn.onclick = async () => {
+      lbtn.disabled = true;
+      try { await api('/api/settings/location', { method: 'POST', body: { on: !loc.enabled } }); } catch (e) {}
+      renderSettings();
+    };
+    lrow.appendChild(lbtn);
+    lrow.appendChild(el('span', '', loc.enabled
+      ? (loc.zip ? 'Live \u2014 last ping ' + loc.ageMinutes + ' min ago' : 'ON \u2014 no fresh ping yet (phone posts 8am\u20138pm, Mon\u2013Sat)')
+      : 'OFF \u2014 no location is received or kept'));
+    v.appendChild(lrow);
   }
+
+  // R16: the route planner — live traffic when the Maps key exists, and the
+  // plan itself says which mode produced it.
+  v.appendChild(el('div', 'panel-title', 'Route planner'));
+  v.appendChild(el('div', 'storm-muted', 'One stop per line: address, city, ZIP. Twenty minutes on site each; Saturdays run Norfolk/Chesapeake/Portsmouth mornings and Virginia Beach after 12; weekdays start after 4.'));
+  const ta = document.createElement('textarea');
+  ta.id = 'route-stops';
+  ta.placeholder = '555 Synthetic Ave, Virginia Beach, 23451\n88 Sample St, Norfolk, 23503';
+  ta.style.cssText = 'width:100%;min-height:110px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:inherit;padding:10px;font-size:15px';
+  v.appendChild(ta);
+  const prow = el('div', 'loc-strip');
+  const daySel = document.createElement('select');
+  daySel.id = 'route-day';
+  daySel.style.cssText = 'min-height:48px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:inherit;padding:0 10px;font-size:15px';
+  for (const [val, label] of [['saturday', 'Saturday'], ['weekday', 'Weekday (after 4)']]) {
+    const o = document.createElement('option'); o.value = val; o.textContent = label; daySel.appendChild(o);
+  }
+  const pbtn = el('button', 'loc-toggle on', 'Plan route');
+  const pout = el('div');
+  pbtn.onclick = async () => {
+    pbtn.disabled = true;
+    pout.replaceChildren();
+    const cities = /virginia\s*beach|norfolk|chesapeake|portsmouth/i;
+    const stops = ta.value.split('\n').map((l) => l.trim()).filter(Boolean).map((line) => {
+      const zip = (line.match(/\b23\d{3}\b/) || [])[0];
+      const cm = line.match(cities);
+      return zip ? { label: line, zip: zip, city: cm ? cm[0] : undefined } : null;
+    });
+    if (stops.some((s) => !s)) {
+      pout.appendChild(el('div', 'storm', 'Every line needs a ZIP (23xxx). Nothing was planned.'));
+      pbtn.disabled = false;
+      return;
+    }
+    let plan;
+    try { plan = await api('/api/route/plan', { method: 'POST', body: { stops, day: daySel.value } }); }
+    catch (e) { pout.appendChild(el('div', 'storm', 'Could not plan the route \u2014 nothing was changed.')); pbtn.disabled = false; return; }
+    pout.appendChild(el('div', 'storm-muted', (plan.mode === 'live_traffic' ? '\ud83d\udea6 Live traffic \u00b7 ' : '\u2139 ZIP estimates \u00b7 ') + plan.note));
+    for (const w of plan.warnings) pout.appendChild(el('div', 'storm', '\u26a0 ' + w));
+    for (const vt of plan.visits) {
+      const row = el('div', 'loc-strip');
+      row.appendChild(el('span', '', vt.order + '. ' + vt.startTime + '\u2013' + vt.endTime + ' \u2014 ' + vt.label));
+      pout.appendChild(row);
+    }
+    pbtn.disabled = false;
+  };
+  prow.appendChild(daySel); prow.appendChild(pbtn);
+  v.appendChild(prow);
+  v.appendChild(pout);
 }
 
 function switchTab(which) {

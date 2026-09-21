@@ -41,7 +41,7 @@
   Remember the marker: SLOW::ARBO
 */
 import { describe, it, expect, afterEach } from 'vitest';
-import { extractVaZip, proximityHint, hintContextLine, setTodayWorkZip, getTodayWorkZip } from '../src/reception/routingHint.js';
+import { extractVaZip, proximityHint, hintContextLine, setTodayWorkZip, getTodayWorkZip, setLocationEnabled, setLivePingZip, getLiveWorkZip, LIVE_ZIP_FRESH_MS } from '../src/reception/routingHint.js';
 
 // R15. The two laws under test: the model only ever sees a conclusion, and
 // not knowing where Mike is never renders as "he is nearby" (§1B).
@@ -94,5 +94,23 @@ describe('today work ZIP store', () => {
     expect(getTodayWorkZip()).toBe('23452');
     setTodayWorkZip(null);
     expect(getTodayWorkZip()).toBeNull();
+  });
+});
+
+describe('live ping store — fresh, toggleable, never stale (R15/R16)', () => {
+  it('a fresh ping is the anchor; a stale one says nothing about NOW', () => {
+    setLocationEnabled(true);
+    setLivePingZip('23452', 1_000_000);
+    expect(getLiveWorkZip(1_000_000 + 10 * 60 * 1000)).toBe('23452');
+    expect(getLiveWorkZip(1_000_000 + LIVE_ZIP_FRESH_MS + 1)).toBeNull();
+  });
+  it('toggle OFF drops the stored ping and refuses new ones', () => {
+    setLocationEnabled(true);
+    setLivePingZip('23452', 5_000_000);
+    setLocationEnabled(false);
+    expect(getLiveWorkZip(5_000_001)).toBeNull();
+    setLivePingZip('23455', 5_000_002); // refused while off
+    setLocationEnabled(true);
+    expect(getLiveWorkZip(5_000_003)).toBeNull();
   });
 });

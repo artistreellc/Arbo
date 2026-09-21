@@ -149,7 +149,10 @@ import { createElevenLabsBridge, type BridgeRequestBody } from './voice/elevenla
 import { createGoogleGmailReader } from './integrations/gmail.js';
 import { createRefreshTokenProvider } from './integrations/googleOAuth.js';
 import { LEAD_CHANNELS, channelIsOff, setChannelOff } from './reception/leadMail.js';
-import { getTodayWorkZip, setTodayWorkZip } from './reception/routingHint.js';
+import { getTodayWorkZip, setTodayWorkZip, getLiveWorkZip, setLivePingZip, setLocationEnabled, isLocationEnabled, liveLocationState } from './reception/routingHint.js';
+import { planRouteLive } from './ops/routePlanner.js';
+import { fetchDriveMinutesMatrix } from './integrations/googleRoutes.js';
+import { withinWorkingHours } from './ops/locationIntel.js';
 import type { Alerter } from './reception/receptionist.js';
 import { loadAppHtml, loadCrewHtml } from './server/appPage.js';
 import { emitSafe } from './binder/eventBus.js';
@@ -530,7 +533,7 @@ export function createArborRequestHandler() {
     bridgeSecret: env.elevenlabs.bridgeSecret,
     // R15: route anchors — work ZIP from Settings (in-memory), home ZIP from
     // env. The bridge turns these into a conclusion; the model never sees them.
-    routeAnchors: () => ({ workZip: getTodayWorkZip(), homeZip: env.ownerHomeZip ?? null }),
+    routeAnchors: () => ({ workZip: getLiveWorkZip(Date.now()) ?? getTodayWorkZip(), homeZip: env.ownerHomeZip ?? null }),
     // §29: every voice turn lands in the review backlog (RLS-locked DB, never
     // server logs). Only wired when the DB is — the bridge swallows failures.
     ...(hasDb() ? { logTurn: (key: string, turn: Parameters<typeof appendConversationTurn>[2]) => appendConversationTurn(key, 'voice', turn) } : {}),
@@ -905,7 +908,60 @@ export function createArborRequestHandler() {
       }
       // R15: today's work ZIP — Mike sets it each morning; in-memory, honest.
       if (req.method === 'GET' && url.pathname === '/api/settings/route') {
-        return send(200, { workZip: getTodayWorkZip(), note: 'In-memory — resets on redeploy. Set it each morning until live tracking lands.' });
+        return send(200, {
+          workZip: getTodayWorkZip(),
+          location: liveLocationState(Date.now()),
+          note: 'In-memory — resets on redeploy. Set it each morning until live tracking lands.',
+        });
+      }
+      // R15/R16: the office phone posts its ZIP during the 8am–8pm Mon–Sat
+      // window; the Settings toggle can shut the whole thing off. Refusals
+      // are NAMED — after-hours location is never quietly kept.
+      if (req.method === 'POST' && url.pathname === '/api/location/zip') {
+        if (!isLocationEnabled()) return send(403, { error: 'location_off' });
+        if (!withinWorkingHours(new Date())) return send(403, { error: 'after_hours' });
+        const body = (await readJson(req)) as { zip?: unknown };
+        if (typeof body.zip !== 'string' || !/^23\d{3}$/.test(body.zip)) return send(400, { error: 'bad_zip' });
+        setLivePingZip(body.zip, Date.now());
+        console.error('[location] live zip ping accepted'); // presence only — no ZIP in logs
+        return send(200, { ok: true });
+      }
+      if (req.method === 'POST' && url.pathname === '/api/settings/location') {
+        const body = (await readJson(req)) as { on?: unknown };
+        if (typeof body.on !== 'boolean') return send(400, { error: 'bad_toggle' });
+        setLocationEnabled(body.on);
+        console.error(`[settings] location ${body.on ? 'ON' : 'OFF'}`);
+        return send(200, { enabled: isLocationEnabled() });
+      }
+      // R16: the route planner. Live traffic via Google when a Maps key is
+      // configured; ZIP estimates otherwise — the plan itself names its mode.
+      if (req.method === 'POST' && url.pathname === '/api/route/plan') {
+        const body = (await readJson(req)) as { stops?: unknown; day?: unknown; slotMinutes?: unknown };
+        const day = body.day === 'saturday' || body.day === 'weekday' ? body.day : null;
+        const rawStops = Array.isArray(body.stops) ? (body.stops as Array<Record<string, unknown>>) : null;
+        if (!day || !rawStops) return send(400, { error: 'bad_plan_input' });
+        const stops = [] as Array<{ label: string; city?: string; zip: string }>;
+        for (const s of rawStops) {
+          if (typeof s.label !== 'string' || s.label.trim() === '' || typeof s.zip !== 'string' || !/^23\d{3}$/.test(s.zip)) {
+            return send(400, { error: 'bad_stop' });
+          }
+          stops.push({ label: s.label.trim(), zip: s.zip, ...(typeof s.city === 'string' && s.city.trim() !== '' ? { city: s.city.trim() } : {}) });
+        }
+        const plan = await planRouteLive(
+          {
+            stops,
+            day,
+            ...(typeof body.slotMinutes === 'number' && body.slotMinutes >= 5 && body.slotMinutes <= 120 ? { slotMinutes: body.slotMinutes } : {}),
+            startZip: getLiveWorkZip(Date.now()) ?? getTodayWorkZip(),
+            homeZip: env.ownerHomeZip ?? null,
+          },
+          {
+            apiKey: env.google.mapsApiKey ?? null,
+            fetchMatrix: (addrs, key, dep) => fetchDriveMinutesMatrix(addrs, key, (u, i) => fetch(u, i), dep),
+            nowIso: () => new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+          },
+        );
+        return send(200, plan);
       }
       if (req.method === 'POST' && url.pathname === '/api/settings/route') {
         const body = (await readJson(req)) as { workZip?: unknown };
