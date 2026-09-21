@@ -65,10 +65,13 @@ const stop = (over: Partial<GeoStop> = {}): GeoStop => ({ id: 's1', kind: 'estim
 
 describe('§24 working-hours gate (the law is in code)', () => {
   it('weekday afternoon ET is inside; nights and weekends are not', () => {
+    // Mike, 2026-09-21: 8am–8pm ET, every day besides Sunday.
     expect(withinWorkingHours(new Date('2026-07-29T19:00:00Z'))).toBe(true); // Wed 3 PM EDT
-    expect(withinWorkingHours(new Date('2026-07-29T10:00:00Z'))).toBe(false); // Wed 6 AM EDT
-    expect(withinWorkingHours(new Date('2026-07-29T23:30:00Z'))).toBe(false); // Wed 7:30 PM EDT
-    expect(withinWorkingHours(new Date('2026-08-01T16:00:00Z'))).toBe(false); // Saturday
+    expect(withinWorkingHours(new Date('2026-07-29T10:00:00Z'))).toBe(false); // Wed 6 AM EDT — before 8
+    expect(withinWorkingHours(new Date('2026-07-29T23:30:00Z'))).toBe(true); // Wed 7:30 PM EDT — inside 8pm now
+    expect(withinWorkingHours(new Date('2026-07-30T00:30:00Z'))).toBe(false); // Wed 8:30 PM EDT — after 8
+    expect(withinWorkingHours(new Date('2026-08-01T16:00:00Z'))).toBe(true); // Saturday noon — estimate day
+    expect(withinWorkingHours(new Date('2026-08-02T16:00:00Z'))).toBe(false); // Sunday — always off
   });
 });
 
@@ -140,7 +143,7 @@ function makeSource(over: Partial<DataSource> = {}): DataSource & { pings: unkno
 }
 
 const WORK_HOURS = new Date('2026-07-29T19:00:00Z'); // Wed 3 PM EDT
-const AFTER_HOURS = new Date('2026-07-29T23:30:00Z');
+const AFTER_HOURS = new Date('2026-07-30T00:30:00Z'); // Wed 8:30 PM EDT — past 8pm under the 2026-09-21 ruling
 
 describe('POST /api/location/ping — §24 named refusals, in order', () => {
   it('tracking OFF refuses before anything is stored', async () => {

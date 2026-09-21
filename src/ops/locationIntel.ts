@@ -89,15 +89,17 @@ const ET_PARTS = new Intl.DateTimeFormat('en-US', {
 });
 
 /**
- * §24 gate: Mon–Fri, 07:00–18:59 ET — the 8–5 workday plus commute margin.
- * Everything else is "after hours" and pings are refused.
+ * §24 gate, re-ruled by Mike 2026-09-21: "the location off the office phone
+ * from 8am to 8pm everyday besides sunday." 08:00–19:59 ET, Mon–Sat —
+ * Saturdays are estimate days now. Sunday and off-hours pings are refused
+ * with a named reason; the server never quietly stores after-hours location.
  */
 export function withinWorkingHours(now: Date): boolean {
   const parts = ET_PARTS.formatToParts(now);
   const weekday = parts.find((p) => p.type === 'weekday')?.value ?? '';
   const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? '-1') % 24;
-  if (weekday === 'Sat' || weekday === 'Sun') return false;
-  return hour >= 7 && hour < 19;
+  if (weekday === 'Sun') return false;
+  return hour >= 8 && hour < 20;
 }
 
 /** Inside this radius of a stop, a ping counts as "at the property". */

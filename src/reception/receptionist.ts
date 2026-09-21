@@ -121,6 +121,8 @@ export class Receptionist {
   private screened = false;
   private flaggedByMike = false;
   private lastNotify: NotifyDecision | null = null;
+  /** R15: server-computed, conclusion-only routing note — never a location. */
+  private contextNote: string | null = null;
 
   constructor(
     private readonly deps: { g: Guardrails; legal: LegalConfig; llm: LlmClient; alerter: Alerter; escalator?: Escalator },
@@ -130,6 +132,11 @@ export class Receptionist {
 
   get systemPrompt(): string {
     return this.system;
+  }
+
+  /** R15: attach or clear the routing conclusion for subsequent turns. */
+  setContextNote(note: string | null): void {
+    this.contextNote = note;
   }
 
   /**
@@ -209,7 +216,10 @@ export class Receptionist {
       guard = guardReply(routing.spam.approvedLine, this.deps.g);
       reply = guard.reply;
     } else {
-      const candidate = await this.deps.llm.complete(this.system, this.messages);
+      const candidate = await this.deps.llm.complete(
+        this.contextNote ? `${this.system}\n\n${this.contextNote}` : this.system,
+        this.messages,
+      );
       // The guard is law: any price/diagnosis/forbidden term is blocked here.
       guard = guardReply(candidate, this.deps.g);
       reply = guard.reply;

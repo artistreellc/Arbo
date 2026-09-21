@@ -296,7 +296,9 @@ describe('bridge status — the dashboard instrument (counts only, never content
 describe('session rebuild — a redeploy mid-call must not lobotomise a live caller', () => {
   class CapturingLlm implements LlmClient {
     public lastMessages: ChatMessage[] = [];
-    async complete(_system: string, messages: ChatMessage[]): Promise<string> {
+    public lastSystem = '';
+    async complete(system: string, messages: ChatMessage[]): Promise<string> {
+      this.lastSystem = system;
       this.lastMessages = [...messages]; // copy — the receptionist appends her reply to this array after we return
       return 'Got it — and what city is that in?';
     }
@@ -347,5 +349,54 @@ describe('session rebuild — a redeploy mid-call must not lobotomise a live cal
     const { bridge } = makeBridge({ llm });
     await bridge.handle(AUTH, turnBody(['Hi'], { conversation_id: 'call-fresh' }));
     expect(llm.lastMessages.length).toBe(1);
+  });
+});
+
+describe('R15 routing hints — the model sees a conclusion, never a location', () => {
+  class SystemCapturingLlm implements LlmClient {
+    public lastSystem = '';
+    async complete(system: string): Promise<string> {
+      this.lastSystem = system;
+      return 'Happy to help — what else can I get for you?';
+    }
+  }
+  const anchors = () => ({ workZip: '23452', homeZip: '23451' });
+
+  it('a caller ZIP near the work anchor injects the conclusion-only context note', async () => {
+    const llm = new SystemCapturingLlm();
+    const { bridge } = makeBridge({ llm, routeAnchors: anchors });
+    await bridge.handle(AUTH, turnBody(['My address is 555 Synthetic Ave, Virginia Beach 23455.'], { conversation_id: 'c-r15' }));
+    expect(llm.lastSystem).toContain('CALL CONTEXT');
+    expect(llm.lastSystem).toContain('NEVER tell the caller where Mike is');
+    // The note carries no ZIP — the system prompt may not leak an anchor.
+    expect(llm.lastSystem.split('CALL CONTEXT')[1]).not.toMatch(/23\d{3}/);
+  });
+
+  it('no anchors configured → no note, even with a caller ZIP (§1B: unknown is never nearby)', async () => {
+    const llm = new SystemCapturingLlm();
+    const { bridge } = makeBridge({ llm }); // no routeAnchors dep at all
+    await bridge.handle(AUTH, turnBody(['I am at 23455.'], { conversation_id: 'c-r15b' }));
+    expect(llm.lastSystem).not.toContain('CALL CONTEXT');
+  });
+
+  it('a ZIP spoken BEFORE a restart still anchors the hint after the rebuild', async () => {
+    const llm = new SystemCapturingLlm();
+    const { bridge } = makeBridge({ llm, routeAnchors: anchors });
+    await bridge.handle(AUTH, {
+      conversation_id: 'c-r15c',
+      messages: [
+        { role: 'user', content: 'Hi, I am at 100 Synthetic Rd, 23452.' },
+        { role: 'assistant', content: 'Got it — what kind of project?' },
+        { role: 'user', content: 'A removal, probably.' },
+      ],
+    });
+    expect(llm.lastSystem).toContain('CALL CONTEXT');
+  });
+
+  it('a far ZIP gets no note — distance is never faked into convenience', async () => {
+    const llm = new SystemCapturingLlm();
+    const { bridge } = makeBridge({ llm, routeAnchors: () => ({ workZip: '23320', homeZip: null }) });
+    await bridge.handle(AUTH, turnBody(['I am out at 23666.'], { conversation_id: 'c-r15d' }));
+    expect(llm.lastSystem).not.toContain('CALL CONTEXT');
   });
 });
