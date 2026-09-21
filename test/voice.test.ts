@@ -229,3 +229,66 @@ describe('ElevenLabs TTS client', () => {
     await expect(tts.synthesize('hello')).rejects.toThrow(/HTTP 401/);
   });
 });
+
+describe('bridge status — the dashboard instrument (counts only, never content)', () => {
+  it('starts honest: zero counts and lastTurnAt null — null is not "no calls rendered as zero"', () => {
+    const { bridge } = makeBridge();
+    const s = bridge.status();
+    expect(s.configured).toBe(true);
+    expect(s.callsSinceBoot).toBe(0);
+    expect(s.turnsSinceBoot).toBe(0);
+    expect(s.lastTurnAt).toBeNull();
+    expect(s.emergencyCallsSinceBoot).toBe(0);
+    expect(s.guardBlockedTurnsSinceBoot).toBe(0);
+    expect(s.unauthorizedSinceBoot).toBe(0);
+    expect(typeof s.bootedAt).toBe('string');
+  });
+
+  it('counts calls once per session and turns per turn', async () => {
+    const { bridge } = makeBridge();
+    await bridge.handle(AUTH, turnBody(['Hi'], { conversation_id: 'call-1' }));
+    await bridge.handle(AUTH, turnBody(['Hi', 'ok', 'I need a tree trimmed'], { conversation_id: 'call-1' }));
+    await bridge.handle(AUTH, turnBody(['Hello'], { conversation_id: 'call-2' }));
+    const s = bridge.status();
+    expect(s.callsSinceBoot).toBe(2);
+    expect(s.turnsSinceBoot).toBe(3);
+    expect(typeof s.lastTurnAt).toBe('string');
+    expect(s.activeSessions).toBe(2);
+  });
+
+  it('counts an emergency call ONCE, not once per turn of the same call', async () => {
+    const { bridge } = makeBridge();
+    await bridge.handle(AUTH, turnBody(['A tree just fell on my house!'], { conversation_id: 'call-e' }));
+    await bridge.handle(AUTH, turnBody(['A tree just fell on my house!', 'ok', 'Please hurry'], { conversation_id: 'call-e' }));
+    expect(bridge.status().emergencyCallsSinceBoot).toBe(1);
+    expect(bridge.status().turnsSinceBoot).toBe(2);
+  });
+
+  it('counts guard-blocked turns — the instrument shows the guard working', async () => {
+    const { bridge } = makeBridge({ llm: new FakeLlm(['That usually runs about $800 for an oak that size.']) });
+    await bridge.handle(AUTH, turnBody(['How much to remove an oak?'], { conversation_id: 'call-g' }));
+    expect(bridge.status().guardBlockedTurnsSinceBoot).toBe(1);
+  });
+
+  it('counts rejected bearers — the repoint tripwire (a wrong ElevenLabs key must be VISIBLE)', async () => {
+    const { bridge } = makeBridge();
+    await bridge.handle('Bearer nope', turnBody(['Hi']));
+    await bridge.handle(undefined, turnBody(['Hi']));
+    expect(bridge.status().unauthorizedSinceBoot).toBe(2);
+    expect(bridge.status().turnsSinceBoot).toBe(0);
+  });
+
+  it('reports configured=false when no secret is set, alongside the 503', async () => {
+    const { bridge } = makeBridge({ bridgeSecret: undefined });
+    expect(bridge.status().configured).toBe(false);
+    expect((await bridge.handle(AUTH, turnBody(['Hi']))).status).toBe(503);
+  });
+
+  it('exposes exactly the promised keys — the type has no slot for caller content (§4.3)', () => {
+    const { bridge } = makeBridge();
+    expect(Object.keys(bridge.status()).sort()).toEqual([
+      'activeSessions', 'bootedAt', 'callsSinceBoot', 'configured', 'emergencyCallsSinceBoot',
+      'guardBlockedTurnsSinceBoot', 'lastTurnAt', 'turnsSinceBoot', 'unauthorizedSinceBoot',
+    ]);
+  });
+});

@@ -554,6 +554,31 @@ async function locationStrip() {
   return wrap;
 }
 
+// ---------- Reception strip (the phone line as an instrument — §1B: counts, or the reason there are none) ----------
+async function receptionStrip() {
+  let s;
+  try { s = await api('/api/reception/status'); }
+  catch (e) { return e.code === 401 ? null : el('div', 'storm-muted', '\u260e Reception: status unavailable right now.'); }
+  const wrap = el('div');
+  if (!s.configured) {
+    wrap.appendChild(el('div', 'storm', '\u260e Reception bridge NOT configured \u2014 no bridge secret on the server. Calls cannot reach ARBO.'));
+    return wrap;
+  }
+  if (s.unauthorizedSinceBoot > 0) {
+    // The repoint tripwire: a wrong ElevenLabs key otherwise fails SILENTLY into the platform's fallback model.
+    wrap.appendChild(el('div', 'storm', '\u260e ' + s.unauthorizedSinceBoot + ' rejected call attempt(s) since deploy \u2014 the ElevenLabs key does not match the bridge secret. Callers are NOT reaching the guarded brain.'));
+  }
+  const strip = el('div', 'loc-strip');
+  strip.appendChild(el('span', '', s.turnsSinceBoot === 0
+    ? '\u260e Reception ready \u2014 no calls since deploy (' + fmtTime(s.bootedAt) + ')'
+    : '\u260e ' + s.callsSinceBoot + ' call(s) \u00b7 ' + s.turnsSinceBoot + ' turn(s) since deploy \u00b7 last ' + fmtTime(s.lastTurnAt)));
+  wrap.appendChild(strip);
+  if (!s.llmKeyPresent) wrap.appendChild(el('div', 'storm-muted', 'LLM key missing on the server \u2014 callers hear only the safe fallback line.'));
+  if (s.emergencyCallsSinceBoot > 0) wrap.appendChild(el('div', 'storm', '\ud83d\udea8 ' + s.emergencyCallsSinceBoot + ' emergency call(s) since deploy \u2014 details are in the ElevenLabs dashboard, not here.'));
+  if (s.guardBlockedTurnsSinceBoot > 0) wrap.appendChild(el('div', 'storm-muted', '\ud83d\udee1 Guard intervened on ' + s.guardBlockedTurnsSinceBoot + ' turn(s) \u2014 blocked replies were replaced with approved lines.'));
+  return wrap;
+}
+
 // ---------- Today (Morning Brief) ----------
 async function renderToday() {
   const v = $('view-today');
@@ -562,6 +587,9 @@ async function renderToday() {
   const locSlot = el('div');
   v.appendChild(locSlot);
   locationStrip().then((b) => { if (b) locSlot.appendChild(b); });
+  const recSlot = el('div');
+  v.appendChild(recSlot);
+  receptionStrip().then((b) => { if (b) recSlot.appendChild(b); });
   const start = new Date(); start.setHours(0, 0, 0, 0);
   const end = new Date(start); end.setDate(end.getDate() + 1);
   let brief;

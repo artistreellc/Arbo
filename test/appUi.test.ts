@@ -263,6 +263,14 @@ describe('ARBOR app shell', () => {
     expect(html).toContain('if (p.campaignsKnown) v.appendChild(campaignComposer(campSlot))');
   });
 
+  it('the reception instrument is on the home surface and never renders a dead feed as quiet', () => {
+    expect(html).toContain('/api/reception/status');
+    expect(html).toContain('Reception: status unavailable right now');
+    expect(html).toContain('no calls since deploy');
+    expect(html).toContain('rejected call attempt');
+    expect(html).toContain('receptionStrip().then((b) => { if (b) recSlot.appendChild(b); });');
+  });
+
   it('uses the §9 cockpit tokens (violet primary, dark base, 48px+ targets)', () => {
     expect(html).toContain('#7C3AED'); // luminous purple accent
     expect(html).toContain('#0B0D10'); // near-black base

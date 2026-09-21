@@ -878,6 +878,12 @@ export function createArborRequestHandler() {
         if (!hasDb()) return send(503, { error: 'db_not_configured' });
         return send(200, await runAgentSweep(api, alertsProvider));
       }
+      // Reception instrument for the cockpit (§9): counts and timestamps only
+      // — no caller text, no numbers, nothing §4.3 forbids. In-memory since
+      // boot; llmKeyPresent is the "callers hear the fallback line" tell.
+      if (req.method === 'GET' && url.pathname === '/api/reception/status') {
+        return send(200, { ...bridge.status(), llmKeyPresent: Boolean(env.anthropic.apiKey) });
+      }
       // ElevenLabs custom-LLM endpoint (the agent's Server URL points at
       // /voice/llm; the platform appends the OpenAI-style path).
       if (req.method === 'POST' && (url.pathname === '/voice/llm/chat/completions' || url.pathname === '/voice/llm/v1/chat/completions')) {

@@ -88,6 +88,8 @@ interface Session {
   receptionist: Receptionist;
   lastSeenMs: number;
   turns: number;
+  /** TurnResult.emergency is sticky for the rest of a call — count the CALL once. */
+  emergencyCounted: boolean;
 }
 
 export interface BridgeDeps {
@@ -138,11 +140,34 @@ export interface ElevenLabsBridge {
   handle(authorization: string | undefined, body: BridgeRequestBody): Promise<BridgeResponse>;
   /** Live (unexpired) session count — for tests and ops visibility. */
   sessionCount(): number;
+  /** Dashboard instrument (§1B): counts and timestamps only — no slot for caller content (§4.3). */
+  status(): BridgeStatus;
+}
+
+/**
+ * In-memory since boot, so a redeploy resets it — the cockpit labels it
+ * "since deploy" for exactly that reason. `lastTurnAt: null` means NO turns
+ * yet, which must never render as a confident zero-activity claim.
+ * `unauthorizedSinceBoot` is the repoint tripwire: a wrong bearer on the
+ * ElevenLabs side otherwise fails silently into the platform's fallback.
+ */
+export interface BridgeStatus {
+  configured: boolean;
+  bootedAt: string;
+  activeSessions: number;
+  callsSinceBoot: number;
+  turnsSinceBoot: number;
+  lastTurnAt: string | null;
+  emergencyCallsSinceBoot: number;
+  guardBlockedTurnsSinceBoot: number;
+  unauthorizedSinceBoot: number;
 }
 
 export function createElevenLabsBridge(deps: BridgeDeps): ElevenLabsBridge {
   const sessions = new Map<string, Session>();
   const now = deps.now ?? Date.now;
+  const bootedAtMs = now();
+  const counters = { calls: 0, turns: 0, lastTurnMs: null as number | null, emergencyCalls: 0, guardBlockedTurns: 0, unauthorized: 0 };
 
   function sweep(nowMs: number): void {
     for (const [key, s] of sessions) {
@@ -153,10 +178,25 @@ export function createElevenLabsBridge(deps: BridgeDeps): ElevenLabsBridge {
   return {
     sessionCount: () => sessions.size,
 
+    status: () => ({
+      configured: Boolean(deps.bridgeSecret),
+      bootedAt: new Date(bootedAtMs).toISOString(),
+      activeSessions: sessions.size,
+      callsSinceBoot: counters.calls,
+      turnsSinceBoot: counters.turns,
+      lastTurnAt: counters.lastTurnMs === null ? null : new Date(counters.lastTurnMs).toISOString(),
+      emergencyCallsSinceBoot: counters.emergencyCalls,
+      guardBlockedTurnsSinceBoot: counters.guardBlockedTurns,
+      unauthorizedSinceBoot: counters.unauthorized,
+    }),
+
     async handle(authorization, body) {
       // Fail closed: without a configured secret the bridge refuses everything.
       if (!deps.bridgeSecret) return { status: 503, json: { error: 'bridge_not_configured' } };
-      if (authorization !== `Bearer ${deps.bridgeSecret}`) return { status: 401, json: { error: 'unauthorized' } };
+      if (authorization !== `Bearer ${deps.bridgeSecret}`) {
+        counters.unauthorized += 1; // repoint tripwire: a wrong ElevenLabs key must be VISIBLE, not silent
+        return { status: 401, json: { error: 'unauthorized' } };
+      }
 
       const lastUser = [...(body.messages ?? [])].reverse().find((m) => m.role === 'user');
       const text = contentText(lastUser?.content);
@@ -177,13 +217,23 @@ export function createElevenLabsBridge(deps: BridgeDeps): ElevenLabsBridge {
           }),
           lastSeenMs: nowMs,
           turns: 0,
+          emergencyCounted: false,
         };
         sessions.set(key, session);
+        counters.calls += 1;
       }
       session.lastSeenMs = nowMs;
       session.turns += 1;
 
       const turn = await session.receptionist.handleUserTurn(text);
+
+      counters.turns += 1;
+      counters.lastTurnMs = nowMs;
+      if (turn.emergency && !session.emergencyCounted) {
+        session.emergencyCounted = true;
+        counters.emergencyCalls += 1;
+      }
+      if (!turn.guard.safe) counters.guardBlockedTurns += 1;
 
       if (deps.logTurn) {
         const flags = [
