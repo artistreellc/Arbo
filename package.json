@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "ARBO \u2014 AI reception & operations platform for Art-is-Tree LLC",
+  "description": "ARBO — AI reception & operations platform for Art-is-Tree LLC",
   "engines": {
     "node": ">=20"
   },
@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
+    "@elevenlabs/convai-widget-embed": "^0.18.2",
     "@supabase/supabase-js": "^2.47.10",
     "dotenv": "^16.4.7",
     "tsx": "^4.19.2",

@@ -80,3 +80,21 @@ export function loadCrewHtml(): string {
 export function loadTalkHtml(): string {
   return load('talk.html');
 }
+
+/**
+ * The ElevenLabs widget bundle, served from OUR server (Mike, 2026-09-21:
+ * "why isnt the voice widget loading from our servers"). Vendored via the
+ * pinned npm package — no third-party CDN in the serving path. The version
+ * moves when package-lock moves, deliberately: an update is a reviewed
+ * dependency bump, never a silent CDN change. The CONVERSATION still runs
+ * browser ↔ ElevenLabs platform; only the code is ours to serve.
+ */
+export function loadTalkWidgetJs(): string {
+  let js = cache.get('__talk_widget__');
+  if (js === undefined) {
+    const here = dirname(fileURLToPath(import.meta.url));
+    js = readFileSync(join(here, '..', '..', 'node_modules', '@elevenlabs', 'convai-widget-embed', 'dist', 'index.js'), 'utf8');
+    cache.set('__talk_widget__', js);
+  }
+  return js;
+}
