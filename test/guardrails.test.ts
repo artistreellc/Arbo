@@ -60,8 +60,14 @@ describe('guardrails policy (§3)', () => {
   });
 
   it('only allows real credentials and forbids TCIA', () => {
+    // Mike, 2026-09-21 (ported from his own dashboard prompt): the spoken
+    // claims are licensed & insured + Google Verified + 5 star rated. BBB A+
+    // left the phone script; the permit packet still carries it (held
+    // accreditation, different surface).
     expect(g.credentials.allowedClaims).toContain('licensed and insured');
-    expect(g.credentials.allowedClaims).toContain('BBB A+');
+    expect(g.credentials.allowedClaims).toContain('Google Verified');
+    expect(g.credentials.allowedClaims).toContain('5 star rated');
+    expect(g.credentials.allowedClaims).not.toContain('BBB A+');
     expect(g.credentials.forbiddenClaims.some((c) => c.includes('TCIA'))).toBe(true);
   });
 

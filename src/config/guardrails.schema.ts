@@ -70,7 +70,10 @@ export const GuardrailsSchema = z
     credentials: z.object({
       allowedClaims: z
         .array(z.string())
-        .refine((a) => a.includes('licensed and insured') && a.includes('BBB A+'), 'allowed credentials must be licensed and insured + BBB A+'),
+        // Mike, 2026-09-21 (ported from his own dashboard prompt edit): the
+        // spoken claims are licensed & insured + Google Verified. BBB A+ left
+        // the PHONE script only — the permit packet still carries it (§2).
+        .refine((a) => a.includes('licensed and insured') && a.includes('Google Verified'), 'allowed credentials must be licensed and insured + Google Verified'),
       forbiddenClaims: z.array(z.string()).refine((f) => f.some((x) => x.includes('TCIA')), 'TCIA must be a forbidden claim'),
     }),
     goldenRules: z

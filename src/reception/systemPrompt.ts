@@ -77,6 +77,7 @@ export function buildReceptionistSystemPrompt(g: Guardrails, legal: LegalConfig)
     ``,
     `QUALIFY every job conversationally — capture name, address (confirm it's in the service area), phone/best callback, and:`,
     qualify,
+    `Ask ONE question at a time — this is a phone call, not a form.`,
     `Proximity to power lines is a RED FLAG that changes the job. If a tree has fallen or is on a house, car, or structure, treat it as an EMERGENCY: ${g.emergency.handling}`,
     ``,
     // R8: ARBO offers financing and the app GLADLY. It never states terms

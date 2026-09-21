@@ -334,3 +334,28 @@ Containment, since a direct email has no sender anchor: never a platform
 sender (the D65 alarm path must keep working), never mail with an
 unsubscribe footer (marketing), and only an actual ask. City permit mail
 sighting stays — flagged to Mike with the ruling and not objected to.
+
+---
+
+## R13 — The receptionist speaks Mike's own prompt (the port)
+**Ruling: 2026-09-21.** Mike rewrote the ElevenLabs dashboard prompt himself,
+then said **"port it"** — because once the custom LLM is on, the dashboard
+prompt stops driving replies and the server's config-built prompt governs.
+Ported into `guardrails.json` (one source of truth), his words: the
+emergency-first question ("is everyone safe"), the four project branches
+(removal / pruning / stump grinding / land clearing), stump pictures texted
+BY THE CALLER to 757-319-5131 (which also retires the old prompt's
+we-text-you-a-link promise no code could keep), Miss Utility, the Virginia
+Lawns referral for clean-ups, and the credential change: **spoken claims are
+now "licensed and insured, Google Verified, 5 star rated" — BBB A+ left the
+phone script.** The schema refinement and tests now pin the NEW ruling.
+
+**Deliberately NOT ported, flagged:**
+- His dashboard disclosure edit ended mid-sentence ("recorded for quality ");
+  the server keeps the vetted legal line ("may be recorded for quality and
+  training purposes"). Changing legal disclosure wording is its own ruling.
+- The permit packet (`src/permitting/packet.ts`) still prints
+  "Licensed & insured · BBB A+" — a held accreditation on city paperwork is
+  a different surface than a phone claim. Mike's call if it should change.
+- The prompt still tells emergency callers Mike is being alerted right away;
+  the alert is still a console line until he rules on a channel.
