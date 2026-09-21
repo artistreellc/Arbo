@@ -290,6 +290,10 @@ describe('ARBOR app shell', () => {
     expect(html).toContain('OFF \\u2014 no location is received or kept');
     expect(html).toContain('/api/route/plan');
     expect(html).toContain('Route planner');
+    // Mike, 2026-09-21: the planner lives on the CALENDAR tab, beside the
+    // real Google Calendar embed — plan the run, then book it in Google.
+    expect(html).toContain('routePlannerPanel(v);');
+    expect(html.indexOf('routePlannerPanel(v);')).toBeGreaterThan(html.indexOf('gcal-frame'));
     expect(html).toContain('ZIP estimates');
     expect(html).toContain('Every line needs a ZIP (23xxx). Nothing was planned.');
   });
