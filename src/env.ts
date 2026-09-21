@@ -121,6 +121,8 @@ export const env = {
     gmailOauthRefreshToken: get('GMAIL_OAUTH_REFRESH_TOKEN'),
   },
   ownerAlertPhone: get('OWNER_ALERT_PHONE'),
+  // R15: home ZIP only — never the address, never in config, never in a prompt.
+  ownerHomeZip: get('OWNER_HOME_ZIP'),
 } as const;
 
 /** Which integration groups have real credentials present (booleans only). */

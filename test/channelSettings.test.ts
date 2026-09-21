@@ -44,6 +44,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { createArborRequestHandler } from '../src/server.js';
 import { channelIsOff, SEASONAL_CHANNELS_OFF } from '../src/reception/leadMail.js';
+import { getTodayWorkZip, setTodayWorkZip } from '../src/reception/routingHint.js';
 
 // Mike's channel switches (cycle 34). The switch state is module-global and
 // shared with every other suite in this process, so each test restores what
@@ -106,5 +107,32 @@ describe('lead channel settings API', () => {
     });
     expect(noToggle.status).toBe(400);
     expect(channelIsOff('yelp')).toBe(false);
+  });
+});
+
+describe('today work ZIP settings API (R15)', () => {
+  it('GET starts null with the honesty note; POST sets, clears, and validates', async () => {
+    const base = server ? `http://127.0.0.1:${(server.address() as { port: number }).port}` : await listen();
+    const g0 = await (await fetch(`${base}/api/settings/route`)).json() as { workZip: string | null; note: string };
+    expect(g0.workZip).toBeNull();
+    expect(g0.note).toContain('resets on redeploy');
+
+    const setRes = await fetch(`${base}/api/settings/route`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workZip: '23452' }),
+    });
+    expect(await setRes.json()).toEqual({ workZip: '23452' });
+    expect(getTodayWorkZip()).toBe('23452');
+
+    const bad = await fetch(`${base}/api/settings/route`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workZip: 'abc' }),
+    });
+    expect(bad.status).toBe(400);
+    expect(getTodayWorkZip()).toBe('23452'); // nothing changed on a bad input
+
+    const clear = await fetch(`${base}/api/settings/route`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workZip: null }),
+    });
+    expect(await clear.json()).toEqual({ workZip: null });
+    setTodayWorkZip(null);
   });
 });

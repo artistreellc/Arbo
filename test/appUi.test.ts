@@ -278,6 +278,13 @@ describe('ARBOR app shell', () => {
     expect(html).toContain('Could not load the channel switches. Nothing was changed.');
   });
 
+  it("today's work ZIP is settable, and honest about its in-memory life (R15)", () => {
+    expect(html).toContain('/api/settings/route');
+    expect(html).toContain("Today's work ZIP");
+    expect(html).toContain('set it each morning; resets on redeploy');
+    expect(html).toContain('Work-ZIP setting unavailable right now. Nothing was changed.');
+  });
+
   it('uses the §9 cockpit tokens (violet primary, dark base, 48px+ targets)', () => {
     expect(html).toContain('#7C3AED'); // luminous purple accent
     expect(html).toContain('#0B0D10'); // near-black base

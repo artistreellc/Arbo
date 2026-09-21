@@ -62,6 +62,7 @@
 import type { Guardrails } from '../config/guardrails.schema.js';
 import type { LegalConfig } from '../config/legal.schema.js';
 import { Receptionist, type Alerter, type Escalator, type LlmClient } from '../reception/receptionist.js';
+import { extractVaZip, hintContextLine, proximityHint, type RouteAnchors } from '../reception/routingHint.js';
 
 export const SESSION_TTL_MS = 30 * 60 * 1000; // a phone call is over well inside 30 min
 
@@ -90,6 +91,8 @@ interface Session {
   turns: number;
   /** TurnResult.emergency is sticky for the rest of a call — count the CALL once. */
   emergencyCounted: boolean;
+  /** R15: first VA ZIP the caller has spoken this call, if any. */
+  callerZip?: string;
 }
 
 export interface BridgeDeps {
@@ -106,6 +109,8 @@ export interface BridgeDeps {
    * the bridge fires it and swallows errors.
    */
   logTurn?: (sessionKey: string, turn: { at: string; caller: string; reply: string; flags: string[] }) => Promise<void>;
+  /** R15: Mike's route anchors (work/home ZIP). The model only ever sees the conclusion. */
+  routeAnchors?: () => RouteAnchors;
   now?: () => number;
 }
 
@@ -234,10 +239,28 @@ export function createElevenLabsBridge(deps: BridgeDeps): ElevenLabsBridge {
           .filter((m) => m.role === 'user' || m.role === 'assistant')
           .map((m) => ({ role: m.role as 'user' | 'assistant', content: contentText(m.content) }))
           .filter((m) => m.content !== '');
-        if (prior.length > 0) session.receptionist.seedHistory(prior);
+        if (prior.length > 0) {
+          session.receptionist.seedHistory(prior);
+          // R15: a ZIP spoken before the restart still anchors the hint.
+          for (const m of prior) {
+            if (m.role !== 'user') continue;
+            const z = extractVaZip(m.content);
+            if (z) session.callerZip = z;
+          }
+        }
       }
       session.lastSeenMs = nowMs;
       session.turns += 1;
+
+      // R15: proximity is computed HERE, server-side; only the conclusion
+      // line ever reaches the model. No anchors or no caller ZIP → no note.
+      if (deps.routeAnchors) {
+        const z = extractVaZip(text);
+        if (z) session.callerZip = z;
+        if (session.callerZip) {
+          session.receptionist.setContextNote(hintContextLine(proximityHint(session.callerZip, deps.routeAnchors())));
+        }
+      }
 
       const turn = await session.receptionist.handleUserTurn(text);
 

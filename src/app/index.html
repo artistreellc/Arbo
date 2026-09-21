@@ -2289,6 +2289,29 @@ async function renderSettings() {
     row.appendChild(el('span', '', c.label));
     v.appendChild(row);
   }
+
+  // R15: today's work ZIP — powers the "easy to fit you in this week" offer.
+  v.appendChild(el('div', 'panel-title', "Today's work ZIP"));
+  let rz = null;
+  try { rz = await api('/api/settings/route'); } catch (e) {}
+  if (!rz) {
+    v.appendChild(el('div', 'storm-muted', 'Work-ZIP setting unavailable right now. Nothing was changed.'));
+  } else {
+    v.appendChild(el('div', 'storm-muted', 'Where Mike is working today \u2014 callers in or near this ZIP get offered an easy weekday estimate. In-memory: set it each morning; resets on redeploy.'));
+    const zrow = el('div', 'loc-strip');
+    const zin = document.createElement('input');
+    zin.id = 'workzip-input'; zin.inputMode = 'numeric'; zin.maxLength = 5; zin.placeholder = '23452';
+    zin.value = rz.workZip || '';
+    zin.style.cssText = 'min-height:48px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:inherit;padding:0 12px;width:110px;font-size:16px';
+    const zbtn = el('button', 'loc-toggle on', 'Save');
+    zbtn.onclick = async () => {
+      zbtn.disabled = true;
+      try { await api('/api/settings/route', { method: 'POST', body: { workZip: zin.value.trim() || null } }); } catch (e) {}
+      renderSettings();
+    };
+    zrow.appendChild(zin); zrow.appendChild(zbtn);
+    v.appendChild(zrow);
+  }
 }
 
 function switchTab(which) {

@@ -149,6 +149,7 @@ import { createElevenLabsBridge, type BridgeRequestBody } from './voice/elevenla
 import { createGoogleGmailReader } from './integrations/gmail.js';
 import { createRefreshTokenProvider } from './integrations/googleOAuth.js';
 import { LEAD_CHANNELS, channelIsOff, setChannelOff } from './reception/leadMail.js';
+import { getTodayWorkZip, setTodayWorkZip } from './reception/routingHint.js';
 import type { Alerter } from './reception/receptionist.js';
 import { loadAppHtml, loadCrewHtml } from './server/appPage.js';
 import { emitSafe } from './binder/eventBus.js';
@@ -527,6 +528,9 @@ export function createArborRequestHandler() {
     llm: createVoiceLlm(env.anthropic.apiKey),
     alerter: consoleAlerter,
     bridgeSecret: env.elevenlabs.bridgeSecret,
+    // R15: route anchors — work ZIP from Settings (in-memory), home ZIP from
+    // env. The bridge turns these into a conclusion; the model never sees them.
+    routeAnchors: () => ({ workZip: getTodayWorkZip(), homeZip: env.ownerHomeZip ?? null }),
     // §29: every voice turn lands in the review backlog (RLS-locked DB, never
     // server logs). Only wired when the DB is — the bridge swallows failures.
     ...(hasDb() ? { logTurn: (key: string, turn: Parameters<typeof appendConversationTurn>[2]) => appendConversationTurn(key, 'voice', turn) } : {}),
@@ -898,6 +902,18 @@ export function createArborRequestHandler() {
         setChannelOff(ch.id, !body.on);
         console.error(`[settings] lead channel ${ch.id} switched ${body.on ? 'ON' : 'OFF'}`); // audit line — channel id only, no PII
         return send(200, { id: ch.id, on: !channelIsOff(ch.id) });
+      }
+      // R15: today's work ZIP — Mike sets it each morning; in-memory, honest.
+      if (req.method === 'GET' && url.pathname === '/api/settings/route') {
+        return send(200, { workZip: getTodayWorkZip(), note: 'In-memory — resets on redeploy. Set it each morning until live tracking lands.' });
+      }
+      if (req.method === 'POST' && url.pathname === '/api/settings/route') {
+        const body = (await readJson(req)) as { workZip?: unknown };
+        const wz = body.workZip === null || body.workZip === '' ? null : body.workZip;
+        if (wz !== null && (typeof wz !== 'string' || !/^23\d{3}$/.test(wz))) return send(400, { error: 'bad_zip' });
+        setTodayWorkZip(wz);
+        console.error(`[settings] today work zip ${wz ? 'set' : 'cleared'}`); // presence only, no ZIP in logs
+        return send(200, { workZip: getTodayWorkZip() });
       }
       // Reception instrument for the cockpit (§9): counts and timestamps only
       // — no caller text, no numbers, nothing §4.3 forbids. In-memory since
