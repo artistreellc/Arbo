@@ -83,6 +83,13 @@ describe('receptionist system prompt (built from config, §3)', () => {
     expect(prompt).toContain('who do I have the pleasure');
   });
 
+  it('the fact-deferral rule cannot eat the conversation, and the legal line is verbatim', () => {
+    // "That's Mike's call" at a vague first-timer lost a real test caller.
+    expect(prompt).toContain('NEVER use it to deflect the conversation');
+    expect(prompt).toContain('starting with the address');
+    expect(prompt).toContain('VERBATIM');
+  });
+
   it('always gathers the ZIP code (Mike, 2026-09-21)', () => {
     expect(prompt).toContain('ZIP code');
     expect(prompt).toContain('always gather the ZIP code, every call');

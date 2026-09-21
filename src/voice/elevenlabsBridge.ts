@@ -221,6 +221,20 @@ export function createElevenLabsBridge(deps: BridgeDeps): ElevenLabsBridge {
         };
         sessions.set(key, session);
         counters.calls += 1;
+        // A redeploy or TTL sweep mid-call must not lobotomise a live caller
+        // (it did, once: the first test call crossed a deploy and the caller
+        // was asked for a number they had already given). The platform
+        // resends the full transcript every turn, so a session MISS arriving
+        // with history is rebuilt from it — minus the final user message,
+        // which handleUserTurn consumes as the live turn.
+        const msgs = body.messages ?? [];
+        const lastUserIdx = msgs.length - 1 - [...msgs].reverse().findIndex((m) => m.role === 'user');
+        const prior = msgs
+          .slice(0, lastUserIdx)
+          .filter((m) => m.role === 'user' || m.role === 'assistant')
+          .map((m) => ({ role: m.role as 'user' | 'assistant', content: contentText(m.content) }))
+          .filter((m) => m.content !== '');
+        if (prior.length > 0) session.receptionist.seedHistory(prior);
       }
       session.lastSeenMs = nowMs;
       session.turns += 1;

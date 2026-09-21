@@ -133,6 +133,35 @@ export class Receptionist {
   }
 
   /**
+   * Rebuild a mid-call session after a deploy or TTL sweep wiped it. The
+   * platform resends the whole transcript every turn, so the history is
+   * recoverable — and it must be: the first live test call crossed a
+   * redeploy and the caller was asked for a number they had already given.
+   * Seeds the message log WITHOUT firing alerts — the pre-reset instance
+   * already alerted for anything present in this history, and a caller must
+   * never trigger two emergency pages by talking across a restart. Flags
+   * are re-derived by running intent detection over the seeded user turns.
+   */
+  seedHistory(prior: ChatMessage[]): void {
+    for (const m of prior) {
+      this.messages.push(m);
+      if (m.role !== 'user') continue;
+      const intent = detectIntent(m.content, this.deps.g);
+      if (intent.intent === 'emergency') {
+        this.emergencyAlerted = true;
+      } else if (intent.intent === 'incident' && intent.incidentType) {
+        this.incidentFired = true;
+        this.incidentTypeSeen = intent.incidentType;
+        if (intent.incidentType === 'injury') this.emergencyAlerted = true;
+      } else if (intent.intent === 'wants_human') {
+        this.wantsHumanFlag = true;
+      } else if (intent.intent === 'spam') {
+        this.screened = true;
+      }
+    }
+  }
+
+  /**
    * Handle one caller utterance. Classifies intent first (safety-first), routes
    * emergencies/incidents/wants-human/spam, then returns a guarded reply. For
    * the critical routed cases the reply is the deterministic policy line, so the

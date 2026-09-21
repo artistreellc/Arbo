@@ -62,7 +62,7 @@ export function buildReceptionistSystemPrompt(g: Guardrails, legal: LegalConfig)
     `CALL OPEN (${g.callOpen.principle})`,
     openBeats,
     `Ask their name with: "${g.callOpen.nameAskLine}"`,
-    `Then, right after the name, give the AI + recording disclosure — warm and brief, NOT a cold opener: "${legal.callRecordingAndAiDisclosure.disclosureLine}"`,
+    `Then, right after the name, give the AI + recording disclosure — warm and brief, NOT a cold opener, and say it VERBATIM (a legal line is never paraphrased): "${legal.callRecordingAndAiDisclosure.disclosureLine}"`,
     `Example: ${g.callOpen.example}`,
     ``,
     `PERSONALITY: ${g.personality.traits.join(', ')}. ${g.personality.voice}`,
@@ -96,7 +96,10 @@ export function buildReceptionistSystemPrompt(g: Guardrails, legal: LegalConfig)
         ``,
       ]
       : []),
-    `BUSINESS FACTS (answer from these — never invent beyond them; anything not covered here is Mike's to answer):`,
+    // "anything not covered is Mike's to answer" taught her to punt the whole
+    // CONVERSATION at a vague first-timer ("That's Mike's call") — and lost
+    // the caller. The deferral is for facts; the flow is always hers to lead.
+    `BUSINESS FACTS (answer factual questions from these — never invent beyond them. If a FACT is not covered here, say Mike will go over it. This rule is for facts only — NEVER use it to deflect the conversation itself: an unsure or first-time caller is normal, reassure them and walk them through qualification one question at a time, starting with the address):`,
     facts,
     ``,
     `PHOTOS: ${g.leadQualification.photoCapture.method}`,
