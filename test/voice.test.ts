@@ -292,3 +292,60 @@ describe('bridge status — the dashboard instrument (counts only, never content
     ]);
   });
 });
+
+describe('session rebuild — a redeploy mid-call must not lobotomise a live caller', () => {
+  class CapturingLlm implements LlmClient {
+    public lastMessages: ChatMessage[] = [];
+    async complete(_system: string, messages: ChatMessage[]): Promise<string> {
+      this.lastMessages = [...messages]; // copy — the receptionist appends her reply to this array after we return
+      return 'Got it — and what city is that in?';
+    }
+  }
+
+  const fullTranscript = (extra: Partial<BridgeRequestBody> = {}): BridgeRequestBody => ({
+    messages: [
+      { role: 'user', content: 'Hi, I need an estimate.' },
+      { role: 'assistant', content: "It sure is — my name's Arbo, who am I speaking with?" },
+      { role: 'user', content: 'My name is Testy, my number is 555-0142.' },
+      { role: 'assistant', content: 'Nice to meet you. What is the address?' },
+      { role: 'user', content: '123 Synthetic Ave.' },
+    ],
+    ...extra,
+  });
+
+  it('a fresh bridge (simulated restart) rebuilds the receptionist history from the resent transcript', async () => {
+    const llm = new CapturingLlm();
+    const { bridge } = makeBridge({ llm });
+    const out = await bridge.handle(AUTH, fullTranscript({ conversation_id: 'call-rebuild' }));
+    expect(out.status).toBe(200);
+    // The model must see the seeded prior turns AND the live turn — not just
+    // the last user message with amnesia for everything before the restart.
+    expect(llm.lastMessages.length).toBe(5);
+    expect(llm.lastMessages[0]!.content).toContain('need an estimate');
+    expect(llm.lastMessages[2]!.content).toContain('555-0142');
+    expect(llm.lastMessages[4]!.content).toContain('123 Synthetic Ave');
+  });
+
+  it('never fires a second emergency page for an emergency that predates the restart', async () => {
+    const { bridge, alerter } = makeBridge();
+    const body: BridgeRequestBody = {
+      conversation_id: 'call-em-rebuild',
+      messages: [
+        { role: 'user', content: 'A tree just fell on my house!' },
+        { role: 'assistant', content: 'That is an emergency — what is the address?' },
+        { role: 'user', content: '123 Synthetic Ave, please hurry.' },
+      ],
+    };
+    const out = await bridge.handle(AUTH, body);
+    expect(out.status).toBe(200);
+    expect(alerter.calls.length).toBe(0); // the pre-restart instance already paged
+    expect(bridge.status().emergencyCallsSinceBoot).toBe(1); // still counted as an emergency call
+  });
+
+  it('a first-turn call (no prior transcript) seeds nothing and behaves as before', async () => {
+    const llm = new CapturingLlm();
+    const { bridge } = makeBridge({ llm });
+    await bridge.handle(AUTH, turnBody(['Hi'], { conversation_id: 'call-fresh' }));
+    expect(llm.lastMessages.length).toBe(1);
+  });
+});
