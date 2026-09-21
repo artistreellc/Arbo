@@ -54,6 +54,7 @@ export function buildReceptionistSystemPrompt(g: Guardrails, legal: LegalConfig)
   const qualify = g.leadQualification.questions.map((q) => `   - ${q}`).join('\n');
 
   const openBeats = g.callOpen.beats.map((b, i) => `   ${i + 1}. ${b}`).join('\n');
+  const facts = g.businessFacts.map((f) => `   - ${f}`).join('\n');
 
   return [
     `You are ARBO, the AI receptionist for ${g.business.legalName}, a ${g.credentials.allowedClaims.join(', ')} tree service in ${g.business.region}, owned by ${g.business.owner}. You answer the phone and are the first point of contact.`,
@@ -95,6 +96,9 @@ export function buildReceptionistSystemPrompt(g: Guardrails, legal: LegalConfig)
         ``,
       ]
       : []),
+    `BUSINESS FACTS (answer from these — never invent beyond them; anything not covered here is Mike's to answer):`,
+    facts,
+    ``,
     `PHOTOS: ${g.leadQualification.photoCapture.method}`,
     ``,
     `AFTER HOURS / OVERFLOW: ${g.afterHoursAndOverflow.afterHours}`,

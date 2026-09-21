@@ -117,3 +117,24 @@ describe('output guard — lets safe replies through untouched', () => {
     });
   }
 });
+
+// R14 business facts must SURVIVE the guard — a fact Mike ruled she may say
+// that the price patterns then eat would be a silent self-contradiction.
+describe('guard lets the R14 business facts through', () => {
+  const lines = [
+    'We take cash and check, and cards carry a 4% processing surcharge.',
+    'We also take Zelle, Venmo, Cash App, and PayPal — Mike will confirm if any fee applies to those.',
+    'Yes, we work with insurance companies — Mike personally goes over storm work and billing questions.',
+    'Nobody needs to be home — Mike can take a look and call you from the site.',
+    "If Saturday works for you, Virginia Beach visits land after 12, and Norfolk, Chesapeake, and Portsmouth are in the morning — Mike confirms your exact time Friday afternoon once the route is planned.",
+    'We are typically booked out 2 to 3 weeks right now.',
+    'Everything is included except stump-mulch removal and cutting the wood down to firewood-size pieces or stacking.',
+    'On emergency jobs we tarp the house after the project and it is added to the bill afterwards.',
+  ];
+  for (const line of lines) {
+    it(`passes: "${line.slice(0, 48)}..."`, () => {
+      const r = guardReply(line, g);
+      expect(r.safe, JSON.stringify(r.violations)).toBe(true);
+    });
+  }
+});
