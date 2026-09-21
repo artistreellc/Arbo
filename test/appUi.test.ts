@@ -301,6 +301,9 @@ describe('ARBOR app shell', () => {
   it('Talk-to-Arbo: one tap from Today; the widget lives on its OWN page so the shell stays CDN-free', () => {
     expect(html).toContain('Talk to Arbo');
     expect(html).toContain("window.open('/talk'");
+    // The button renders BEFORE the brief fetch — a disconnected database
+    // must never hide the microphone (the first version did exactly that).
+    expect(html.indexOf('Talk to Arbo')).toBeLessThan(html.indexOf("brief = await api('/api/brief"));
     expect(html).not.toContain('elevenlabs.io/convai-widget'); // the shell law holds
     const talk = loadTalkHtml();
     expect(talk).toContain('elevenlabs-convai');
