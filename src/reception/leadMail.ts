@@ -87,6 +87,30 @@ export function channelIsOff(p: LeadMailProvider): boolean {
   return SEASONAL_CHANNELS_OFF.includes(p);
 }
 
+/**
+ * Every channel the classifier can emit, with the label Mike sees on the
+ * Settings screen (cycle 34: "toggled on and off each and everyone"). A new
+ * provider added to the union without a row here fails the registry test —
+ * a channel must never exist without its switch.
+ */
+export const LEAD_CHANNELS: ReadonlyArray<{ id: LeadMailProvider; label: string }> = [
+  { id: 'callrail_call', label: 'CallRail — calls & texts' },
+  { id: 'callrail_web_form', label: 'CallRail — web form (Tree Leads Today / TSP)' },
+  { id: 'website_form', label: 'Website contact form' },
+  { id: 'google_ads_lead_form', label: 'Google Ads lead form' },
+  { id: 'lsa_call', label: 'Google LSA' },
+  { id: 'yelp', label: 'Yelp' },
+  { id: 'home_advisor', label: 'HomeAdvisor / Angi (seasonal)' },
+  { id: 'direct_email', label: 'Direct email — estimate requests & approved work orders' },
+];
+
+/** Runtime toggle over the same array the classifier reads — idempotent both ways. */
+export function setChannelOff(id: LeadMailProvider, off: boolean): void {
+  const i = SEASONAL_CHANNELS_OFF.indexOf(id);
+  if (off && i === -1) SEASONAL_CHANNELS_OFF.push(id);
+  if (!off && i !== -1) SEASONAL_CHANNELS_OFF.splice(i, 1);
+}
+
 export interface LeadMailInput {
   from: string;
   subject: string;

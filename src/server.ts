@@ -146,6 +146,7 @@ import { loadAllConfig } from './config/loadConfig.js';
 import { env } from './env.js';
 import { createVoiceLlm } from './voice/anthropicLlm.js';
 import { createElevenLabsBridge, type BridgeRequestBody } from './voice/elevenlabsBridge.js';
+import { LEAD_CHANNELS, channelIsOff, setChannelOff } from './reception/leadMail.js';
 import type { Alerter } from './reception/receptionist.js';
 import { loadAppHtml, loadCrewHtml } from './server/appPage.js';
 import { emitSafe } from './binder/eventBus.js';
@@ -877,6 +878,24 @@ export function createArborRequestHandler() {
       if (req.method === 'POST' && url.pathname === '/api/agents/sweep') {
         if (!hasDb()) return send(503, { error: 'db_not_configured' });
         return send(200, await runAgentSweep(api, alertsProvider));
+      }
+      // Lead channel switches (cycle 34): Mike toggles each channel from the
+      // Settings screen. Runtime state over the classifier's own OFF array —
+      // applies to the next sweep instantly, resets to code defaults on
+      // redeploy (said on the screen, not hidden). Behind the /api gate.
+      if (req.method === 'GET' && url.pathname === '/api/settings/channels') {
+        return send(200, {
+          channels: LEAD_CHANNELS.map((c) => ({ id: c.id, label: c.label, on: !channelIsOff(c.id) })),
+          note: 'Switches apply immediately and reset to the coded defaults on a redeploy.',
+        });
+      }
+      if (req.method === 'POST' && url.pathname === '/api/settings/channels') {
+        const body = (await readJson(req)) as { id?: unknown; on?: unknown };
+        const ch = LEAD_CHANNELS.find((c) => c.id === body.id);
+        if (!ch || typeof body.on !== 'boolean') return send(400, { error: 'unknown_channel_or_bad_toggle' });
+        setChannelOff(ch.id, !body.on);
+        console.error(`[settings] lead channel ${ch.id} switched ${body.on ? 'ON' : 'OFF'}`); // audit line — channel id only, no PII
+        return send(200, { id: ch.id, on: !channelIsOff(ch.id) });
       }
       // Reception instrument for the cockpit (§9): counts and timestamps only
       // — no caller text, no numbers, nothing §4.3 forbids. In-memory since

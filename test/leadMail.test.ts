@@ -868,3 +868,30 @@ describe('direct email — estimate requests and approved work orders (Mike, 202
     expect(r.isLeadNotification).toBe(false);
   });
 });
+
+// Cycle 34 (Mike, 2026-09-21: "add a setting sections where the can be
+// toogled on and off each and everyone"): the OFF list becomes runtime-
+// toggleable. The registry and setter live beside the classifier so a new
+// provider cannot be added without deciding its switch.
+describe('lead channel registry + runtime toggles', () => {
+  it('the registry covers every provider the classifier can emit', async () => {
+    const mod = await import('../src/reception/leadMail.js');
+    const ids = mod.LEAD_CHANNELS.map((c) => c.id).sort();
+    expect(ids).toEqual([
+      'callrail_call', 'callrail_web_form', 'direct_email', 'google_ads_lead_form',
+      'home_advisor', 'lsa_call', 'website_form', 'yelp',
+    ]);
+  });
+
+  it('setChannelOff flips channelIsOff both ways and is idempotent', async () => {
+    const { setChannelOff, channelIsOff } = await import('../src/reception/leadMail.js');
+    const before = channelIsOff('yelp');
+    setChannelOff('yelp', true);
+    setChannelOff('yelp', true);
+    expect(channelIsOff('yelp')).toBe(true);
+    expect(SEASONAL_CHANNELS_OFF.filter((c) => c === 'yelp').length).toBe(1);
+    setChannelOff('yelp', false);
+    expect(channelIsOff('yelp')).toBe(false);
+    setChannelOff('yelp', before);
+  });
+});
