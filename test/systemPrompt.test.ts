@@ -83,6 +83,21 @@ describe('receptionist system prompt (built from config, §3)', () => {
     expect(prompt).toContain('who do I have the pleasure');
   });
 
+  it("carries Mike's business facts (R14) — payments, insurance, Saturday windows, lead time, exclusions", () => {
+    expect(prompt).toContain('4% processing surcharge');
+    for (const s of ['Zelle', 'Venmo', 'Cash App', 'PayPal']) expect(prompt).toContain(s);
+    expect(prompt).toContain('works with insurance companies');
+    expect(prompt).toContain('nobody needs to be home');
+    expect(prompt).toContain('after 12');
+    expect(prompt).toContain('Friday afternoon');
+    expect(prompt).toContain('2 to 3 weeks');
+    expect(prompt).toContain('firewood');
+    expect(prompt).toContain('tarping');
+    expect(prompt).toMatch(/reviewed by Mike for approval/);
+    // §1B: she never claims to put anyone ON the calendar — no write exists.
+    expect(prompt.toLowerCase()).not.toContain('add them to the calendar');
+  });
+
   it('has a missed-call text-back configured (§3.21)', () => {
     const g = loadGuardrails();
     expect(g.afterHoursAndOverflow.missedCallTextBack.toLowerCase()).toContain('art-is-tree');

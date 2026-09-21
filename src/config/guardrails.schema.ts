@@ -160,6 +160,10 @@ export const GuardrailsSchema = z
     // The LINKS are nullable on purpose: ARBO offers the option either way,
     // but it must never invent a URL or a lender. §1.4 — never say something
     // Mike then has to lie to defend.
+    // R14 (Mike, 2026-09-21): plain speakable business facts — payments,
+    // insurance posture, estimate logistics, inclusions. The prompt renders
+    // them verbatim; she answers FROM these and never invents beyond them.
+    businessFacts: z.array(z.string().min(1)).min(1),
     financing: z.object({
       available: z.boolean(),
       /** What ARBO may say. Never terms, rates, or amounts — §3 blocks those. */

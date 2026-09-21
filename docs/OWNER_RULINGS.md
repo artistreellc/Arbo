@@ -359,3 +359,35 @@ phone script.** The schema refinement and tests now pin the NEW ruling.
   a different surface than a phone claim. Mike's call if it should change.
 - The prompt still tells emergency callers Mike is being alerted right away;
   the alert is still a console line until he rules on a channel.
+
+---
+
+## R14 — The business facts, in Mike's words (2026-09-21)
+**Ruling:** payments are cash and check, cards carry a **4% surcharge**,
+electronic payments accepted (Zelle, Venmo, Cash App, PayPal — Mike confirms
+any fee); **yes we work with insurance companies** and Mike answers all
+insurance questions on storm work and billing; **nobody needs to be home**
+for an estimate — Mike can call onsite; estimates run **after work or
+Saturdays** — Virginia Beach after 12, Norfolk/Chesapeake/Portsmouth in the
+morning, **exact time only Friday afternoon** once the route is optimised;
+typically **booked out 2–3 weeks**; everything included **except stump mulch
+and cutting/stacking firewood**; **crane work regularly**; emergency
+**tarping after the project, billed afterwards**; **add-ons/change orders
+need Mike's approval**. All ported to `businessFacts` in guardrails.json —
+she answers FROM these and invents nothing beyond them.
+
+**Three parts of the same instruction NOT built yet — each crosses a
+standing hard rule and needs Mike's explicit go:**
+1. **"Add them to the Google Calendar for that upcoming Saturday."**
+   Crosses *"Never modify calendar events. Ever."* and §3 (links cut). Until
+   overridden, she takes the details for Saturday's route and Mike confirms
+   Friday — she never claims to have put anyone on a calendar (§1B).
+2. **Approved work orders filed to Drive → Signed Contracts, scanned, named
+   `street name, dollar amount, city initials`.** The naming convention is
+   now on record. Automating the filing crosses R4 (sweeps read-only, write
+   nothing) and §3. The R12 classifier already SIGHTS approved work orders
+   arriving, so the sweep can flag "needs filing" without writing.
+3. **Every Sunday: pull the weekly schedule from Mike and tell each client
+   their day and time.** Outbound customer messaging crosses *"agents cannot
+   send anything"* + TCPA gates, and no send channel exists (Twilio needs
+   Mike's credentials). Needs a channel ruling before any build.
