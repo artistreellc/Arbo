@@ -114,6 +114,11 @@ export const env = {
     privateKey: get('GOOGLE_PRIVATE_KEY'),
     mapsApiKey: get('GOOGLE_MAPS_API_KEY'),
     driveRootFolderId: get('ARBOR_DRIVE_ROOT_FOLDER_ID'),
+    // Consumer-Gmail OAuth (backlog #36): minted by Mike's one-time consent
+    // to gmail.readonly, nothing wider. All three or the reader stays null.
+    gmailOauthClientId: get('GMAIL_OAUTH_CLIENT_ID'),
+    gmailOauthClientSecret: get('GMAIL_OAUTH_CLIENT_SECRET'),
+    gmailOauthRefreshToken: get('GMAIL_OAUTH_REFRESH_TOKEN'),
   },
   ownerAlertPhone: get('OWNER_ALERT_PHONE'),
 } as const;
@@ -126,6 +131,7 @@ export function integrationStatus(): Record<string, boolean> {
     twilio: Boolean(env.twilio.accountSid && env.twilio.authToken && env.twilio.phoneNumber),
     google: Boolean(env.google.clientEmail && env.google.privateKey),
     googleMaps: Boolean(env.google.mapsApiKey),
+    gmailInbox: Boolean(env.google.gmailOauthClientId && env.google.gmailOauthClientSecret && env.google.gmailOauthRefreshToken),
     ownerAlerts: Boolean(env.ownerAlertPhone),
   };
 }

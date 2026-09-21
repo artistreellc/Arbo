@@ -146,6 +146,8 @@ import { loadAllConfig } from './config/loadConfig.js';
 import { env } from './env.js';
 import { createVoiceLlm } from './voice/anthropicLlm.js';
 import { createElevenLabsBridge, type BridgeRequestBody } from './voice/elevenlabsBridge.js';
+import { createGoogleGmailReader } from './integrations/gmail.js';
+import { createRefreshTokenProvider } from './integrations/googleOAuth.js';
 import { LEAD_CHANNELS, channelIsOff, setChannelOff } from './reception/leadMail.js';
 import type { Alerter } from './reception/receptionist.js';
 import { loadAppHtml, loadCrewHtml } from './server/appPage.js';
@@ -942,13 +944,20 @@ export function startServer(port: number) {
   // scheduler floors at an hour and its routines carry no Gmail connector,
   // so the loop lives here instead.
   //
-  // THE READER IS NULL UNTIL A TOKEN EXISTS, and that is the honest state,
-  // not a stub: `createGoogleGmailReader(getAccessToken)` is written and
-  // tested, and the one thing missing is a consumer-Gmail OAuth token
-  // (backlog #36 — Mike's call, see src/integrations/gmail.ts). Started
-  // anyway, because a watch reporting UNAVAILABLE every hour is a fact an
-  // operator can act on; a watch that was never started is silence.
-  inboxWatch = startInboxWatch(null);
+  // THE READER GOES LIVE WHEN ALL THREE GMAIL_OAUTH_* VARS EXIST — the
+  // refresh token is Mike's one-time gmail.readonly consent (backlog #36).
+  // With any of the three absent the reader stays null, and that is the
+  // honest state, not a stub: the watch reports UNAVAILABLE every hour,
+  // which an operator can act on; a watch never started is silence.
+  const g = env.google;
+  const gmailReader = g.gmailOauthClientId && g.gmailOauthClientSecret && g.gmailOauthRefreshToken
+    ? createGoogleGmailReader(createRefreshTokenProvider({
+        clientId: g.gmailOauthClientId,
+        clientSecret: g.gmailOauthClientSecret,
+        refreshToken: g.gmailOauthRefreshToken,
+      }))
+    : null;
+  inboxWatch = startInboxWatch(gmailReader);
   // §8A.6f: the agents run on their own clock, not only when Mike taps.
   startAgentScheduler(
     createApi(createServerSource(), { alerts: createNwsAlertsProvider((u, i) => fetch(u, i)) }),
