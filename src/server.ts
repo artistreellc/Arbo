@@ -146,7 +146,7 @@ import { loadAllConfig } from './config/loadConfig.js';
 import { env } from './env.js';
 import { createVoiceLlm } from './voice/anthropicLlm.js';
 import { createElevenLabsBridge, type BridgeRequestBody } from './voice/elevenlabsBridge.js';
-import { createGoogleGmailReader } from './integrations/gmail.js';
+import { createGoogleGmailReader, createGoogleGmailThreadReader } from './integrations/gmail.js';
 import { createRefreshTokenProvider } from './integrations/googleOAuth.js';
 import { LEAD_CHANNELS, channelIsOff, setChannelOff } from './reception/leadMail.js';
 import { getTodayWorkZip, setTodayWorkZip, getLiveWorkZip, setLivePingZip, setLocationEnabled, isLocationEnabled, liveLocationState } from './reception/routingHint.js';
@@ -162,6 +162,10 @@ import {
   unavailablePass,
   type InboxWatchHandle,
 } from './ops/inboxWatch.js';
+import { IntentWatch } from './ops/intentWatch.js';
+import { IntentRegistry } from './ops/intentRegistry.js';
+import { InboxSurfaceStore } from './ops/inboxSurface.js';
+import { createOpusIntentModel } from './ops/inboxIntent.js';
 import { createSimSource } from './dev/simSource.js';
 
 /**
@@ -747,6 +751,81 @@ export function createArborRequestHandler() {
         const last = inboxWatch?.last();
         return send(200, last ?? unavailablePass(new Date().toISOString(), 'inbox watch has not completed a pass'));
       }
+      // ═══ The intent engine (R17) ═══ Everything under /api/inbox/intents
+      // serves the app behind the keywall. Surfaced cards carry customer
+      // contact BY RULING — R17 moved the app-UI boundary; logs and chat
+      // still carry counts and ids only (§4.3).
+      if (req.method === 'GET' && url.pathname === '/api/inbox/intents') {
+        if (!intentWatch) return send(200, { pipeline: 'not_started' });
+        const now = new Date();
+        const last = inboxWatch?.last();
+        const gmailReadable = last != null && last.status !== 'unavailable';
+        const s = intentWatch.snapshotStatus();
+        return send(200, {
+          pipeline: !gmailReadable ? 'no_gmail' : !s.modelConfigured ? 'pattern_only' : 'live',
+          gmailReason: !gmailReadable ? (last?.reason ?? 'inbox watch has not completed a pass') : null,
+          ...intentWatch.store.snapshot(now),
+          zeroFlag: intentWatch.store.zeroSurfacedFlag(now, gmailReadable),
+          proposals: intentWatch.registry.pendingProposals(),
+          intents: intentWatch.registry.intents(),
+          pendingCommit: intentWatch.registry.exportPending().approvedPendingCommit.length,
+          model: s,
+        });
+      }
+      if (req.method === 'POST' && url.pathname === '/api/inbox/relabel') {
+        if (!intentWatch) return send(503, { error: 'intent_engine_not_started' });
+        const b = (await readJson(req)) as Record<string, unknown>;
+        const threadId = typeof b.threadId === 'string' ? b.threadId : '';
+        const intent = typeof b.intent === 'string' ? b.intent : '';
+        if (!threadId || !intent) return send(400, { error: 'threadId_and_intent_required' });
+        const ok = await intentWatch.relabel(threadId, intent);
+        return ok
+          ? send(200, { ok: true })
+          : send(400, { error: 'unknown_intent', message: 'Not a known intent id. Nothing was changed.' });
+      }
+      if (req.method === 'POST' && url.pathname === '/api/inbox/intents/approve') {
+        if (!intentWatch) return send(503, { error: 'intent_engine_not_started' });
+        const b = (await readJson(req)) as Record<string, unknown>;
+        const id = typeof b.id === 'string' ? b.id : '';
+        const label = typeof b.label === 'string' ? b.label : undefined;
+        const def = id ? intentWatch.registry.approve(id, label) : null;
+        return def
+          ? send(200, { ok: true, intent: def })
+          : send(400, { error: 'unknown_proposal', message: 'No such proposal. Nothing was changed.' });
+      }
+      if (req.method === 'POST' && url.pathname === '/api/inbox/intents/reject') {
+        if (!intentWatch) return send(503, { error: 'intent_engine_not_started' });
+        const b = (await readJson(req)) as Record<string, unknown>;
+        const id = typeof b.id === 'string' ? b.id : '';
+        return id && intentWatch.registry.reject(id)
+          ? send(200, { ok: true })
+          : send(400, { error: 'unknown_proposal', message: 'No such proposal. Nothing was changed.' });
+      }
+      // What an in-app approval/correction would lose on redeploy, shaped for
+      // committing into policy/inboxIntents.json — the honest half of
+      // "learned" state while the links are cut.
+      if (req.method === 'GET' && url.pathname === '/api/inbox/intents/export') {
+        if (!intentWatch) return send(503, { error: 'intent_engine_not_started' });
+        return send(200, intentWatch.registry.exportPending());
+      }
+      // The estimate→job step a contract-approval card prompts. NEVER
+      // automatic, and honestly refused while the links are cut — there is
+      // no job table to write into, and pretending otherwise is the lie §1B
+      // exists to stop.
+      if (req.method === 'POST' && url.pathname === '/api/inbox/convert') {
+        if (!dataLinksLive()) {
+          return send(409, {
+            error: 'links_cut',
+            message:
+              'Data links are cut — there is no job table to convert into yet. Nothing was changed. Open the thread in Gmail and handle it there for now.',
+          });
+        }
+        return send(409, {
+          error: 'not_built',
+          message:
+            'Estimate→job conversion from a surfaced approval is not built yet — it lands with the links-live work. Nothing was changed.',
+        });
+      }
       if (req.method === 'GET' && url.pathname === '/api/fleet/units') {
         return send(...unpack(await api.fleetUnits()));
       }
@@ -1019,6 +1098,8 @@ export function createArborRequestHandler() {
  * codebase keeps being told to stop doing.
  */
 let inboxWatch: InboxWatchHandle | null = null;
+/** The intent engine riding the watch's observer hook. Same pattern, same reason. */
+let intentWatch: IntentWatch | null = null;
 
 export function startServer(port: number) {
   const summary = boot();
@@ -1033,14 +1114,27 @@ export function startServer(port: number) {
   // honest state, not a stub: the watch reports UNAVAILABLE every hour,
   // which an operator can act on; a watch never started is silence.
   const g = env.google;
-  const gmailReader = g.gmailOauthClientId && g.gmailOauthClientSecret && g.gmailOauthRefreshToken
-    ? createGoogleGmailReader(createRefreshTokenProvider({
+  // One token provider for both Gmail doors — the recent-mail reader and the
+  // intent engine's thread reader share the same gmail.readonly consent.
+  const gmailToken = g.gmailOauthClientId && g.gmailOauthClientSecret && g.gmailOauthRefreshToken
+    ? createRefreshTokenProvider({
         clientId: g.gmailOauthClientId,
         clientSecret: g.gmailOauthClientSecret,
         refreshToken: g.gmailOauthRefreshToken,
-      }))
+      })
     : null;
-  inboxWatch = startInboxWatch(gmailReader);
+  const gmailReader = gmailToken ? createGoogleGmailReader(gmailToken) : null;
+  // The intent engine (R17, Mike's go 2026-09-23): Opus judged, human-in-the-
+  // loop learned, surfaced only to the keywall-gated app. Each absent piece
+  // is a NAMED degradation, never a quiet one: no API key = pattern-only
+  // verdicts (status says so), no Gmail = the watch is already screaming.
+  intentWatch = new IntentWatch(
+    env.anthropic.apiKey ? createOpusIntentModel(env.anthropic.apiKey) : null,
+    gmailToken ? createGoogleGmailThreadReader(gmailToken) : null,
+    new IntentRegistry(),
+    new InboxSurfaceStore(),
+  );
+  inboxWatch = startInboxWatch(gmailReader, { onMessage: intentWatch.observer });
   // §8A.6f: the agents run on their own clock, not only when Mike taps.
   startAgentScheduler(
     createApi(createServerSource(), { alerts: createNwsAlertsProvider((u, i) => fetch(u, i)) }),

@@ -69,6 +69,7 @@
 // token, and getting one is Mike's call, not something to quietly arrange.
 
 import type { GmailReader, InboxMessage, InboxRead } from '../ops/inboxWatch.js';
+import type { GmailThreadReader, ThreadRead } from '../ops/inboxIntent.js';
 
 const BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
@@ -211,6 +212,47 @@ export function createGoogleGmailReader(
       if (ids.length >= limit) unreadable.push(`hit the ${limit}-message cap — there may be more`);
 
       return { ok: true, messages, unreadable };
+    },
+  };
+}
+
+/**
+ * The thread door (R17 intent engine): threads.get, format full — still a
+ * GET, still inside the `gmail.readonly` scope the reader already holds. No
+ * new consent, no new capability; context lives in the replies and this is
+ * how the classifier reads them.
+ */
+export function createGoogleGmailThreadReader(
+  getAccessToken: () => Promise<string>,
+  fetchFn: FetchFn = (u, i) => fetch(u, i),
+): GmailThreadReader {
+  return {
+    async thread(threadId: string): Promise<ThreadRead> {
+      let auth: Record<string, string>;
+      try {
+        auth = { Authorization: `Bearer ${await getAccessToken()}` };
+      } catch (err) {
+        return { ok: false, reason: `gmail auth failed: ${err instanceof Error ? err.message : 'error'}` };
+      }
+      try {
+        const res = await fetchFn(
+          `${BASE}/threads/${encodeURIComponent(threadId)}?format=full`,
+          { headers: auth },
+        );
+        if (!res.ok) return { ok: false, reason: `gmail threads.get ${res.status}` };
+        const t = (await res.json()) as { messages?: GmailMessage[] };
+        const messages = (t.messages ?? []).map((m) => ({
+          from: headerOf(m, 'From'),
+          subject: headerOf(m, 'Subject'),
+          body: extractBody(m.payload),
+          receivedAtIso: m.internalDate
+            ? new Date(Number(m.internalDate)).toISOString()
+            : new Date(0).toISOString(),
+        }));
+        return { ok: true, messages };
+      } catch (err) {
+        return { ok: false, reason: `gmail threads.get failed: ${err instanceof Error ? err.message : 'error'}` };
+      }
     },
   };
 }
