@@ -581,6 +581,129 @@ async function locationStrip() {
   return wrap;
 }
 
+// ---------- Inbox intents (R17 — mail that means something, surfaced; a dead feed NAMED, never a quiet zero) ----------
+async function inboxIntentPanel() {
+  let d;
+  try { d = await api('/api/inbox/intents'); }
+  catch (e) { return e.code === 401 ? null : el('div', 'storm-muted', '📬 Inbox intents: status unavailable right now.'); }
+  if (d.pipeline === 'not_started') return null;
+  const wrap = el('div');
+  const title = el('div', 'panel-title', 'Inbox — surfaced mail');
+  wrap.appendChild(title);
+
+  if (d.pipeline === 'no_gmail') {
+    wrap.appendChild(el('div', 'storm-muted',
+      '📬 Gmail is not connected — the intent engine cannot look. This is not zero mail. (' + (d.gmailReason || 'no pass yet') + ')'));
+    return wrap;
+  }
+  if (d.pipeline === 'pattern_only') {
+    wrap.appendChild(el('div', 'storm-muted',
+      '⚠ Intent model unavailable — pattern matching only. Odd-format mail may sit in the ignored log.'));
+  }
+  if (d.model && d.model.consecutiveModelFailures >= 3) {
+    wrap.appendChild(el('div', 'storm',
+      '⚠ The intent model has failed ' + d.model.consecutiveModelFailures + ' times in a row (' + (d.model.lastModelErrorName || 'error') + ') — verdicts are pattern-only until it recovers.'));
+  }
+  if (d.zeroFlag) wrap.appendChild(el('div', 'late', '📭 ' + d.zeroFlag));
+  if (d.pendingCommit > 0) {
+    wrap.appendChild(el('div', 'storm-muted',
+      d.pendingCommit + ' in-app approval(s) live in memory only — they reset on a redeploy until committed to the repo.'));
+  }
+  wrap.appendChild(el('div', 'storm-muted',
+    'Today: ' + d.today.read + ' read · ' + d.today.surfaced + ' surfaced · ' + d.today.maybe + ' maybe · ' + d.today.ignored + ' ignored'));
+
+  const intentCard = (it) => {
+    const c = el('div', 'card' + (it.contractApproval ? ' emergency' : ''));
+    c.appendChild(el('div', 'cb-label', it.intentLabel + (it.modelUnavailable ? ' · pattern-only' : '')));
+    const top = el('div', 'toprow');
+    top.appendChild(el('div', 'who', it.name || 'Unknown sender'));
+    top.appendChild(el('div', 'when', fmtTime(it.receivedAtIso)));
+    c.appendChild(top);
+    const where = [it.address, it.zip].filter(Boolean).join(' · ');
+    if (where) c.appendChild(el('div', 'addr', where));
+    if (it.subjectHint) c.appendChild(el('div', 'scope', it.subjectHint));
+    if (it.details) c.appendChild(el('div', 'scope', it.details));
+    c.appendChild(el('div', 'scope', it.reason));
+    const actions = el('div', 'actions');
+    if (it.phone) {
+      const call = el('a', 'callbtn', '📞 Call');
+      call.href = 'tel:' + it.phone;
+      actions.appendChild(call);
+    }
+    if (it.gmailLink) {
+      const open = el('a', 'minibtn', 'Open in Gmail ↗');
+      open.href = it.gmailLink; open.target = '_blank'; open.rel = 'noopener';
+      open.style.display = 'inline-flex'; open.style.alignItems = 'center'; open.style.textDecoration = 'none';
+      actions.appendChild(open);
+    }
+    c.appendChild(actions);
+    if (it.contractApproval) {
+      const conv = el('button', 'actbtn', '✅ Approved work — convert to job (asks first)');
+      conv.onclick = async () => {
+        conv.disabled = true;
+        try { await api('/api/inbox/convert', { method: 'POST', body: { threadId: it.threadId } }); }
+        catch (e) {
+          c.appendChild(el('div', 'storm-muted', e.message === 'links_cut'
+            ? 'Data links are cut — nothing to convert into yet. Nothing was changed.'
+            : 'Conversion lands with the links-live build. Nothing was changed.'));
+        }
+        conv.disabled = false;
+      };
+      c.appendChild(conv);
+    }
+    if (it.threadId) {
+      const row = el('div', 'actions');
+      const sel = el('select', 'minibtn');
+      sel.appendChild(new Option('Re-label…', ''));
+      for (const i of d.intents) sel.appendChild(new Option(i.label, i.id));
+      sel.appendChild(new Option('Ignore — not one to surface', 'ignored'));
+      sel.onchange = async () => {
+        if (!sel.value) return;
+        try { await api('/api/inbox/relabel', { method: 'POST', body: { threadId: it.threadId, intent: sel.value } }); renderToday(); }
+        catch (e) { sel.value = ''; }
+      };
+      row.appendChild(sel);
+      c.appendChild(row);
+    }
+    return c;
+  };
+
+  for (const it of d.surfaced.slice(0, 10)) wrap.appendChild(intentCard(it));
+  if (d.surfaced.length === 0 && d.maybe.length === 0) {
+    wrap.appendChild(el('div', 'storm-muted', 'Nothing surfaced right now — the engine is watching.'));
+  }
+  if (d.maybe.length > 0) {
+    wrap.appendChild(el('div', 'panel-title', 'Maybe — check this'));
+    for (const it of d.maybe.slice(0, 6)) wrap.appendChild(intentCard(it));
+  }
+  for (const p of (d.proposals || [])) {
+    const c = el('div', 'card');
+    c.appendChild(el('div', 'cb-label', 'Proposed new intent'));
+    c.appendChild(el('div', 'who', p.label));
+    c.appendChild(el('div', 'scope', 'Arbo keeps seeing mail like this — ' + p.sightings + ' sighting(s). Approve it to start surfacing them.'));
+    const row = el('div', 'actions');
+    const yes = el('button', 'minibtn ok', 'Approve');
+    yes.onclick = async () => { try { await api('/api/inbox/intents/approve', { method: 'POST', body: { id: p.id } }); renderToday(); } catch (e) {} };
+    const no = el('button', 'minibtn bad', 'Reject');
+    no.onclick = async () => { try { await api('/api/inbox/intents/reject', { method: 'POST', body: { id: p.id } }); renderToday(); } catch (e) {} };
+    row.appendChild(yes); row.appendChild(no);
+    c.appendChild(row);
+    wrap.appendChild(c);
+  }
+  if (d.ignored.length > 0) {
+    const btn = el('button', 'minibtn', 'Ignored log (' + d.ignored.length + ')');
+    const log = el('div');
+    log.style.display = 'none';
+    for (const ig of d.ignored.slice(0, 30)) {
+      log.appendChild(el('div', 'storm-muted', fmtTime(ig.receivedAtIso) + ' — ' + ig.reason));
+    }
+    btn.onclick = () => { log.style.display = log.style.display === 'none' ? 'block' : 'none'; };
+    wrap.appendChild(btn);
+    wrap.appendChild(log);
+  }
+  return wrap;
+}
+
 // ---------- Reception strip (the phone line as an instrument — §1B: counts, or the reason there are none) ----------
 async function receptionStrip() {
   let s;
@@ -623,6 +746,12 @@ async function renderToday() {
   const talkBtn = el('button', 'hudbtn', '\ud83c\udf99 Talk to Arbo');
   talkBtn.addEventListener('click', () => window.open('/talk', '_blank', 'noopener'));
   v.appendChild(talkBtn);
+  // Surfaced mail (R17) ALSO lives above the brief fetch \u2014 same lesson as
+  // the talk button: with the links cut the brief 503s and returns early,
+  // and anything below that line never renders in production.
+  const inboxSlot = el('div');
+  v.appendChild(inboxSlot);
+  inboxIntentPanel().then((b) => { if (b) inboxSlot.appendChild(b); });
   const start = new Date(); start.setHours(0, 0, 0, 0);
   const end = new Date(start); end.setDate(end.getDate() + 1);
   let brief;

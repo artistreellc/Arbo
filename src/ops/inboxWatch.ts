@@ -71,7 +71,7 @@
 // runs on the real return path, so a future edit that widens the result into
 // customer data fails loudly instead of quietly leaking into a log line.
 
-import { classifyLeadMail, channelIsOff, type LeadMailProvider } from '../reception/leadMail.js';
+import { classifyLeadMail, channelIsOff, type LeadMailProvider, type LeadMailResult } from '../reception/leadMail.js';
 import { classifyPermitMail, type PermitMailKind } from '../permitting/permitMail.js';
 import type { ServiceCity } from '../lib/address.js';
 
@@ -352,11 +352,31 @@ export function assertNoPii(result: InboxWatchResult): void {
   }
 }
 
+/**
+ * Where a NEW message landed in this pass — handed to the observer below so
+ * the intent engine (R17) can see the same routing without re-deciding it.
+ */
+export type MessageOutcome =
+  | { kind: 'lead'; classification: LeadMailResult }
+  | { kind: 'channel_off'; provider: LeadMailProvider }
+  | { kind: 'unparsed_known' }
+  | { kind: 'city' }
+  | { kind: 'other' };
+
 export interface WatchOptions {
   /** How far back to ask for. Wider than the interval, so a slow pass cannot skip mail. */
   lookbackMinutes?: number;
   /** Cap on messages per pass — a reader that returns the world must not stall the loop. */
   limit?: number;
+  /**
+   * OBSERVER, NOT PARTICIPANT. Called once per new message with the raw mail
+   * and where it routed. The raw message carries customer data — that is the
+   * point (R17: the intent engine surfaces cards to the keywall-gated app) —
+   * but nothing an observer does can reach THIS pass's result: it returns
+   * nothing, its errors are swallowed here, and `assertNoPii` still guards
+   * the report exactly as before. Logs and chat stay counts-and-ids (§4.3).
+   */
+  onMessage?: (msg: InboxMessage, outcome: MessageOutcome) => void;
 }
 
 /**
@@ -393,6 +413,16 @@ export async function watchInbox(
   let scanned = 0;
   let alreadySeen = 0;
 
+  // An observer that throws must never take the pass down with it — the
+  // watch's own report is the thing operators trust (§1B).
+  const emit = (msg: InboxMessage, outcome: MessageOutcome): void => {
+    try {
+      opts.onMessage?.(msg, outcome);
+    } catch (err) {
+      console.error('[inbox] observer failed:', err instanceof Error ? err.name : 'error');
+    }
+  };
+
   for (const msg of read.messages) {
     if (seen.has(msg.id)) {
       alreadySeen++;
@@ -408,18 +438,25 @@ export async function watchInbox(
     try {
       c = classifyLeadMail({ from: msg.from, subject: msg.subject, body: msg.body });
     } catch {
-      if (isKnownLeadSender(msg.from)) unparsedKnownSenderIds.push(msg.id);
-      else otherMail++;
+      if (isKnownLeadSender(msg.from)) {
+        unparsedKnownSenderIds.push(msg.id);
+        emit(msg, { kind: 'unparsed_known' });
+      } else {
+        otherMail++;
+        emit(msg, { kind: 'other' });
+      }
       continue;
     }
 
     if (c.channelOff) {
       channelOff[c.channelOff] = (channelOff[c.channelOff] ?? 0) + 1;
+      emit(msg, { kind: 'channel_off', provider: c.channelOff });
       continue;
     }
     if (!c.isLeadNotification || c.provider === null) {
       if (isKnownLeadSender(msg.from)) {
         unparsedKnownSenderIds.push(msg.id);
+        emit(msg, { kind: 'unparsed_known' });
         continue;
       }
       // Not a lead — but a letter from a city is not noise either. Checked
@@ -435,17 +472,21 @@ export async function watchInbox(
           caseRefs: pm.caseRefs,
           receivedAtIso: msg.receivedAtIso,
         });
+        emit(msg, { kind: 'city' });
         continue;
       }
       otherMail++;
+      emit(msg, { kind: 'other' });
       continue;
     }
     // Belt and braces: a channel switched off must never reach the lead list
     // even if a parser someday returns isLeadNotification for it.
     if (channelIsOff(c.provider)) {
       channelOff[c.provider] = (channelOff[c.provider] ?? 0) + 1;
+      emit(msg, { kind: 'channel_off', provider: c.provider });
       continue;
     }
+    emit(msg, { kind: 'lead', classification: c });
 
     leads.push({
       messageId: msg.id,

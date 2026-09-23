@@ -391,3 +391,34 @@ standing hard rule and needs Mike's explicit go:**
    their day and time.** Outbound customer messaging crosses *"agents cannot
    send anything"* + TCPA gates, and no send channel exists (Twilio needs
    Mike's credentials). Needs a channel ruling before any build.
+
+## R17 — Read everything, surface what matters; customer contact may show on app cards
+**Ruling: 2026-09-23.** Mike, on the inbox intent classifier build prompt:
+*"yes to all of it use opus and build it."* Four boundaries moved — each is
+his explicit override, on the record:
+
+1. **The app UI may show customer name / phone / ZIP / address on surfaced
+   mail cards.** This overrides the presence-only design of the inbox sweep
+   FOR THE KEYWALL-GATED APP ONLY. §4.3 still rules logs, chat replies, and
+   the watch's own report — those stay counts-and-ids, and `assertNoPii()`
+   still guards the sweep's return path. The surfaced store
+   (`src/ops/inboxSurface.ts`) serves `/api/inbox/*` behind the keywall and
+   nothing else.
+2. **Every non-obvious email thread is sent to the Opus model for intent
+   classification** (`claude-opus-5`, Mike's pick over any cheaper model) —
+   customer mail content goes to the Anthropic API on every sweep. Channels
+   Mike switched OFF and city permit mail are not spent on the model.
+3. **Learn-and-adapt stays human-in-the-loop.** The model proposes intents
+   (2+ sightings), Mike approves/renames/rejects; his one-tap re-labels are
+   absolute per-thread and feed back as REDACTED snippets only. In-app
+   approvals and corrections are in-memory until committed to
+   `src/policy/inboxIntents.json` — the UI says so, per §1B.
+4. **A contract-approval card PROMPTS estimate→job conversion; the tap is
+   Mike's and the endpoint refuses by name while the links are cut.** Never
+   automatic.
+
+What did NOT move: Gmail stays read-only (`gmail.readonly`, one-method
+interfaces); nothing ignored is deleted — "ignored" means not shown, and the
+log keeps every entry with a one-line reason; `ARBO_DATA_LINKS` stays off
+until Mike runs the acceptance checks and flips it himself; Yelp stays a
+surfaced channel (R12 wins over the prompt's five-intent table).
