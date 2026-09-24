@@ -106,3 +106,34 @@ describe('public legal pages (OAuth publishing requirement)', () => {
     srv.close();
   });
 });
+
+describe('POST /api/inbox/backfill (catch-up sweep)', () => {
+  it('refuses honestly without the watch, a bad date, or a too-deep reach', async () => {
+    const srv2 = createServer(createArborRequestHandler());
+    await new Promise<void>((r) => srv2.listen(0, r));
+    const base = `http://127.0.0.1:${(srv2.address() as { port: number }).port}`;
+    const post = (body: unknown) =>
+      fetch(`${base}/api/inbox/backfill`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    const noWatch = await post({ sinceIso: new Date(Date.now() - 3600_000).toISOString() });
+    expect(noWatch.status).toBe(503);
+    expect(((await noWatch.json()) as { error: string }).error).toBe('inbox_watch_not_started');
+    expect((await post({})).status).toBe(400);
+    expect((await post({ sinceIso: 'not-a-date' })).status).toBe(400);
+    const tooFar = await post({ sinceIso: new Date(Date.now() - 30 * 24 * 3600_000).toISOString() });
+    expect(tooFar.status).toBe(400);
+    expect(((await tooFar.json()) as { message: string }).message).toContain('Nothing was scanned');
+    srv2.close();
+  });
+
+  it('the app carries the catch-up picker with all six reach-back options', () => {
+    const html2 = readFileSync(new URL('../src/app/index.html', import.meta.url), 'utf8');
+    for (const lab of ['Last 5 minutes', 'Last 15 minutes', 'Last 30 minutes', 'Last hour', 'Last day', 'Last week']) {
+      expect(html2).toContain(lab);
+    }
+    expect(html2).toContain("api('/api/inbox/backfill'");
+  });
+});

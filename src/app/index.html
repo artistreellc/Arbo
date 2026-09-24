@@ -690,6 +690,34 @@ async function inboxIntentPanel() {
     c.appendChild(row);
     wrap.appendChild(c);
   }
+  // Catch-up sweep with a reach-back picker (Mike, 2026-09-24: "5 mins
+  // 15mins 30mins 1hr 1day 1week"). The engine's dedupe means running it
+  // twice never double-reports.
+  {
+    const row = el('div', 'actions');
+    const sel = el('select', 'minibtn');
+    for (const [mins, lab] of [[5, 'Last 5 minutes'], [15, 'Last 15 minutes'], [30, 'Last 30 minutes'], [60, 'Last hour'], [1440, 'Last day'], [10080, 'Last week']]) {
+      sel.appendChild(new Option(lab, String(mins)));
+    }
+    sel.value = '1440';
+    const cu = el('button', 'minibtn', '⏪ Catch up');
+    cu.onclick = async () => {
+      cu.disabled = true; sel.disabled = true; cu.textContent = 'Scanning…';
+      const since = new Date(Date.now() - Number(sel.value) * 60 * 1000);
+      try {
+        const r = await api('/api/inbox/backfill', { method: 'POST', body: { sinceIso: since.toISOString() } });
+        cu.textContent = r.status === 'unavailable'
+          ? 'Could not scan — ' + (r.reason || 'inbox unavailable')
+          : '✅ ' + r.scanned + ' read — sorting continues for a few minutes';
+        setTimeout(() => renderToday(), 1500);
+      } catch (e) {
+        cu.disabled = false; sel.disabled = false;
+        cu.textContent = 'Failed — nothing scanned. Retry';
+      }
+    };
+    row.appendChild(sel); row.appendChild(cu);
+    wrap.appendChild(row);
+  }
   if (d.ignored.length > 0) {
     const btn = el('button', 'minibtn', 'Ignored log (' + d.ignored.length + ')');
     const log = el('div');

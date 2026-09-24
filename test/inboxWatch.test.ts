@@ -468,3 +468,41 @@ describe('inbox watch — read-only by construction (R4)', () => {
     expect(Object.keys(shape)).toEqual(['recent']);
   });
 });
+
+// ─── The catch-up sweep (Mike, 2026-09-24) ───
+import { startInboxWatch as startForBackfill } from '../src/ops/inboxWatch.js';
+
+describe('backfill', () => {
+  it('reaches back to sinceIso with the raised cap, sharing the dedupe set', async () => {
+    const seenSince: string[] = [];
+    const limits: number[] = [];
+    const reader = {
+      async recent(sinceIso: string, limit: number) {
+        seenSince.push(sinceIso);
+        limits.push(limit);
+        return {
+          ok: true as const,
+          messages: [{ id: 'bf-1', from: 'a@b.c', subject: 's', body: 'b', receivedAtIso: sinceIso }],
+          unreadable: [],
+        };
+      },
+    };
+    const h = startForBackfill(reader, { intervalMs: 60 * 60_000 });
+    await new Promise((r) => setTimeout(r, 5)); // boot tick
+    const since = new Date(Date.now() - 4 * 24 * 60 * 60_000).toISOString();
+    const result = await h.backfill(since);
+    h.stop();
+    expect(result.status).not.toBe('unavailable');
+    expect(Date.parse(seenSince[seenSince.length - 1]!)).toBeLessThanOrEqual(Date.parse(since));
+    expect(limits[limits.length - 1]).toBe(250);
+    expect(result.alreadySeen).toBe(1);
+    expect(h.last()).toBe(result);
+  });
+
+  it('with no reader, backfill says UNAVAILABLE — never an empty catch-up', async () => {
+    const h = startForBackfill(null, { intervalMs: 60 * 60_000 });
+    const r = await h.backfill(new Date().toISOString());
+    h.stop();
+    expect(r.status).toBe('unavailable');
+  });
+});
