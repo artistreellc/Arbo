@@ -119,6 +119,13 @@ export const GuardrailsSchema = z
       afterHours: z.string().min(1),
       overflow: z.string().min(1),
       missedCallTextBack: z.string().min(1),
+      /**
+       * R22 (Mike, 2026-09-24): the "still interested in a quote?" text sent
+       * via Quo — the past-week catch-up and every follow-up after it use
+       * this ONE template. Mike owns the wording; the compliance gate checks
+       * it (business identity, opt-out line, no price/diagnosis/date).
+       */
+      quoteFollowUpText: z.string().min(1),
     }),
     // Call routing beyond the normal lead path (§3.7–3.9, §3.21, §3.26).
     callRouting: z.object({

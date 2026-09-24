@@ -526,3 +526,43 @@ fail-closed shape as the data links: open only when `ARBO_LINK_ELEVENLABS`
 What did NOT move: nothing is deleted — the agent, the number, the bridge
 code, and every secret stay where they are. Sona (Quo) is not behind these
 switches. Reconnecting is Mike's call, one variable each.
+
+## R22 — Arbo may TEXT via Quo: the "still interested in a quote?" text
+**Ruling: 2026-09-24.** Mike, verbatim: *"set up the ability to send texts
+via quo to have people reach back out to 7573195131 if they are still
+intrested in a quote for the past week only and after that use the same
+templet for follow ups"*.
+
+What this changes:
+1. **"Agents cannot send anything" gets ONE exception: a text, via Quo,
+   from the Quo line (757-606-9432).** The sender is a single file
+   (`src/integrations/quoSend.ts`) that nothing may call except the outreach
+   engine, and the engine runs every text through the compliance gate that
+   already existed in code and had never been wired
+   (`inspectMessage`: consent, STOP, 8am–9pm ET, no price / diagnosis / date
+   promise) plus Quo's own record (STOP and "already texted" are read from
+   Quo before every send, so a redeploy can never forget them).
+2. **One template, Mike's words, in the policy file he owns**
+   (`guardrails.afterHoursAndOverflow.quoteFollowUpText`). It carries the
+   business name and "Reply STOP to opt out"; a template that fails the
+   gate sends nothing, by name.
+3. **The past-week catch-up:** everyone who reached the Quo line in the
+   last 7 days and has not heard from us — one text. Runs on Mike's tap in
+   the app or the `ARBO_OUTREACH_CATCHUP=live` switch.
+4. **Follow-ups after that:** the same text, 48 hours after any new inbound
+   inquiry that has not booked an estimate and has not heard from us.
+   Automatic only while `ARBO_OUTREACH=live` (fail-closed like every
+   switch).
+5. **Who never gets texted:** a number we only dialed; a solicitor or wrong
+   number — decided from the caller's WORDS, never a carrier label (the
+   spam-likely ruling of the same day); anyone who texted STOP; anyone
+   Arbo or Mike already texted in 30 days; a number Sona already booked;
+   our own numbers; group threads; anyone Mike excludes in the app.
+
+What did NOT move: email never; calendar edits never; Twilio and ElevenLabs
+stay cut (R21); sweeps stay read-only (R4); logs stay counts-and-ids (§4.3)
+— numbers appear only in the keywalled app; nothing is sent to anyone who
+did not contact the business first (the call-in is the consent basis,
+compliance.json). Quo's US texting (A2P 10DLC) registration is Mike's to
+complete in Quo → Settings → Trust center; until it is approved Quo refuses
+every send and the app says so by name.

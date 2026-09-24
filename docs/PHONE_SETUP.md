@@ -51,7 +51,13 @@ go to T-Mobile voicemail until the two optional codes are dialed.
 - Per Sona call: rule check (code guard + Opus read), calendar hold filed
   Mike's way, call record, repeat-caller memory. State on `GET /api/quo`
   and the Today / Calls screens.
-- Arbo never sends through Quo — the client has no send method (pinned).
+- **Arbo texts through Quo (R22)** — the ONE outbound path: the "still
+  interested in a quote?" template, past-week catch-up on Mike's tap or
+  `ARBO_OUTREACH_CATCHUP=live`, 48-hour follow-ups while `ARBO_OUTREACH=live`.
+  Gate: consent (they called in), STOP (read from Quo before every send),
+  8am–9pm ET, no price/diagnosis/date. Quo refuses every send until Mike
+  completes US texting registration in Quo → Settings → Trust center; the app
+  names that state.
 
 **Still to do in Quo (Mike's side, Sona settings):**
 1. Sona answers **immediately** — not after ringing Mike in the Quo app. The
@@ -67,7 +73,7 @@ go to T-Mobile voicemail until the two optional codes are dialed.
 
 | Line | How texts reach Arbo | State |
 |---|---|---|
-| Quo 757-606-9432 | Quo webhook (above), photos included. | Live. |
+| Quo 757-606-9432 | Quo webhook (above), photos included. Outbound: the R22 text only. | Live. |
 | Arbo 757-821-6983 | Twilio "A message comes in" webhook → `/webhooks/twilio/sms?key=…`, key = **`TWILIO_SMS_WEBHOOK_KEY`** (Railway). Receive only — empty TwiML reply. | **CUT (R21).** Twilio console paste never done. |
 | Business 757-319-5131 | iOS blocks every app from native SMS. Optional bridge: an iPhone Shortcuts "Message" automation POSTing `{from, text}` to `/api/relay/text` with header `x-arbor-key` = the app key. Words only, never photos. | Built; Shortcut **not set up**. |
 

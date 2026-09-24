@@ -130,7 +130,8 @@
   "afterHoursAndOverflow": {
     "afterHours": "Greet, triage. Emergencies alert Mike. Everything else: capture details, promise a callback, queue for morning.",
     "overflow": "Two calls at once or a missed call: capture details and log the lead so no caller ever hits a dead end. Emergencies jump the queue.",
-    "missedCallTextBack": "Sorry we missed you! This is Art-is-Tree — happy to get you a free estimate. What's going on with your trees?"
+    "missedCallTextBack": "Sorry we missed you! This is Art-is-Tree — happy to get you a free estimate. What's going on with your trees?",
+    "quoteFollowUpText": "This is Art-is-Tree. You reached out about tree work recently. Still interested in a free estimate? Call or text Mike at 757-319-5131. Reply STOP to opt out."
   },
   "callRouting": {
     "wantsHuman": {

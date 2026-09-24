@@ -102,7 +102,10 @@ the prompts and makes the calls; your job is to build.
 - **Do not ingest or store leads.** Mike handles them. Scheduled sweeps are
   READ-ONLY: scan, report issues, write nothing — no lead rows, no Gmail
   labels, no calendar edits. (Ruling R4.)
-- **Never modify calendar events. Never send email.** Ever.
+- **Never modify calendar events. Never send email.** Ever. (Two owner-ruled
+  carve-outs, both structural: R18 lets Arbo CREATE unconfirmed calendar
+  holds, never edit; R22 lets Arbo TEXT via Quo through the compliance gate,
+  never email.)
 - **No customer PII in chat output or logs** — counts and ids only (§4.3).
 - **Deploy is manual.** Auto-deploy stays OFF.
 
@@ -162,7 +165,8 @@ nothing new flows in without its own go.
 Never price · never diagnose · never promise a date · never claim a credential
 the company doesn't hold · TCPA consent + permanent STOP + 8am–9pm ET quiet
 hours · permit vocabulary is PERMIT LIKELY / REVIEW NEEDED / NO OVERLAY–VERIFY
-and **never "you're clear"** · agents cannot spend money or send anything.
+and **never "you're clear"** · agents cannot spend money or send anything —
+the one exception is the R22 text via Quo, behind `inspectMessage`.
 
 **§1B is the spine of this codebase:** a dead feed is NAMED, never rendered as
 a confident zero. "We couldn't read it" and "there's nothing there" are
