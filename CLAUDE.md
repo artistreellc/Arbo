@@ -55,6 +55,38 @@ the prompts and makes the calls; your job is to build.
 3. `docs/ARBO_SPEC.md`, `docs/GAMEPLAN.md` — what this is and where it's going.
 4. `docs/OPS_SWEEP.md` — the ops runbook. Its Law section is binding.
 
+## Source of Truth
+
+1. BASE. `Arbo_Master_Build_Brief.pdf` in the Google Drive "Arbo" folder is the
+   canonical source for what Arbo should be. Read it first.
+
+2. RUNNING CODE WINS ON WHAT EXISTS. The brief says what to build, not what is
+   built. The brief lags the code (brief dated 2026-08-02; PRs #7–#14 shipped
+   2026-09-21). Before building anything the brief describes, check the repo.
+   Never remove, rebuild, or "restore" working code to match the brief.
+
+3. ADD-ONS. Every other file in the Arbo folder is an add-on. Add-ons extend
+   the brief. They never rewrite it.
+
+4. READ ORDER. Add-ons are numbered at the END of the filename (-01, -02, -03).
+   Read the brief, then add-ons in number order. The filename number sets the
+   order — not Drive dates, which change on rename or move.
+
+5. CONFLICTS STOP AND ASK. If an add-on contradicts the brief or another
+   add-on, stop. Do not pick a winner. Tell Mike what conflicts, where, and ask
+   which one stands.
+
+6. NEW SCOPE IS GATED. An add-on may propose new scope, but it must say so at
+   the top ("PROPOSES NEW SCOPE: ..."). Do not build new scope until Mike
+   approves it. Nothing new gets built silently. Current approved scope:
+   receptionist + permitting. Everything else is parked.
+
+7. MONTHLY MERGE. At the end of each month, add-ons are merged into the base
+   brief and the Arbo folder resets to one file.
+
+8. RETIREMENT. After a merge, the merged add-ons move to the Drive folder
+   "Arbo Retired Add-Ons". Never read from that folder.
+
 ## Hard boundaries — these have burned before
 
 - **Do not touch the website, Resend, or anything SEO-adjacent.** Mike's
