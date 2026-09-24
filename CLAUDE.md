@@ -54,6 +54,8 @@ the prompts and makes the calls; your job is to build.
 2. `DECISIONS.md` — the full decision log (D1…), newest at the bottom.
 3. `docs/ARBO_SPEC.md`, `docs/GAMEPLAN.md` — what this is and where it's going.
 4. `docs/OPS_SWEEP.md` — the ops runbook. Its Law section is binding.
+5. `docs/PHONE_SETUP.md` — how calls and texts actually flow right now (numbers,
+   forwarding, Quo/Sona, relays). Change it in the same PR as any phone change.
 
 ## Source of Truth
 

@@ -103,6 +103,10 @@ describe('public legal pages (OAuth publishing requirement)', () => {
     expect(homeText).toContain('reception and operations assistant');
     expect(homeText).toContain('/app');
     expect(homeText).not.toContain('keywall');
+    // The public Call link dials the BUSINESS line (757-319-5131, Mike's
+    // T-Mobile) — never Arbo's idle ElevenLabs line (docs/PHONE_SETUP.md).
+    expect(homeText).toContain('tel:+17573195131');
+    expect(homeText).not.toContain('tel:+17578216983');
     srv.close();
   });
 });
