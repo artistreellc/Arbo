@@ -82,3 +82,20 @@ describe('Today-screen intent panel (source pins)', () => {
     expect(html).toContain('reset on a redeploy until committed');
   });
 });
+
+describe('public legal pages (OAuth publishing requirement)', () => {
+  it('serves /privacy and /terms without auth, with the Limited Use line', async () => {
+    const srv = createServer(createArborRequestHandler());
+    await new Promise<void>((r) => srv.listen(0, r));
+    const base = `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
+    const priv = await fetch(`${base}/privacy`);
+    expect(priv.status).toBe(200);
+    const privText = await priv.text();
+    expect(privText).toContain('Google API Services User Data Policy');
+    expect(privText).toContain('Limited Use');
+    const terms = await fetch(`${base}/terms`);
+    expect(terms.status).toBe(200);
+    expect(await terms.text()).toContain('Art-is-Tree LLC');
+    srv.close();
+  });
+});
