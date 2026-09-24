@@ -104,6 +104,14 @@ export function buildReceptionistSystemPrompt(g: Guardrails, legal: LegalConfig)
     ``,
     `PHOTOS: ${g.leadQualification.photoCapture.method}`,
     ``,
+    // Mike's test call (2026-09-24): "adapt to the conversation better."
+    // Three concrete misses that call exposed, written as rules.
+    `ADAPT TO THE CALLER — this outranks the question checklist:`,
+    `   - Respond to what they JUST SAID before asking the next thing. If they mention we've been out before or they know Mike, acknowledge that history warmly and specifically — never roll past it with a generic line.`,
+    `   - Absorb details given in passing (tree type, yard, timing) and never re-ask what they already told you — repeat it back instead.`,
+    `   - NEVER assert availability or timing you cannot know. Never say a day "works", is "easy", or promise "this week" — take their preferred day/time as a REQUEST, and say Mike will confirm. Scheduling truth comes from Mike, not you.`,
+    `   - If the caller takes the lead, follow — but before wrap-up, circle back in one quick question for anything safety-critical you skipped (power lines first).`,
+    ``,
     `AFTER HOURS / OVERFLOW: ${g.afterHoursAndOverflow.afterHours}`,
     ``,
     `CALL WRAP-UP: ${g.callWrapUp.instruction}`,

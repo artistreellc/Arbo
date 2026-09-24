@@ -400,3 +400,78 @@ describe('R15 routing hints — the model sees a conclusion, never a location', 
     expect(llm.lastSystem).not.toContain('CALL CONTEXT');
   });
 });
+
+// ─── Mike, 2026-09-24: "she needs to hang up after saying have a good one" ───
+import { END_CALL_MARKER } from '../src/voice/elevenlabsBridge.js';
+import { buildReceptionistSystemPrompt } from '../src/reception/systemPrompt.js';
+
+describe('ElevenLabs bridge — end_call', () => {
+  const GOODBYE = `Thanks so much, Mike — have a good one! ${END_CALL_MARKER}`;
+  const TOOLS = { tools: [{ type: 'function', function: { name: 'end_call' } }] };
+
+  it('streams the goodbye without the marker, then the end_call tool call', async () => {
+    const { bridge } = makeBridge({ llm: new FakeLlm([GOODBYE]) });
+    const out = await bridge.handle(AUTH, turnBody(['Sounds good, thanks!'], { stream: true, ...TOOLS }));
+    expect(out.status).toBe(200);
+    const joined = out.sse!.join('\n');
+    expect(joined).not.toContain(END_CALL_MARKER); // the token is never spoken
+    expect(joined).toContain('have a good one!');
+    expect(joined).toContain('"end_call"');
+    expect(joined).toContain('"tool_calls"');
+    // the goodbye chunk comes BEFORE the tool call — spoken first, then hung up
+    const contentIdx = out.sse!.findIndex((f) => f.includes('have a good one'));
+    const toolIdx = out.sse!.findIndex((f) => f.includes('"end_call"'));
+    expect(contentIdx).toBeGreaterThan(-1);
+    expect(toolIdx).toBeGreaterThan(contentIdx);
+    expect(joined).toContain('"finish_reason":"tool_calls"');
+  });
+
+  it('JSON path: message carries content + tool_calls, finish_reason tool_calls', async () => {
+    const { bridge } = makeBridge({ llm: new FakeLlm([GOODBYE]) });
+    const out = await bridge.handle(AUTH, turnBody(['Bye!'], TOOLS));
+    const body = out.json as {
+      choices: Array<{ message: { content: string; tool_calls?: Array<{ function: { name: string } }> }; finish_reason: string }>;
+    };
+    expect(body.choices[0]!.message.content).not.toContain(END_CALL_MARKER);
+    expect(body.choices[0]!.message.tool_calls?.[0]?.function.name).toBe('end_call');
+    expect(body.choices[0]!.finish_reason).toBe('tool_calls');
+  });
+
+  it('no end_call tool offered: marker stripped, no tool call, degrades to stop', async () => {
+    const { bridge } = makeBridge({ llm: new FakeLlm([GOODBYE]) });
+    const out = await bridge.handle(AUTH, turnBody(['Bye!']));
+    const body = out.json as { choices: Array<{ message: { content: string; tool_calls?: unknown }; finish_reason: string }> };
+    expect(body.choices[0]!.message.content).not.toContain(END_CALL_MARKER);
+    expect(body.choices[0]!.message.tool_calls).toBeUndefined();
+    expect(body.choices[0]!.finish_reason).toBe('stop');
+  });
+
+  it('an ordinary mid-call reply never triggers end_call even with the tool offered', async () => {
+    const { bridge } = makeBridge({ llm: new FakeLlm(["What's the address for the property?"]) });
+    const out = await bridge.handle(AUTH, turnBody(['I need an estimate'], TOOLS));
+    const body = out.json as { choices: Array<{ finish_reason: string }> };
+    expect(body.choices[0]!.finish_reason).toBe('stop');
+  });
+});
+
+describe('prompt changes (Mike, 2026-09-24)', () => {
+  const prompt = buildReceptionistSystemPrompt(g, legal);
+
+  it('wrap-up teaches the goodbye-then-token pattern', () => {
+    expect(prompt).toContain('have a good one');
+    expect(prompt).toContain('[[END_CALL]]');
+    expect(prompt).toContain('never spoken');
+  });
+
+  it('the disclosure is quality purposes only — no "training"', () => {
+    expect(prompt).toContain('recorded for quality purposes');
+    expect(prompt).not.toContain('training purposes');
+  });
+
+  it('the adapt block outranks the checklist and bans invented availability', () => {
+    expect(prompt).toContain('outranks the question checklist');
+    expect(prompt).toContain('acknowledge that history warmly');
+    expect(prompt).toContain('NEVER assert availability');
+    expect(prompt).toContain('Mike will confirm');
+  });
+});
