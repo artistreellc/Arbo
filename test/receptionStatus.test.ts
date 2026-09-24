@@ -65,12 +65,14 @@ describe('GET /api/reception/status', () => {
     const body = (await res.json()) as Record<string, unknown>;
     expect(Object.keys(body).sort()).toEqual([
       'activeSessions', 'bootedAt', 'callsSinceBoot', 'configured', 'emergencyCallsSinceBoot',
-      'guardBlockedTurnsSinceBoot', 'lastTurnAt', 'llmKeyPresent', 'turnsSinceBoot', 'unauthorizedSinceBoot',
+      'guardBlockedTurnsSinceBoot', 'lastTurnAt', 'linkCut', 'llmKeyPresent', 'turnsSinceBoot', 'unauthorizedSinceBoot',
     ]);
     // Booleans are stated, never inferred from absence; a fresh boot has no
     // turns and says so with null, not a fake timestamp.
     expect(typeof body.configured).toBe('boolean');
     expect(typeof body.llmKeyPresent).toBe('boolean');
+    // R21: the cut is a stated boolean too — a switch, never caller content.
+    expect(typeof body.linkCut).toBe('boolean');
     expect(body.turnsSinceBoot).toBe(0);
     expect(body.lastTurnAt).toBeNull();
   });

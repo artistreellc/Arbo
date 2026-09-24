@@ -10,10 +10,21 @@ D73–D75). If you change any piece of it, change this file in the same PR.
 |---|---|---|
 | **757-319-5131** | Art-is-Tree's business line — Mike's iPhone, **T-Mobile**. The public number. Stays on T-Mobile: Mike ruled *"i dont want to port the number"*. | Mike. Unanswered calls forward to Quo after 20 s. |
 | **757-606-9432** | Quo number ("Art-is-Tree LLC"), inbox `PN70xPKd5p`. | **Sona**, Quo's AI (R20: *"let sona handle it for a while while arbo learns from it"*). |
-| 757-821-6983 | Arbo's own line (Twilio → ElevenLabs → Arbo's guarded Opus brain). | Arbo — but **idle**: nothing forwards to it since R20. Kept until Mike decides to retire it. |
+| 757-821-6983 | Arbo's own line (Twilio → ElevenLabs → Arbo's guarded Opus brain). | **Nobody — links CUT (R21)** while development runs off Sona. Nothing deleted. |
 
 Never change the public number anywhere — Google, the website, and SEO are
 out of scope (CLAUDE.md hard boundary). Quo sits *behind* 757-319-5131.
+
+## Twilio + ElevenLabs links — CUT (R21)
+
+Mike: *"disconnect the twilio and eleven labs links while we develop off
+sona"*. Cut in code, not deleted. Doors refused with 503 `link_cut`: the
+voice bridge `/voice/llm`, `/webhooks/elevenlabs`, Talk to Arbo, the spoken
+brief, `/webhooks/twilio/sms`. Boot log: `[links] CUT while Sona handles
+calls (R21): elevenlabs, twilio`.
+
+To reconnect (Mike's call only): set `ARBO_LINK_ELEVENLABS=live` and/or
+`ARBO_LINK_TWILIO=live` on Railway, redeploy by full SHA.
 
 ## Missed calls → Sona (T-Mobile conditional forwarding)
 
@@ -57,7 +68,7 @@ go to T-Mobile voicemail until the two optional codes are dialed.
 | Line | How texts reach Arbo | State |
 |---|---|---|
 | Quo 757-606-9432 | Quo webhook (above), photos included. | Live. |
-| Arbo 757-821-6983 | Twilio "A message comes in" webhook → `/webhooks/twilio/sms?key=…`, key = **`TWILIO_SMS_WEBHOOK_KEY`** (Railway). Receive only — empty TwiML reply. | Built; Twilio console paste **not done**. |
+| Arbo 757-821-6983 | Twilio "A message comes in" webhook → `/webhooks/twilio/sms?key=…`, key = **`TWILIO_SMS_WEBHOOK_KEY`** (Railway). Receive only — empty TwiML reply. | **CUT (R21).** Twilio console paste never done. |
 | Business 757-319-5131 | iOS blocks every app from native SMS. Optional bridge: an iPhone Shortcuts "Message" automation POSTing `{from, text}` to `/api/relay/text` with header `x-arbor-key` = the app key. Words only, never photos. | Built; Shortcut **not set up**. |
 
 The receptionist script still tells callers to text photos to
@@ -79,4 +90,4 @@ not changed.
 |---|---|---|---|
 | Railway deploys | `/webhooks/railway?key=…` | `RAILWAY_WEBHOOK_KEY` | Live (webhook `3b974247`). |
 | Resend | `/webhooks/resend` | `RESEND_WEBHOOK_SECRET` | Not wired — not needed; the Gmail sweep reads every form within 5 min. |
-| ElevenLabs post-call | `/webhooks/elevenlabs` | `ELEVENLABS_POSTCALL_SECRET` | Not wired — not needed while the ElevenLabs line is idle. |
+| ElevenLabs post-call | `/webhooks/elevenlabs` | `ELEVENLABS_POSTCALL_SECRET` | **CUT (R21).** |

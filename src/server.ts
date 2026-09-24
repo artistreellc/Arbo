@@ -55,6 +55,7 @@ import { hasDb, dataLinksLive, dataLinksSim, dbConfigured, getDb } from './db/cl
 import { DATA_LINKS, LINK_NAMES, linkOpen, linkEnvVar, openLinks, LinkCutError } from './db/links.js';
 import { WebhookIntake, createResendEmailFetcher } from './ops/webhooks.js';
 import { QuoIntake } from './ops/quoIntake.js';
+import { vendorLinked, vendorCutBody, cutVendorLinks } from './integrations/vendorLinks.js';
 import { createSonaExtractor } from './ops/quoExtract.js';
 import { createQuoApi, ensureQuoWebhooks } from './integrations/quo.js';
 import {
@@ -650,11 +651,20 @@ export function createArborRequestHandler() {
       // never loads the admin cockpit.
       // Talk to Arbo — the voice widget page (Mike, 2026-09-21). Served like
       // the other shells; the agent itself is public-id, so no key gate.
+      if (req.method === 'GET' && (url.pathname === '/talk' || url.pathname === '/talk/') && !vendorLinked('elevenlabs')) {
+        // R21: the ElevenLabs link is cut — say so plainly instead of loading
+        // a widget whose brain would refuse every word.
+        res.writeHead(503, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+        return res.end('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Arbo — Talk is off</title></head><body style="font-family:system-ui,sans-serif;max-width:520px;margin:48px auto;padding:0 16px;line-height:1.6"><h1>Talk to Arbo is off</h1><p>Arbo\'s own voice line is disconnected while Sona (Quo) handles calls. Nothing was deleted — it comes back with one setting.</p><p><a href="/app">Back to the app</a></p></body></html>');
+      }
       if (req.method === 'GET' && (url.pathname === '/talk' || url.pathname === '/talk/')) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
         return res.end(loadTalkHtml());
       }
       // The widget code itself, from OUR server — vendored npm bundle, no CDN.
+      if (req.method === 'GET' && url.pathname === '/talk/widget.js' && !vendorLinked('elevenlabs')) {
+        return send(503, vendorCutBody('elevenlabs'));
+      }
       if (req.method === 'GET' && url.pathname === '/talk/widget.js') {
         res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'public, max-age=3600' });
         return res.end(loadTalkWidgetJs());
@@ -742,6 +752,9 @@ export function createArborRequestHandler() {
         );
         return send(out.status, out.body);
       }
+      if (req.method === 'POST' && url.pathname === '/webhooks/elevenlabs' && !vendorLinked('elevenlabs')) {
+        return send(503, vendorCutBody('elevenlabs'));
+      }
       if (req.method === 'POST' && url.pathname === '/webhooks/elevenlabs') {
         const raw = await readRawBody(req);
         const sig = req.headers['elevenlabs-signature'];
@@ -770,6 +783,9 @@ export function createArborRequestHandler() {
       }
       // Incoming texts to the Arbo number. Accepted texts get an EMPTY TwiML
       // response — Arbo never replies to a text, by construction.
+      if (req.method === 'POST' && url.pathname === '/webhooks/twilio/sms' && !vendorLinked('twilio')) {
+        return send(503, vendorCutBody('twilio'));
+      }
       if (req.method === 'POST' && url.pathname === '/webhooks/twilio/sms') {
         const raw = await readRawBody(req);
         const out = webhooks.handleTwilioSms(url.searchParams.get('key'), raw);
@@ -791,6 +807,9 @@ export function createArborRequestHandler() {
       }
       if (req.method === 'GET' && url.pathname === '/api/storm') {
         return send(...unpack(await api.storm()));
+      }
+      if (req.method === 'GET' && url.pathname === '/api/brief/audio' && !vendorLinked('elevenlabs')) {
+        return send(503, vendorCutBody('elevenlabs'));
       }
       if (req.method === 'GET' && url.pathname === '/api/brief/audio') {
         const out = await api.briefAudio(url.searchParams.get('from') ?? '', url.searchParams.get('to') ?? '');
@@ -1281,7 +1300,7 @@ export function createArborRequestHandler() {
       // — no caller text, no numbers, nothing §4.3 forbids. In-memory since
       // boot; llmKeyPresent is the "callers hear the fallback line" tell.
       if (req.method === 'GET' && url.pathname === '/api/reception/status') {
-        return send(200, { ...bridge.status(), llmKeyPresent: Boolean(env.anthropic.apiKey) });
+        return send(200, { ...bridge.status(), llmKeyPresent: Boolean(env.anthropic.apiKey), linkCut: !vendorLinked('elevenlabs') });
       }
       // R18: the call records — Mike's copy of what she captured, keywall-only.
       if (req.method === 'GET' && url.pathname === '/api/calls/records') {
@@ -1295,7 +1314,7 @@ export function createArborRequestHandler() {
       // R19: webhook state + captured payloads, keywall-only (customer
       // contact info is fine in the app UI per R17, never in logs).
       if (req.method === 'GET' && url.pathname === '/api/webhooks') {
-        return send(200, { ...webhooks.status(), recent: webhooks.recentEvents(30) });
+        return send(200, { ...webhooks.status(), recent: webhooks.recentEvents(30), cut: cutVendorLinks() });
       }
       if (req.method === 'GET' && url.pathname === '/api/webhooks/forms') {
         return send(200, {
@@ -1355,6 +1374,9 @@ export function createArborRequestHandler() {
       }
       // ElevenLabs custom-LLM endpoint (the agent's Server URL points at
       // /voice/llm; the platform appends the OpenAI-style path).
+      if (req.method === 'POST' && (url.pathname === '/voice/llm/chat/completions' || url.pathname === '/voice/llm/v1/chat/completions') && !vendorLinked('elevenlabs')) {
+        return send(503, vendorCutBody('elevenlabs'));
+      }
       if (req.method === 'POST' && (url.pathname === '/voice/llm/chat/completions' || url.pathname === '/voice/llm/v1/chat/completions')) {
         const body = (await readJson(req)) as BridgeRequestBody;
         const out = await bridge.handle(req.headers.authorization, body);
@@ -1469,6 +1491,10 @@ export function startServer(port: number) {
   // listens meanwhile, and every outcome is named on /api/quo.
   if (currentQuoIntake) void wireQuo(currentQuoIntake);
   else console.error('[quo] intake missing at boot — not wired');
+  const cutNow = cutVendorLinks();
+  console.log(cutNow.length
+    ? `[links] CUT while Sona handles calls (R21): ${cutNow.join(', ')} — set ARBO_LINK_<NAME>=live to reconnect`
+    : '[links] ElevenLabs and Twilio links live');
   if (!env.quoApiKey) console.error('[quo] DISABLED — no QUO_API_KEY. Sona calls are not reaching Arbo (this is not zero calls).');
   // §8A.6f: the agents run on their own clock, not only when Mike taps.
   startAgentScheduler(
