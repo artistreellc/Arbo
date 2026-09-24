@@ -510,3 +510,19 @@ What this changes:
 
 Known gap, named: Sona's rules are Quo-side instructions, not a live code
 guard — a slip is caught after the call, not prevented during it.
+
+## R21 — Twilio and ElevenLabs links CUT while development runs off Sona
+**Ruling: 2026-09-24.** Mike, verbatim: *"make sure you disconnect the
+twilio and eleven labs links while we develop off sona"*.
+
+What this changes: Arbo's own phone line — Twilio number 757-821-6983 →
+ElevenLabs agent → Arbo's guarded Opus bridge — is CUT in code
+(`src/integrations/vendorLinks.ts`). Every door those links open refuses by
+name (503 `link_cut`): the voice bridge, the ElevenLabs post-call webhook,
+Talk to Arbo, the spoken brief, and the Twilio incoming-text webhook. Same
+fail-closed shape as the data links: open only when `ARBO_LINK_ELEVENLABS`
+/ `ARBO_LINK_TWILIO` is exactly `live`.
+
+What did NOT move: nothing is deleted — the agent, the number, the bridge
+code, and every secret stay where they are. Sona (Quo) is not behind these
+switches. Reconnecting is Mike's call, one variable each.
