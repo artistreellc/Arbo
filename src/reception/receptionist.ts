@@ -124,6 +124,11 @@ export class Receptionist {
   /** R15: server-computed, conclusion-only routing note — never a location. */
   private contextNote: string | null = null;
 
+  /** Read-only copy of what the call has captured so far (R18: the record). */
+  qualificationState(): QualState {
+    return { ...this.state };
+  }
+
   constructor(
     private readonly deps: { g: Guardrails; legal: LegalConfig; llm: LlmClient; alerter: Alerter; escalator?: Escalator },
   ) {

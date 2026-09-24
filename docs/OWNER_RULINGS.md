@@ -422,3 +422,32 @@ interfaces); nothing ignored is deleted — "ignored" means not shown, and the
 log keeps every entry with a one-line reason; `ARBO_DATA_LINKS` stays off
 until Mike runs the acceptance checks and flips it himself; Yelp stays a
 surfaced channel (R12 wins over the prompt's five-intent table).
+
+## R18 — Learning ON (conversation only), records kept, calendar writes during calls
+**Ruling: 2026-09-24.** Mike, verbatim: *"lets change the rule let her start
+learning but any major code writes to her full functionality or the rest of
+the app need to remain blocked let her learn and adapt to converstaion and
+pattern recogntion, addtionally she needs to be keeping a record as well as
+adding this information to the google calender while the call is going on."*
+
+What this changes:
+1. **Arbo LEARNS — conversation and pattern recognition only.** She may
+   remember callers across calls (repeat-caller recognition, what is already
+   on file, how the caller likes to talk) and adapt her conversation to it.
+   **Self-modification stays BLOCKED, structurally:** nothing in the learning
+   layer can write code, change prompts, change guardrails, or touch the rest
+   of the app. Learning is data she consults, never behavior she rewrites.
+2. **She keeps a record of every call** — the captured qualification, caller
+   number, and outcome. Served only behind the keywall (R17 boundary: app UI
+   yes, logs and chat stay counts-and-ids).
+3. **"Never modify calendar events. Ever." is AMENDED:** Arbo may **CREATE**
+   events on Mike's Google Calendar during a live call — an unconfirmed
+   estimate hold carrying what she captured, always marked as Arbo-created
+   and unconfirmed ("Mike confirms the time"). She still NEVER edits, moves,
+   or deletes any existing event, enforced by a one-method writer interface
+   that cannot express an edit. Email remains never.
+
+Blocked on Mike to go fully live: the Google consent must now cover BOTH
+scopes (gmail.readonly + calendar.events) — same consent flow, one extra
+checkbox. Until the token exists the calendar writer reports itself
+unconfigured by name, never quietly.
