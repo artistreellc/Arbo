@@ -866,7 +866,7 @@ async function outreachPanel(full) {
   wrap.appendChild(row);
   const skipped = Object.entries(st.candidates.skipped || {});
   if (skipped.length) {
-    const labels = { no_inbound: 'we called them, they never called us', opted_out: 'texted STOP', already_texted: 'already heard from us', not_customer: 'solicitor or wrong number', own_number: 'our own number', excluded: 'you excluded', estimate_booked: 'estimate already booked', unreadable: 'Arbo could not read the call' };
+    const labels = { no_inbound: 'we called them, they never called us', opted_out: 'asked us to stop texting', already_texted: 'already heard from us', not_customer: 'solicitor or wrong number', own_number: 'our own number', excluded: 'you excluded', estimate_booked: 'estimate already booked', called_back: 'you already called them back', call_in_progress: 'on the phone right now', not_registered: 'held until Quo approves texting registration', unreadable: 'Arbo could not read the call or texts' };
     wrap.appendChild(el('div', 'storm-muted', 'Not texting: ' + skipped.map(([k, n]) => n + ' ' + (labels[k] || k)).join(' \u00b7 ')));
   }
   if (full) {

@@ -54,8 +54,10 @@ go to T-Mobile voicemail until the two optional codes are dialed.
 - **Arbo texts through Quo (R22)** — the ONE outbound path: the "still
   interested in a quote?" template, past-week catch-up on Mike's tap or
   `ARBO_OUTREACH_CATCHUP=live`, 48-hour follow-ups while `ARBO_OUTREACH=live`.
-  Gate: consent (they called in), STOP (read from Quo before every send),
-  8am–9pm ET, no price/diagnosis/date. Quo refuses every send until Mike
+  Gate: consent (they called in), STOP (Quo's WHOLE history, plain words
+  count, re-read before every send), 8am–9pm ET, no price/diagnosis/date.
+  Never texted: our own numbers (Quo lines, 757-319-5131, 757-821-6983),
+  anyone on the line right now, anyone Mike already called back. Quo refuses every send until Mike
   completes US texting registration in Quo → Settings → Trust center; the app
   names that state.
 

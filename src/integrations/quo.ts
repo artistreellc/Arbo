@@ -91,7 +91,8 @@ export interface QuoApi {
   /** Conversations on one Quo number updated after a moment, newest first (cursor-paginated, capped). */
   listConversations(input: { phoneNumberId: string; updatedAfterIso: string }): Promise<QuoConversation[]>;
   listCalls(input: { phoneNumberId: string; participant: string; createdAfterIso: string }): Promise<QuoCall[]>;
-  listMessages(input: { phoneNumberId: string; participant: string; createdAfterIso: string }): Promise<QuoMessage[]>;
+  /** createdAfterIso null = the WHOLE history (the filter is optional in Quo's spec) — how STOP is read. */
+  listMessages(input: { phoneNumberId: string; participant: string; createdAfterIso: string | null }): Promise<QuoMessage[]>;
   getCallTranscript(callId: string): Promise<QuoTranscript | null>;
   listWebhooks(): Promise<QuoWebhook[]>;
   getWebhook(id: string): Promise<QuoWebhook | null>;
@@ -118,6 +119,28 @@ function asWebhook(raw: unknown): QuoWebhook | null {
   };
 }
 
+/**
+ * A refused Quo read, carrying Quo's own error code (e.g. '0206400' = texting
+ * registration not approved — Quo refuses even GET /messages until then) so a
+ * caller can NAME the state instead of calling it "unreadable". The code is
+ * the only thing read from the body — never echo it, it can carry customer
+ * data (§4.3).
+ */
+export class QuoHttpError extends Error {
+  constructor(message: string, readonly status: number, readonly code: string | null) {
+    super(message);
+    this.name = 'QuoHttpError';
+  }
+}
+
+/** A history longer than the page cap — "we could not read it all" is not "there is nothing there" (§1B). */
+export class QuoTruncatedError extends Error {
+  constructor(path: string) {
+    super(`Quo GET ${path} -> more than ${PAGE_CAP} pages; history not fully read`);
+    this.name = 'QuoTruncatedError';
+  }
+}
+
 export function createQuoApi(apiKey: string, fetchImpl: FetchLike = fetch as unknown as FetchLike, base = QUO_API_BASE): QuoApi {
   const headers = { Authorization: apiKey, 'Content-Type': 'application/json' };
   const call = async (method: string, path: string, body?: unknown): Promise<unknown> => {
@@ -126,11 +149,21 @@ export function createQuoApi(apiKey: string, fetchImpl: FetchLike = fetch as unk
       headers,
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
-    // Status only — never echo a response body, it can carry customer data (§4.3).
-    if (!res.ok) throw new Error(`Quo ${method} ${path.split('?')[0]} -> ${res.status}`);
+    // Status and Quo's error code only — never echo a response body (§4.3).
+    if (!res.ok) {
+      let code: string | null = null;
+      try {
+        const b = (await res.json()) as { code?: unknown } | null;
+        code = typeof b?.code === 'string' ? b.code : null;
+      } catch {
+        code = null;
+      }
+      throw new QuoHttpError(`Quo ${method} ${path.split('?')[0]} -> ${res.status}`, res.status, code);
+    }
     return res.status === 204 ? null : res.json();
   };
-  const pages = async (path: string, params: string): Promise<unknown[]> => {
+  /** strict: a history that runs past the page cap THROWS instead of returning a silent prefix. */
+  const pages = async (path: string, params: string, strict = false): Promise<unknown[]> => {
     const items: unknown[] = [];
     let token: string | null = null;
     for (let i = 0; i < PAGE_CAP; i += 1) {
@@ -141,6 +174,7 @@ export function createQuoApi(apiKey: string, fetchImpl: FetchLike = fetch as unk
       token = typeof out?.nextPageToken === 'string' && out.nextPageToken ? out.nextPageToken : null;
       if (!token) break;
     }
+    if (strict && token) throw new QuoTruncatedError(path);
     return items;
   };
   return {
@@ -186,7 +220,8 @@ export function createQuoApi(apiKey: string, fetchImpl: FetchLike = fetch as unk
     async listMessages({ phoneNumberId, participant, createdAfterIso }) {
       const raw = await pages(
         '/messages',
-        `phoneNumberId=${encodeURIComponent(phoneNumberId)}&participants=${encodeURIComponent(participant)}&createdAfter=${encodeURIComponent(createdAfterIso)}&maxResults=50`,
+        `phoneNumberId=${encodeURIComponent(phoneNumberId)}&participants=${encodeURIComponent(participant)}${createdAfterIso ? `&createdAfter=${encodeURIComponent(createdAfterIso)}` : ''}&maxResults=100`,
+        true, // R22: STOP is read from this history — a cut-off read must never pass as "no STOP".
       );
       return raw.flatMap((r) => {
         const o = (r ?? {}) as Record<string, unknown>;
@@ -261,6 +296,12 @@ export async function ensureQuoWebhooks(api: QuoApi, url: string): Promise<Ensur
     try {
       const wanted = QUO_EVENTS[family];
       const mine = existing.filter((w) => wanted.every((e) => w.events.includes(e)));
+      // An older hook of OURS (our url) for this family that lacks an event we
+      // now want — e.g. the messages hook registered before R22 added
+      // message.delivered. Left alone it keeps posting with a key Arbo no
+      // longer learns, so every text would ALSO arrive as a signature failure.
+      const partial = existing.filter((w) => !mine.includes(w) && wanted.some((e) => w.events.includes(e)));
+      for (const stale of partial) await api.deleteWebhook(stale.id);
       const withKey = mine.find((w) => w.key);
       if (withKey?.key) {
         result.keys.push(withKey.key);

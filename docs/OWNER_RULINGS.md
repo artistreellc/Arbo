@@ -558,6 +558,11 @@ What this changes:
    spam-likely ruling of the same day); anyone who texted STOP; anyone
    Arbo or Mike already texted in 30 days; a number Sona already booked;
    our own numbers; group threads; anyone Mike excludes in the app.
+   *Tightened by the pre-ship review (D78), same ruling, no new scope:*
+   STOP is read from the whole history, never a window, and plain words
+   count ("please stop", "opt me out", "do not text me"); a texter's words
+   are read like a caller's; nobody is texted mid-call or after Mike already
+   called them back; the business line and Arbo's own line count as ours.
 
 What did NOT move: email never; calendar edits never; Twilio and ElevenLabs
 stay cut (R21); sweeps stay read-only (R4); logs stay counts-and-ids (§4.3)

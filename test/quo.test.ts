@@ -9,7 +9,7 @@ import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { verifyQuoSignature, QuoIntake } from '../src/ops/quoIntake.js';
-import { createQuoApi, ensureQuoWebhooks, type QuoApi, type QuoWebhook } from '../src/integrations/quo.js';
+import { createQuoApi, ensureQuoWebhooks, QuoHttpError, QuoTruncatedError, type QuoApi, type QuoWebhook } from '../src/integrations/quo.js';
 import { CallMemory, CallRecordStore } from '../src/reception/callMemory.js';
 import { loadAllConfig } from '../src/config/loadConfig.js';
 import type { CallHold } from '../src/reception/estimateHold.js';
@@ -130,6 +130,30 @@ describe('Quo API client — registers only Arbo’s own webhooks, and cannot se
     expect(r.keys).toContain('k1');
   });
 
+  it('retires its OWN older hook that lacks a newly wanted event (pre-R22 texts hook), never anyone else’s', async () => {
+    const url = 'https://arbo.test/webhooks/quo';
+    const f = fakeApi([
+      { id: 'OLD_TEXTS', url, events: ['message.received'], key: 'old' },
+      { id: 'ZAPIER', url: 'https://hooks.zapier.test/x', events: ['message.received'], key: 'z' },
+    ]);
+    const r = await ensureQuoWebhooks(f.api, url);
+    expect(f.deleted).toEqual(['OLD_TEXTS']);
+    expect(f.created).toContain('messages');
+    expect(r.keys).not.toContain('old');
+  });
+
+  it('a refused read carries Quo’s code; a message history past the page cap is refused, never a silent prefix', async () => {
+    const refused = createQuoApi('k', async () => ({ ok: false, status: 400, json: async () => ({ code: '0206400', message: 'to +17575550142' }) }));
+    const err = await refused.listMessages({ phoneNumberId: 'PN1', participant: '+17575550142', createdAfterIso: 'x' }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(QuoHttpError);
+    expect((err as QuoHttpError).code).toBe('0206400');
+    expect((err as Error).message).not.toContain('5550142');
+    const endless = createQuoApi('k', async () => ({ ok: true, status: 200, json: async () => ({ data: [{ id: 'M', direction: 'incoming', text: 'hi' }], nextPageToken: 'more' }) }));
+    await expect(endless.listMessages({ phoneNumberId: 'PN1', participant: '+17575550142', createdAfterIso: 'x' })).rejects.toBeInstanceOf(QuoTruncatedError);
+    // Calls are not a STOP source — they stay capped at five pages, as before.
+    expect(await endless.listCalls({ phoneNumberId: 'PN1', participant: '+17575550142', createdAfterIso: 'x' })).toHaveLength(5);
+  });
+
   it('one refused family does not take the others down, and is named', async () => {
     const f = fakeApi([]);
     const api: QuoApi = {
@@ -185,6 +209,11 @@ describe('Quo API client — registers only Arbo’s own webhooks, and cannot se
     expect(seen.at(-1)).toContain('phoneNumberId=PN1');
     const msgs = await api.listMessages({ phoneNumberId: 'PN1', participant: CALLER, createdAfterIso: 't0' });
     expect(msgs[0]!.text).toBe('hello');
+    expect(seen.at(-1)).toContain('createdAfter=t0');
+    // The whole history (how STOP is read): no date filter at all.
+    await api.listMessages({ phoneNumberId: 'PN1', participant: CALLER, createdAfterIso: null });
+    expect(seen.at(-1)).not.toContain('createdAfter');
+    expect(seen.at(-1)).toContain('maxResults=100');
     const tr = await api.getCallTranscript('AC1');
     expect(tr!.dialogue).toEqual([{ identifier: CALLER, content: 'hi', userId: null }]);
   });
@@ -282,8 +311,9 @@ describe('QuoIntake — Sona calls', () => {
     const post = (event: unknown) => { const body = JSON.stringify(event); return intake.handle(sign(body), body); };
     post({ type: 'message.delivered', data: { object: { id: 'AC9', direction: 'outgoing', status: 'delivered' } } });
     post({ type: 'message.delivered', data: { object: { id: 'AC10', direction: 'incoming', status: 'delivered' } } });
+    post({ type: 'message.delivered', data: { object: { id: 'AC11', status: 'delivered' } } }); // no direction: still ours
     await intake.settled();
-    expect(got).toEqual([['AC9', 'delivered']]);
+    expect(got).toEqual([['AC9', 'delivered'], ['AC11', 'delivered']]);
   });
 
   it('a text to the Quo number reaches the Texts list with its photos', async () => {

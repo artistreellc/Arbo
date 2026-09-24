@@ -247,7 +247,9 @@ export class QuoIntake {
         return;
       }
       case 'message.delivered': {
-        if (o.direction !== 'outgoing') return;
+        // Delivery receipts exist only for texts we sent; tolerate a missing
+        // direction the same way message.received does.
+        if (o.direction === 'incoming') return;
         this.deps.onDelivery?.(str(o.id), str(o.status));
         return;
       }

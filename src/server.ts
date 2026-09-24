@@ -636,6 +636,7 @@ export function createArborRequestHandler() {
         }
         return booked;
       },
+      sonaFilesHolds: Boolean(calendarHold),
       enabled: () => env.outreachAuto,
     });
   }
@@ -1362,6 +1363,9 @@ export function createArborRequestHandler() {
       // R22: text outreach — status, who qualifies, what went out (keywall).
       if (url.pathname.startsWith('/api/outreach')) {
         if (!outreach) return send(503, { error: 'quo_not_configured', message: 'No QUO_API_KEY on the server — nothing can be texted. This is not zero candidates.' });
+        // This door SENDS texts and lists customer numbers held in memory —
+        // the "no key while the DB is cut" opening never applies here.
+        if (!env.appAccessKey) return send(401, { error: 'no_app_key', message: 'APP_ACCESS_KEY is not set — texting is locked until it is.' });
         if (req.method === 'GET' && url.pathname === '/api/outreach') {
           return send(200, { status: outreach.status(), candidates: outreach.candidates(), sends: outreach.sends().slice(0, 50) });
         }
@@ -1469,6 +1473,8 @@ let inboxWatch: InboxWatchHandle | null = null;
 let intentWatch: IntentWatch | null = null;
 /** The Quo intake the running handler uses — startServer hands it its webhook keys. */
 let currentQuoIntake: QuoIntake | null = null;
+/** Business line 757-319-5131 and Arbo's line 757-821-6983 (docs/PHONE_SETUP.md) — never texted by outreach. */
+const OWN_PHONE_NUMBERS = ['+17573195131', '+17578216983'];
 /** The outreach engine the running handler uses — startServer hands it the Quo line. */
 let currentOutreach: OutreachEngine | null = null;
 
@@ -1495,7 +1501,9 @@ async function wireQuo(intake: QuoIntake, outreach: OutreachEngine | null): Prom
     const numbers = lines.map((l) => l.number);
     // R22: Arbo texts from the FIRST Quo line — one number, no ambiguity.
     const first = lines[0];
-    if (outreach && first) outreach.setLine({ phoneNumberId: first.id, number: first.number, ownNumbers: numbers });
+    // Our own numbers are never texted: every Quo line, the business line
+    // (Mike's cell) and Arbo's own line — docs/PHONE_SETUP.md.
+    if (outreach && first) outreach.setLine({ phoneNumberId: first.id, number: first.number, ownNumbers: [...numbers, ...OWN_PHONE_NUMBERS] });
     else if (outreach) console.error('[outreach] NOT wired — Quo returned no phone number; nothing can be texted');
     const partial = hooks.failed.length
       ? ` NOT wired: ${hooks.failed.map((f) => `${f.family} (${f.why})`).join(', ')}.`
@@ -1558,7 +1566,12 @@ export function startServer(port: number) {
       console.log(tv.ok
         ? `[outreach] template OK — follow-ups ${env.outreachAuto ? 'AUTO (hourly, 48h after an inquiry)' : 'OFF until ARBO_OUTREACH=live'}; catch-up ${env.outreachCatchupAtBoot ? 'RUNNING at boot' : 'waits for Mike\'s tap or ARBO_OUTREACH_CATCHUP=live'}`
         : `[outreach] template REFUSED — nothing will be texted: ${tv.problems.join('; ')}`);
-      if (env.outreachCatchupAtBoot) void outreach.runCatchup('auto');
+      if (env.outreachCatchupAtBoot) {
+        // A Quo failure at boot is a named log line, never a crashed server.
+        outreach.runCatchup('auto').catch((err) => {
+          console.error('[outreach] boot catch-up FAILED — nothing sent:', err instanceof Error ? err.message : 'error');
+        });
+      }
       // Every 15 minutes: release texts held for quiet hours, and on the hour
       // queue the 48-hour follow-ups. Same shape as the agent scheduler.
       setInterval(() => { void outreach.tick(); }, 15 * 60_000).unref();

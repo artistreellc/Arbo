@@ -21,12 +21,19 @@
 //      the call-in is the consent basis (compliance.json consentModel).
 //      Never a number we only dialed. Never our own numbers.
 //   2. STOP is permanent and read from QUO'S OWN RECORD before every send —
-//      an in-memory list would forget on redeploy; Quo's message history
-//      does not. Same for "already texted": any outgoing message in the
-//      last 30 days, from Arbo OR Mike, means no automated text.
+//      the WHOLE history, no lower bound (an in-memory list forgets on
+//      redeploy; a 30-day window forgets on day 31). STOP means the carrier
+//      keywords AND plain words ("please stop", "opt me out", "do not text
+//      me") — the FCC counts any reasonable revocation. "Already heard from
+//      us": any outgoing text in the last 30 days, from Arbo OR Mike (or in
+//      Arbo's own send record), or a call back after their last contact,
+//      means no automated text.
 //   3. A solicitor or a wrong number, decided ONLY from the caller's own
-//      words (never a carrier label — "spam likely calls could be clients",
-//      Mike, 2026-09-24). A hang-up stays a possible client.
+//      words — spoken to Sona or TEXTED (never a carrier label — "spam likely
+//      calls could be clients", Mike, 2026-09-24). A hang-up stays a
+//      possible client. A transcript Quo is still writing or failed to write
+//      is "could not read", never a hang-up (§1B). Someone on the line right
+//      now is never texted.
 //   4. The gate: inspectMessage — consent, STOP, 8am–9pm ET quiet hours,
 //      no price, no diagnosis, no date promise. A quiet-hours block DEFERS
 //      to the next open hour; any other block DROPS the text. Never a
@@ -40,7 +47,7 @@ import type { Guardrails } from '../config/guardrails.schema.js';
 import type { LegalConfig } from '../config/legal.schema.js';
 import { inspectMessage } from '../binder/policyEngine.js';
 import { clampToQuietHours } from './followUps.js';
-import type { QuoApi, QuoCall, QuoMessage } from '../integrations/quo.js';
+import { QuoHttpError, type QuoApi, type QuoCall, type QuoMessage } from '../integrations/quo.js';
 import type { QuoSender } from '../integrations/quoSend.js';
 import type { SonaExtractor } from './quoExtract.js';
 import { normalizeCallerId } from '../reception/callMemory.js';
@@ -53,6 +60,9 @@ export type SkipReason =
   | 'own_number'
   | 'excluded'
   | 'estimate_booked'
+  | 'called_back'
+  | 'call_in_progress'
+  | 'not_registered'
   | 'unreadable';
 
 export type CallerClass = 'customer' | 'unclear' | 'solicitor' | 'wrong_number' | 'unreadable';
@@ -87,8 +97,14 @@ export interface OutreachDeps {
   guardrails: Guardrails;
   legal: LegalConfig;
   extractor: SonaExtractor | null;
-  /** Normalized numbers Sona already booked an estimate hold for (QuoIntake). */
+  /** Normalized numbers Sona already booked an estimate hold for (QuoIntake, since deploy). */
   bookedCallers: () => Set<string>;
+  /**
+   * Does QuoIntake file a hold for a Sona caller who wants an estimate (a
+   * calendar writer is configured)? Lets a redeploy re-derive "booked" from
+   * Quo's transcript instead of forgetting it.
+   */
+  sonaFilesHolds?: boolean;
   /** ARBO_OUTREACH === 'live' — gates AUTOMATIC sends only; Mike's tap is never gated. */
   enabled: () => boolean;
   now?: () => number;
@@ -107,15 +123,44 @@ const REFUSAL_PAUSE_MS = 6 * 60 * 60 * 1000;
 const RECORD_CAP = 300;
 /** Fewer caller words than this is a hang-up, not a conversation. */
 const MIN_CALLER_WORDS = 3;
-/** Quo's own opt-out vocabulary, as the first word of a text. */
-const STOP_WORDS = /^\s*(stop|stopall|unsubscribe|cancel|end|quit)\b/i;
+/** Carrier opt-out keywords as the FIRST word (Quo's vocabulary + the FCC's per-se "revoke", "opt out"). */
+const STOP_FIRST = /^\s*(stop|stopall|unsubscribe|cancel|end|quit|revoke|opt[\s-]?out)\b/i;
+/**
+ * Plain-language revocation ANYWHERE in the text (47 CFR 64.1200(a)(10):
+ * any reasonable means). Over-matches on purpose — a false opt-out costs one
+ * text, a false send costs a TCPA claim. "Can you stop by Tuesday?" never
+ * matches; "don't CALL me" is not listed because it asks for texts instead.
+ */
+const STOP_ANYWHERE = /\b(stop (texting|messaging|contacting|sending)|unsubscribe|revoke|opt[\s-]?(me\s+)?out|remove me|take me off|(do not|don[’']?t) (text|message|contact) me|no more (texts|messages)|leave me alone)\b/i;
+/** "Please stop", "ok just stop!!" — a SHORT text ending in stop (not "…by the bus stop"). */
+const STOP_LAST = /^\s*(\S+\s+){0,2}stop\s*[.!]*\s*$/i;
+/** Quo's refusal code for texting registration not approved — it refuses even READS of /messages. */
+const NOT_REGISTERED = '0206400';
+/** Quo call states while a call is still live ('answered' only until it completes). */
+const LIVE_CALL = new Set(['queued', 'initiated', 'ringing', 'in-progress']);
+/** A "live" status older than this is a status Quo never updated, not a call. */
+const LIVE_CALL_MAX_MS = 2 * 60 * 60 * 1000;
+const VERDICT_CAP = 1000;
 
 const dayMs = 24 * 60 * 60 * 1000;
 const iso = (ms: number): string => new Date(ms).toISOString();
 const words = (s: string): number => s.trim().split(/\s+/).filter(Boolean).length;
 
 export function isStopText(text: string): boolean {
-  return STOP_WORDS.test(text);
+  return STOP_FIRST.test(text) || STOP_ANYWHERE.test(text) || STOP_LAST.test(text);
+}
+
+/** Internal verdict: 'booked' = Sona set up a time with them (same rule QuoIntake files a hold by). */
+type Verdict = CallerClass | 'booked';
+/** Which verdict wins when a caller has several calls/texts: a booking, then any real inquiry, then "could not read". */
+const RANK: Record<Verdict, number> = { booked: 6, customer: 5, unreadable: 4, solicitor: 3, wrong_number: 3, unclear: 1 };
+const strongest = (vs: Verdict[]): Verdict => vs.reduce<Verdict>((a, b) => (RANK[b] > RANK[a] ? b : a), 'unclear');
+
+interface Line {
+  phoneNumberId: string;
+  number: string;
+  /** Normalized numbers that are ours — never texted. */
+  own: Set<string>;
 }
 
 export interface QueuedText {
@@ -129,9 +174,11 @@ export class OutreachEngine {
   private readonly now: () => number;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly spacingMs: number;
-  private line: { phoneNumberId: string; number: string; own: Set<string> } | null = null;
+  private line: Line | null = null;
   private readonly optOuts = new Set<string>();
   private readonly excluded = new Set<string>();
+  /** Opus verdicts by call id / text set — so the hourly run never re-reads the same words. */
+  private readonly verdicts = new Map<string, Verdict>();
   private queue: QueuedText[] = [];
   private draining: Promise<void> = Promise.resolve();
   private readonly records: SendRecord[] = [];
@@ -217,43 +264,77 @@ export class OutreachEngine {
 
   // ─── Who qualifies ────────────────────────────────────────────────────
 
-  private async classifyCalls(participant: string, calls: QuoCall[]): Promise<CallerClass> {
+  /** Opus reads the words. Only a real verdict is remembered — "could not read" is retried next run. */
+  private async judge(key: string, transcript: string, fromCall: boolean): Promise<Verdict> {
+    const known = this.verdicts.get(key);
+    if (known) return known;
+    if (!this.deps.extractor) return 'unreadable';
+    let v: Verdict;
+    try {
+      const f = await this.deps.extractor.extract(transcript);
+      // The rule QuoIntake files a hold by (a Sona CALL that wants an
+      // estimate, with a calendar writer) — read from Quo's transcript, so it
+      // survives a redeploy. A text never files a hold.
+      if (fromCall && f.wantsEstimate && this.deps.sonaFilesHolds) v = 'booked';
+      else if (f.callerType === 'customer' || f.wantsEstimate) v = 'customer';
+      else v = f.callerType ?? 'unclear';
+    } catch {
+      return 'unreadable';
+    }
+    this.verdicts.set(key, v);
+    if (this.verdicts.size > VERDICT_CAP) this.verdicts.delete(this.verdicts.keys().next().value!);
+    return v;
+  }
+
+  /** One Sona call: 'hangup' says nothing either way; a transcript not (yet) written is "could not read". */
+  private async readCall(callId: string, norm: string | null): Promise<Verdict | 'hangup'> {
+    let tr;
+    try {
+      tr = await this.deps.quo.getCallTranscript(callId);
+    } catch {
+      return 'unreadable';
+    }
+    // No transcript exists at all — a call too short to transcribe.
+    if (!tr || tr.status === 'absent') return 'hangup';
+    // Still being written, or Quo failed to write it: NOT a hang-up (§1B).
+    if (tr.status !== 'completed' || !tr.dialogue) return 'unreadable';
+    const callerWords = tr.dialogue
+      .filter((l) => normalizeCallerId(l.identifier ?? undefined) === norm)
+      .reduce((n, l) => n + words(l.content), 0);
+    if (callerWords < MIN_CALLER_WORDS) return 'hangup';
+    const transcript = tr.dialogue
+      .map((l) => `${normalizeCallerId(l.identifier ?? undefined) === norm ? 'Caller' : 'Sona'}: ${l.content}`)
+      .join('\n');
+    return this.judge(`call:${callId}`, transcript, true);
+  }
+
+  private async classifyCalls(participant: string, calls: QuoCall[]): Promise<Verdict> {
     const sona = calls
       .filter((c) => c.direction === 'incoming' && c.aiHandled === 'ai-agent')
       .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
       .slice(0, 2);
-    // A person (Mike) answered and Sona never did: he spoke to them — a customer until he says otherwise.
+    // No Sona call: Mike answered, or nobody did. Either way they reached out
+    // about the business — a missed caller is exactly who this text is for.
     if (sona.length === 0) return 'customer';
     const norm = normalizeCallerId(participant);
-    let sawConversation = false;
-    let verdict: CallerClass = 'unclear';
+    const out: Verdict[] = [];
     for (const c of sona) {
-      let tr;
-      try {
-        tr = await this.deps.quo.getCallTranscript(c.id);
-      } catch {
-        return 'unreadable';
-      }
-      if (!tr || tr.status !== 'completed' || !tr.dialogue) continue;
-      const callerWords = tr.dialogue
-        .filter((l) => normalizeCallerId(l.identifier ?? undefined) === norm)
-        .reduce((n, l) => n + words(l.content), 0);
-      if (callerWords < MIN_CALLER_WORDS) continue; // a hang-up — says nothing either way
-      sawConversation = true;
-      if (!this.deps.extractor) return 'unreadable';
-      const transcript = tr.dialogue
-        .map((l) => `${normalizeCallerId(l.identifier ?? undefined) === norm ? 'Caller' : 'Sona'}: ${l.content}`)
-        .join('\n');
-      try {
-        const facts = await this.deps.extractor.extract(transcript);
-        const type = facts.callerType ?? 'unclear';
-        if (type === 'customer' || facts.wantsEstimate) return 'customer';
-        verdict = type;
-      } catch {
-        return 'unreadable';
-      }
+      const v = await this.readCall(c.id, norm);
+      if (v !== 'hangup') out.push(v);
     }
-    return sawConversation ? verdict : 'unclear';
+    return strongest(out);
+  }
+
+  /** Their texts, read by the same judge as a call — a solicitor who TEXTS is still a solicitor. */
+  private async classifyTexts(texts: QuoMessage[]): Promise<Verdict> {
+    const said = [...texts].sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? '')).filter((t) => t.text.trim());
+    if (said.length === 0) return 'unclear'; // photos only — a possible client
+    const key = `texts:${said.map((t) => t.id).sort().join(',')}`;
+    return this.judge(key, said.map((t) => `Caller (text message): ${t.text}`).join('\n'), false);
+  }
+
+  private sentByUs(norm: string, sinceIso: string): boolean {
+    return this.records.some((r) => r.outcome === 'sent' && r.at >= sinceIso && normalizeCallerId(r.number) === norm);
   }
 
   private async classify(conversationId: string, participant: string, windowStartMs: number): Promise<Candidate> {
@@ -261,30 +342,44 @@ export class OutreachEngine {
     const base: Candidate = { conversationId, number: participant, lastInboundAt: null, inboundCalls: 0, inboundTexts: 0, classification: 'unclear', skip: null };
     const norm = normalizeCallerId(participant);
     if (!norm || line.own.has(norm)) return { ...base, skip: 'own_number' };
+    const lookbackIso = iso(this.now() - DEDUPE_LOOKBACK_DAYS * dayMs);
+    const windowIso = iso(windowStartMs);
     let calls: QuoCall[];
     let msgs: QuoMessage[];
     try {
-      calls = await this.deps.quo.listCalls({ phoneNumberId: line.phoneNumberId, participant, createdAfterIso: iso(windowStartMs) });
-      msgs = await this.deps.quo.listMessages({ phoneNumberId: line.phoneNumberId, participant, createdAfterIso: iso(this.now() - DEDUPE_LOOKBACK_DAYS * dayMs) });
-    } catch {
+      calls = await this.deps.quo.listCalls({ phoneNumberId: line.phoneNumberId, participant, createdAfterIso: lookbackIso });
+      // The WHOLE history, no lower bound: STOP is permanent.
+      msgs = await this.deps.quo.listMessages({ phoneNumberId: line.phoneNumberId, participant, createdAfterIso: null });
+    } catch (err) {
+      if (err instanceof QuoHttpError && err.code === NOT_REGISTERED) return { ...base, classification: 'unreadable', skip: 'not_registered' };
       return { ...base, classification: 'unreadable', skip: 'unreadable' };
     }
-    const inCalls = calls.filter((c) => c.direction === 'incoming');
-    const inTexts = msgs.filter((m) => m.direction === 'incoming' && (m.createdAt ?? '') >= iso(windowStartMs));
+    const inCalls = calls.filter((c) => c.direction === 'incoming' && (c.createdAt ?? '') >= windowIso);
+    const inTexts = msgs.filter((m) => m.direction === 'incoming' && (m.createdAt ?? '') >= windowIso);
     const lastInboundAt = [...inCalls, ...inTexts].map((x) => x.createdAt ?? '').filter(Boolean).sort().at(-1) ?? null;
     const c: Candidate = { ...base, lastInboundAt, inboundCalls: inCalls.length, inboundTexts: inTexts.length };
     if (msgs.some((m) => m.direction === 'incoming' && isStopText(m.text)) || this.optOuts.has(norm)) {
       this.optOuts.add(norm);
       return { ...c, skip: 'opted_out' };
     }
-    if (msgs.some((m) => m.direction === 'outgoing')) return { ...c, skip: 'already_texted' };
+    const recentOut = (m: QuoMessage) => m.direction === 'outgoing' && (!m.createdAt || m.createdAt >= lookbackIso);
+    if (msgs.some(recentOut) || this.sentByUs(norm, lookbackIso)) return { ...c, skip: 'already_texted' };
     if (inCalls.length === 0 && inTexts.length === 0) return { ...c, skip: 'no_inbound' };
+    const liveSinceIso = iso(this.now() - LIVE_CALL_MAX_MS);
+    const live = (x: QuoCall) => (x.createdAt ?? '') >= liveSinceIso && (LIVE_CALL.has(x.status ?? '') || (x.status === 'answered' && !x.completedAt));
+    if (inCalls.some(live)) return { ...c, skip: 'call_in_progress' };
+    // Mike called them back from the Quo line after their last contact — they heard from us.
+    if (lastInboundAt && calls.some((x) => x.direction === 'outgoing' && (x.createdAt ?? '') > lastInboundAt)) return { ...c, skip: 'called_back' };
     if (this.deps.bookedCallers().has(norm)) return { ...c, skip: 'estimate_booked' };
     if (this.excluded.has(conversationId)) return { ...c, skip: 'excluded' };
-    const classification: CallerClass = inTexts.length > 0 ? 'customer' : await this.classifyCalls(participant, calls);
-    if (classification === 'solicitor' || classification === 'wrong_number') return { ...c, classification, skip: 'not_customer' };
-    if (classification === 'unreadable') return { ...c, classification, skip: 'unreadable' };
-    return { ...c, classification };
+    const found: Verdict[] = [];
+    if (inTexts.length > 0) found.push(await this.classifyTexts(inTexts));
+    if (inCalls.length > 0) found.push(await this.classifyCalls(participant, inCalls));
+    const v = strongest(found);
+    if (v === 'booked') return { ...c, classification: 'customer', skip: 'estimate_booked' };
+    if (v === 'solicitor' || v === 'wrong_number') return { ...c, classification: v, skip: 'not_customer' };
+    if (v === 'unreadable') return { ...c, classification: v, skip: 'unreadable' };
+    return { ...c, classification: v };
   }
 
   /** Everyone who reached the line in the window, classified. Numbers stay in memory for the keywalled app. */
@@ -353,53 +448,76 @@ export class OutreachEngine {
       }
       this.deferredUntil = null;
       this.queue.shift();
-      if (!verdict.allowed || verdict.blocks.length > 0) {
-        // An outreach text is the template or nothing — never a pivot line.
-        this.record({ at: iso(nowMs), kind: item.kind, number: item.number, conversationId: item.conversationId, outcome: 'blocked', detail: verdict.blocks.map((b) => b.rule).join(', '), messageId: null, status: null });
-        continue;
-      }
-      // Durable pre-send check against Quo's own record: STOP or a text from
-      // us (Arbo or Mike) since the candidate list was built.
-      let recent: QuoMessage[] = [];
+      let step: 'sent' | 'skipped' | 'paused';
       try {
-        recent = await this.deps.quo.listMessages({ phoneNumberId: line.phoneNumberId, participant: item.number, createdAfterIso: iso(nowMs - DEDUPE_LOOKBACK_DAYS * dayMs) });
-      } catch {
-        this.record({ at: iso(nowMs), kind: item.kind, number: item.number, conversationId: item.conversationId, outcome: 'blocked', detail: 'quo_unreadable_before_send', messageId: null, status: null });
-        continue;
+        step = await this.sendOne(item, line, nowMs, verdict);
+      } catch (err) {
+        // Never lose a recipient silently — the record names it.
+        this.record({ at: iso(nowMs), kind: item.kind, number: item.number, conversationId: item.conversationId, outcome: 'blocked', detail: 'error', messageId: null, status: null });
+        console.error('[outreach] send step failed:', err instanceof Error ? err.name : 'error');
+        step = 'skipped';
       }
-      if (recent.some((m) => m.direction === 'incoming' && isStopText(m.text))) {
-        if (norm) this.optOuts.add(norm);
-        this.record({ at: iso(nowMs), kind: item.kind, number: item.number, conversationId: item.conversationId, outcome: 'blocked', detail: 'opted_out', messageId: null, status: null });
-        continue;
-      }
-      if (recent.some((m) => m.direction === 'outgoing')) {
-        this.record({ at: iso(nowMs), kind: item.kind, number: item.number, conversationId: item.conversationId, outcome: 'blocked', detail: 'already_texted', messageId: null, status: null });
-        continue;
-      }
-      if (!this.deps.sender) {
-        this.record({ at: iso(nowMs), kind: item.kind, number: item.number, conversationId: item.conversationId, outcome: 'refused', detail: 'no_sender', messageId: null, status: null });
-        continue;
-      }
-      let res = await this.deps.sender.send({ from: line.number, to: item.number, content: text });
-      if (!res.ok && res.reason === 'rate_limited') {
-        await this.sleep(2_000);
-        res = await this.deps.sender.send({ from: line.number, to: item.number, content: text });
-      }
-      if (res.ok) {
-        this.record({ at: iso(nowMs), kind: item.kind, number: item.number, conversationId: item.conversationId, outcome: 'sent', detail: item.kind, messageId: res.id, status: res.status });
-        console.error(`[outreach] text sent (${item.kind}) — ${this.records.filter((r) => r.outcome === 'sent').length} sent since deploy`);
-      } else {
-        this.record({ at: iso(nowMs), kind: item.kind, number: item.number, conversationId: item.conversationId, outcome: 'refused', detail: res.reason, messageId: null, status: null });
-        if (res.reason === 'not_registered' || res.reason === 'daily_cap' || res.reason === 'unauthorized' || res.reason === 'subscription_expired') {
-          // The line itself is refused — nothing else would go through either.
-          this.queue.unshift(item);
-          this.paused = { until: nowMs + REFUSAL_PAUSE_MS, reason: res.reason };
-          console.error(`[outreach] PAUSED — Quo refused the line: ${res.reason}. ${this.queue.length} text(s) waiting.`);
-          return;
-        }
-      }
-      if (this.queue.length > 0) await this.sleep(this.spacingMs);
+      if (step === 'paused') return;
+      if (step === 'sent' && this.queue.length > 0) await this.sleep(this.spacingMs);
     }
+  }
+
+  /** One queued text: gate verdict, durable re-checks, send. */
+  private async sendOne(item: QueuedText, line: Line, nowMs: number, verdict: ReturnType<typeof inspectMessage>): Promise<'sent' | 'skipped' | 'paused'> {
+    const blocked = (detail: string): 'skipped' => {
+      this.record({ at: iso(nowMs), kind: item.kind, number: item.number, conversationId: item.conversationId, outcome: 'blocked', detail, messageId: null, status: null });
+      return 'skipped';
+    };
+    // An outreach text is the template or nothing — never a pivot line.
+    if (!verdict.allowed || verdict.blocks.length > 0) return blocked(verdict.blocks.map((b) => b.rule).join(', '));
+    const norm = normalizeCallerId(item.number);
+    const lookbackIso = iso(nowMs - DEDUPE_LOOKBACK_DAYS * dayMs);
+    // What changed while it waited: Mike's "don't text", a booking, our own send.
+    if (this.excluded.has(item.conversationId)) return blocked('excluded');
+    if (norm && this.deps.bookedCallers().has(norm)) return blocked('estimate_booked');
+    if (norm && this.sentByUs(norm, lookbackIso)) return blocked('already_texted');
+    // Durable pre-send check against Quo's own record — the WHOLE history
+    // for STOP, 30 days for a text from us (Arbo or Mike).
+    let history: QuoMessage[];
+    try {
+      history = await this.deps.quo.listMessages({ phoneNumberId: line.phoneNumberId, participant: item.number, createdAfterIso: null });
+    } catch (err) {
+      if (err instanceof QuoHttpError && err.code === NOT_REGISTERED) return this.pause(item, nowMs, 'not_registered');
+      return blocked('quo_unreadable_before_send');
+    }
+    if (history.some((m) => m.direction === 'incoming' && isStopText(m.text))) {
+      if (norm) this.optOuts.add(norm);
+      return blocked('opted_out');
+    }
+    if (history.some((m) => m.direction === 'outgoing' && (!m.createdAt || m.createdAt >= lookbackIso))) return blocked('already_texted');
+    if (!this.deps.sender) {
+      this.record({ at: iso(nowMs), kind: item.kind, number: item.number, conversationId: item.conversationId, outcome: 'refused', detail: 'no_sender', messageId: null, status: null });
+      return 'skipped';
+    }
+    const text = this.template();
+    let res = await this.deps.sender.send({ from: line.number, to: item.number, content: text });
+    if (!res.ok && res.reason === 'rate_limited') {
+      await this.sleep(2_000);
+      res = await this.deps.sender.send({ from: line.number, to: item.number, content: text });
+    }
+    if (res.ok) {
+      this.record({ at: iso(nowMs), kind: item.kind, number: item.number, conversationId: item.conversationId, outcome: 'sent', detail: item.kind, messageId: res.id, status: res.status });
+      console.error(`[outreach] text sent (${item.kind}) — ${this.records.filter((r) => r.outcome === 'sent').length} sent since deploy`);
+      return 'sent';
+    }
+    this.record({ at: iso(nowMs), kind: item.kind, number: item.number, conversationId: item.conversationId, outcome: 'refused', detail: res.reason, messageId: null, status: null });
+    if (res.reason === 'not_registered' || res.reason === 'daily_cap' || res.reason === 'unauthorized' || res.reason === 'subscription_expired') {
+      return this.pause(item, nowMs, res.reason);
+    }
+    return 'sent'; // a one-number refusal still spends a send slot — keep the spacing
+  }
+
+  /** The line itself is refused — nothing else would go through either. The text waits, named. */
+  private pause(item: QueuedText, nowMs: number, reason: string): 'paused' {
+    this.queue.unshift(item);
+    this.paused = { until: nowMs + REFUSAL_PAUSE_MS, reason };
+    console.error(`[outreach] PAUSED — Quo refused the line: ${reason}. ${this.queue.length} text(s) waiting.`);
+    return 'paused';
   }
 
   /**
@@ -486,7 +604,8 @@ export class OutreachEngine {
       refused: this.records.filter((r) => r.outcome === 'refused').length,
       blocked: this.records.filter((r) => r.outcome === 'blocked').length,
       optOuts: this.optOuts.size,
-      note: 'Sends are one at a time, 8am–9pm ET only, never to a number that texted STOP or already heard from us (checked against Quo before every send). In-memory since deploy; Quo holds the durable record.',
+      excludedSinceDeploy: this.excluded.size,
+      note: 'Sends are one at a time, 8am–9pm ET only, never to a number that ever texted STOP (or "please stop", "opt me out"…) or heard from us in 30 days — checked against Quo before every send. STOP, texts and Sona bookings are re-read from Quo, so a redeploy keeps them. "Don\'t text" taps are NOT kept across a redeploy until a data link is opened for them.',
     };
   }
 }
