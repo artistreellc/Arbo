@@ -63,6 +63,20 @@ import type { Guardrails } from '../config/guardrails.schema.js';
 import type { LegalConfig } from '../config/legal.schema.js';
 import { Receptionist, type Alerter, type Escalator, type LlmClient } from '../reception/receptionist.js';
 import { extractVaZip, hintContextLine, proximityHint, type RouteAnchors } from '../reception/routingHint.js';
+import { CallMemory, CallRecordStore, normalizeCallerId, repeatCallerNote } from '../reception/callMemory.js';
+import { parseRequestedWindow, type RequestedWindow } from '../ops/requestedWindow.js';
+import { colorFor } from '../scheduling/config.js';
+
+/** The R18 calendar hold — everything the writer may create. One shot, one shape. */
+export interface CallHold {
+  summary: string;
+  description: string;
+  location?: string;
+  /** Mike's real scheme (D34): the CITY color for estimate visits. */
+  colorId?: string;
+  startIso: string;
+  endIso: string;
+}
 
 export const SESSION_TTL_MS = 30 * 60 * 1000; // a phone call is over well inside 30 min
 
@@ -111,6 +125,14 @@ interface Session {
   emergencyCounted: boolean;
   /** R15: first VA ZIP the caller has spoken this call, if any. */
   callerZip?: string;
+  /** R18: the caller's number when the platform provided one. */
+  callerId: string | null;
+  /** R18: repeat-caller line, computed once at call start. */
+  memoryNote: string | null;
+  /** R18: last parseable "when" the caller asked for. */
+  window?: RequestedWindow;
+  /** The end-of-call finalize (memory + record + hold) runs exactly once. */
+  finalized: boolean;
 }
 
 export interface BridgeDeps {
@@ -129,6 +151,16 @@ export interface BridgeDeps {
   logTurn?: (sessionKey: string, turn: { at: string; caller: string; reply: string; flags: string[] }) => Promise<void>;
   /** R15: Mike's route anchors (work/home ZIP). The model only ever sees the conclusion. */
   routeAnchors?: () => RouteAnchors;
+  /** R18: cross-call learning — conversation and pattern recognition ONLY. */
+  callMemory?: CallMemory;
+  /** R18: the call record store, keywall-served. */
+  callRecords?: CallRecordStore;
+  /**
+   * R18: creates the unconfirmed calendar hold during the call. ONE method by
+   * type — the bridge structurally cannot edit or delete anything on the
+   * calendar. null/undefined = no writer configured, recorded as such.
+   */
+  calendarHold?: ((hold: CallHold) => Promise<void>) | null;
   now?: () => number;
 }
 
@@ -230,6 +262,7 @@ export function createElevenLabsBridge(deps: BridgeDeps): ElevenLabsBridge {
       const key = deriveSessionKey(body);
       let session = sessions.get(key);
       if (!session) {
+        const callerId = normalizeCallerId(body.user);
         session = {
           receptionist: new Receptionist({
             g: deps.guardrails,
@@ -241,6 +274,11 @@ export function createElevenLabsBridge(deps: BridgeDeps): ElevenLabsBridge {
           lastSeenMs: nowMs,
           turns: 0,
           emergencyCounted: false,
+          callerId,
+          // R18 learning: a known number gets its on-file facts as a note the
+          // model CONFIRMS with the caller — computed once, at call start.
+          memoryNote: repeatCallerNote(deps.callMemory?.recall(callerId) ?? null),
+          finalized: false,
         };
         sessions.set(key, session);
         counters.calls += 1;
@@ -272,13 +310,24 @@ export function createElevenLabsBridge(deps: BridgeDeps): ElevenLabsBridge {
 
       // R15: proximity is computed HERE, server-side; only the conclusion
       // line ever reaches the model. No anchors or no caller ZIP → no note.
+      // R18 rides the same note channel: repeat-caller facts + proximity are
+      // one combined context line, recomposed every turn.
+      const noteParts: string[] = [];
+      if (session.memoryNote) noteParts.push(session.memoryNote);
       if (deps.routeAnchors) {
         const z = extractVaZip(text);
         if (z) session.callerZip = z;
         if (session.callerZip) {
-          session.receptionist.setContextNote(hintContextLine(proximityHint(session.callerZip, deps.routeAnchors())));
+          const line = hintContextLine(proximityHint(session.callerZip, deps.routeAnchors()));
+          if (line) noteParts.push(line);
         }
       }
+      if (noteParts.length > 0) session.receptionist.setContextNote(noteParts.join(' '));
+
+      // R18: remember the last parseable "when" the caller asked for — it
+      // becomes the calendar hold's slot at wrap-up.
+      const w = parseRequestedWindow(text, new Date(nowMs));
+      if (w) session.window = w;
 
       const turn = await session.receptionist.handleUserTurn(text);
 
@@ -319,6 +368,80 @@ export function createElevenLabsBridge(deps: BridgeDeps): ElevenLabsBridge {
         ? turn.reply.split(END_CALL_MARKER).join('').replace(/\s+$/, '').trim()
         : turn.reply;
       const endCall = wantsEndCall && endCallToolOffered(body);
+
+      // ═══ R18 finalize — runs once, at the goodbye ═══
+      // Learning remembers the caller, the record is kept, and the calendar
+      // hold goes up WHILE the call is still connected (this turn IS the
+      // goodbye turn). All fire-and-forget: nothing here may delay or drop
+      // the spoken reply, and a failed hold is a named log line, never
+      // silence and never a crash.
+      if (wantsEndCall && !session.finalized) {
+        session.finalized = true;
+        const state = session.receptionist.qualificationState();
+        const atIso = new Date(nowMs).toISOString();
+        deps.callMemory?.remember(
+          session.callerId,
+          {
+            state,
+            ...(session.callerZip ? { zip: session.callerZip } : {}),
+            outcomeNote: `intent:${turn.intent}${turn.emergency ? ' emergency' : ''}`,
+          },
+          atIso,
+        );
+        let holdOutcome: 'attempted' | 'no_writer' = 'no_writer';
+        if (deps.calendarHold) {
+          const win = session.window;
+          const start = win ? win.startIso : new Date(nowMs + 30 * 60 * 1000).toISOString();
+          const end = win ? win.endIso : new Date(nowMs + 50 * 60 * 1000).toISOString();
+          // Filed EXACTLY the way Mike files his own estimates (his words,
+          // 2026-09-24, and his real events): summary "Name - 7575551234"
+          // (or "- no phone"), the address in the LOCATION field, the
+          // description opening "Estimate - ", and the CITY color from the
+          // learned D34 map (VB=4, Norfolk=10, Chesapeake=5, Portsmouth=6).
+          const digits = session.callerId ? session.callerId.replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '') : '';
+          const cityColor = colorFor('estimate', state.city);
+          const hold: CallHold = {
+            summary: `${state.name ?? 'Caller'} - ${digits || 'no phone'}`,
+            ...(state.address
+              ? {
+                  location:
+                    state.address +
+                    (state.city ? `, ${state.city}, VA` : '') +
+                    (session.callerZip ? ` ${session.callerZip}` : ''),
+                }
+              : {}),
+            ...(cityColor ? { colorId: cityColor } : {}),
+            description: [
+              `Estimate - booked by Arbo on the call. UNCONFIRMED - Mike confirms the time.`,
+              state.jobType ? `Job: ${state.jobType}` : null,
+              state.treeInfo ? `Tree: ${state.treeInfo}` : null,
+              state.proximityPowerLines ? `Power lines: ${state.proximityPowerLines}` : null,
+              win ? `Caller asked for: ${win.label}` : 'No time given - schedule with the caller.',
+            ]
+              .filter((l): l is string => l !== null)
+              .join('\n'),
+            startIso: start,
+            endIso: end,
+          };
+          holdOutcome = 'attempted';
+          void deps.calendarHold(hold).catch((err) => {
+            // Status/reason only — an error that quoted the event would put
+            // a customer in the logs (§4.3).
+            console.error('[calendar] hold failed:', err instanceof Error ? err.message : 'error');
+          });
+        }
+        deps.callRecords?.add({
+          atIso,
+          callerId: session.callerId,
+          state,
+          ...(session.callerZip ? { zip: session.callerZip } : {}),
+          intent: turn.intent,
+          emergency: session.emergencyCounted,
+          turns: session.turns,
+          ...(session.window ? { requestedWindow: session.window.label } : {}),
+          calendarHold: holdOutcome,
+        });
+      }
       const toolCalls = [
         { index: 0, id: `call_${id}`, type: 'function', function: { name: 'end_call', arguments: '{}' } },
       ];

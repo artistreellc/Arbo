@@ -149,6 +149,8 @@ import { env } from './env.js';
 import { createVoiceLlm } from './voice/anthropicLlm.js';
 import { createElevenLabsBridge, type BridgeRequestBody } from './voice/elevenlabsBridge.js';
 import { createGoogleGmailReader, createGoogleGmailThreadReader } from './integrations/gmail.js';
+import { createGoogleCalendarApi } from './integrations/calendar.js';
+import { CallMemory, CallRecordStore } from './reception/callMemory.js';
 import { createRefreshTokenProvider } from './integrations/googleOAuth.js';
 import { LEAD_CHANNELS, channelIsOff, setChannelOff } from './reception/leadMail.js';
 import { getTodayWorkZip, setTodayWorkZip, getLiveWorkZip, setLivePingZip, setLocationEnabled, isLocationEnabled, liveLocationState } from './reception/routingHint.js';
@@ -531,12 +533,48 @@ export function createArborRequestHandler() {
 
   // The voice bridge shares the validated policy configs — one source of law.
   const { guardrails, legal } = loadAllConfig();
+  // ═══ R18 (Mike, 2026-09-24): learning + records + live calendar holds ═══
+  // The learning layer is conversation memory ONLY — nothing here can write
+  // code or change the app. The calendar writer is the ONE-method hold
+  // creator; it exists only when the Google token trio is configured, and
+  // its absence is said out loud at boot rather than discovered in silence.
+  const callMemory = new CallMemory();
+  const callRecords = new CallRecordStore();
+  const gc = env.google;
+  const calendarHold = gc.gmailOauthClientId && gc.gmailOauthClientSecret && gc.gmailOauthRefreshToken
+    ? (() => {
+        const calApi = createGoogleCalendarApi(
+          createRefreshTokenProvider({
+            clientId: gc.gmailOauthClientId!,
+            clientSecret: gc.gmailOauthClientSecret!,
+            refreshToken: gc.gmailOauthRefreshToken!,
+          }),
+        );
+        return async (hold: {
+          summary: string;
+          description: string;
+          location?: string;
+          colorId?: string;
+          startIso: string;
+          endIso: string;
+        }) => {
+          await calApi.createEvent({ calendarId: 'primary', ...hold });
+        };
+      })()
+    : null;
+  if (!calendarHold) {
+    console.error('[calendar] holds DISABLED — no Google token (R18 waits on the consent step). This is not "no calls".');
+  }
+
   const bridge = createElevenLabsBridge({
     guardrails,
     legal,
     llm: createVoiceLlm(env.anthropic.apiKey),
     alerter: consoleAlerter,
     bridgeSecret: env.elevenlabs.bridgeSecret,
+    callMemory,
+    callRecords,
+    calendarHold,
     // R15: route anchors — work ZIP from Settings (in-memory), home ZIP from
     // env. The bridge turns these into a conclusion; the model never sees them.
     routeAnchors: () => ({ workZip: getLiveWorkZip(Date.now()) ?? getTodayWorkZip(), homeZip: env.ownerHomeZip ?? null }),
@@ -1093,6 +1131,15 @@ export function createArborRequestHandler() {
       // boot; llmKeyPresent is the "callers hear the fallback line" tell.
       if (req.method === 'GET' && url.pathname === '/api/reception/status') {
         return send(200, { ...bridge.status(), llmKeyPresent: Boolean(env.anthropic.apiKey) });
+      }
+      // R18: the call records — Mike's copy of what she captured, keywall-only.
+      if (req.method === 'GET' && url.pathname === '/api/calls/records') {
+        return send(200, {
+          records: callRecords.list(),
+          knownCallers: callMemory.size,
+          calendarHolds: calendarHold ? 'configured' : 'DISABLED — no Google token (this is not zero holds)',
+          note: 'In-memory since deploy — the calendar hold is the durable copy until the data links go live.',
+        });
       }
       // ElevenLabs custom-LLM endpoint (the agent's Server URL points at
       // /voice/llm; the platform appends the OpenAI-style path).
