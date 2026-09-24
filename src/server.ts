@@ -654,6 +654,24 @@ export function createArborRequestHandler() {
           return res.end(readFileSync(file));
         }
       }
+      // Public legal pages — exist so the Google OAuth consent screen has
+      // real URLs to point at (publishing requires them for Gmail scopes).
+      // Honest, minimal, no customer data, no auth.
+      if (req.method === 'GET' && (url.pathname === '/privacy' || url.pathname === '/terms')) {
+        const isPrivacy = url.pathname === '/privacy';
+        const title = isPrivacy ? 'Privacy Policy' : 'Terms of Service';
+        const bodyHtml = isPrivacy
+          ? `<p>Arbo is the internal reception and operations system of Art-is-Tree LLC, a tree service in Virginia Beach, Norfolk, Chesapeake, and Portsmouth, VA. It is operated by and for Art-is-Tree LLC only.</p>
+<p><b>What we collect.</b> When you call our business line, our assistant collects what you tell it — your name, callback number, property address, and details about the tree work you want — solely to schedule estimates and provide tree service. Calls are recorded for quality purposes and you are told so on the call.</p>
+<p><b>Google user data.</b> Arbo accesses Google account data only for Art-is-Tree's own business account: read-only access to that account's email (to surface customer inquiries to the owner) and the ability to create events on that account's calendar (to schedule estimate visits). Arbo's use of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements. Google user data is never sold, never used for advertising, and never transferred to third parties except the service providers that operate the system (hosting and AI processing) or as required by law.</p>
+<p><b>Sharing.</b> Customer information is used only to provide tree service. We do not sell personal information.</p>
+<p><b>Contact.</b> artistreeofvirginia@gmail.com</p>`
+          : `<p>Arbo is an internal business tool operated by Art-is-Tree LLC for its own reception and scheduling. It is not offered as a service to the public.</p>
+<p>By calling Art-is-Tree LLC you consent to the call handling described in our <a href="/privacy">Privacy Policy</a>, including call recording for quality purposes. Scheduling requests taken by the assistant are unconfirmed until confirmed by the owner.</p>
+<p>The system is provided as-is for Art-is-Tree LLC's internal use. Contact: artistreeofvirginia@gmail.com</p>`;
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=3600' });
+        return res.end(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Arbo — ${title}</title><style>body{font-family:system-ui,sans-serif;max-width:640px;margin:40px auto;padding:0 16px;line-height:1.6;color:#1a1a1a}h1{font-size:1.5rem}a{color:#6d28d9}</style></head><body><h1>Arbo — ${title}</h1><p><i>Art-is-Tree LLC · Effective 2026-09-24</i></p>${bodyHtml}</body></html>`);
+      }
       if (req.method === 'GET' && url.pathname === '/health') return send(...unpack(await api.health()));
       if (url.pathname.startsWith('/api/') && !apiAuthorized()) {
         return send(401, { error: 'unauthorized' });
