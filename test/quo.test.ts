@@ -9,7 +9,7 @@ import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { verifyQuoSignature, QuoIntake } from '../src/ops/quoIntake.js';
-import { createQuoApi, ensureQuoWebhooks, type QuoApi, type QuoWebhook } from '../src/integrations/quo.js';
+import { createQuoApi, ensureQuoWebhooks, QuoHttpError, QuoTruncatedError, type QuoApi, type QuoWebhook } from '../src/integrations/quo.js';
 import { CallMemory, CallRecordStore } from '../src/reception/callMemory.js';
 import { loadAllConfig } from '../src/config/loadConfig.js';
 import type { CallHold } from '../src/reception/estimateHold.js';
@@ -37,6 +37,7 @@ const FACTS: SonaCallFacts = {
   emergency: false,
   requestedTime: 'Wednesday after 4',
   agentSlips: [],
+  callerType: 'customer',
 };
 
 function harness(opts: { facts?: SonaCallFacts | Error; withHold?: boolean } = {}) {
@@ -95,6 +96,11 @@ describe('Quo API client — registers only Arbo’s own webhooks, and cannot se
     let n = 0;
     const api: QuoApi = {
       listPhoneNumbers: async () => [QUO_NUMBER],
+      phoneNumbers: async () => [{ id: 'PN1', number: QUO_NUMBER }],
+      listConversations: async () => [],
+      listCalls: async () => [],
+      listMessages: async () => [],
+      getCallTranscript: async () => null,
       listWebhooks: async () => existing,
       getWebhook: async () => null,
       createWebhook: async (family, url) => { created.push(family); n += 1; return { id: `WH${n}`, url, events: [], key: `key${n}` }; },
@@ -113,7 +119,7 @@ describe('Quo API client — registers only Arbo’s own webhooks, and cannot se
   it('reuses its own hooks when the key is listed, and never deletes anyone else’s', async () => {
     const url = 'https://arbo.test/webhooks/quo';
     const f = fakeApi([
-      { id: 'MINE', url, events: ['message.received'], key: 'k1' },
+      { id: 'MINE', url, events: ['message.received', 'message.delivered'], key: 'k1' },
       { id: 'MINE_NOKEY', url, events: ['call.completed'] },
       { id: 'ZAPIER', url: 'https://hooks.zapier.test/x', events: ['call.completed', 'message.received'], key: 'z' },
     ]);
@@ -122,6 +128,30 @@ describe('Quo API client — registers only Arbo’s own webhooks, and cannot se
     expect(f.deleted).toEqual(['MINE_NOKEY']);
     expect(f.deleted).not.toContain('ZAPIER');
     expect(r.keys).toContain('k1');
+  });
+
+  it('retires its OWN older hook that lacks a newly wanted event (pre-R22 texts hook), never anyone else’s', async () => {
+    const url = 'https://arbo.test/webhooks/quo';
+    const f = fakeApi([
+      { id: 'OLD_TEXTS', url, events: ['message.received'], key: 'old' },
+      { id: 'ZAPIER', url: 'https://hooks.zapier.test/x', events: ['message.received'], key: 'z' },
+    ]);
+    const r = await ensureQuoWebhooks(f.api, url);
+    expect(f.deleted).toEqual(['OLD_TEXTS']);
+    expect(f.created).toContain('messages');
+    expect(r.keys).not.toContain('old');
+  });
+
+  it('a refused read carries Quo’s code; a message history past the page cap is refused, never a silent prefix', async () => {
+    const refused = createQuoApi('k', async () => ({ ok: false, status: 400, json: async () => ({ code: '0206400', message: 'to +17575550142' }) }));
+    const err = await refused.listMessages({ phoneNumberId: 'PN1', participant: '+17575550142', createdAfterIso: 'x' }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(QuoHttpError);
+    expect((err as QuoHttpError).code).toBe('0206400');
+    expect((err as Error).message).not.toContain('5550142');
+    const endless = createQuoApi('k', async () => ({ ok: true, status: 200, json: async () => ({ data: [{ id: 'M', direction: 'incoming', text: 'hi' }], nextPageToken: 'more' }) }));
+    await expect(endless.listMessages({ phoneNumberId: 'PN1', participant: '+17575550142', createdAfterIso: 'x' })).rejects.toBeInstanceOf(QuoTruncatedError);
+    // Calls are not a STOP source — they stay capped at five pages, as before.
+    expect(await endless.listCalls({ phoneNumberId: 'PN1', participant: '+17575550142', createdAfterIso: 'x' })).toHaveLength(5);
   });
 
   it('one refused family does not take the others down, and is named', async () => {
@@ -153,14 +183,47 @@ describe('Quo API client — registers only Arbo’s own webhooks, and cannot se
       return { ok: true, status: 200, json: async () => ({ data: [] }) };
     });
     await api.listWebhooks();
-    expect(seen[0]).toEqual({ url: 'https://api.openphone.com/v1/webhooks', auth: 'QUO_TEST_KEY' });
+    // Quo's own spec names api.quo.com; the old host redirects, and a
+    // redirect can turn a POST into a GET, so the documented host is used.
+    expect(seen[0]).toEqual({ url: 'https://api.quo.com/v1/webhooks', auth: 'QUO_TEST_KEY' });
   });
 
-  it('has no send path — no message or call endpoint outside webhook registration', () => {
+  it('reads calls, messages and transcripts with the spec\u2019s required params, and pages by cursor', async () => {
+    const seen: string[] = [];
+    let page = 0;
+    const api = createQuoApi('k', async (url) => {
+      seen.push(url);
+      if (url.includes('/conversations')) {
+        page += 1;
+        return { ok: true, status: 200, json: async () => ({ data: [{ id: `CN${page}`, participants: [page === 1 ? CALLER : 'Anonymous'], lastActivityAt: 'x' }], nextPageToken: page < 2 ? 'tok' : null }) };
+      }
+      if (url.includes('/call-transcripts/')) return { ok: true, status: 200, json: async () => ({ data: { status: 'completed', dialogue: [{ identifier: CALLER, content: 'hi', userId: null }, { content: '' }] } }) };
+      return { ok: true, status: 200, json: async () => ({ data: [{ id: 'AC1', direction: 'incoming', status: 'completed', aiHandled: 'ai-agent', createdAt: 't', text: 'hello' }] }) };
+    });
+    const convs = await api.listConversations({ phoneNumberId: 'PN1', updatedAfterIso: '2026-09-17T00:00:00Z' });
+    expect(convs.map((c) => c.participants)).toEqual([[CALLER], []]); // non-E.164 caller ids are dropped
+    expect(seen[1]).toContain('pageToken=tok');
+    const calls = await api.listCalls({ phoneNumberId: 'PN1', participant: CALLER, createdAfterIso: 't0' });
+    expect(calls[0]).toMatchObject({ id: 'AC1', direction: 'incoming', aiHandled: 'ai-agent' });
+    expect(seen.at(-1)).toContain(`participants=${encodeURIComponent(CALLER)}`);
+    expect(seen.at(-1)).toContain('phoneNumberId=PN1');
+    const msgs = await api.listMessages({ phoneNumberId: 'PN1', participant: CALLER, createdAfterIso: 't0' });
+    expect(msgs[0]!.text).toBe('hello');
+    expect(seen.at(-1)).toContain('createdAfter=t0');
+    // The whole history (how STOP is read): no date filter at all.
+    await api.listMessages({ phoneNumberId: 'PN1', participant: CALLER, createdAfterIso: null });
+    expect(seen.at(-1)).not.toContain('createdAfter');
+    expect(seen.at(-1)).toContain('maxResults=100');
+    const tr = await api.getCallTranscript('AC1');
+    expect(tr!.dialogue).toEqual([{ identifier: CALLER, content: 'hi', userId: null }]);
+  });
+
+  it('this client only ever POSTs or DELETEs webhooks — the one send path lives in quoSend.ts (R22)', () => {
     const src = readFileSync(new URL('../src/integrations/quo.ts', import.meta.url), 'utf8');
-    expect(src).not.toMatch(/['"`]\/messages/);
-    expect(src).not.toMatch(/['"`]\/calls/);
-    expect(src).not.toMatch(/\/v1\/messages/);
+    for (const m of src.matchAll(/call\('(POST|DELETE|PUT|PATCH)',\s*`([^`]*)`/g)) {
+      expect(m[2], m[0]).toMatch(/^\/webhooks/);
+    }
+    expect(src).not.toMatch(/call\('POST',\s*`\/messages/);
   });
 });
 
@@ -230,6 +293,27 @@ describe('QuoIntake — Sona calls', () => {
     await h.intake.settled();
     expect(h.extract).toHaveBeenCalledTimes(1);
     expect(h.holds).toHaveLength(1);
+  });
+
+  it('a delivery receipt for an outgoing text reaches onDelivery — and only outgoing', async () => {
+    const got: Array<[string | null, string | null]> = [];
+    const intake = new QuoIntake({
+      guardrails: loadAllConfig().guardrails,
+      extractor: { extract: async () => FACTS },
+      callMemory: new CallMemory(),
+      callRecords: new CallRecordStore(),
+      calendarHold: null,
+      onText: () => {},
+      onDelivery: (id, status) => got.push([id, status]),
+      now: () => NOW,
+    });
+    intake.setRegistration('ok', 'test', [KEY], [QUO_NUMBER]);
+    const post = (event: unknown) => { const body = JSON.stringify(event); return intake.handle(sign(body), body); };
+    post({ type: 'message.delivered', data: { object: { id: 'AC9', direction: 'outgoing', status: 'delivered' } } });
+    post({ type: 'message.delivered', data: { object: { id: 'AC10', direction: 'incoming', status: 'delivered' } } });
+    post({ type: 'message.delivered', data: { object: { id: 'AC11', status: 'delivered' } } }); // no direction: still ours
+    await intake.settled();
+    expect(got).toEqual([['AC9', 'delivered'], ['AC11', 'delivered']]);
   });
 
   it('a text to the Quo number reaches the Texts list with its photos', async () => {

@@ -58,6 +58,8 @@ import { QuoIntake } from './ops/quoIntake.js';
 import { vendorLinked, vendorCutBody, cutVendorLinks } from './integrations/vendorLinks.js';
 import { createSonaExtractor } from './ops/quoExtract.js';
 import { createQuoApi, ensureQuoWebhooks } from './integrations/quo.js';
+import { createQuoSender } from './integrations/quoSend.js';
+import { OutreachEngine } from './ops/outreach.js';
 import {
   listLeads,
   listStopsBetween,
@@ -599,15 +601,46 @@ export function createArborRequestHandler() {
 
   // Sona's calls via Quo (Mike, 2026-09-24: "auto do it"). Same R18 stores
   // as Arbo's own calls; keys and numbers arrive when startServer registers.
+  // R22: the one outbound path — the "still interested in a quote?" text via
+  // Quo. Built only when Quo is configured; the line itself (which number
+  // Arbo texts from) is learned at boot from Quo, never guessed.
+  const quoApi = env.quoApiKey ? createQuoApi(env.quoApiKey) : null;
+  const sonaExtractor = env.anthropic.apiKey ? createSonaExtractor(env.anthropic.apiKey) : null;
+  let outreach: OutreachEngine | null = null;
   const quoIntake = new QuoIntake({
     guardrails,
-    extractor: env.anthropic.apiKey ? createSonaExtractor(env.anthropic.apiKey) : null,
+    extractor: sonaExtractor,
     callMemory,
     callRecords,
     calendarHold,
-    onText: (t) => webhooks.addQuoText(t),
+    onText: (t) => {
+      webhooks.addQuoText(t);
+      outreach?.noteInbound(t);
+    },
+    onDelivery: (id, status) => outreach?.noteDelivery(id, status),
   });
   currentQuoIntake = quoIntake;
+  if (quoApi && env.quoApiKey) {
+    outreach = new OutreachEngine({
+      quo: quoApi,
+      sender: createQuoSender(env.quoApiKey),
+      guardrails,
+      legal,
+      extractor: sonaExtractor,
+      bookedCallers: () => {
+        const booked = new Set<string>();
+        for (const c of quoIntake.list()) {
+          if (c.hold !== 'attempted' || !c.from) continue;
+          const n = c.from.replace(/[^\d+]/g, '');
+          if (n) booked.add(n);
+        }
+        return booked;
+      },
+      sonaFilesHolds: Boolean(calendarHold),
+      enabled: () => env.outreachAuto,
+    });
+  }
+  currentOutreach = outreach;
 
   const bridge = createElevenLabsBridge({
     guardrails,
@@ -1327,6 +1360,31 @@ export function createArborRequestHandler() {
       if (req.method === 'GET' && url.pathname === '/api/quo') {
         return send(200, { status: quoIntake.status(), calls: quoIntake.list() });
       }
+      // R22: text outreach — status, who qualifies, what went out (keywall).
+      if (url.pathname.startsWith('/api/outreach')) {
+        if (!outreach) return send(503, { error: 'quo_not_configured', message: 'No QUO_API_KEY on the server — nothing can be texted. This is not zero candidates.' });
+        // This door SENDS texts and lists customer numbers held in memory —
+        // the "no key while the DB is cut" opening never applies here.
+        if (!env.appAccessKey) return send(401, { error: 'no_app_key', message: 'APP_ACCESS_KEY is not set — texting is locked until it is.' });
+        if (req.method === 'GET' && url.pathname === '/api/outreach') {
+          return send(200, { status: outreach.status(), candidates: outreach.candidates(), sends: outreach.sends().slice(0, 50) });
+        }
+        if (req.method === 'POST' && url.pathname === '/api/outreach/preview') {
+          const candidates = await outreach.buildCandidates();
+          return send(200, { candidates, status: outreach.status() });
+        }
+        if (req.method === 'POST' && url.pathname === '/api/outreach/catchup') {
+          // Mike's tap — never gated by the automatic-sends switch.
+          const out = await outreach.runCatchup('mike');
+          return send(out.ran ? 200 : 409, out);
+        }
+        if (req.method === 'POST' && url.pathname === '/api/outreach/exclude') {
+          const body = (await readJson(req)) as { conversationId?: unknown };
+          if (typeof body.conversationId !== 'string' || !body.conversationId) return send(400, { error: 'conversationId_required' });
+          outreach.exclude(body.conversationId);
+          return send(200, { ok: true });
+        }
+      }
       if (req.method === 'GET' && url.pathname === '/api/webhooks/texts') {
         return send(200, {
           wired: Boolean(env.twilioSmsWebhookKey),
@@ -1415,13 +1473,17 @@ let inboxWatch: InboxWatchHandle | null = null;
 let intentWatch: IntentWatch | null = null;
 /** The Quo intake the running handler uses — startServer hands it its webhook keys. */
 let currentQuoIntake: QuoIntake | null = null;
+/** Business line 757-319-5131 and Arbo's line 757-821-6983 (docs/PHONE_SETUP.md) — never texted by outreach. */
+const OWN_PHONE_NUMBERS = ['+17573195131', '+17578216983'];
+/** The outreach engine the running handler uses — startServer hands it the Quo line. */
+let currentOutreach: OutreachEngine | null = null;
 
 /**
  * Register Arbo's webhooks with Quo and hand the intake its signing keys.
  * Every outcome is a NAMED state on /api/quo and a boot log line — a Quo
  * that is not wired must never look like a quiet phone (§1B).
  */
-async function wireQuo(intake: QuoIntake): Promise<void> {
+async function wireQuo(intake: QuoIntake, outreach: OutreachEngine | null): Promise<void> {
   if (!env.quoApiKey) return;
   const domain = process.env.RAILWAY_PUBLIC_DOMAIN;
   if (!domain) {
@@ -1432,10 +1494,17 @@ async function wireQuo(intake: QuoIntake): Promise<void> {
   intake.setRegistration('pending', 'Registering with Quo…');
   const api = createQuoApi(env.quoApiKey);
   try {
-    const [hooks, numbers] = await Promise.all([
+    const [hooks, lines] = await Promise.all([
       ensureQuoWebhooks(api, `https://${domain}/webhooks/quo`),
-      api.listPhoneNumbers().catch(() => [] as string[]),
+      api.phoneNumbers().catch(() => []),
     ]);
+    const numbers = lines.map((l) => l.number);
+    // R22: Arbo texts from the FIRST Quo line — one number, no ambiguity.
+    const first = lines[0];
+    // Our own numbers are never texted: every Quo line, the business line
+    // (Mike's cell) and Arbo's own line — docs/PHONE_SETUP.md.
+    if (outreach && first) outreach.setLine({ phoneNumberId: first.id, number: first.number, ownNumbers: [...numbers, ...OWN_PHONE_NUMBERS] });
+    else if (outreach) console.error('[outreach] NOT wired — Quo returned no phone number; nothing can be texted');
     const partial = hooks.failed.length
       ? ` NOT wired: ${hooks.failed.map((f) => `${f.family} (${f.why})`).join(', ')}.`
       : '';
@@ -1489,8 +1558,25 @@ export function startServer(port: number) {
   inboxWatch = startInboxWatch(gmailReader, { onMessage: intentWatch.observer });
   // Sona via Quo: register Arbo's webhooks in the background — the server
   // listens meanwhile, and every outcome is named on /api/quo.
-  if (currentQuoIntake) void wireQuo(currentQuoIntake);
-  else console.error('[quo] intake missing at boot — not wired');
+  if (currentQuoIntake) {
+    const outreach = currentOutreach;
+    void wireQuo(currentQuoIntake, outreach).then(() => {
+      if (!outreach) return;
+      const tv = outreach.verifyTemplate();
+      console.log(tv.ok
+        ? `[outreach] template OK — follow-ups ${env.outreachAuto ? 'AUTO (hourly, 48h after an inquiry)' : 'OFF until ARBO_OUTREACH=live'}; catch-up ${env.outreachCatchupAtBoot ? 'RUNNING at boot' : 'waits for Mike\'s tap or ARBO_OUTREACH_CATCHUP=live'}`
+        : `[outreach] template REFUSED — nothing will be texted: ${tv.problems.join('; ')}`);
+      if (env.outreachCatchupAtBoot) {
+        // A Quo failure at boot is a named log line, never a crashed server.
+        outreach.runCatchup('auto').catch((err) => {
+          console.error('[outreach] boot catch-up FAILED — nothing sent:', err instanceof Error ? err.message : 'error');
+        });
+      }
+      // Every 15 minutes: release texts held for quiet hours, and on the hour
+      // queue the 48-hour follow-ups. Same shape as the agent scheduler.
+      setInterval(() => { void outreach.tick(); }, 15 * 60_000).unref();
+    });
+  } else console.error('[quo] intake missing at boot — not wired');
   const cutNow = cutVendorLinks();
   console.log(cutNow.length
     ? `[links] CUT while Sona handles calls (R21): ${cutNow.join(', ')} — set ARBO_LINK_<NAME>=live to reconnect`

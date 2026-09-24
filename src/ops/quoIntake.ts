@@ -128,6 +128,8 @@ export interface QuoIntakeDeps {
   calendarHold: ((hold: CallHold) => Promise<void>) | null;
   /** Where Quo texts go — the shared Texts list. */
   onText: (t: { at: string; messageSid: string | null; from: string | null; body: string; media: Array<{ url: string; contentType: string | null }> }) => void;
+  /** A delivery receipt for a text Arbo sent (R22) — status only. */
+  onDelivery?: (messageId: string | null, status: string | null) => void;
   now?: () => number;
 }
 
@@ -242,6 +244,13 @@ export class QuoIntake {
           media,
         });
         console.error(`[quo] text received — ${media.length} photo(s)`);
+        return;
+      }
+      case 'message.delivered': {
+        // Delivery receipts exist only for texts we sent; tolerate a missing
+        // direction the same way message.received does.
+        if (o.direction === 'incoming') return;
+        this.deps.onDelivery?.(str(o.id), str(o.status));
         return;
       }
       case 'call.completed': {

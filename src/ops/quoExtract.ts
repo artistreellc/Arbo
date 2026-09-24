@@ -21,6 +21,12 @@ export const SonaCallSchema = z.object({
   emergency: z.boolean(),
   requestedTime: z.string().nullable(),
   agentSlips: z.array(z.string()),
+  /**
+   * Who was on the line. Owner ruling 2026-09-24: "spam likely calls could be
+   * clients" — a carrier label is never evidence; only what the caller SAID
+   * decides, and 'unclear' (a hang-up, a few words) stays a possible client.
+   */
+  callerType: z.enum(['customer', 'solicitor', 'wrong_number', 'unclear']).nullable(),
 });
 
 export type SonaCallFacts = z.infer<typeof SonaCallSchema>;
@@ -41,6 +47,7 @@ Extract only what the CALLER actually said. Use null for anything the caller did
 - powerLines: what the caller said about power lines near the tree.
 - emergency: true if a tree has fallen on, or is resting on, a house, car, or structure.
 - requestedTime: the caller's own words about when they want someone to come (for example "Wednesday after 4"). null if they gave none.
+- callerType: customer (asked about tree work, an estimate, their property, or a prior job — including callers who only said a little), solicitor (selling something to the business: SEO, leads, insurance, loans, warranties), wrong_number (asked for a person or company that is not Art-is-Tree and had no tree need), or unclear (hung up or said too little to tell). A caller ID label like "Spam Likely" is never a reason for solicitor or wrong_number — only the caller's words are.
 - agentSlips: quote, word for word, every line where SONA (not the caller) quoted a price, a price range, or a ballpark; said a specific tree is dead, dying, diseased, or dangerous; promised a specific date or time; claimed a credential other than licensed, insured, or Google-verified; or offered service outside those four cities. Empty list if none.`;
 
 export function createSonaExtractor(apiKey: string): SonaExtractor {

@@ -112,8 +112,16 @@ export const env = {
   },
   /** Shared key in the Railway deploy-webhook URL (we mint it). */
   railwayWebhookKey: get('RAILWAY_WEBHOOK_KEY'),
-  /** Quo (Sona's phone) API key — Arbo registers its own webhooks with it. Never used to send. */
+  /**
+   * Quo (Sona's phone) API key — Arbo registers its own webhooks and reads
+   * conversations with it, and (R22, the one outbound path) sends the
+   * "still interested in a quote?" text through src/integrations/quoSend.ts.
+   */
   quoApiKey: get('QUO_API_KEY'),
+  /** R22: exactly 'live' turns on the AUTOMATIC 48-hour follow-up texts. Anything else = off. */
+  outreachAuto: get('ARBO_OUTREACH') === 'live',
+  /** R22: exactly 'live' runs the one-time past-week catch-up at boot (Mike's tap in the app does the same). */
+  outreachCatchupAtBoot: get('ARBO_OUTREACH_CATCHUP') === 'live',
   /** Shared key in the Twilio incoming-text webhook URL (we mint it). */
   twilioSmsWebhookKey: get('TWILIO_SMS_WEBHOOK_KEY'),
   anthropic: { apiKey: get('ANTHROPIC_API_KEY') },

@@ -51,7 +51,15 @@ go to T-Mobile voicemail until the two optional codes are dialed.
 - Per Sona call: rule check (code guard + Opus read), calendar hold filed
   Mike's way, call record, repeat-caller memory. State on `GET /api/quo`
   and the Today / Calls screens.
-- Arbo never sends through Quo — the client has no send method (pinned).
+- **Arbo texts through Quo (R22)** — the ONE outbound path: the "still
+  interested in a quote?" template, past-week catch-up on Mike's tap or
+  `ARBO_OUTREACH_CATCHUP=live`, 48-hour follow-ups while `ARBO_OUTREACH=live`.
+  Gate: consent (they called in), STOP (Quo's WHOLE history, plain words
+  count, re-read before every send), 8am–9pm ET, no price/diagnosis/date.
+  Never texted: our own numbers (Quo lines, 757-319-5131, 757-821-6983),
+  anyone on the line right now, anyone Mike already called back. Quo refuses every send until Mike
+  completes US texting registration in Quo → Settings → Trust center; the app
+  names that state.
 
 **Still to do in Quo (Mike's side, Sona settings):**
 1. Sona answers **immediately** — not after ringing Mike in the Quo app. The
@@ -62,12 +70,18 @@ go to T-Mobile voicemail until the two optional codes are dialed.
 3. Sona's instructions must carry Mike's rules (no price, no diagnosis, no
    promised date, credentials, four cities). Until then Arbo's slip check is
    the only net, and it catches slips *after* the call.
+4. R23: Sona must never screen or hang up on a "Spam Likely" or unknown
+   caller — the instruction line is in `docs/OWNER_RULINGS.md` R23.
+
+**Carrier check (Mike's side, R23):** T-Mobile Scam Shield "Scam Block" OFF,
+iPhone Silence Unknown Callers OFF — either one stops a call before the
+20-second forward to Sona can fire. State not yet confirmed.
 
 ## Texts
 
 | Line | How texts reach Arbo | State |
 |---|---|---|
-| Quo 757-606-9432 | Quo webhook (above), photos included. | Live. |
+| Quo 757-606-9432 | Quo webhook (above), photos included. Outbound: the R22 text only. | Live. |
 | Arbo 757-821-6983 | Twilio "A message comes in" webhook → `/webhooks/twilio/sms?key=…`, key = **`TWILIO_SMS_WEBHOOK_KEY`** (Railway). Receive only — empty TwiML reply. | **CUT (R21).** Twilio console paste never done. |
 | Business 757-319-5131 | iOS blocks every app from native SMS. Optional bridge: an iPhone Shortcuts "Message" automation POSTing `{from, text}` to `/api/relay/text` with header `x-arbor-key` = the app key. Words only, never photos. | Built; Shortcut **not set up**. |
 

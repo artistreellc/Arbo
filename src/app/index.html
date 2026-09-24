@@ -809,6 +809,97 @@ async function sonaPanel(limit, withTranscripts) {
   return wrap;
 }
 
+// ---------- Text outreach via Quo (R22 — "still interested in a quote?", past-week catch-up + 48h follow-ups) ----------
+async function outreachPanel(full) {
+  let d;
+  try { d = await api('/api/outreach'); }
+  catch (e) {
+    if (e.code === 401) return null;
+    const wrap0 = el('div');
+    wrap0.appendChild(el('div', 'panel-title', 'Text outreach'));
+    wrap0.appendChild(el('div', 'storm-muted', e.code === 503
+      ? 'Quo is not configured on the server \u2014 nothing can be texted. This is not zero candidates.'
+      : 'Text outreach: status unavailable right now.'));
+    return wrap0;
+  }
+  const st = d.status;
+  const wrap = el('div');
+  wrap.appendChild(el('div', 'panel-title', 'Text outreach'));
+  if (!st.wired) {
+    wrap.appendChild(el('div', 'storm-muted', 'Quo line not learned yet \u2014 nothing can be texted until Arbo registers with Quo at boot.'));
+    return wrap;
+  }
+  if (!st.template.ok) {
+    wrap.appendChild(el('div', 'storm', 'The text template fails the rules \u2014 NOTHING is sent: ' + st.template.problems.join('; ')));
+    return wrap;
+  }
+  if (st.paused) {
+    const why = { not_registered: 'Quo refused: texting registration not approved. In Quo: Settings \u2192 Trust center \u2192 complete US texting (A2P) registration. Queued texts wait.',
+                  daily_cap: 'Quo refused: daily texting cap reached. Queued texts wait for tomorrow.',
+                  unauthorized: 'Quo refused the API key.', subscription_expired: 'Quo says the subscription expired.' };
+    wrap.appendChild(el('div', 'storm', (why[st.paused.reason] || ('Quo refused: ' + st.paused.reason)) + ' Retry after ' + fmtTime(st.paused.until) + '.'));
+  }
+  const line = el('div', 'storm-muted', 'From ' + st.fromNumber + ' \u00b7 follow-ups ' + (st.autoFollowUps ? 'AUTOMATIC (48h after an inquiry, hourly check)' : 'OFF until ARBO_OUTREACH=live') + ' \u00b7 8am\u20139pm ET only \u00b7 STOP honored');
+  wrap.appendChild(line);
+  const hud = el('div', 'hud');
+  const tile = (n, label, cls) => { const x = el('div', 'tile' + (cls ? ' ' + cls : '')); x.appendChild(el('b', '', String(n))); x.appendChild(el('span', '', label)); return x; };
+  hud.appendChild(tile(st.candidates.eligible, 'ready to text', st.candidates.eligible > 0 ? 'accent' : ''));
+  hud.appendChild(tile(st.sent, 'sent'));
+  hud.appendChild(tile(st.queued, 'queued', st.queued > 0 ? 'warn' : ''));
+  wrap.appendChild(hud);
+  if (st.deferredUntil) wrap.appendChild(el('div', 'storm-muted', st.queued + ' text(s) waiting for quiet hours to end (' + fmtTime(st.deferredUntil) + ').'));
+  wrap.appendChild(el('div', 'scope', 'Template: \u201c' + st.template.text + '\u201d'));
+  const row = el('div', 'actions');
+  const pv = el('button', 'minibtn', st.lastRunAt ? 'Refresh list' : 'Find past-week callers');
+  pv.onclick = async () => { pv.disabled = true; pv.textContent = 'Checking Quo\u2026'; try { await api('/api/outreach/preview', { method: 'POST', body: {} }); } catch (e) {} renderToday(); };
+  row.appendChild(pv);
+  if (st.candidates.eligible > 0) {
+    const go = el('button', 'actbtn', 'Send catch-up to ' + st.candidates.eligible + ' now');
+    go.onclick = async () => {
+      go.disabled = true; go.textContent = 'Sending\u2026';
+      try { const r = await api('/api/outreach/catchup', { method: 'POST', body: {} }); go.textContent = r.queued + ' queued \u2014 going out one at a time'; }
+      catch (e) { go.textContent = 'Could not start \u2014 ' + (e.message || 'refused'); }
+      setTimeout(() => renderToday(), 2500);
+    };
+    row.appendChild(go);
+  }
+  wrap.appendChild(row);
+  const skipped = Object.entries(st.candidates.skipped || {});
+  if (skipped.length) {
+    const labels = { no_inbound: 'we called them, they never called us', opted_out: 'asked us to stop texting', already_texted: 'already heard from us', not_customer: 'solicitor or wrong number', own_number: 'our own number', excluded: 'you excluded', estimate_booked: 'estimate already booked', called_back: 'you already called them back', call_in_progress: 'on the phone right now', not_registered: 'held until Quo approves texting registration', unreadable: 'Arbo could not read the call or texts' };
+    wrap.appendChild(el('div', 'storm-muted', 'Not texting: ' + skipped.map(([k, n]) => n + ' ' + (labels[k] || k)).join(' \u00b7 ')));
+  }
+  if (full) {
+    for (const c of (d.candidates || []).filter((x) => !x.skip)) {
+      const card = el('div', 'card');
+      const top = el('div', 'toprow');
+      top.appendChild(el('div', 'who', c.number));
+      top.appendChild(el('div', 'when', c.lastInboundAt ? fmtTime(c.lastInboundAt) : ''));
+      card.appendChild(top);
+      card.appendChild(el('div', 'scope', c.inboundCalls + ' call(s), ' + c.inboundTexts + ' text(s) in \u00b7 ' + (c.classification === 'customer' ? 'asked about tree work' : c.classification === 'unclear' ? 'hung up or said little \u2014 could be a customer' : c.classification)));
+      const a = el('div', 'actions');
+      const ex = el('button', 'minibtn bad', 'Don\u2019t text');
+      ex.onclick = async () => { ex.disabled = true; try { await api('/api/outreach/exclude', { method: 'POST', body: { conversationId: c.conversationId } }); } catch (e) {} renderCalls(); };
+      a.appendChild(ex);
+      card.appendChild(a);
+      wrap.appendChild(card);
+    }
+    if ((d.sends || []).length) {
+      wrap.appendChild(el('div', 'panel-title', 'Texts Arbo sent'));
+      for (const r of d.sends.slice(0, 20)) {
+        const card = el('div', 'card' + (r.outcome === 'sent' ? '' : ' emergency'));
+        const top = el('div', 'toprow');
+        top.appendChild(el('div', 'who', r.number));
+        top.appendChild(el('div', 'when', fmtTime(r.at)));
+        card.appendChild(top);
+        card.appendChild(el('div', 'scope', r.outcome === 'sent' ? ('Sent (' + r.kind + ')' + (r.status ? ' \u00b7 ' + r.status : '')) : (r.outcome + ': ' + r.detail)));
+        wrap.appendChild(card);
+      }
+    }
+  }
+  return wrap;
+}
+
 // ---------- Website forms, direct wire (R19 — same submission that emails Mike, delivered to Arbo too) ----------
 async function websiteFormsPanel() {
   let d;
@@ -904,6 +995,10 @@ async function renderToday() {
   const inboxSlot = el('div');
   v.appendChild(inboxSlot);
   inboxIntentPanel().then((b) => { if (b) inboxSlot.appendChild(b); });
+  // R22 text outreach — above the brief fetch, same links-cut lesson.
+  const outreachSlot = el('div');
+  v.appendChild(outreachSlot);
+  outreachPanel(false).then((b) => { if (b) outreachSlot.appendChild(b); });
   // Sona via Quo — above the brief fetch, same links-cut lesson.
   const sonaSlot = el('div');
   v.appendChild(sonaSlot);
@@ -1456,6 +1551,10 @@ $('twin-close').addEventListener('click', () => $('twin').classList.remove('show
 async function renderCalls() {
   const v = $('view-calls');
   v.replaceChildren();
+  // R22 text outreach — the full list: who is ready, who was texted.
+  const outreachFull = el('div');
+  v.appendChild(outreachFull);
+  outreachPanel(true).then((b) => { if (b) outreachFull.appendChild(b); });
   // Sona via Quo — every call, with transcripts.
   const sonaCallsSlot = el('div');
   v.appendChild(sonaCallsSlot);
