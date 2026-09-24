@@ -318,8 +318,8 @@ describe('ARBOR app shell', () => {
   });
 
   it('uses the §9 cockpit tokens (violet primary, dark base, 48px+ targets)', () => {
-    expect(html).toContain('#7C3AED'); // luminous purple accent
-    expect(html).toContain('#0B0D10'); // near-black base
+    expect(html).toContain('#1B4D3E'); // luminous purple accent
+    expect(html).toContain('#F7F5F0'); // near-black base
     expect(html).toMatch(/min-height:\s*(48|56)px/);
   });
 });

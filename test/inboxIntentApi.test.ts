@@ -67,9 +67,9 @@ describe('Today-screen intent panel (source pins)', () => {
     expect(html).toContain('This is not zero mail');
   });
 
-  it('carries the maybe lane, the ignored log, and the proposal cards', () => {
+  it('carries the maybe lane and proposal cards — and NO ignored log on screen (Mike, 2026-09-24)', () => {
     expect(html).toContain('Maybe — check this');
-    expect(html).toContain('Ignored log');
+    expect(html).not.toContain('Ignored log');
     expect(html).toContain('Proposed new intent');
   });
 
