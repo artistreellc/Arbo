@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22' # supabase-js needs Node 22's native WebSocket; matches local + Railway
+          node-version: '22' # supabase-js needs Node 22's native WebSocket; package.json engines pins Railway to 22 too
           cache: 'npm'
       - run: npm ci
       - name: Typecheck

@@ -5,7 +5,7 @@
   "type": "module",
   "description": "ARBO — AI reception & operations platform for Art-is-Tree LLC",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "boot": "tsx src/index.ts",
