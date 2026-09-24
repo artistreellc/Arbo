@@ -63,10 +63,25 @@ export interface CallTranscriptEntry {
  */
 export interface TextEntry {
   at: string;
+  /** 'arbo' = the Twilio number; 'business' = Mike's business cell, relayed by his iPhone Shortcut. */
+  line: 'arbo' | 'business';
   messageSid: string | null;
   from: string | null;
   body: string;
   media: Array<{ url: string; contentType: string | null }>;
+}
+
+/**
+ * Notes on a call Mike ANSWERED on his business cell (Mike, 2026-09-24: "it
+ * still listens to the call and takes notes"). Arbo cannot hear his cell —
+ * iOS records and transcribes the call itself, and a Share-sheet Shortcut
+ * relays the transcript here. Customer PII: keywall app UI only.
+ */
+export interface CallNoteEntry {
+  at: string;
+  /** Who the call was with, as the Shortcut sends it (may be blank). */
+  withWhom: string | null;
+  text: string;
 }
 
 export interface SourceStatus {
@@ -81,6 +96,7 @@ const EVENT_CAP = 300;
 const FORM_CAP = 100;
 const TRANSCRIPT_CAP = 100;
 const TEXT_CAP = 200;
+const NOTE_CAP = 100;
 /** Twilio sends at most 10 media items per MMS. */
 const MEDIA_MAX = 10;
 const SEEN_CAP = 500;
@@ -181,6 +197,7 @@ export class WebhookIntake {
   private readonly forms: WebsiteFormEntry[] = [];
   private readonly transcripts: CallTranscriptEntry[] = [];
   private readonly textLog: TextEntry[] = [];
+  private readonly callNotes: CallNoteEntry[] = [];
   private readonly seenEmailIds = new Set<string>();
   private readonly counters: Record<WebhookSource, { received: number; rejected: number; lastAt: string | null; lastError: string | null }> = {
     resend: { received: 0, rejected: 0, lastAt: null, lastError: null },
@@ -359,14 +376,14 @@ export class WebhookIntake {
       const url = f.get(`MediaUrl${i}`);
       if (url && /^https:\/\//.test(url)) media.push({ url, contentType: f.get(`MediaContentType${i}`) });
     }
-    this.textLog.push({
+    this.pushText({
       at: new Date(this.now()).toISOString(),
+      line: 'arbo',
       messageSid: sid,
       from: f.get('From'),
       body: (f.get('Body') ?? '').slice(0, 2000),
       media,
     });
-    if (this.textLog.length > TEXT_CAP) this.textLog.splice(0, this.textLog.length - TEXT_CAP);
     // Counts and ids only — never the number or the words (§4.3).
     this.record('twilio', media.length ? 'mms.received' : 'sms.received', `message ${sid ?? 'id-unknown'} · ${media.length} photo(s)`);
     return { status: 200, body: null };
@@ -392,6 +409,41 @@ export class WebhookIntake {
 
   websiteForms(): WebsiteFormEntry[] {
     return [...this.forms].reverse();
+  }
+
+  private pushText(t: TextEntry): void {
+    this.textLog.push(t);
+    if (this.textLog.length > TEXT_CAP) this.textLog.splice(0, this.textLog.length - TEXT_CAP);
+  }
+
+  /**
+   * A text that arrived on Mike's BUSINESS CELL, relayed by his iPhone
+   * Shortcuts automation (POST /api/relay/text, behind the app key). iOS
+   * gives the automation the sender and the words — never photos — so this
+   * entry carries no media, and the app says so rather than implying none.
+   */
+  relayText(input: { from?: unknown; text?: unknown }): { ok: boolean; error?: string } {
+    const text = typeof input.text === 'string' ? input.text.trim() : '';
+    if (!text) return { ok: false, error: 'text_required' };
+    const from = typeof input.from === 'string' && input.from.trim() ? input.from.trim().slice(0, 120) : null;
+    this.pushText({ at: new Date(this.now()).toISOString(), line: 'business', messageSid: null, from, body: text.slice(0, 2000), media: [] });
+    console.error(`[relay] business-line text received — ${this.textLog.filter((t) => t.line === 'business').length} since deploy`);
+    return { ok: true };
+  }
+
+  /** A call transcript Mike shared from his iPhone (POST /api/relay/call-notes). */
+  relayCallNote(input: { with?: unknown; text?: unknown }): { ok: boolean; error?: string } {
+    const text = typeof input.text === 'string' ? input.text.trim() : '';
+    if (!text) return { ok: false, error: 'text_required' };
+    const withWhom = typeof input.with === 'string' && input.with.trim() ? input.with.trim().slice(0, 120) : null;
+    this.callNotes.push({ at: new Date(this.now()).toISOString(), withWhom, text: text.slice(0, 20000) });
+    if (this.callNotes.length > NOTE_CAP) this.callNotes.splice(0, this.callNotes.length - NOTE_CAP);
+    console.error(`[relay] call notes received — ${this.callNotes.length} since deploy`);
+    return { ok: true };
+  }
+
+  notes(): CallNoteEntry[] {
+    return [...this.callNotes].reverse();
   }
 
   texts(): TextEntry[] {
