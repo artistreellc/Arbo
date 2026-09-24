@@ -51,6 +51,15 @@ go to T-Mobile voicemail until the two optional codes are dialed.
 - Per Sona call: rule check (code guard + Opus read), calendar hold filed
   Mike's way, call record, repeat-caller memory. State on `GET /api/quo`
   and the Today / Calls screens.
+- **Arbo also reads Sona's calls from Quo's own record (D80)** — the last
+  7 days at every boot, then the last day every 10 minutes — so a call the
+  webhook missed is still learned. On 2026-09-24 the webhook delivered 8
+  Sona calls that Arbo answered 200 and dropped without a word; every
+  unused event is now named (`notUsed` on `/api/quo`, a red line on the
+  Sona panel, a `[quo] event not used —` log line). A call from before the
+  current deploy is learned WITHOUT a calendar hold (the card says "book it
+  yourself"), because an earlier deploy may already have filed one. Boot
+  log proof: `[quo] read Quo's record — learned N call(s)`.
 - **Arbo texts through Quo (R22)** — the ONE outbound path: the "still
   interested in a quote?" template, past-week catch-up on Mike's tap or
   `ARBO_OUTREACH_CATCHUP=live`, 48-hour follow-ups while `ARBO_OUTREACH=live`.

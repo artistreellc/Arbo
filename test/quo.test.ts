@@ -227,6 +227,137 @@ describe('Quo API client — registers only Arbo’s own webhooks, and cannot se
   });
 });
 
+describe('learning from Quo — no call dropped in silence (Mike, 2026-09-24: "Need arbo to start learning from QUO")', () => {
+  const MIN = 60_000;
+  function learner(opts: { calls?: Array<{ id: string; at: number; aiHandled?: string | null; status?: string }>; transcripts?: Record<string, { status: string; dialogue: Array<{ identifier: string | null; content: string; userId: string | null }> | null } | null>; failList?: boolean; facts?: SonaCallFacts | Error } = {}) {
+    let now = NOW;
+    const holds: CallHold[] = [];
+    const extract = vi.fn(async () => { if (opts.facts instanceof Error) throw opts.facts; return opts.facts ?? FACTS; });
+    const intake = new QuoIntake({
+      guardrails: loadAllConfig().guardrails, extractor: { extract }, callMemory: new CallMemory(), callRecords: new CallRecordStore(),
+      calendarHold: async (h) => { holds.push(h); }, onText: () => {}, now: () => now,
+    });
+    intake.setRegistration('ok', 'test', [KEY], [QUO_NUMBER]);
+    const api: QuoApi = {
+      listPhoneNumbers: async () => [QUO_NUMBER],
+      phoneNumbers: async () => [{ id: 'PN1', number: QUO_NUMBER }],
+      listConversations: async () => { if (opts.failList) throw new Error('Quo GET /conversations -> 500'); return [{ id: 'CN1', phoneNumberId: 'PN1', participants: [CALLER], lastActivityAt: null, updatedAt: null }]; },
+      listCalls: async () => (opts.calls ?? []).map((c) => ({ id: c.id, direction: 'incoming' as const, status: c.status ?? 'completed', aiHandled: c.aiHandled === undefined ? 'ai-agent' : c.aiHandled, createdAt: new Date(c.at).toISOString(), answeredAt: null, completedAt: null })),
+      listMessages: async () => [],
+      getCallTranscript: async (id) => (opts.transcripts ?? {})[id] ?? null,
+      listWebhooks: async () => [], getWebhook: async () => null,
+      createWebhook: async () => { throw new Error('no'); }, deleteWebhook: async () => {},
+    };
+    const post = (event: unknown) => { const body = JSON.stringify(event); return intake.handle(sign(body, KEY, now), body); };
+    return { intake, holds, extract, api, post, setNow: (ms: number) => { now = ms; } };
+  }
+  const talkLines = (userId: string | null = null) => [
+    { identifier: QUO_NUMBER, content: "Hi, you've reached Art-is-Tree.", userId },
+    { identifier: CALLER, content: 'I need a big oak taken down in the back yard, can someone come Wednesday after 4?', userId: null },
+  ];
+
+  it('a call from BEFORE this deploy is learned from Quo’s record with NO new hold; one the webhook missed after boot gets its hold', async () => {
+    const h = learner({
+      calls: [{ id: 'AC-OLD', at: NOW - 3 * 60 * MIN }, { id: 'AC-NEW', at: NOW + 5 * MIN }],
+      transcripts: { 'AC-OLD': { status: 'completed', dialogue: talkLines() }, 'AC-NEW': { status: 'completed', dialogue: talkLines() } },
+    });
+    h.setNow(NOW + 20 * MIN);
+    const r = await h.intake.reconcile(h.api, 'PN1', 7 * 24 * 60 * MIN);
+    expect(r).toEqual({ learned: 2, pending: 0 });
+    const byId = Object.fromEntries(h.intake.list().map((c) => [c.callId, c]));
+    expect(byId['AC-OLD']).toMatchObject({ handledBy: 'sona', hold: 'learned_only', source: 'quo_record' });
+    expect(byId['AC-NEW']).toMatchObject({ handledBy: 'sona', hold: 'attempted', source: 'quo_record' });
+    expect(h.holds).toHaveLength(1);
+    // A second pass, or the late webhook, never processes a call twice.
+    await h.intake.reconcile(h.api, 'PN1', 7 * 24 * 60 * MIN);
+    h.post(transcript('AC-NEW', [[QUO_NUMBER, 'Hi.'], [CALLER, 'I need a big oak taken down please today.']]));
+    await h.intake.settled();
+    expect(h.holds).toHaveLength(1);
+    expect(h.extract).toHaveBeenCalledTimes(2);
+    expect(h.intake.status()).toMatchObject({ learnedFromRecord: 2, sonaCalls: 2 });
+  });
+
+  it('Quo’s own "Sona answered" flag wins over a user tag on her lines — she is never filed as Mike', async () => {
+    const h = learner();
+    h.post({ type: 'call.completed', data: { object: { id: 'AC7', from: CALLER, direction: 'incoming', status: 'completed', aiHandled: 'ai-agent' } } });
+    h.post(transcript('AC7', [[QUO_NUMBER, "Hi, you've reached Art-is-Tree.", 'USsona'], [CALLER, 'I need a big oak taken down in the back yard please.']]));
+    await h.intake.settled();
+    expect(h.intake.list()[0]).toMatchObject({ handledBy: 'sona', hold: 'attempted' });
+    // And a call the webhook filed as "not Sona's" is re-read when Quo says Sona answered.
+    const h2 = learner({ calls: [{ id: 'AC8', at: NOW }], transcripts: { AC8: { status: 'completed', dialogue: talkLines('USsona') } } });
+    h2.post(transcript('AC8', [[QUO_NUMBER, "Hi, you've reached Art-is-Tree.", 'USsona'], [CALLER, 'I need a big oak taken down in the back yard please.']]));
+    await h2.intake.settled();
+    expect(h2.intake.list()[0]!.handledBy).toBe('mike');
+    await h2.intake.reconcile(h2.api, 'PN1', 24 * 60 * MIN);
+    expect(h2.intake.list()[0]).toMatchObject({ handledBy: 'sona', source: 'quo_record' });
+  });
+
+  it('every event Arbo does not use is NAMED — keys only, never a number or a word (§1B, §4.3)', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const h = learner();
+    h.post({ type: 'call.transcript.completed', data: { object: { transcriptId: 'X', dialogue: [{ identifier: CALLER, content: 'my oak at 4500 Simulated Ct' }] } } });
+    h.post({ type: 'call.ringing', data: { object: { id: 'AC9', from: CALLER } } });
+    h.post({ type: 'call.transcript.completed', data: { object: { callId: 'AC10', status: 'in-progress', dialogue: null } } });
+    await h.intake.settled();
+    expect(h.intake.status().notUsed).toEqual({ transcript_without_call_id: 1, 'unhandled_type:call.ringing': 1, 'transcript_not_ready:in-progress': 1 });
+    const logged = spy.mock.calls.flat().join(' ');
+    expect(logged).toContain('payload keys: transcriptId,dialogue');
+    expect(logged).not.toContain('5550142');
+    expect(logged).not.toContain('Simulated');
+    spy.mockRestore();
+    // The not-ready one was left open, so Quo's record completes it later.
+    expect(h.intake.list().find((c) => c.callId === 'AC10')!.processed).toBe(false);
+  });
+
+  it('a transcript payload that carries the call id as `id` still lands', async () => {
+    const h = learner();
+    h.post({ type: 'call.transcript.completed', data: { object: { id: 'AC11', status: 'completed', dialogue: [{ identifier: QUO_NUMBER, content: 'Hi.' }, { identifier: CALLER, content: 'I need a big oak taken down please.' }] } } });
+    await h.intake.settled();
+    expect(h.intake.list()[0]).toMatchObject({ callId: 'AC11', handledBy: 'sona', hold: 'attempted' });
+  });
+
+  it('not-yet-written transcripts wait; ones Quo will never write settle as named hang-ups; a live call is left alone', async () => {
+    const h = learner({
+      calls: [{ id: 'AC-LIVE', at: NOW, status: 'in-progress' }, { id: 'AC-WIP', at: NOW - 5 * MIN }, { id: 'AC-GONE', at: NOW - 60 * MIN }, { id: 'AC-FAIL', at: NOW - 60 * MIN }],
+      transcripts: { 'AC-WIP': { status: 'in-progress', dialogue: null }, 'AC-GONE': { status: 'absent', dialogue: null }, 'AC-FAIL': { status: 'failed', dialogue: null } },
+    });
+    expect(await h.intake.reconcile(h.api, 'PN1', 24 * 60 * MIN)).toEqual({ learned: 2, pending: 2 });
+    const byId = Object.fromEntries(h.intake.list().map((c) => [c.callId, c]));
+    expect(byId['AC-GONE']).toMatchObject({ hold: 'hangup', handledBy: 'sona' });
+    expect(byId['AC-FAIL']).toMatchObject({ hold: 'extraction_unavailable' });
+    expect(byId['AC-WIP']).toBeUndefined();
+    expect(h.extract).not.toHaveBeenCalled();
+  });
+
+  it('Quo unreadable is named on /api/quo status; one bad call never jams the webhook queue', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const bad = learner({ failList: true });
+    await expect(bad.intake.reconcile(bad.api, 'PN1', MIN)).resolves.toEqual({ learned: 0, pending: 0 });
+    expect(bad.intake.status().quoRecord.error).toMatch(/500/);
+    const h = learner({ calls: [{ id: 'AC-X', at: NOW }], transcripts: { 'AC-X': { status: 'completed', dialogue: talkLines() } } });
+    const deps = (h.intake as unknown as { deps: { callRecords: { add: () => void } } }).deps;
+    const realAdd = deps.callRecords.add.bind(deps.callRecords);
+    deps.callRecords.add = () => { throw new TypeError('boom'); };
+    await h.intake.reconcile(h.api, 'PN1', 24 * 60 * MIN);
+    deps.callRecords.add = realAdd;
+    h.post(transcript('AC-Y', [[QUO_NUMBER, 'Hi.'], [CALLER, 'I need a big oak taken down please.']]));
+    await h.intake.settled();
+    expect(h.intake.list().find((c) => c.callId === 'AC-Y')).toMatchObject({ handledBy: 'sona', hold: 'attempted' });
+    spy.mockRestore();
+  });
+
+  it('the server reads Quo’s record at boot and every 10 minutes; the panel names drops and a failed read', () => {
+    const src = readFileSync(new URL('../src/server.ts', import.meta.url), 'utf8');
+    expect(src).toContain('intake.reconcile(line.api, line.phoneNumberId, QUO_LEARN_BACKFILL_MS)');
+    expect(src).toContain('const QUO_LEARN_EVERY_MS = 10 * 60 * 1000;');
+    const html = readFileSync(new URL('../src/app/index.html', import.meta.url), 'utf8');
+    expect(html).toContain('event(s) Arbo could not use');
+    expect(html).toContain('This is not zero calls.');
+    expect(html).toContain('checked against Quo\\u2019s own record');
+    expect(html).not.toContain('no Sona calls since deploy');
+  });
+});
+
 describe('QuoIntake — Sona calls', () => {
   it('files the hold Mike’s way, keeps the record, remembers the caller, and catches a price slip', async () => {
     const h = harness();
