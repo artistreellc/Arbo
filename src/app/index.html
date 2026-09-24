@@ -1096,9 +1096,78 @@ function renderCalendar() {
 }
 
 // ---------- The Book (§6/#36: every property, tap into its twin) ----------
+// ---------- Estimate prep (Mike 2026-09-24: know the property before the drive) ----------
+function estimatePrepPanel() {
+  const card = el('div', 'card');
+  card.appendChild(el('div', 'panel-title', 'Estimate prep'));
+  card.appendChild(el('div', 'storm-muted', 'Permit screen, drive estimate, Miss Utility and access notes — one sheet before you drive. Never a price, never a booking.'));
+  const f = (label, node) => {
+    const w = el('div', 'field');
+    const l = el('label', '', label); l.style.display = 'block'; l.style.fontSize = '11px'; l.style.fontWeight = '700';
+    l.style.letterSpacing = '.08em'; l.style.textTransform = 'uppercase'; l.style.color = 'var(--muted)'; l.style.marginBottom = '5px';
+    w.appendChild(l); w.appendChild(node); return w;
+  };
+  const addr = el('input'); addr.type = 'text'; addr.placeholder = '123 Oak St';
+  const citySel = el('select');
+  for (const c of ['Virginia Beach', 'Norfolk', 'Chesapeake', 'Portsmouth']) citySel.appendChild(new Option(c, c));
+  const zip = el('input'); zip.type = 'text'; zip.placeholder = '23452'; zip.inputMode = 'numeric';
+  const jobSel = el('select');
+  for (const [val, lab] of [['removal', 'Removal'], ['pruning', 'Pruning / trimming'], ['stump', 'Stump grinding'], ['land_clearing', 'Land clearing'], ['other', 'Other']]) {
+    jobSel.appendChild(new Option(lab, val));
+  }
+  const notes = el('textarea'); notes.placeholder = 'Access notes from the call — fenced backyard, tight gate, dogs…';
+  card.appendChild(f('Address', addr));
+  card.appendChild(f('City', citySel));
+  card.appendChild(f('ZIP', zip));
+  card.appendChild(f('Job type', jobSel));
+  card.appendChild(f('Access notes', notes));
+  const go = el('button', 'actbtn', 'Build prep sheet');
+  const out = el('div');
+  go.onclick = async () => {
+    if (!addr.value.trim()) { out.replaceChildren(el('div', 'storm-muted', 'Address is required.')); return; }
+    go.disabled = true; go.textContent = 'Screening…';
+    out.replaceChildren();
+    let s;
+    try {
+      s = await api('/api/estimate/prep', { method: 'POST', body: {
+        address: addr.value.trim(), city: citySel.value, zip: zip.value.trim() || undefined,
+        jobType: jobSel.value, accessNotes: notes.value.trim() || undefined,
+      } });
+    } catch (e) {
+      out.appendChild(el('div', 'storm-muted', 'Prep sheet unavailable right now — nothing was screened.'));
+      go.disabled = false; go.textContent = 'Build prep sheet';
+      return;
+    }
+    go.disabled = false; go.textContent = 'Build prep sheet';
+    const sheet = el('div', 'verdict ' + (s.permit.ran && s.permit.status === 'PERMIT_LIKELY' ? 'v-lose' : s.permit.ran && s.permit.status === 'REVIEW_NEEDED' ? 'v-below' : 'v-on'));
+    sheet.appendChild(el('div', 'vhead', s.permit.ran ? s.permit.status.replace(/_/g, ' ').replace('NO OVERLAY VERIFY', 'NO OVERLAY — VERIFY') : 'SCREEN NOT RUN'));
+    sheet.appendChild(el('div', 'drv', s.permit.ran ? s.permit.headline : s.permit.reason));
+    if (s.permit.ran) {
+      for (const o of s.permit.overlays) sheet.appendChild(el('div', 'drv', '⚠ ' + o.meaning));
+      if (s.permit.mitigation) sheet.appendChild(el('div', 'drv', '🌱 ' + s.permit.mitigation));
+      if (s.permit.scaleEscalation) sheet.appendChild(el('div', 'drv', s.permit.scaleEscalation));
+      if (s.permit.powerLine) sheet.appendChild(el('div', 'drv', '⚡ ' + s.permit.powerLine));
+    }
+    sheet.appendChild(el('div', 'drv', s.drive.fromZip
+      ? '🚗 ~' + s.drive.minutes + ' min from ' + s.drive.fromZip + ' — ' + s.drive.note
+      : '🚗 ' + s.drive.reason));
+    sheet.appendChild(el('div', 'drv', (s.missUtility.flagged ? '🚩 ' : '') + s.missUtility.note));
+    sheet.appendChild(el('div', 'drv', '🚪 ' + (s.access.notes ? '"' + s.access.notes + '" — ' + s.access.note : s.access.note)));
+    if (s.cityNote) sheet.appendChild(el('div', 'drv', s.cityNote));
+    out.replaceChildren(sheet);
+  };
+  card.appendChild(go);
+  card.appendChild(out);
+  return card;
+}
+
 async function renderBook() {
   const v = $('view-book');
   v.replaceChildren();
+  // Prep panel renders ABOVE the properties fetch on purpose — with the
+  // links cut that fetch 503s and returns early, and anything below it
+  // never renders in production (the talk-button lesson, again).
+  v.appendChild(estimatePrepPanel());
   let data;
   try {
     data = await api('/api/properties');
