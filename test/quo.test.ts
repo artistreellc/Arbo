@@ -235,7 +235,7 @@ describe('learning from Quo — no call dropped in silence (Mike, 2026-09-24: "N
     const extract = vi.fn(async () => { if (opts.facts instanceof Error) throw opts.facts; return opts.facts ?? FACTS; });
     const intake = new QuoIntake({
       guardrails: loadAllConfig().guardrails, extractor: { extract }, callMemory: new CallMemory(), callRecords: new CallRecordStore(),
-      calendarHold: async (h) => { holds.push(h); }, onText: () => {}, now: () => now,
+      calendarHold: async (h) => { holds.push(h); }, onText: () => {}, now: () => now, sleep: async () => {},
     });
     intake.setRegistration('ok', 'test', [KEY], [QUO_NUMBER]);
     const api: QuoApi = {
@@ -343,6 +343,20 @@ describe('learning from Quo — no call dropped in silence (Mike, 2026-09-24: "N
     h.post(transcript('AC-Y', [[QUO_NUMBER, 'Hi.'], [CALLER, 'I need a big oak taken down please.']]));
     await h.intake.settled();
     expect(h.intake.list().find((c) => c.callId === 'AC-Y')).toMatchObject({ handledBy: 'sona', hold: 'attempted' });
+    spy.mockRestore();
+  });
+
+  it('Quo’s rate limit (429) is waited out, not a failed pass', async () => {
+    const h = learner({ calls: [{ id: 'AC-R', at: NOW }], transcripts: { 'AC-R': { status: 'completed', dialogue: talkLines() } } });
+    const real = h.api.listCalls;
+    let hits = 0;
+    h.api.listCalls = async (i) => { hits += 1; if (hits === 1) throw new QuoHttpError('Quo GET /calls -> 429', 429, null); return real(i); };
+    expect(await h.intake.reconcile(h.api, 'PN1', 24 * 60 * MIN)).toEqual({ learned: 1, pending: 0 });
+    expect(h.intake.status().quoRecord.error).toBeNull();
+    h.api.listCalls = async () => { throw new QuoHttpError('Quo GET /calls -> 429', 429, null); };
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await h.intake.reconcile(h.api, 'PN1', 24 * 60 * MIN);
+    expect(h.intake.status().quoRecord.error).toMatch(/429/); // three strikes: named, never thrown
     spy.mockRestore();
   });
 

@@ -34,7 +34,7 @@ import { buildEstimateHold, type CallHold } from '../reception/estimateHold.js';
 import { parseRequestedWindow } from './requestedWindow.js';
 import type { SonaCallFacts, SonaExtractor } from './quoExtract.js';
 import { verifySvixSignature } from './webhooks.js';
-import type { QuoApi } from '../integrations/quo.js';
+import { QuoHttpError, type QuoApi } from '../integrations/quo.js';
 
 /** Quo signs with a millisecond timestamp; reject anything older than 5 minutes. */
 const TOLERANCE_MS = 5 * 60 * 1000;
@@ -47,6 +47,10 @@ const LIVE_CALL = new Set(['queued', 'initiated', 'ringing', 'in-progress']);
 const RECONCILE_CAP = 100;
 /** A transcript still absent/failed this long after the call will not appear. */
 const SETTLE_MS = 30 * 60 * 1000;
+/** Quo allows 10 requests a second; reading its record stays well under that. */
+const PACE_MS = 150;
+/** On Quo's 429, wait and try again — twice — before naming the pass failed. */
+const RATE_RETRY_MS = 2_000;
 
 // ─── Signature ────────────────────────────────────────────────────────────
 
@@ -151,6 +155,8 @@ export interface QuoIntakeDeps {
   /** A delivery receipt for a text Arbo sent (R22) — status only. */
   onDelivery?: (messageId: string | null, status: string | null) => void;
   now?: () => number;
+  /** Test seam for reconcile's pacing. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 interface QuoEvent {
@@ -366,7 +372,7 @@ export class QuoIntake {
     const callerWords = e.dialogue.filter((d) => d.speaker === 'caller').reduce((n, d) => n + words(d.text), 0);
     if (callerWords < MIN_CALLER_WORDS) {
       e.hold = 'hangup';
-      console.error(`[quo] sona call processed — caller hung up, ${e.slips.length} slip(s)`);
+      console.error(`[quo] sona call processed (${e.source}) — caller hung up, ${e.slips.length} slip(s)`);
       return;
     }
     if (!this.deps.extractor) {
@@ -438,17 +444,31 @@ export class QuoIntake {
    * missed is handled exactly as the webhook would have.
    */
   async reconcile(api: QuoApi, phoneNumberId: string, windowMs: number): Promise<{ learned: number; pending: number }> {
+    const sleep = this.deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+    // Paced, and patient with Quo's rate limit: the boot pass of 2026-09-24
+    // hit 429 mid-way and stopped.
+    const paced = async <T>(fn: () => Promise<T>): Promise<T> => {
+      for (let attempt = 0; ; attempt += 1) {
+        await sleep(PACE_MS);
+        try {
+          return await fn();
+        } catch (err) {
+          if (!(err instanceof QuoHttpError && err.status === 429) || attempt >= 2) throw err;
+          await sleep(RATE_RETRY_MS * (attempt + 1));
+        }
+      }
+    };
     const nowMs = this.now();
     const sinceIso = new Date(nowMs - windowMs).toISOString();
     let learned = 0;
     let pending = 0;
     let examined = 0;
     try {
-      const convs = await api.listConversations({ phoneNumberId, updatedAfterIso: sinceIso });
+      const convs = await paced(() => api.listConversations({ phoneNumberId, updatedAfterIso: sinceIso }));
       for (const conv of convs) {
         if (conv.participants.length !== 1 || examined >= RECONCILE_CAP) continue;
         const participant = conv.participants[0]!;
-        const calls = (await api.listCalls({ phoneNumberId, participant, createdAfterIso: sinceIso }))
+        const calls = (await paced(() => api.listCalls({ phoneNumberId, participant, createdAfterIso: sinceIso })))
           .filter((c) => c.direction === 'incoming')
           .sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''));
         for (const c of calls) {
@@ -461,7 +481,7 @@ export class QuoIntake {
             pending += 1;
             continue;
           }
-          const tr = await api.getCallTranscript(c.id);
+          const tr = await paced(() => api.getCallTranscript(c.id));
           const atMs = Date.parse(c.createdAt ?? '') || nowMs;
           if (!tr || tr.status !== 'completed' || !tr.dialogue) {
             const settled = nowMs - atMs > SETTLE_MS && (!tr || tr.status === 'absent' || tr.status === 'failed');
