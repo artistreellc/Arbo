@@ -45,7 +45,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0B0D10">
+<meta name="theme-color" content="#F7F5F0">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/icons/arbo-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -54,298 +54,306 @@
 <meta name="apple-mobile-web-app-title" content="Arbo">
 <title>Arbo — Art-is-Tree</title>
 <style>
-/* Design tokens (src/design/tokens.ts, §9) — inlined so the app is one file,
-   sunlight-readable, glove-friendly (48px+ targets), one-handed.
-   Reskinned 2026-09-21 (Mike: professional, easy to navigate, built well) —
-   same palette, calmer voice: a three-step surface ladder, hairline borders,
-   soft ambient depth, violet reserved for action and identity. */
+/* ARBO visual template v3 (Mike, 2026-09-24: match the website's quality).
+   The brand IS the website's: deep forest green #1B4D3E, warm gold, serif
+   display type, light premium surfaces — the same company in app form.
+   Self-contained by law: the serif stack is Georgia (no external fonts).
+   Old token NAMES are kept so every selector still resolves; the VALUES
+   are the brand's. */
 :root{
-  --forest:#7C3AED; --forest-dark:#6D28D9; --canopy:#A78BFA; --moss:#8B93A1;
-  --bark:#1C2026; --clay:#A78BFA; --amber:#F5A623;
-  --ink:#EDEFF3; --surface:#14171D; --raised:#1B1F26; --surface-alt:#0B0D10;
-  --border:rgba(255,255,255,.08); --hairline:rgba(255,255,255,.055); --muted:#9AA3B0;
-  --emergency:#F5615A; --warning:#F5A623; --ok:#3ECF8E; --info:#66A9F5;
-  --r-sm:8px; --r-md:12px; --r-lg:16px; --r-pill:999px;
-  --shadow-card:0 1px 2px rgba(0,0,0,.35),0 14px 30px -20px rgba(0,0,0,.65);
-  --shadow-pop:0 6px 16px -6px rgba(0,0,0,.55);
-  --ring:0 0 0 3px rgba(167,139,250,.35);
+  --forest:#1B4D3E; --forest-dark:#12362B; --canopy:#2A6B57; --moss:#8A9790;
+  --bark:#243B32; --clay:#B96A2C; --amber:#C9971C;
+  --ink:#182420; --surface:#FFFFFF; --raised:#FFFFFF; --surface-alt:#F5F3EC;
+  --border:rgba(27,77,62,.16); --hairline:rgba(27,77,62,.10); --muted:#5C6B63;
+  --emergency:#C2413B; --warning:#B8860B; --ok:#2E7D5B; --info:#2563EB;
+  --gold:#C9971C;
+  --r-sm:8px; --r-md:10px; --r-lg:14px; --r-pill:999px;
+  --serif:Georgia,'Times New Roman',serif;
+  --shadow-card:0 1px 2px rgba(27,77,62,.06),0 8px 24px -12px rgba(27,77,62,.18);
+  --shadow-pop:0 4px 14px -4px rgba(18,54,43,.35);
+  --ring:0 0 0 3px rgba(27,77,62,.22);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html{-webkit-text-size-adjust:100%}
 body{
   font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-  font-size:16px;line-height:1.45;color:var(--ink);background:var(--surface-alt);
-  -webkit-tap-highlight-color:transparent;
+  font-size:16px;line-height:1.5;color:var(--ink);background:var(--surface-alt);
+  -webkit-tap-highlight-color:transparent;overscroll-behavior-y:none;
   padding-bottom:calc(76px + env(safe-area-inset-bottom));
 }
-::selection{background:rgba(124,58,237,.35)}
+::selection{background:rgba(201,151,28,.3)}
 button,input,select,textarea{font-family:inherit}
-button{transition:background-color .14s ease,border-color .14s ease,opacity .14s ease,transform .1s ease}
-button:active{transform:scale(.985)}
+button{transition:background-color .15s ease,border-color .15s ease,box-shadow .15s ease,opacity .15s ease,transform .08s ease}
+button:active{transform:scale(.98)}
 :focus-visible{outline:none;box-shadow:var(--ring);border-radius:var(--r-sm)}
 
 header{
-  background:rgba(11,13,16,.86);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  background:rgba(255,255,255,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
   color:var(--ink);border-bottom:1px solid var(--hairline);
-  padding:12px 16px 10px;
-  padding-top:calc(12px + env(safe-area-inset-top));
+  padding:10px 16px 10px;
+  padding-top:calc(10px + env(safe-area-inset-top));
   position:sticky;top:0;z-index:10;
 }
 .hrow{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.brand{font-size:20px;font-weight:800;letter-spacing:.08em}
-.brand small{color:var(--canopy);font-weight:500;font-size:13px;opacity:.8;margin-left:8px;letter-spacing:.02em}
-#dateline{font-size:13px;color:var(--muted);margin-top:2px}
+.brand{font-family:var(--serif);font-size:22px;font-weight:700;letter-spacing:.05em;color:var(--forest);display:flex;align-items:center;gap:10px}
+.brand .mark{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:11px;
+  background:linear-gradient(150deg,var(--forest),var(--forest-dark));color:#EFE7CE;box-shadow:var(--shadow-pop)}
+.brand .micon{width:22px;height:22px}
+.brand small{font-family:var(--serif);color:var(--gold);font-weight:500;font-size:13px;letter-spacing:.14em;text-transform:uppercase;display:block;margin-top:1px}
+.brand > span{display:flex;flex-direction:column;line-height:1.05}
+#dateline{font-size:12.5px;color:var(--muted);margin-top:3px;display:none}
 #refresh,#settings-btn{
-  min-width:48px;min-height:48px;border:1px solid var(--border);border-radius:var(--r-md);
-  background:var(--surface);color:var(--canopy);font-size:18px;cursor:pointer;
+  min-width:44px;min-height:44px;border:1px solid var(--border);border-radius:var(--r-md);
+  background:var(--surface);color:var(--forest);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
 }
-#refresh:hover,#settings-btn:hover{background:var(--raised)}
+#refresh .hico,#settings-btn .hico{width:20px;height:20px}
+#refresh:hover,#settings-btn:hover{background:var(--surface-alt)}
 #refresh:active,#settings-btn:active{opacity:.8}
 main{padding:16px;max-width:640px;margin:0 auto}
 .view{display:none}
-.view.active{display:block}
+.view.active{display:block;animation:viewin .22s ease}
+@keyframes viewin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 
 /* Summary chips */
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
 .chip{
   background:var(--surface);border:1px solid var(--border);border-radius:var(--r-pill);
-  padding:9px 15px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:7px;
+  padding:8px 15px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:7px;color:var(--ink);
 }
-.chip b{font-variant-numeric:tabular-nums;font-size:18px;font-weight:700;color:var(--canopy)}
-.chip.alert{border-color:rgba(245,97,90,.5);color:var(--emergency)}
+.chip b{font-family:var(--serif);font-variant-numeric:tabular-nums;font-size:18px;font-weight:700;color:var(--forest)}
+.chip.alert{border-color:rgba(194,65,59,.45);color:var(--emergency)}
 .zip-run{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:16px;font-size:14px;color:var(--muted);font-weight:600}
 .zip-run span{background:var(--forest);color:#fff;border-radius:var(--r-pill);padding:5px 13px;font-weight:600;font-size:13px}
 
 /* Cards */
 .card{
-  background:linear-gradient(180deg,var(--raised),var(--surface));
-  border:1px solid var(--border);border-radius:var(--r-lg);
+  background:var(--surface);
+  border:1px solid var(--hairline);border-radius:var(--r-lg);
   box-shadow:var(--shadow-card);padding:16px 18px;margin-bottom:12px;
 }
 .card.emergency{border-left:3px solid var(--emergency)}
 .card .toprow{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:4px}
-.card .who{font-size:17px;font-weight:700;line-height:1.3}
-.card .when{font-variant-numeric:tabular-nums;font-size:15px;font-weight:600;color:var(--canopy);white-space:nowrap}
-.card .addr{font-size:16px;margin:2px 0 8px}
+.card .who{font-family:var(--serif);font-size:18px;font-weight:700;line-height:1.25;color:var(--forest)}
+.card .when{font-variant-numeric:tabular-nums;font-size:14.5px;font-weight:700;color:var(--gold);white-space:nowrap}
+.card .addr{font-size:15.5px;margin:2px 0 8px}
 .card .addr a{color:var(--info);text-decoration:none;font-weight:500}
 .card .scope{font-size:14px;color:var(--muted);margin-bottom:8px}
 .badges{display:flex;flex-wrap:wrap;gap:6px}
 .badge{
-  font-size:10.5px;font-weight:700;letter-spacing:.06em;border-radius:var(--r-sm);
+  font-size:10.5px;font-weight:700;letter-spacing:.07em;border-radius:var(--r-sm);
   padding:3px 8px;border:1px solid transparent;text-transform:uppercase;
 }
 .b-job{background:var(--forest);color:#fff}
-.b-est{border-color:rgba(167,139,250,.5);color:var(--canopy)}
+.b-est{border-color:rgba(42,107,87,.45);color:var(--canopy)}
 .b-emg{background:var(--emergency);color:#fff}
-.b-flag{border-color:rgba(245,97,90,.55);color:var(--emergency)}
-.b-first{border-color:rgba(245,166,35,.5);color:#F7C56E}
-.b-repeat{border-color:rgba(139,147,161,.5);color:var(--moss)}
-.b-src{background:var(--surface-alt);color:var(--muted);border-color:var(--border)}
+.b-flag{border-color:rgba(194,65,59,.5);color:var(--emergency)}
+.b-first{border-color:rgba(201,151,28,.55);color:#96700F}
+.b-repeat{border-color:rgba(138,151,144,.6);color:#5C6B63}
+.b-src{background:var(--surface-alt);color:var(--muted);border-color:var(--hairline)}
 .b-hot{background:var(--clay);color:#fff}
-.b-warm{background:var(--warning);color:#1A1204}
-.b-cool{border-color:rgba(102,169,245,.5);color:var(--info)}
-.b-permit-likely{background:var(--warning);color:#1A1204}
-.b-review{background:var(--info);color:#06131F}
+.b-warm{background:var(--gold);color:#221A02}
+.b-cool{border-color:rgba(37,99,235,.4);color:var(--info)}
+.b-permit-likely{background:var(--gold);color:#221A02}
+.b-review{background:var(--info);color:#fff}
 .b-verify{border-color:var(--border);color:var(--muted)}
-.b-pending{background:var(--surface-alt);color:var(--muted);border-color:var(--border)}
+.b-pending{background:var(--surface-alt);color:var(--muted);border-color:var(--hairline)}
 .ordernum{
   display:inline-flex;align-items:center;justify-content:center;
   width:26px;height:26px;border-radius:50%;background:var(--forest);color:#fff;
   font-size:13px;font-weight:700;margin-right:8px;flex:none;font-variant-numeric:tabular-nums;
 }
-.section-title{font-size:12px;font-weight:700;letter-spacing:.1em;color:var(--muted);margin:22px 0 10px;text-transform:uppercase}
+.section-title{font-family:var(--serif);font-size:15px;font-weight:700;letter-spacing:.04em;color:var(--forest);margin:24px 0 10px}
 
 /* States */
 .state{
-  text-align:center;padding:44px 24px;color:var(--muted);font-size:15px;
+  text-align:center;padding:40px 24px;color:var(--muted);font-size:15px;
   background:var(--surface);border:1px dashed var(--border);border-radius:var(--r-lg);
 }
-.state b{display:block;font-size:18px;font-weight:700;color:var(--ink);margin-bottom:8px}
+.state b{display:block;font-family:var(--serif);font-size:19px;font-weight:700;color:var(--forest);margin-bottom:8px}
 
-/* Bottom nav — the dock: one glance, one thumb */
+/* Bottom nav — the dock */
 nav{
   position:fixed;bottom:0;left:0;right:0;display:flex;
-  background:rgba(17,20,25,.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  background:rgba(255,255,255,.94);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
   border-top:1px solid var(--hairline);padding-bottom:env(safe-area-inset-bottom);z-index:10;
+  box-shadow:0 -4px 20px rgba(27,77,62,.07);
 }
 nav button{
-  flex:1 1 0;min-width:0;min-height:56px;border:0;background:none;font-size:11px;font-weight:600;
-  color:var(--muted);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0 6px;
+  flex:1 1 0;min-width:0;min-height:56px;border:0;background:none;font-size:9.5px;font-weight:600;
+  letter-spacing:-.01em;
+  color:var(--muted);cursor:pointer;display:flex;flex-direction:column;align-items:center;padding:7px 0 6px;
+  -webkit-user-select:none;user-select:none;
 }
-nav button .navpill span:last-child,nav button{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-nav button.active{color:var(--ink)}
+nav button .navpill{display:flex;flex-direction:column;align-items:center;gap:3px;border-radius:13px;padding:5px 4px;color:inherit;max-width:100%;transition:background-color .15s ease,color .15s ease}
+nav button .navpill span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+nav button .ico{width:21px;height:21px}
+nav button.active{color:var(--forest)}
 nav button.active .navpill{background:var(--forest);color:#fff;box-shadow:var(--shadow-pop)}
-nav button .navpill{display:flex;flex-direction:column;align-items:center;gap:2px;border-radius:14px;padding:6px 10px;color:var(--muted);max-width:100%;transition:background-color .14s ease}
-nav button .ico{font-size:19px;line-height:1}
-@media (min-width:420px){nav button{font-size:12.5px}nav button .navpill{padding:6px 14px}}
+@media (min-width:420px){nav button{font-size:12px}nav button .navpill{padding:6px 13px}}
 
 /* Key overlay */
 #keywall{
-  position:fixed;inset:0;background:var(--surface-alt);color:var(--ink);z-index:100;
+  position:fixed;inset:0;background:linear-gradient(170deg,#F7F5F0,#ECE7DA);color:var(--ink);z-index:100;
   display:none;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;
 }
 #keywall.show{display:flex}
-#keywall h1{font-size:34px;font-weight:800;letter-spacing:.1em;margin-bottom:6px;color:var(--canopy)}
+#keywall h1{font-family:var(--serif);font-size:38px;font-weight:700;letter-spacing:.08em;margin-bottom:6px;color:var(--forest)}
 #keywall p{color:var(--muted);margin-bottom:24px;max-width:320px}
 #keywall input{
-  width:100%;max-width:320px;min-height:56px;border:1px solid var(--border);background:var(--surface);color:var(--ink);border-radius:var(--r-md);
+  width:100%;max-width:320px;min-height:56px;border:1px solid var(--border);background:#fff;color:var(--ink);border-radius:var(--r-md);
   padding:0 16px;font-size:17px;margin-bottom:12px;text-align:center;
 }
-#keywall input:focus{border-color:var(--canopy);outline:none;box-shadow:var(--ring)}
+#keywall input:focus{border-color:var(--forest);outline:none;box-shadow:var(--ring)}
 #keywall button{
   width:100%;max-width:320px;min-height:56px;border:0;border-radius:var(--r-md);
-  background:linear-gradient(180deg,#8B5CF6,#6D28D9);color:#fff;box-shadow:var(--shadow-pop);font-size:16px;font-weight:700;cursor:pointer;
+  background:linear-gradient(180deg,var(--forest),var(--forest-dark));color:#fff;box-shadow:var(--shadow-pop);font-size:16px;font-weight:700;cursor:pointer;
 }
-.errline{color:#FF9B95;margin-top:12px;font-weight:600;min-height:24px}
+.errline{color:var(--emergency);margin-top:12px;font-weight:600;min-height:24px}
 
-/* Callouts — a professional voice: tinted surface, accent bar, no slabs */
+/* Callouts */
 .storm{
-  background:rgba(245,97,90,.1);border:1px solid rgba(245,97,90,.3);border-left:3px solid var(--emergency);
-  color:#FFC0BB;border-radius:var(--r-md);padding:13px 16px;
+  background:#FBEFEA;border:1px solid rgba(194,65,59,.3);border-left:3px solid var(--emergency);
+  color:#7C2B26;border-radius:var(--r-md);padding:13px 16px;
   margin-bottom:14px;font-weight:600;font-size:14px;line-height:1.45;
 }
 .storm small{display:block;font-weight:500;opacity:.9;margin-top:4px}
-.storm-muted{color:var(--muted);font-size:13px;line-height:1.5;margin-bottom:12px}
-/* Location strip (§21–24): tracking switch + running-late banner */
+.storm-muted{color:var(--muted);font-size:13.5px;line-height:1.5;margin-bottom:12px}
 .loc-strip{display:flex;align-items:center;gap:10px;margin-bottom:12px;font-size:13.5px;color:var(--muted)}
 .loc-toggle{min-height:40px;border:1px solid var(--border);border-radius:var(--r-pill);background:var(--surface);
-  color:var(--muted);font-size:13px;font-weight:700;padding:0 18px;cursor:pointer;letter-spacing:.04em}
-.loc-toggle:hover{background:var(--raised)}
+  color:var(--muted);font-size:13px;font-weight:700;padding:0 18px;cursor:pointer;letter-spacing:.03em}
+.loc-toggle:hover{background:var(--surface-alt)}
 .loc-toggle.on{background:var(--forest);border-color:var(--forest);color:#fff}
-.late{background:rgba(245,166,35,.09);border:1px solid rgba(245,166,35,.3);border-left:3px solid var(--amber);
-  color:#F3D9A8;border-radius:var(--r-md);padding:13px 16px;margin-bottom:14px;
+.late{background:#FBF3DF;border:1px solid rgba(184,134,11,.35);border-left:3px solid var(--gold);
+  color:#6E5308;border-radius:var(--r-md);padding:13px 16px;margin-bottom:14px;
   font-weight:600;font-size:14px;line-height:1.45}
 .late small{display:block;font-weight:500;opacity:.95;margin-top:6px}
-.late .draft{background:rgba(255,255,255,.08);border-radius:var(--r-sm);padding:10px 12px;margin-top:8px;
+.late .draft{background:rgba(255,255,255,.75);border-radius:var(--r-sm);padding:10px 12px;margin-top:8px;
   font-weight:500;font-size:13px}
 .actbtn{
-  min-height:48px;border:0;border-radius:var(--r-md);background:linear-gradient(180deg,#8B5CF6,#6D28D9);color:#fff;
+  min-height:48px;border:0;border-radius:var(--r-md);background:linear-gradient(180deg,var(--forest),var(--forest-dark));color:#fff;
   font-size:15px;font-weight:700;padding:0 20px;cursor:pointer;margin-top:10px;box-shadow:var(--shadow-pop);
 }
-.actbtn:disabled{opacity:.5}
-.actbtn.done{background:var(--surface-alt);color:var(--ok);border:1px solid rgba(62,207,142,.45);box-shadow:none}
-/* Lead action row (§9: one-tap, glove-sized) */
+.actbtn:disabled{opacity:.55}
+.actbtn.done{background:var(--surface);color:var(--ok);border:1px solid rgba(46,125,91,.45);box-shadow:none}
 .card.callback{border-left:3px solid var(--clay)}
 .cb-label{color:var(--clay);font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:2px}
 .actions{display:flex;gap:10px;margin-top:12px}
-.callbtn{flex:1;display:flex;align-items:center;justify-content:center;min-height:50px;
-  border-radius:var(--r-pill);background:linear-gradient(180deg,#8B5CF6,#6D28D9);color:#fff;font-size:15px;font-weight:700;
+.callbtn{flex:1;display:flex;align-items:center;justify-content:center;min-height:48px;
+  border-radius:var(--r-pill);background:linear-gradient(180deg,var(--forest),var(--forest-dark));color:#fff;font-size:15px;font-weight:700;
   text-decoration:none;box-shadow:var(--shadow-pop)}
-.minibtn{min-height:50px;min-width:56px;border:1px solid var(--border);border-radius:var(--r-pill);
-  background:var(--surface);color:var(--ink);font-size:15px;font-weight:700;cursor:pointer;padding:0 16px}
-.minibtn:hover{background:var(--raised)}
-.minibtn.ok{color:var(--ok);border-color:rgba(62,207,142,.45)}
-.minibtn.bad{color:#FF8C85;border-color:rgba(245,97,90,.35)}
-.card.dismissed{opacity:.35}
-/* Property twin sheet (§9: the know-this-customer-instantly screen) */
+.minibtn{min-height:48px;min-width:56px;border:1px solid var(--border);border-radius:var(--r-pill);
+  background:var(--surface);color:var(--ink);font-size:14px;font-weight:700;cursor:pointer;padding:0 16px}
+.minibtn:hover{background:var(--surface-alt)}
+.minibtn.ok{color:var(--ok);border-color:rgba(46,125,91,.45)}
+.minibtn.bad{color:var(--emergency);border-color:rgba(194,65,59,.35)}
+.card.dismissed{opacity:.4}
+/* Property twin sheet */
 .sheet{position:fixed;inset:0;background:var(--surface-alt);z-index:60;display:none;overflow-y:auto;
   padding:0 16px calc(24px + env(safe-area-inset-bottom))}
 .sheet.show{display:block}
-.sheet-head{position:sticky;top:0;background:rgba(11,13,16,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+.sheet-head{position:sticky;top:0;background:rgba(247,245,240,.95);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
   display:flex;align-items:center;gap:12px;padding:14px 0;z-index:61;border-bottom:1px solid var(--hairline)}
-.sheet-head button{min-width:48px;min-height:48px;border:1px solid var(--border);border-radius:var(--r-md);
+.sheet-head button{min-width:44px;min-height:44px;border:1px solid var(--border);border-radius:var(--r-md);
   background:var(--surface);color:var(--ink);font-size:17px;cursor:pointer}
-#twin-title{font-size:17px;font-weight:700;line-height:1.25}
-.sect{margin:20px 0 8px;font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
+#twin-title{font-family:var(--serif);font-size:18px;font-weight:700;line-height:1.25;color:var(--forest)}
+.sect{margin:20px 0 8px;font-family:var(--serif);font-size:14px;font-weight:700;letter-spacing:.03em;color:var(--forest)}
 .tl{border-left:2px solid var(--border);margin-left:6px;padding-left:14px}
 .tl .card{margin-bottom:10px}
-.due-note{background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.4);color:#D6C7FF;border-radius:var(--r-md);padding:10px 12px;
+.due-note{background:#EDF3EF;border:1px solid rgba(27,77,62,.25);color:#194334;border-radius:var(--r-md);padding:10px 12px;
   font-weight:600;font-size:13.5px;margin-top:8px}
-.routebtn{display:flex;align-items:center;justify-content:center;min-height:50px;border-radius:var(--r-md);
-  background:var(--surface);border:1px solid rgba(124,58,237,.5);color:var(--canopy);font-size:14px;font-weight:700;
+.routebtn{display:flex;align-items:center;justify-content:center;min-height:48px;border-radius:var(--r-md);
+  background:var(--surface);border:1px solid rgba(27,77,62,.35);color:var(--forest);font-size:14px;font-weight:700;
   text-decoration:none;margin-bottom:14px}
-.routebtn:hover{background:var(--raised)}
+.routebtn:hover{background:var(--surface-alt)}
 
-/* ---- §9 HUD instruments: mission control, not a feed ---- */
+/* HUD instruments */
 .hud{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
 .tile{
-  background:linear-gradient(180deg,var(--raised),var(--surface));
-  border:1px solid var(--border);border-radius:var(--r-md);
+  background:var(--surface);
+  border:1px solid var(--hairline);border-radius:var(--r-md);
   padding:11px 12px 9px;box-shadow:var(--shadow-card);position:relative;overflow:hidden;
 }
-.tile b{display:block;font-variant-numeric:tabular-nums;
-  font-size:26px;font-weight:700;line-height:1.05;color:var(--ink)}
-.tile span{display:block;font-size:10px;font-weight:600;letter-spacing:.09em;
+.tile b{display:block;font-family:var(--serif);font-variant-numeric:tabular-nums;
+  font-size:26px;font-weight:700;line-height:1.05;color:var(--forest)}
+.tile span{display:block;font-size:10px;font-weight:700;letter-spacing:.09em;
   text-transform:uppercase;color:var(--muted);margin-top:4px}
-.tile.accent b{color:var(--canopy)}
-.tile.hot{border-color:rgba(245,97,90,.45)}
+.tile.accent b{color:var(--gold)}
+.tile.hot{border-color:rgba(194,65,59,.4)}
 .tile.hot b{color:var(--emergency)}
-.tile.warn{border-color:rgba(245,166,35,.45)}
+.tile.warn{border-color:rgba(184,134,11,.4)}
 .tile.warn b{color:var(--warning)}
 .tile.ok-t b{color:var(--ok)}
-.tile::after{content:'';position:absolute;left:0;top:8px;bottom:8px;width:2px;border-radius:2px;background:var(--forest);opacity:.55}
+.tile::after{content:'';position:absolute;left:0;top:8px;bottom:8px;width:2px;border-radius:2px;background:var(--forest);opacity:.5}
 .tile.hot::after{background:var(--emergency)}
-.tile.warn::after{background:var(--warning)}
+.tile.warn::after{background:var(--gold)}
 .hud .wide{grid-column:1 / -1}
-.panel-title{display:flex;align-items:center;gap:10px;font-size:11.5px;font-weight:700;
-  letter-spacing:.1em;color:var(--canopy);text-transform:uppercase;margin:20px 0 10px}
+.panel-title{display:flex;align-items:center;gap:10px;font-family:var(--serif);font-size:15px;font-weight:700;
+  letter-spacing:.03em;color:var(--forest);margin:22px 0 10px}
 .panel-title::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--border),transparent)}
-.loop-card{border-left:3px solid var(--warning)}
+.loop-card{border-left:3px solid var(--gold)}
 .loop-card.urgent{border-left-color:var(--emergency)}
 .loop-kind{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
 .loop-card.urgent .loop-kind{color:var(--emergency)}
-.hudbtn{display:flex;align-items:center;justify-content:center;min-height:50px;border-radius:var(--r-md);
-  background:var(--surface);border:1px solid var(--border);color:var(--canopy);font-size:14px;
-  font-weight:700;letter-spacing:.02em;text-decoration:none;cursor:pointer;width:100%;margin-bottom:10px}
-.hudbtn:hover{background:var(--raised);border-color:rgba(167,139,250,.4)}
-/* §6U library desk. */
+.hudbtn{display:flex;align-items:center;justify-content:center;min-height:48px;border-radius:var(--r-md);
+  background:var(--surface);border:1px solid rgba(27,77,62,.3);color:var(--forest);font-size:14.5px;
+  font-weight:700;letter-spacing:.01em;text-decoration:none;cursor:pointer;width:100%;margin-bottom:10px;box-shadow:var(--shadow-card)}
+.hudbtn:hover{background:var(--surface-alt)}
 .card .field{margin-bottom:10px}
 .card .field input[type=text],.card .field input[type=date],.card .field select,.card .field textarea{
-  width:100%;min-height:50px;
-  border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface-alt);
+  width:100%;min-height:48px;
+  border:1px solid var(--border);border-radius:var(--r-md);background:#fff;
   color:var(--ink);font-size:16px;padding:12px;font-family:inherit;display:block}
-.card .field input:focus,.card .field select:focus,.card .field textarea:focus{border-color:var(--canopy);outline:none}
+.card .field input:focus,.card .field select:focus,.card .field textarea:focus{border-color:var(--forest);outline:none;box-shadow:var(--ring)}
 .card .field textarea{min-height:76px;resize:vertical;line-height:1.45}
-/* Yard check (§6J2 — internal instrument) */
 #yard .field,#bd .field{margin-bottom:10px}
 #yard label,#bd label{display:block;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
-#yard input,#yard select,#bd input[type=text]{width:100%;min-height:50px;border:1px solid var(--border);border-radius:var(--r-md);
-  background:var(--surface);color:var(--ink);font-size:17px;padding:0 12px;
+#yard input,#yard select,#bd input[type=text]{width:100%;min-height:48px;border:1px solid var(--border);border-radius:var(--r-md);
+  background:#fff;color:var(--ink);font-size:17px;padding:0 12px;
   font-variant-numeric:tabular-nums}
-#yard input:focus,#yard select:focus,#bd input[type=text]:focus{border-color:var(--canopy);outline:none}
+#yard input:focus,#yard select:focus,#bd input[type=text]:focus{border-color:var(--forest);outline:none}
 #bd .checkfield{display:flex;align-items:center;gap:12px;min-height:56px;margin-bottom:12px}
 #bd .checkfield span{font-size:16px;font-weight:600;color:var(--ink);text-transform:none;letter-spacing:0}
 #bd #bd-out{padding-bottom:96px}
 #yard .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.verdict{border-radius:var(--r-md);padding:14px 16px;margin-top:14px;border:1px solid var(--border);background:var(--surface)}
+.verdict{border-radius:var(--r-md);padding:14px 16px;margin-top:14px;border:1px solid var(--hairline);background:var(--surface);box-shadow:var(--shadow-card)}
 .verdict .vline{font-variant-numeric:tabular-nums;font-size:14.5px;
   display:flex;justify-content:space-between;padding:3px 0}
-.verdict .vhead{font-size:18px;font-weight:800;letter-spacing:.05em;margin-bottom:8px}
-.verdict.v-on{border-color:rgba(62,207,142,.5)}.verdict.v-on .vhead{color:var(--ok)}
-.verdict.v-below{border-color:rgba(245,166,35,.5)}.verdict.v-below .vhead{color:var(--warning)}
-.verdict.v-lose{border-color:rgba(245,97,90,.5)}.verdict.v-lose .vhead{color:var(--emergency)}
-.verdict .drv{font-size:13px;color:var(--muted);margin-top:8px;line-height:1.5}
+.verdict .vhead{font-family:var(--serif);font-size:18px;font-weight:700;letter-spacing:.03em;margin-bottom:8px}
+.verdict.v-on{border-color:rgba(46,125,91,.45)}.verdict.v-on .vhead{color:var(--ok)}
+.verdict.v-below{border-color:rgba(184,134,11,.45)}.verdict.v-below .vhead{color:var(--warning)}
+.verdict.v-lose{border-color:rgba(194,65,59,.45)}.verdict.v-lose .vhead{color:var(--emergency)}
+.verdict .drv{font-size:13.5px;color:var(--muted);margin-top:8px;line-height:1.5}
 .internal-tag{font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--muted);
   text-transform:uppercase;margin-top:10px;opacity:.75}
 
-/* ---- Calendar (§3.22): the actual Google Calendar, planted in the app ---- */
-#gcal-frame{width:100%;height:calc(100vh - 210px);min-height:420px;border:1px solid var(--border);
+/* Calendar */
+#gcal-frame{width:100%;height:calc(100vh - 210px);min-height:420px;border:1px solid var(--hairline);
   border-radius:var(--r-lg);background:var(--surface);box-shadow:var(--shadow-card)}
 .cal-open{display:flex;align-items:center;justify-content:center;min-height:48px;border-radius:var(--r-md);
-  background:var(--surface);border:1px solid var(--border);color:var(--canopy);font-size:14px;font-weight:700;
+  background:var(--surface);border:1px solid var(--border);color:var(--forest);font-size:14px;font-weight:700;
   text-decoration:none;margin-top:10px}
-.cal-open:hover{background:var(--raised);border-color:rgba(167,139,250,.4)}
+.cal-open:hover{background:var(--surface-alt)}
 .cal-src{font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
   margin-bottom:10px}
 .cal-day{margin-bottom:14px}
-.cal-daylabel{display:flex;align-items:baseline;gap:8px;font-size:12px;font-weight:700;letter-spacing:.08em;
-  text-transform:uppercase;color:var(--muted);padding:6px 0;border-bottom:1px solid var(--hairline);margin-bottom:8px}
-.cal-day.today .cal-daylabel{color:var(--canopy)}
-.cal-day.today .cal-daylabel::after{content:'TODAY';font-size:10px;background:var(--forest);color:#fff;
+.cal-daylabel{display:flex;align-items:baseline;gap:8px;font-family:var(--serif);font-size:14px;font-weight:700;
+  color:var(--forest);padding:6px 0;border-bottom:1px solid var(--hairline);margin-bottom:8px}
+.cal-day.today .cal-daylabel{color:var(--gold)}
+.cal-day.today .cal-daylabel::after{content:'TODAY';font-family:ui-sans-serif,system-ui,sans-serif;font-size:10px;background:var(--forest);color:#fff;
   border-radius:var(--r-sm);padding:2px 7px;letter-spacing:.08em}
-.cal-empty{font-size:14px;color:var(--muted);opacity:.7;padding:4px 0 10px}
-.cal-ev{display:flex;gap:12px;align-items:flex-start;background:linear-gradient(180deg,var(--raised),var(--surface));
-  border:1px solid var(--border);border-left:3px solid var(--forest);border-radius:var(--r-md);padding:12px 14px;margin-bottom:8px;
+.cal-empty{font-size:14px;color:var(--muted);opacity:.75;padding:4px 0 10px}
+.cal-ev{display:flex;gap:12px;align-items:flex-start;background:var(--surface);
+  border:1px solid var(--hairline);border-left:3px solid var(--forest);border-radius:var(--r-md);padding:12px 14px;margin-bottom:8px;
   cursor:pointer;box-shadow:var(--shadow-card)}
-.cal-ev.est{border-left-color:var(--canopy)}
+.cal-ev.est{border-left-color:var(--gold)}
 .cal-ev .t{font-variant-numeric:tabular-nums;font-size:14.5px;font-weight:700;
-  color:var(--canopy);white-space:nowrap;min-width:78px}
+  color:var(--forest);white-space:nowrap;min-width:78px}
 .cal-ev .body{flex:1;min-width:0}
-.cal-ev .who{font-size:15.5px;font-weight:700;line-height:1.3}
+.cal-ev .who{font-family:var(--serif);font-size:16px;font-weight:700;line-height:1.3;color:var(--forest)}
 .cal-ev .where{font-size:13.5px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis}
 .cal-ev .gcal{color:var(--info);font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap}
 
-/* Desktop (§9 is phone-first — but the app must hold up on a monitor too) */
+/* Desktop */
 @media (min-width: 900px){
   main{max-width:1080px;padding:24px 32px}
   header .hrow{max-width:1080px;margin:0 auto;padding:0 16px}
@@ -356,7 +364,6 @@ nav button .ico{font-size:19px;line-height:1}
   .view .sect, .view .zip-run, .view .state, .view .panel-title,
   .view .storm, .view .storm-muted, .view .routebtn, .view .hudbtn{grid-column:1 / -1}
   #view-today > div:first-child{grid-column:1 / -1}
-  /* classless slot divs (location strip, reception strip) hold banners, not cards */
   #view-today > div:not(.card):not(.hud){grid-column:1 / -1}
   #loops-panel{grid-column:1 / -1;display:grid;grid-template-columns:1fr 1fr;
     gap:16px;align-items:start}
@@ -367,8 +374,8 @@ nav button .ico{font-size:19px;line-height:1}
   #view-followups > div:first-child .panel-title{grid-column:1 / -1}
   #view-followups > div:first-child .card{margin-bottom:0}
   .card{margin-bottom:0}
-  nav{left:50%;transform:translateX(-50%);max-width:720px;border-radius:18px 18px 0 0;
-    border:1px solid var(--hairline);border-bottom:0;box-shadow:0 -8px 30px rgba(0,0,0,.45)}
+  nav{left:50%;transform:translateX(-50%);max-width:720px;border-radius:16px 16px 0 0;
+    border:1px solid var(--hairline);border-bottom:0}
   .sheet{max-width:760px;left:50%;transform:translateX(-50%);border-left:1px solid var(--hairline);
     border-right:1px solid var(--hairline)}
 }
@@ -387,12 +394,12 @@ nav button .ico{font-size:19px;line-height:1}
 <header>
   <div class="hrow">
     <div>
-      <div class="brand">ARBO<small>Art-is-Tree</small></div>
+      <div class="brand"><span class="mark"><svg class="micon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 6.5 11h3L5 17h14l-4.5-6h3z"/><path d="M12 17v4"/></svg></span><span>ARBO<small>Art-is-Tree</small></span></div>
       <div id="dateline"></div>
     </div>
     <div style="display:flex;gap:8px">
-      <button id="settings-btn" title="Settings" aria-label="Settings">&#9881;</button>
-      <button id="refresh" title="Refresh" aria-label="Refresh">&#8635;</button>
+      <button id="settings-btn" title="Settings" aria-label="Settings"><svg class="hico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 12h4M12 12h8M4 17h12M20 17h0"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="17" r="2"/></svg></button>
+      <button id="refresh" title="Refresh" aria-label="Refresh"><svg class="hico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 3.5V8h-4.5"/></svg></button>
     </div>
   </div>
 </header>
@@ -464,13 +471,13 @@ nav button .ico{font-size:19px;line-height:1}
 </div>
 
 <nav>
-  <button id="tab-today" class="active"><span class="navpill"><span class="ico">&#9728;</span>Today</span></button>
-  <button id="tab-leads"><span class="navpill"><span class="ico">&#9993;</span>Leads</span></button>
-  <button id="tab-cal"><span class="navpill"><span class="ico">&#128197;</span>Calendar</span></button>
-  <button id="tab-book"><span class="navpill"><span class="ico">&#127794;</span>Book</span></button>
-  <button id="tab-followups"><span class="navpill"><span class="ico">&#8634;</span>Queue</span></button>
-  <button id="tab-calls"><span class="navpill"><span class="ico">&#9742;</span>Calls</span></button>
-  <button id="tab-perf"><span class="navpill"><span class="ico">&#128200;</span>Numbers</span></button>
+  <button id="tab-today" class="active"><span class="navpill"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><span>Today</span></span></button>
+  <button id="tab-leads"><span class="navpill"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7.5 12 13l9-5.5"/></svg><span>Leads</span></span></button>
+  <button id="tab-cal"><span class="navpill"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg><span>Calendar</span></span></button>
+  <button id="tab-book"><span class="navpill"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M9 4v13"/></svg><span>Book</span></span></button>
+  <button id="tab-followups"><span class="navpill"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 13a8.5 8.5 0 1 1-2.2-7.2"/><path d="M20.5 3v4h-4"/></svg><span>Queue</span></span></button>
+  <button id="tab-calls"><span class="navpill"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h4l1.5 4L8 10a13 13 0 0 0 6 6l2-2.5L20 15v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg><span>Calls</span></span></button>
+  <button id="tab-perf"><span class="navpill"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg><span>Numbers</span></span></button>
 </nav>
 
 <script>
@@ -539,7 +546,7 @@ async function stormBanner() {
     if (!s.alerts.length) return null;
     const box = el('div', 'storm');
     const worst = s.alerts[0];
-    box.appendChild(document.createTextNode('⛈ ' + s.alerts.map(a => a.event).join(' · ')));
+    box.appendChild(document.createTextNode('' + s.alerts.map(a => a.event).join(' · ')));
     if (worst.headline) box.appendChild(el('small', '', worst.headline));
     if (s.atRisk.length) box.appendChild(el('small', '', s.atRisk.length + ' booked stop(s) fall inside the alert window — consider moving them early.'));
     return box;
@@ -555,7 +562,7 @@ async function locationStrip() {
   try { s = await api('/api/location/status'); } catch (e) { return null; }
   const wrap = el('div');
   const strip = el('div', 'loc-strip');
-  const btn = el('button', 'loc-toggle' + (s.tracking ? ' on' : ''), s.tracking ? '📍 Tracking ON' : '📍 Tracking OFF');
+  const btn = el('button', 'loc-toggle' + (s.tracking ? ' on' : ''), s.tracking ? 'Tracking ON' : 'Tracking OFF');
   btn.onclick = async () => {
     btn.disabled = true;
     try { await api('/api/location/tracking', { method: 'POST', body: { on: !s.tracking } }); } catch (e) {}
@@ -570,8 +577,8 @@ async function locationStrip() {
   if (s.late && (s.late.state === 'late' || s.late.state === 'tight')) {
     const box = el('div', 'late');
     box.appendChild(document.createTextNode(s.late.state === 'late'
-      ? '⏱ Running behind for the next stop (~' + s.late.minutesBehind + ' min by distance).'
-      : '⏱ Next stop is tight — about ' + s.late.minutesBehind + ' min behind by distance.'));
+      ? 'Running behind for the next stop (~' + s.late.minutesBehind + ' min by distance).'
+      : 'Next stop is tight — about ' + s.late.minutesBehind + ' min behind by distance.'));
     if (s.late.draftMessage) {
       box.appendChild(el('small', '', 'Suggested text to the customer (you send it):'));
       box.appendChild(el('div', 'draft', s.late.draftMessage));
@@ -585,7 +592,7 @@ async function locationStrip() {
 async function inboxIntentPanel() {
   let d;
   try { d = await api('/api/inbox/intents'); }
-  catch (e) { return e.code === 401 ? null : el('div', 'storm-muted', '📬 Inbox intents: status unavailable right now.'); }
+  catch (e) { return e.code === 401 ? null : el('div', 'storm-muted', 'Inbox intents: status unavailable right now.'); }
   if (d.pipeline === 'not_started') return null;
   const wrap = el('div');
   const title = el('div', 'panel-title', 'Inbox — surfaced mail');
@@ -593,7 +600,7 @@ async function inboxIntentPanel() {
 
   if (d.pipeline === 'no_gmail') {
     wrap.appendChild(el('div', 'storm-muted',
-      '📬 Gmail is not connected — the intent engine cannot look. This is not zero mail. (' + (d.gmailReason || 'no pass yet') + ')'));
+      'Gmail is not connected — the intent engine cannot look. This is not zero mail. (' + (d.gmailReason || 'no pass yet') + ')'));
     return wrap;
   }
   if (d.pipeline === 'pattern_only') {
@@ -604,13 +611,24 @@ async function inboxIntentPanel() {
     wrap.appendChild(el('div', 'storm',
       '⚠ The intent model has failed ' + d.model.consecutiveModelFailures + ' times in a row (' + (d.model.lastModelErrorName || 'error') + ') — verdicts are pattern-only until it recovers.'));
   }
-  if (d.zeroFlag) wrap.appendChild(el('div', 'late', '📭 ' + d.zeroFlag));
+  if (d.zeroFlag) wrap.appendChild(el('div', 'late', '' + d.zeroFlag));
   if (d.pendingCommit > 0) {
     wrap.appendChild(el('div', 'storm-muted',
       d.pendingCommit + ' in-app approval(s) live in memory only — they reset on a redeploy until committed to the repo.'));
   }
-  wrap.appendChild(el('div', 'storm-muted',
-    'Today: ' + d.today.read + ' read · ' + d.today.surfaced + ' surfaced · ' + d.today.maybe + ' maybe · ' + d.today.ignored + ' ignored'));
+  {
+    const hud = el('div', 'hud');
+    const tile = (n, label, cls) => {
+      const x = el('div', 'tile' + (cls ? ' ' + cls : ''));
+      x.appendChild(el('b', '', String(n)));
+      x.appendChild(el('span', '', label));
+      return x;
+    };
+    hud.appendChild(tile(d.today.read, 'emails read'));
+    hud.appendChild(tile(d.today.surfaced, 'for you', d.today.surfaced > 0 ? 'accent' : ''));
+    hud.appendChild(tile(d.today.maybe, 'maybe', d.today.maybe > 0 ? 'warn' : ''));
+    wrap.appendChild(hud);
+  }
 
   const intentCard = (it) => {
     const c = el('div', 'card' + (it.contractApproval ? ' emergency' : ''));
@@ -626,7 +644,7 @@ async function inboxIntentPanel() {
     c.appendChild(el('div', 'scope', it.reason));
     const actions = el('div', 'actions');
     if (it.phone) {
-      const call = el('a', 'callbtn', '📞 Call');
+      const call = el('a', 'callbtn', 'Call');
       call.href = 'tel:' + it.phone;
       actions.appendChild(call);
     }
@@ -638,7 +656,7 @@ async function inboxIntentPanel() {
     }
     c.appendChild(actions);
     if (it.contractApproval) {
-      const conv = el('button', 'actbtn', '✅ Approved work — convert to job (asks first)');
+      const conv = el('button', 'actbtn', 'Approved work — convert to job (asks first)');
       conv.onclick = async () => {
         conv.disabled = true;
         try { await api('/api/inbox/convert', { method: 'POST', body: { threadId: it.threadId } }); }
@@ -690,17 +708,36 @@ async function inboxIntentPanel() {
     c.appendChild(row);
     wrap.appendChild(c);
   }
-  if (d.ignored.length > 0) {
-    const btn = el('button', 'minibtn', 'Ignored log (' + d.ignored.length + ')');
-    const log = el('div');
-    log.style.display = 'none';
-    for (const ig of d.ignored.slice(0, 30)) {
-      log.appendChild(el('div', 'storm-muted', fmtTime(ig.receivedAtIso) + ' — ' + ig.reason));
+  // Catch-up sweep with a reach-back picker (Mike, 2026-09-24: "5 mins
+  // 15mins 30mins 1hr 1day 1week"). The engine's dedupe means running it
+  // twice never double-reports.
+  {
+    const row = el('div', 'actions');
+    const sel = el('select', 'minibtn');
+    for (const [mins, lab] of [[5, 'Last 5 minutes'], [15, 'Last 15 minutes'], [30, 'Last 30 minutes'], [60, 'Last hour'], [1440, 'Last day'], [10080, 'Last week']]) {
+      sel.appendChild(new Option(lab, String(mins)));
     }
-    btn.onclick = () => { log.style.display = log.style.display === 'none' ? 'block' : 'none'; };
-    wrap.appendChild(btn);
-    wrap.appendChild(log);
+    sel.value = '1440';
+    const cu = el('button', 'minibtn', 'Catch up');
+    cu.onclick = async () => {
+      cu.disabled = true; sel.disabled = true; cu.textContent = 'Scanning…';
+      const since = new Date(Date.now() - Number(sel.value) * 60 * 1000);
+      try {
+        const r = await api('/api/inbox/backfill', { method: 'POST', body: { sinceIso: since.toISOString() } });
+        cu.textContent = r.status === 'unavailable'
+          ? 'Could not scan — ' + (r.reason || 'inbox unavailable')
+          : '' + r.scanned + ' read — sorting continues for a few minutes';
+        setTimeout(() => renderToday(), 1500);
+      } catch (e) {
+        cu.disabled = false; sel.disabled = false;
+        cu.textContent = 'Failed — nothing scanned. Retry';
+      }
+    };
+    row.appendChild(sel); row.appendChild(cu);
+    wrap.appendChild(row);
   }
+  // Ignored mail is filtered silently (Mike, 2026-09-24: no log on screen).
+  // The entries stay reviewable at /api/inbox/intents for debugging.
   return wrap;
 }
 
@@ -708,24 +745,24 @@ async function inboxIntentPanel() {
 async function receptionStrip() {
   let s;
   try { s = await api('/api/reception/status'); }
-  catch (e) { return e.code === 401 ? null : el('div', 'storm-muted', '\u260e Reception: status unavailable right now.'); }
+  catch (e) { return e.code === 401 ? null : el('div', 'storm-muted', 'Reception: status unavailable right now.'); }
   const wrap = el('div');
   if (!s.configured) {
-    wrap.appendChild(el('div', 'storm', '\u260e Reception bridge NOT configured \u2014 no bridge secret on the server. Calls cannot reach ARBO.'));
+    wrap.appendChild(el('div', 'storm', 'Reception bridge NOT configured \u2014 no bridge secret on the server. Calls cannot reach ARBO.'));
     return wrap;
   }
   if (s.unauthorizedSinceBoot > 0) {
     // The repoint tripwire: a wrong ElevenLabs key otherwise fails SILENTLY into the platform's fallback model.
-    wrap.appendChild(el('div', 'storm', '\u260e ' + s.unauthorizedSinceBoot + ' rejected call attempt(s) since deploy \u2014 the ElevenLabs key does not match the bridge secret. Callers are NOT reaching the guarded brain.'));
+    wrap.appendChild(el('div', 'storm', '' + s.unauthorizedSinceBoot + ' rejected call attempt(s) since deploy \u2014 the ElevenLabs key does not match the bridge secret. Callers are NOT reaching the guarded brain.'));
   }
   const strip = el('div', 'loc-strip');
   strip.appendChild(el('span', '', s.turnsSinceBoot === 0
-    ? '\u260e Reception ready \u2014 no calls since deploy (' + fmtTime(s.bootedAt) + ')'
-    : '\u260e ' + s.callsSinceBoot + ' call(s) \u00b7 ' + s.turnsSinceBoot + ' turn(s) since deploy \u00b7 last ' + fmtTime(s.lastTurnAt)));
+    ? 'Reception ready \u2014 no calls since deploy (' + fmtTime(s.bootedAt) + ')'
+    : '' + s.callsSinceBoot + ' call(s) \u00b7 ' + s.turnsSinceBoot + ' turn(s) since deploy \u00b7 last ' + fmtTime(s.lastTurnAt)));
   wrap.appendChild(strip);
   if (!s.llmKeyPresent) wrap.appendChild(el('div', 'storm-muted', 'LLM key missing on the server \u2014 callers hear only the safe fallback line.'));
-  if (s.emergencyCallsSinceBoot > 0) wrap.appendChild(el('div', 'storm', '\ud83d\udea8 ' + s.emergencyCallsSinceBoot + ' emergency call(s) since deploy \u2014 details are in the ElevenLabs dashboard, not here.'));
-  if (s.guardBlockedTurnsSinceBoot > 0) wrap.appendChild(el('div', 'storm-muted', '\ud83d\udee1 Guard intervened on ' + s.guardBlockedTurnsSinceBoot + ' turn(s) \u2014 blocked replies were replaced with approved lines.'));
+  if (s.emergencyCallsSinceBoot > 0) wrap.appendChild(el('div', 'storm', '' + s.emergencyCallsSinceBoot + ' emergency call(s) since deploy \u2014 details are in the ElevenLabs dashboard, not here.'));
+  if (s.guardBlockedTurnsSinceBoot > 0) wrap.appendChild(el('div', 'storm-muted', 'Guard intervened on ' + s.guardBlockedTurnsSinceBoot + ' turn(s) \u2014 blocked replies were replaced with approved lines.'));
   return wrap;
 }
 
@@ -743,7 +780,7 @@ async function renderToday() {
   // Talk to Arbo lives ABOVE the brief fetch on purpose: the first version
   // sat in the post-brief section, and with the data links cut the brief's
   // early return meant the button never rendered — on production, exactly.
-  const talkBtn = el('button', 'hudbtn', '\ud83c\udf99 Talk to Arbo');
+  const talkBtn = el('button', 'hudbtn', 'Talk to Arbo');
   talkBtn.addEventListener('click', () => window.open('/talk', '_blank', 'noopener'));
   v.appendChild(talkBtn);
   // Surfaced mail (R17) ALSO lives above the brief fetch \u2014 same lesson as
@@ -839,7 +876,7 @@ async function renderToday() {
   {
     const addrs = brief.stops.map(s => s.address + ', ' + s.city + ', VA').filter(Boolean);
     if (addrs.length) {
-      const r = el('a', 'routebtn', '🗺 Route the day (' + addrs.length + ' stops)');
+      const r = el('a', 'routebtn', 'Route the day (' + addrs.length + ' stops)');
       const dest = encodeURIComponent(addrs[addrs.length - 1]);
       const wps = addrs.slice(0, -1).map(encodeURIComponent).join('|');
       r.href = 'https://www.google.com/maps/dir/?api=1&destination=' + dest + (wps ? '&waypoints=' + wps : '');
@@ -960,7 +997,7 @@ async function renderLeads() {
     top.appendChild(el('div', 'when', new Date(lead.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })));
     c.appendChild(top);
     if (lead.city) c.appendChild(el('div', 'addr', lead.city + (lead.zip ? ' · ' + lead.zip : '')));
-    if (lead.history) c.appendChild(el('div', 'scope', '🌳 ' + lead.history));
+    if (lead.history) c.appendChild(el('div', 'scope', '' + lead.history));
     if (lead.details) c.appendChild(el('div', 'scope', lead.details));
     const b = el('div', 'badges');
     if (lead.isEmergency) b.appendChild(badge('EMERGENCY', 'b-emg'));
@@ -974,7 +1011,7 @@ async function renderLeads() {
     // calls anyone itself — the phone app does, with Mike's thumb on it.
     const row = el('div', 'actions');
     if (lead.phone) {
-      const call = el('a', 'callbtn', '📞 Call back');
+      const call = el('a', 'callbtn', 'Call back');
       call.href = 'tel:' + lead.phone;
       row.appendChild(call);
     }
@@ -1031,7 +1068,7 @@ function routePlannerPanel(v) {
     let plan;
     try { plan = await api('/api/route/plan', { method: 'POST', body: { stops, day: daySel.value } }); }
     catch (e) { pout.appendChild(el('div', 'storm', 'Could not plan the route \u2014 nothing was changed.')); pbtn.disabled = false; return; }
-    pout.appendChild(el('div', 'storm-muted', (plan.mode === 'live_traffic' ? '\ud83d\udea6 Live traffic \u00b7 ' : '\u2139 ZIP estimates \u00b7 ') + plan.note));
+    pout.appendChild(el('div', 'storm-muted', (plan.mode === 'live_traffic' ? 'Live traffic \u00b7 ' : '\u2139 ZIP estimates \u00b7 ') + plan.note));
     for (const w of plan.warnings) pout.appendChild(el('div', 'storm', '\u26a0 ' + w));
     for (const vt of plan.visits) {
       const row = el('div', 'loc-strip');
@@ -1144,15 +1181,15 @@ function estimatePrepPanel() {
     sheet.appendChild(el('div', 'drv', s.permit.ran ? s.permit.headline : s.permit.reason));
     if (s.permit.ran) {
       for (const o of s.permit.overlays) sheet.appendChild(el('div', 'drv', '⚠ ' + o.meaning));
-      if (s.permit.mitigation) sheet.appendChild(el('div', 'drv', '🌱 ' + s.permit.mitigation));
+      if (s.permit.mitigation) sheet.appendChild(el('div', 'drv', '' + s.permit.mitigation));
       if (s.permit.scaleEscalation) sheet.appendChild(el('div', 'drv', s.permit.scaleEscalation));
-      if (s.permit.powerLine) sheet.appendChild(el('div', 'drv', '⚡ ' + s.permit.powerLine));
+      if (s.permit.powerLine) sheet.appendChild(el('div', 'drv', '' + s.permit.powerLine));
     }
     sheet.appendChild(el('div', 'drv', s.drive.fromZip
-      ? '🚗 ~' + s.drive.minutes + ' min from ' + s.drive.fromZip + ' — ' + s.drive.note
-      : '🚗 ' + s.drive.reason));
-    sheet.appendChild(el('div', 'drv', (s.missUtility.flagged ? '🚩 ' : '') + s.missUtility.note));
-    sheet.appendChild(el('div', 'drv', '🚪 ' + (s.access.notes ? '"' + s.access.notes + '" — ' + s.access.note : s.access.note)));
+      ? '~' + s.drive.minutes + ' min from ' + s.drive.fromZip + ' — ' + s.drive.note
+      : '' + s.drive.reason));
+    sheet.appendChild(el('div', 'drv', (s.missUtility.flagged ? '' : '') + s.missUtility.note));
+    sheet.appendChild(el('div', 'drv', '' + (s.access.notes ? '"' + s.access.notes + '" — ' + s.access.note : s.access.note)));
     if (s.cityNote) sheet.appendChild(el('div', 'drv', s.cityNote));
     out.replaceChildren(sheet);
   };
@@ -1323,8 +1360,8 @@ async function renderCalls() {
     if (conv.reviewed) b.appendChild(badge('REVIEWED', 'b-cool'));
     c.appendChild(b);
     for (const turn of (conv.turns || []).slice(0, 6)) {
-      c.appendChild(el('div', 'scope', '👤 ' + turn.caller));
-      c.appendChild(el('div', 'addr', '🌳 ' + turn.reply));
+      c.appendChild(el('div', 'scope', '' + turn.caller));
+      c.appendChild(el('div', 'addr', '' + turn.reply));
     }
     if (!conv.reviewed) {
       const btn = el('button', 'actbtn', 'Mark reviewed ✓');

@@ -842,6 +842,21 @@ export function createArborRequestHandler() {
         const last = inboxWatch?.last();
         return send(200, last ?? unavailablePass(new Date().toISOString(), 'inbox watch has not completed a pass'));
       }
+      // Catch-up sweep (Mike, 2026-09-24): one pass reaching back days, same
+      // reader, same dedupe, same intent engine. Read-only like every pass.
+      if (req.method === 'POST' && url.pathname === '/api/inbox/backfill') {
+        const b = (await readJson(req)) as Record<string, unknown>;
+        const sinceIso = typeof b.sinceIso === 'string' ? b.sinceIso : '';
+        const sinceMs = Date.parse(sinceIso);
+        if (!sinceIso || Number.isNaN(sinceMs)) return send(400, { error: 'sinceIso_required' });
+        // Ten days is plenty of "catch up" and keeps one tap from asking
+        // Gmail for a year of mail. Named refusal, nothing scanned.
+        if (Date.now() - sinceMs > 10 * 24 * 60 * 60 * 1000) {
+          return send(400, { error: 'too_far_back', message: 'Backfill reaches at most 10 days. Nothing was scanned.' });
+        }
+        if (!inboxWatch) return send(503, { error: 'inbox_watch_not_started' });
+        return send(200, await inboxWatch.backfill(sinceIso));
+      }
       // ═══ The intent engine (R17) ═══ Everything under /api/inbox/intents
       // serves the app behind the keywall. Surfaced cards carry customer
       // contact BY RULING — R17 moved the app-UI boundary; logs and chat

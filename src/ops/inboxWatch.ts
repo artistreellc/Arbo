@@ -580,7 +580,19 @@ export interface InboxWatchHandle {
   stop(): void;
   /** Exposed so a surface can render the last pass without triggering one. */
   last(): InboxWatchResult | null;
+  /**
+   * One CATCH-UP pass reaching back to `sinceIso` (Mike, 2026-09-24: "can
+   * she back date from this past saturday?"). Same reader, same dedupe set
+   * — a message the 5-minute loop already reported is not reported twice —
+   * and the same observer hook, so the intent engine sees everything the
+   * backfill finds. Read-only like every pass; the cap is raised because a
+   * multi-day window is the whole point, and hitting it is still NAMED in
+   * `unreadable` rather than smoothed over.
+   */
+  backfill(sinceIso: string): Promise<InboxWatchResult>;
 }
+
+const BACKFILL_LIMIT = 250;
 
 /**
  * The five-minute loop. Never overlaps itself, never keeps a dying process
@@ -637,5 +649,20 @@ export function startInboxWatch(
   return {
     stop: () => clearInterval(handle),
     last: () => lastResult,
+    backfill: async (sinceIso: string) => {
+      if (!reader) {
+        return unavailablePass(new Date().toISOString(), 'no Gmail credentials configured');
+      }
+      const minutes = Math.max(1, Math.ceil((Date.now() - Date.parse(sinceIso)) / 60_000));
+      const result = await watchInbox(reader, seen, new Date(), {
+        ...opts,
+        lookbackMinutes: minutes,
+        limit: BACKFILL_LIMIT,
+      });
+      lastResult = result;
+      opts.onPass?.(result);
+      console.log(watchLogLine(result).replace('[inbox]', '[inbox backfill]'));
+      return result;
+    },
   };
 }
