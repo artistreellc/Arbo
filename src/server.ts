@@ -618,7 +618,15 @@ export function createArborRequestHandler() {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
         return res.end(loadCrewHtml());
       }
-      if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/app')) {
+      // The public front door: says what Arbo IS with no login in the way
+      // (Google's OAuth review flags a home page behind a key wall). The app
+      // itself moved fully behind /app — one extra tap from a stale
+      // bookmark, nothing else changes.
+      if (req.method === 'GET' && url.pathname === '/') {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=3600' });
+        return res.end(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Arbo — Art-is-Tree LLC</title><style>body{font-family:system-ui,sans-serif;background:#0B0D10;color:#EDEFF3;max-width:640px;margin:0 auto;padding:48px 20px;line-height:1.6}h1{font-size:2rem;letter-spacing:.06em}h1 small{color:#A78BFA;font-size:1rem;font-weight:500;margin-left:8px}p{color:#B8BFCA}a.btn{display:inline-block;margin-top:20px;background:linear-gradient(180deg,#8B5CF6,#6D28D9);color:#fff;text-decoration:none;font-weight:700;padding:14px 28px;border-radius:12px}nav{margin-top:48px;font-size:.9rem}nav a{color:#A78BFA;text-decoration:none;margin-right:20px}</style></head><body><h1>ARBO<small>Art-is-Tree</small></h1><p>Arbo is the reception and operations assistant of <b>Art-is-Tree LLC</b>, a licensed and insured tree service in Virginia Beach, Norfolk, Chesapeake, and Portsmouth, Virginia.</p><p>Arbo answers the company phone, takes estimate requests, and helps the owner schedule visits. It connects to the company's own email and calendar to surface customer inquiries and hold estimate appointments — for this one business, run by its owner.</p><p>Calls to Art-is-Tree may be handled by Arbo and are recorded for quality purposes.</p><a class="btn" href="/app">Open the app</a><nav><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Service</a><a href="tel:+17578216983">Call Art-is-Tree</a></nav></body></html>`);
+      }
+      if (req.method === 'GET' && url.pathname === '/app') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
         return res.end(loadAppHtml());
       }

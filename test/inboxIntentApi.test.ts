@@ -96,6 +96,13 @@ describe('public legal pages (OAuth publishing requirement)', () => {
     const terms = await fetch(`${base}/terms`);
     expect(terms.status).toBe(200);
     expect(await terms.text()).toContain('Art-is-Tree LLC');
+    // the front door explains the app with NO key wall in the way
+    const home = await fetch(`${base}/`);
+    expect(home.status).toBe(200);
+    const homeText = await home.text();
+    expect(homeText).toContain('reception and operations assistant');
+    expect(homeText).toContain('/app');
+    expect(homeText).not.toContain('keywall');
     srv.close();
   });
 });
