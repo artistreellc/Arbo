@@ -784,6 +784,20 @@ export function createArborRequestHandler() {
         }
       }
       // §21–24 location intelligence + §29 review loop (all behind the key gate).
+      // Mike's business cell, relayed by his iPhone (2026-09-24: "the best of
+      // arbo but still functions as my phone"). Behind the app key like the
+      // location ping — the Shortcut sends x-arbor-key.
+      if (req.method === 'POST' && url.pathname === '/api/relay/text') {
+        const out = webhooks.relayText((await readJson(req)) as Record<string, unknown>);
+        return send(out.ok ? 200 : 400, out);
+      }
+      if (req.method === 'POST' && url.pathname === '/api/relay/call-notes') {
+        const out = webhooks.relayCallNote((await readJson(req)) as Record<string, unknown>);
+        return send(out.ok ? 200 : 400, out);
+      }
+      if (req.method === 'GET' && url.pathname === '/api/relay/call-notes') {
+        return send(200, { notes: webhooks.notes() });
+      }
       if (req.method === 'POST' && url.pathname === '/api/location/ping') {
         return send(...unpack(await api.locationPing((await readJson(req)) as Record<string, unknown>)));
       }

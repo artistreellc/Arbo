@@ -1382,23 +1382,30 @@ async function renderCalls() {
     let t;
     try { t = await api('/api/webhooks/texts'); }
     catch (e) { if (e.code !== 401) txSlot.appendChild(el('div', 'storm-muted', 'Texts: status unavailable right now.')); return; }
-    txSlot.appendChild(el('div', 'panel-title', 'Texts to the Arbo line'));
+    txSlot.appendChild(el('div', 'panel-title', 'Texts'));
+    // Two lines, two honest states (§1B): the Arbo number needs the Twilio
+    // webhook; the business cell needs the iPhone Shortcut. Neither missing
+    // piece may read as "no texts".
     if (!t.wired) {
       txSlot.appendChild(el('div', 'storm-muted',
-        'Incoming-text wire NOT connected in Twilio yet — this is not zero texts.'));
-      return;
+        'Arbo line (757-821-6983): incoming-text wire NOT connected in Twilio yet — this is not zero texts.'));
     }
-    if (!t.texts.length) {
-      txSlot.appendChild(el('div', 'storm-muted', 'Wired and listening — no texts since deploy.'));
-      return;
+    if (!t.texts.some((m) => m.line === 'business')) {
+      txSlot.appendChild(el('div', 'storm-muted',
+        'Business cell: nothing relayed from your iPhone since deploy. If the Shortcut is set up, text yourself to test it.'));
     }
+    if (!t.texts.length) return;
     for (const m of t.texts.slice(0, 15)) {
       const c = el('div', 'card');
       const top = el('div', 'toprow');
       top.appendChild(el('div', 'who', m.from || 'Unknown number'));
       top.appendChild(el('div', 'when', fmtTime(m.at)));
       c.appendChild(top);
+      const lb = el('div', 'badges');
+      lb.appendChild(badge(m.line === 'business' ? 'BUSINESS CELL' : 'ARBO LINE', 'b-src'));
+      c.appendChild(lb);
       if (m.body) c.appendChild(el('div', 'scope', m.body));
+      if (m.line === 'business') c.appendChild(el('div', 'storm-muted', 'Photos stay on your phone — iOS relays words only.'));
       if (m.media && m.media.length) {
         const row = el('div', 'actions');
         m.media.forEach((p, i) => {
@@ -1417,6 +1424,25 @@ async function renderCalls() {
         c.appendChild(actions);
       }
       txSlot.appendChild(c);
+    }
+  })();
+  // Notes from calls Mike ANSWERED — iPhone records + transcribes, the
+  // Share-sheet Shortcut relays them here. Arbo cannot hear his cell.
+  const cnSlot = el('div');
+  v.appendChild(cnSlot);
+  (async () => {
+    let n;
+    try { n = await api('/api/relay/call-notes'); } catch (e) { return; }
+    if (!n.notes.length) return;
+    cnSlot.appendChild(el('div', 'panel-title', 'Notes from calls you answered'));
+    for (const note of n.notes.slice(0, 8)) {
+      const c = el('div', 'card');
+      const top = el('div', 'toprow');
+      top.appendChild(el('div', 'who', note.withWhom || 'Call'));
+      top.appendChild(el('div', 'when', fmtTime(note.at)));
+      c.appendChild(top);
+      c.appendChild(el('div', 'scope', note.text.length > 600 ? note.text.slice(0, 600) + '…' : note.text));
+      cnSlot.appendChild(c);
     }
   })();
   // R19: post-call transcripts pushed by ElevenLabs, when that wire is up.
