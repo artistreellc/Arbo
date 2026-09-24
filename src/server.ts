@@ -54,6 +54,9 @@ import { createApi, type DataSource, type ApiLeadInput } from './server/api.js';
 import { hasDb, dataLinksLive, dataLinksSim, dbConfigured, getDb } from './db/client.js';
 import { DATA_LINKS, LINK_NAMES, linkOpen, linkEnvVar, openLinks, LinkCutError } from './db/links.js';
 import { WebhookIntake, createResendEmailFetcher } from './ops/webhooks.js';
+import { QuoIntake } from './ops/quoIntake.js';
+import { createSonaExtractor } from './ops/quoExtract.js';
+import { createQuoApi, ensureQuoWebhooks } from './integrations/quo.js';
 import {
   listLeads,
   listStopsBetween,
@@ -593,6 +596,18 @@ export function createArborRequestHandler() {
     fetchEmail: env.resend.apiKey ? createResendEmailFetcher(env.resend.apiKey) : null,
   });
 
+  // Sona's calls via Quo (Mike, 2026-09-24: "auto do it"). Same R18 stores
+  // as Arbo's own calls; keys and numbers arrive when startServer registers.
+  const quoIntake = new QuoIntake({
+    guardrails,
+    extractor: env.anthropic.apiKey ? createSonaExtractor(env.anthropic.apiKey) : null,
+    callMemory,
+    callRecords,
+    calendarHold,
+    onText: (t) => webhooks.addQuoText(t),
+  });
+  currentQuoIntake = quoIntake;
+
   const bridge = createElevenLabsBridge({
     guardrails,
     legal,
@@ -736,6 +751,21 @@ export function createArborRequestHandler() {
       if (req.method === 'POST' && url.pathname === '/webhooks/railway') {
         const raw = await readRawBody(req);
         const out = webhooks.handleRailway(url.searchParams.get('key'), raw);
+        return send(out.status, out.body);
+      }
+      // Quo (Sona) events — public path, gated by Quo's signature.
+      if (req.method === 'POST' && url.pathname === '/webhooks/quo') {
+        const raw = await readRawBody(req);
+        const h = (k: string) => (typeof req.headers[k] === 'string' ? (req.headers[k] as string) : undefined);
+        const out = quoIntake.handle(
+          {
+            'openphone-signature': h('openphone-signature'),
+            'webhook-id': h('webhook-id'),
+            'webhook-timestamp': h('webhook-timestamp'),
+            'webhook-signature': h('webhook-signature'),
+          },
+          raw,
+        );
         return send(out.status, out.body);
       }
       // Incoming texts to the Arbo number. Accepted texts get an EMPTY TwiML
@@ -1275,6 +1305,9 @@ export function createArborRequestHandler() {
           note: 'Direct wire from Resend. The email copy to Mike is untouched — this is the SAME submission, delivered twice on purpose.',
         });
       }
+      if (req.method === 'GET' && url.pathname === '/api/quo') {
+        return send(200, { status: quoIntake.status(), calls: quoIntake.list() });
+      }
       if (req.method === 'GET' && url.pathname === '/api/webhooks/texts') {
         return send(200, {
           wired: Boolean(env.twilioSmsWebhookKey),
@@ -1358,6 +1391,45 @@ export function createArborRequestHandler() {
 let inboxWatch: InboxWatchHandle | null = null;
 /** The intent engine riding the watch's observer hook. Same pattern, same reason. */
 let intentWatch: IntentWatch | null = null;
+/** The Quo intake the running handler uses — startServer hands it its webhook keys. */
+let currentQuoIntake: QuoIntake | null = null;
+
+/**
+ * Register Arbo's webhooks with Quo and hand the intake its signing keys.
+ * Every outcome is a NAMED state on /api/quo and a boot log line — a Quo
+ * that is not wired must never look like a quiet phone (§1B).
+ */
+async function wireQuo(intake: QuoIntake): Promise<void> {
+  if (!env.quoApiKey) return;
+  const domain = process.env.RAILWAY_PUBLIC_DOMAIN;
+  if (!domain) {
+    intake.setRegistration('failed', 'No public URL (RAILWAY_PUBLIC_DOMAIN) to give Quo — Sona calls cannot reach Arbo.');
+    console.error('[quo] NOT wired — no public URL');
+    return;
+  }
+  intake.setRegistration('pending', 'Registering with Quo…');
+  const api = createQuoApi(env.quoApiKey);
+  try {
+    const [hooks, numbers] = await Promise.all([
+      ensureQuoWebhooks(api, `https://${domain}/webhooks/quo`),
+      api.listPhoneNumbers().catch(() => [] as string[]),
+    ]);
+    const partial = hooks.failed.length
+      ? ` NOT wired: ${hooks.failed.map((f) => `${f.family} (${f.why})`).join(', ')}.`
+      : '';
+    intake.setRegistration(
+      hooks.failed.length ? 'failed' : 'ok',
+      `Wired to Quo — ${hooks.created.length} webhook(s) created, ${hooks.reused.length} reused.${partial}`,
+      hooks.keys,
+      numbers,
+    );
+    console.log(`[quo] wired — created ${hooks.created.length}, reused ${hooks.reused.length}, failed ${hooks.failed.length}, ${numbers.length} number(s)`);
+  } catch (err) {
+    const why = err instanceof Error ? err.message : 'error';
+    intake.setRegistration('failed', `Quo registration failed (${why}) — Sona calls are NOT reaching Arbo. This is not zero calls.`);
+    console.error('[quo] registration FAILED:', why);
+  }
+}
 
 export function startServer(port: number) {
   const summary = boot();
@@ -1393,6 +1465,11 @@ export function startServer(port: number) {
     new InboxSurfaceStore(),
   );
   inboxWatch = startInboxWatch(gmailReader, { onMessage: intentWatch.observer });
+  // Sona via Quo: register Arbo's webhooks in the background — the server
+  // listens meanwhile, and every outcome is named on /api/quo.
+  if (currentQuoIntake) void wireQuo(currentQuoIntake);
+  else console.error('[quo] intake missing at boot — not wired');
+  if (!env.quoApiKey) console.error('[quo] DISABLED — no QUO_API_KEY. Sona calls are not reaching Arbo (this is not zero calls).');
   // §8A.6f: the agents run on their own clock, not only when Mike taps.
   startAgentScheduler(
     createApi(createServerSource(), { alerts: createNwsAlertsProvider((u, i) => fetch(u, i)) }),
