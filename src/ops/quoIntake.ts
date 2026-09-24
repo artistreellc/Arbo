@@ -14,6 +14,15 @@
 //   - keeps the transcript and Quo's summary for the Calls tab and Today.
 // What it never does: send anything, edit a calendar event, or log a
 // customer's number or words (§4.3 — ids and counts only).
+//
+// "Need arbo to start learning from QUO" (Mike, 2026-09-24): webhooks alone
+// were not enough — eight Sona calls reached Arbo, were answered 200, and
+// were dropped without a word. So (1) every event Arbo does not use is now
+// NAMED in the log and on /api/quo, and (2) Arbo also reads Sona's calls
+// straight from Quo's own record on a timer (`reconcile`), so a call the
+// webhook missed is still learned. A call from BEFORE this process started
+// is learned WITHOUT a calendar hold — an earlier deploy may already have
+// filed it, and holds are never duplicated or edited.
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Guardrails } from '../config/guardrails.schema.js';
@@ -25,12 +34,19 @@ import { buildEstimateHold, type CallHold } from '../reception/estimateHold.js';
 import { parseRequestedWindow } from './requestedWindow.js';
 import type { SonaCallFacts, SonaExtractor } from './quoExtract.js';
 import { verifySvixSignature } from './webhooks.js';
+import type { QuoApi } from '../integrations/quo.js';
 
 /** Quo signs with a millisecond timestamp; reject anything older than 5 minutes. */
 const TOLERANCE_MS = 5 * 60 * 1000;
 const CALL_CAP = 150;
 /** A caller who said fewer words than this hung up — nothing to extract. */
 const MIN_CALLER_WORDS = 3;
+/** Quo call states while a call is still live — its transcript cannot exist yet. */
+const LIVE_CALL = new Set(['queued', 'initiated', 'ringing', 'in-progress']);
+/** Most calls one reconcile pass reads — never a runaway on a busy week. */
+const RECONCILE_CAP = 100;
+/** A transcript still absent/failed this long after the call will not appear. */
+const SETTLE_MS = 30 * 60 * 1000;
 
 // ─── Signature ────────────────────────────────────────────────────────────
 
@@ -100,7 +116,7 @@ export interface QuoDialogueLine {
   text: string;
 }
 
-export type HoldOutcome = 'attempted' | 'no_writer' | 'not_requested' | 'hangup' | 'extraction_unavailable' | 'not_sona';
+export type HoldOutcome = 'attempted' | 'no_writer' | 'not_requested' | 'hangup' | 'extraction_unavailable' | 'not_sona' | 'learned_only';
 
 export interface QuoCallEntry {
   callId: string;
@@ -118,6 +134,10 @@ export interface QuoCallEntry {
   facts: SonaCallFacts | null;
   hold: HoldOutcome;
   processed: boolean;
+  /** Quo's own flag: 'ai-agent' when Sona answered. Trusted over per-line user tags. */
+  aiHandled: string | null;
+  /** How Arbo got it: pushed by Quo's webhook, or read from Quo's record. */
+  source: 'webhook' | 'quo_record';
 }
 
 export interface QuoIntakeDeps {
@@ -139,6 +159,11 @@ interface QuoEvent {
 }
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
+/** A Quo call id (AC…) — the fallback when a transcript payload carries it as `id`. */
+const callIdOf = (v: unknown): string | null => {
+  const s = str(v);
+  return s && s.startsWith('AC') ? s : null;
+};
 const words = (s: string): number => s.trim().split(/\s+/).filter(Boolean).length;
 
 export class QuoIntake {
@@ -151,6 +176,10 @@ export class QuoIntake {
   /** Serial so two events for one call never race the processing. */
   private queue: Promise<void> = Promise.resolve();
   private readonly counters = { received: 0, rejected: 0, lastAt: null as string | null, lastError: null as string | null };
+  /** Events verified and then NOT used, by reason — never silence (§1B). */
+  private readonly dropped: Record<string, number> = {};
+  private readonly bootMs: number;
+  private sweep: { lastAt: string | null; learned: number; pending: number; error: string | null } = { lastAt: null, learned: 0, pending: 0, error: null };
   private registration: { state: 'not_configured' | 'pending' | 'ok' | 'failed'; detail: string } = {
     state: 'not_configured',
     detail: 'No QUO_API_KEY on the server — Sona calls are not reaching Arbo. This is not zero calls.',
@@ -159,6 +188,13 @@ export class QuoIntake {
   constructor(deps: QuoIntakeDeps) {
     this.deps = deps;
     this.now = deps.now ?? (() => Date.now());
+    this.bootMs = this.now();
+  }
+
+  /** Name an event Arbo verified but did not use. Reason and payload KEY names only — never values (§4.3). */
+  private drop(reason: string, keys?: string[]): void {
+    this.dropped[reason] = (this.dropped[reason] ?? 0) + 1;
+    console.error(`[quo] event not used — ${reason}${keys ? ` (payload keys: ${keys.slice(0, 20).join(',')})` : ''}`);
   }
 
   setRegistration(state: 'pending' | 'ok' | 'failed', detail: string, keys: string[] = [], ownNumbers: string[] = []): void {
@@ -215,6 +251,8 @@ export class QuoIntake {
         facts: null,
         hold: 'not_sona',
         processed: false,
+        aiHandled: null,
+        source: 'webhook',
       };
       this.calls.set(callId, e);
       while (this.calls.size > CALL_CAP) {
@@ -260,6 +298,7 @@ export class QuoIntake {
         const e = this.entry(callId);
         e.from = str(o.from) ?? e.from;
         e.status = str(o.status);
+        e.aiHandled = str(o.aiHandled) ?? e.aiHandled;
         e.at = str(o.createdAt) ?? e.at;
         const answered = Date.parse(str(o.answeredAt) ?? '');
         const done = Date.parse(str(o.completedAt) ?? '');
@@ -267,29 +306,33 @@ export class QuoIntake {
         return;
       }
       case 'call.summary.completed': {
-        const callId = str(o.callId);
-        if (!callId) return;
+        const callId = str(o.callId) ?? callIdOf(o.id);
+        if (!callId) return this.drop('summary_without_call_id', Object.keys(o));
         const e = this.entry(callId);
         e.summary = Array.isArray(o.summary) ? o.summary.filter((l): l is string => typeof l === 'string') : e.summary;
         e.nextSteps = Array.isArray(o.nextSteps) ? o.nextSteps.filter((l): l is string => typeof l === 'string') : e.nextSteps;
         return;
       }
       case 'call.transcript.completed': {
-        const callId = str(o.callId);
-        if (!callId) return;
+        const callId = str(o.callId) ?? (Array.isArray(o.dialogue) ? callIdOf(o.id) : null);
+        if (!callId) return this.drop('transcript_without_call_id', Object.keys(o));
         const e = this.entry(callId);
-        if (e.processed) return;
+        if (e.processed) return; // Quo retried, or Quo's record got there first
+        const tStatus = str(o.status);
+        if ((tStatus && tStatus !== 'completed') || !Array.isArray(o.dialogue)) {
+          // Not written yet — left unprocessed so reading Quo's record picks it up later.
+          return this.drop(`transcript_not_ready:${tStatus ?? 'no_dialogue'}`);
+        }
         e.processed = true;
-        const dialogue = Array.isArray(o.dialogue) ? (o.dialogue as Array<Record<string, unknown>>) : [];
-        await this.process(e, dialogue);
+        await this.process(e, o.dialogue as Array<Record<string, unknown>>);
         return;
       }
       default:
-        return;
+        return this.drop(`unhandled_type:${str(event.type) ?? 'none'}`);
     }
   }
 
-  private async process(e: QuoCallEntry, raw: Array<Record<string, unknown>>): Promise<void> {
+  private async process(e: QuoCallEntry, raw: Array<Record<string, unknown>>, opts: { fileHold: boolean; atMs: number } = { fileHold: true, atMs: this.now() }): Promise<void> {
     // Who spoke each line. Lines from the account's own numbers are Sona
     // (no user) or Mike (a user answered); everything else is the caller.
     // Without the number list, Sona greets first, so line one marks her side.
@@ -299,13 +342,18 @@ export class QuoIntake {
       if (!text) continue;
       const id = normalizeCallerId(str(l.identifier) ?? undefined);
       const ours = id !== null && (this.ownNumbers.size ? this.ownNumbers.has(id) : id === agentSide);
-      const speaker: QuoDialogueLine['speaker'] = ours ? (str(l.userId) ? 'mike' : 'agent') : 'caller';
+      // Quo's own call flag wins: on a call Sona answered, our side is Sona
+      // even if Quo tags her lines with a user id.
+      const speaker: QuoDialogueLine['speaker'] = ours ? (e.aiHandled === 'ai-agent' || !str(l.userId) ? 'agent' : 'mike') : 'caller';
       if (speaker === 'caller' && !e.from && id) e.from = id;
       e.dialogue.push({ speaker, text: text.slice(0, 1000) });
     }
     e.handledBy = e.dialogue.some((d) => d.speaker === 'mike') ? 'mike' : e.dialogue.some((d) => d.speaker === 'agent') ? 'sona' : 'unknown';
     if (e.handledBy !== 'sona') {
       e.hold = 'not_sona';
+      const n = (sp: QuoDialogueLine['speaker']) => e.dialogue.filter((d) => d.speaker === sp).length;
+      const tagged = raw.filter((l) => str(l.userId)).length;
+      console.error(`[quo] call kept as notes, not Sona's — handled by ${e.handledBy} (${n('agent')} agent, ${n('mike')} Mike, ${n('caller')} caller line(s); ${tagged} user-tagged; Quo flag ${e.aiHandled ?? 'none'})`);
       return;
     }
 
@@ -348,7 +396,7 @@ export class QuoIntake {
       ...(facts.treeDetails ? { treeInfo: facts.treeDetails } : {}),
       ...(facts.powerLines ? { proximityPowerLines: facts.powerLines } : {}),
     };
-    const nowMs = this.now();
+    const nowMs = opts.atMs;
     const atIso = new Date(nowMs).toISOString();
     const callerId = normalizeCallerId(e.from ?? undefined);
     const window = facts.requestedTime ? parseRequestedWindow(facts.requestedTime, new Date(nowMs)) : null;
@@ -359,6 +407,7 @@ export class QuoIntake {
     );
 
     if (!facts.wantsEstimate) e.hold = 'not_requested';
+    else if (!opts.fileHold) e.hold = 'learned_only';
     else if (!this.deps.calendarHold) e.hold = 'no_writer';
     else {
       e.hold = 'attempted';
@@ -377,7 +426,82 @@ export class QuoIntake {
       ...(window ? { requestedWindow: window.label } : {}),
       calendarHold: e.hold === 'attempted' ? 'attempted' : e.hold === 'not_requested' ? 'not_requested' : 'no_writer',
     });
-    console.error(`[quo] sona call processed — hold ${e.hold}, ${e.slips.length} slip(s)${facts.emergency ? ', EMERGENCY' : ''}`);
+    console.error(`[quo] sona call processed (${e.source}) — hold ${e.hold}, ${e.slips.length} slip(s)${facts.emergency ? ', EMERGENCY' : ''}`);
+  }
+
+  /**
+   * Learn from Quo's OWN record: every incoming call on the line in the
+   * window that Arbo has not processed (or processed as "not Sona's" while
+   * Quo says Sona answered). Serial with the webhook queue, so one call is
+   * never processed twice. A call from before this process started is
+   * learned without a hold (hold 'learned_only'); a later one the webhook
+   * missed is handled exactly as the webhook would have.
+   */
+  async reconcile(api: QuoApi, phoneNumberId: string, windowMs: number): Promise<{ learned: number; pending: number }> {
+    const nowMs = this.now();
+    const sinceIso = new Date(nowMs - windowMs).toISOString();
+    let learned = 0;
+    let pending = 0;
+    let examined = 0;
+    try {
+      const convs = await api.listConversations({ phoneNumberId, updatedAfterIso: sinceIso });
+      for (const conv of convs) {
+        if (conv.participants.length !== 1 || examined >= RECONCILE_CAP) continue;
+        const participant = conv.participants[0]!;
+        const calls = (await api.listCalls({ phoneNumberId, participant, createdAfterIso: sinceIso }))
+          .filter((c) => c.direction === 'incoming')
+          .sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''));
+        for (const c of calls) {
+          if (examined >= RECONCILE_CAP) break;
+          const known = this.calls.get(c.id);
+          const misread = known?.processed && known.handledBy !== 'sona' && c.aiHandled === 'ai-agent';
+          if (known?.processed && !misread) continue;
+          examined += 1;
+          if (LIVE_CALL.has(c.status ?? '')) {
+            pending += 1;
+            continue;
+          }
+          const tr = await api.getCallTranscript(c.id);
+          const atMs = Date.parse(c.createdAt ?? '') || nowMs;
+          if (!tr || tr.status !== 'completed' || !tr.dialogue) {
+            const settled = nowMs - atMs > SETTLE_MS && (!tr || tr.status === 'absent' || tr.status === 'failed');
+            if (!settled) {
+              pending += 1; // still being written — tried again next pass
+              continue;
+            }
+            // Quo will never write this one: a call too short to transcribe
+            // (absent) or one Quo failed on — kept and NAMED, not skipped.
+            const e = this.entry(c.id);
+            Object.assign(e, {
+              at: c.createdAt ?? e.at, from: participant, status: c.status, aiHandled: c.aiHandled, source: 'quo_record', processed: true,
+              handledBy: c.aiHandled === 'ai-agent' ? 'sona' : 'unknown',
+              hold: tr?.status === 'failed' ? 'extraction_unavailable' : 'hangup',
+            });
+            learned += 1;
+            continue;
+          }
+          const dialogue = tr.dialogue.map((l) => ({ identifier: l.identifier, content: l.content, userId: l.userId }));
+          this.queue = this.queue.then(async () => {
+            const e = this.entry(c.id);
+            if (e.processed && !(e.handledBy !== 'sona' && c.aiHandled === 'ai-agent')) return;
+            Object.assign(e, { at: c.createdAt ?? e.at, from: participant, status: c.status, aiHandled: c.aiHandled, source: 'quo_record', processed: true, dialogue: [], slips: [], facts: null, handledBy: 'unknown' });
+            await this.process(e, dialogue, { fileHold: atMs >= this.bootMs, atMs });
+            learned += 1;
+          }).catch((err) => {
+            // Never leave the shared queue rejected — the next webhook must still run.
+            console.error('[quo] learning one call from Quo\'s record failed:', err instanceof Error ? err.message : 'error');
+          });
+        }
+      }
+      await this.queue;
+      this.sweep = { lastAt: new Date(nowMs).toISOString(), learned: this.sweep.learned + learned, pending, error: null };
+      if (learned || pending) console.error(`[quo] read Quo's record — learned ${learned} call(s), ${pending} not ready yet`);
+    } catch (err) {
+      const why = err instanceof Error ? err.message : 'error';
+      this.sweep = { ...this.sweep, lastAt: new Date(nowMs).toISOString(), error: why };
+      console.error(`[quo] reading Quo's record FAILED — ${why}. Calls the webhook missed are not being learned.`);
+    }
+    return { learned, pending };
   }
 
   /** Newest first, for the app (keywall). */
@@ -400,6 +524,9 @@ export class QuoIntake {
       callsWithSlips: sona.filter((c) => c.slips.length > 0).length,
       holdsAttempted: sona.filter((c) => c.hold === 'attempted').length,
       hangups: sona.filter((c) => c.hold === 'hangup').length,
+      learnedFromRecord: all.filter((c) => c.source === 'quo_record').length,
+      notUsed: { ...this.dropped },
+      quoRecord: { ...this.sweep },
     };
   }
 }

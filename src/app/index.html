@@ -761,12 +761,22 @@ async function sonaPanel(limit, withTranscripts) {
   if (st.callsWithSlips > 0) {
     wrap.appendChild(el('div', 'storm', 'Sona broke your rules on ' + st.callsWithSlips + ' call(s) — see the red cards. Call those customers back.'));
   }
+  const rec = st.quoRecord || {};
+  if (rec.error) {
+    wrap.appendChild(el('div', 'storm', 'Arbo could not read Sona\u2019s calls from Quo (' + rec.error + ') \u2014 calls the webhook missed are not being learned. This is not zero calls.'));
+  }
+  const notUsed = Object.entries(st.notUsed || {});
+  if (notUsed.length) {
+    wrap.appendChild(el('div', 'storm', 'Quo sent ' + notUsed.reduce((n, [, k]) => n + k, 0) + ' event(s) Arbo could not use (' + notUsed.map(([r, k]) => k + ' ' + r).join(', ') + ') \u2014 Arbo reads those calls from Quo\u2019s record instead.'));
+  }
   const sona = d.calls.filter((c) => c.handledBy === 'sona');
   if (withTranscripts) {
-    wrap.appendChild(el('div', 'storm-muted', 'Since deploy: ' + st.sonaCalls + ' Sona call(s) · ' + st.holdsAttempted + ' calendar hold(s) filed · ' + st.hangups + ' hang-up(s) · ' + st.callsWithSlips + ' with rule slips.'));
+    wrap.appendChild(el('div', 'storm-muted', st.sonaCalls + ' Sona call(s) learned (' + (st.learnedFromRecord || 0) + ' read from Quo\u2019s record, last 7 days) \u00b7 ' + st.holdsAttempted + ' calendar hold(s) filed \u00b7 ' + st.hangups + ' hang-up(s) \u00b7 ' + st.callsWithSlips + ' with rule slips.'));
   }
   if (!sona.length) {
-    if (st.registration.state === 'ok') wrap.appendChild(el('div', 'storm-muted', 'Wired and listening — no Sona calls since deploy.'));
+    if (st.registration.state === 'ok' && !rec.error) {
+      wrap.appendChild(el('div', 'storm-muted', rec.lastAt ? 'No Sona calls in the last 7 days \u2014 checked against Quo\u2019s own record.' : 'Wired \u2014 reading Sona\u2019s calls from Quo\u2026'));
+    }
     return wrap;
   }
   const holdText = {
@@ -775,6 +785,7 @@ async function sonaPanel(limit, withTranscripts) {
     hangup: 'Caller hung up',
     extraction_unavailable: 'Arbo could not read this call — no hold filed',
     no_writer: 'Calendar not connected — no hold filed',
+    learned_only: 'Learned from Quo\u2019s record after the fact \u2014 Arbo filed no hold. If they want an estimate, book it yourself.',
     not_sona: '',
   };
   for (const c of sona.slice(0, limit)) {

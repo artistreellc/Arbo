@@ -1473,6 +1473,10 @@ let inboxWatch: InboxWatchHandle | null = null;
 let intentWatch: IntentWatch | null = null;
 /** The Quo intake the running handler uses — startServer hands it its webhook keys. */
 let currentQuoIntake: QuoIntake | null = null;
+/** Learning from Quo's record: a week back at boot, a day back every 10 minutes. */
+const QUO_LEARN_BACKFILL_MS = 7 * 24 * 60 * 60 * 1000;
+const QUO_LEARN_WINDOW_MS = 24 * 60 * 60 * 1000;
+const QUO_LEARN_EVERY_MS = 10 * 60 * 1000;
 /** Business line 757-319-5131 and Arbo's line 757-821-6983 (docs/PHONE_SETUP.md) — never texted by outreach. */
 const OWN_PHONE_NUMBERS = ['+17573195131', '+17578216983'];
 /** The outreach engine the running handler uses — startServer hands it the Quo line. */
@@ -1483,13 +1487,13 @@ let currentOutreach: OutreachEngine | null = null;
  * Every outcome is a NAMED state on /api/quo and a boot log line — a Quo
  * that is not wired must never look like a quiet phone (§1B).
  */
-async function wireQuo(intake: QuoIntake, outreach: OutreachEngine | null): Promise<void> {
-  if (!env.quoApiKey) return;
+async function wireQuo(intake: QuoIntake, outreach: OutreachEngine | null): Promise<{ api: ReturnType<typeof createQuoApi>; phoneNumberId: string } | null> {
+  if (!env.quoApiKey) return null;
   const domain = process.env.RAILWAY_PUBLIC_DOMAIN;
   if (!domain) {
     intake.setRegistration('failed', 'No public URL (RAILWAY_PUBLIC_DOMAIN) to give Quo — Sona calls cannot reach Arbo.');
     console.error('[quo] NOT wired — no public URL');
-    return;
+    return null;
   }
   intake.setRegistration('pending', 'Registering with Quo…');
   const api = createQuoApi(env.quoApiKey);
@@ -1515,10 +1519,12 @@ async function wireQuo(intake: QuoIntake, outreach: OutreachEngine | null): Prom
       numbers,
     );
     console.log(`[quo] wired — created ${hooks.created.length}, reused ${hooks.reused.length}, failed ${hooks.failed.length}, ${numbers.length} number(s)`);
+    return first ? { api, phoneNumberId: first.id } : null;
   } catch (err) {
     const why = err instanceof Error ? err.message : 'error';
     intake.setRegistration('failed', `Quo registration failed (${why}) — Sona calls are NOT reaching Arbo. This is not zero calls.`);
     console.error('[quo] registration FAILED:', why);
+    return null;
   }
 }
 
@@ -1560,7 +1566,16 @@ export function startServer(port: number) {
   // listens meanwhile, and every outcome is named on /api/quo.
   if (currentQuoIntake) {
     const outreach = currentOutreach;
-    void wireQuo(currentQuoIntake, outreach).then(() => {
+    const intake = currentQuoIntake;
+    void wireQuo(intake, outreach).then((line) => {
+      // "Need arbo to start learning from QUO" (Mike, 2026-09-24): read
+      // Sona's calls from Quo's own record — the last week at boot (learned
+      // without new holds), then every 10 minutes (catches any call the
+      // webhook missed). reconcile() names its own failures; it never throws.
+      if (line) {
+        void intake.reconcile(line.api, line.phoneNumberId, QUO_LEARN_BACKFILL_MS);
+        setInterval(() => { void intake.reconcile(line.api, line.phoneNumberId, QUO_LEARN_WINDOW_MS); }, QUO_LEARN_EVERY_MS).unref();
+      } else if (env.quoApiKey) console.error('[quo] NOT learning from Quo\'s record — no Quo line to read');
       if (!outreach) return;
       const tv = outreach.verifyTemplate();
       console.log(tv.ok
