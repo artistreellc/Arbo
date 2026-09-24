@@ -741,6 +741,44 @@ async function inboxIntentPanel() {
   return wrap;
 }
 
+// ---------- Website forms, direct wire (R19 — same submission that emails Mike, delivered to Arbo too) ----------
+async function websiteFormsPanel() {
+  let d;
+  try { d = await api('/api/webhooks/forms'); }
+  catch (e) { return e.code === 401 ? null : el('div', 'storm-muted', 'Website forms: status unavailable right now.'); }
+  const wrap = el('div');
+  wrap.appendChild(el('div', 'panel-title', 'Website forms — direct wire'));
+  if (!d.wired) {
+    // §1B: an unwired wire is NAMED. The Gmail sweep still catches these forms.
+    wrap.appendChild(el('div', 'storm-muted',
+      'Direct wire from Resend NOT connected yet — this is not zero forms. Submissions still reach Gmail and the sweep.'));
+    return wrap;
+  }
+  if (!d.forms.length) {
+    wrap.appendChild(el('div', 'storm-muted', 'Wired and listening — no submissions since deploy.'));
+    return wrap;
+  }
+  for (const f of d.forms.slice(0, 8)) {
+    const c = el('div', 'card');
+    c.appendChild(el('div', 'cb-label', 'Website form'));
+    const top = el('div', 'toprow');
+    top.appendChild(el('div', 'who', f.name));
+    top.appendChild(el('div', 'when', fmtTime(f.at)));
+    c.appendChild(top);
+    if (f.address) c.appendChild(el('div', 'addr', f.address));
+    if (f.service) c.appendChild(el('div', 'scope', f.service + (f.timeline ? ' · ' + f.timeline : '')));
+    if (f.message) c.appendChild(el('div', 'scope', f.message));
+    if (f.bodyState === 'subject_only') {
+      c.appendChild(el('div', 'storm-muted', 'Body not fetched — name and service from the subject only. The full form is in Gmail.'));
+    }
+    const actions = el('div', 'actions');
+    if (f.phone) { const call = el('a', 'callbtn', 'Call'); call.href = 'tel:' + f.phone; actions.appendChild(call); }
+    c.appendChild(actions);
+    wrap.appendChild(c);
+  }
+  return wrap;
+}
+
 // ---------- Reception strip (the phone line as an instrument — §1B: counts, or the reason there are none) ----------
 async function receptionStrip() {
   let s;
@@ -789,6 +827,11 @@ async function renderToday() {
   const inboxSlot = el('div');
   v.appendChild(inboxSlot);
   inboxIntentPanel().then((b) => { if (b) inboxSlot.appendChild(b); });
+  // R19: website forms delivered straight from Resend — above the brief
+  // fetch for the same links-cut-early-return reason as everything here.
+  const formsSlot = el('div');
+  v.appendChild(formsSlot);
+  websiteFormsPanel().then((b) => { if (b) formsSlot.appendChild(b); });
   const start = new Date(); start.setHours(0, 0, 0, 0);
   const end = new Date(start); end.setDate(end.getDate() + 1);
   let brief;
@@ -1332,6 +1375,36 @@ $('twin-close').addEventListener('click', () => $('twin').classList.remove('show
 async function renderCalls() {
   const v = $('view-calls');
   v.replaceChildren();
+  // R19: post-call transcripts pushed by ElevenLabs, when that wire is up.
+  const trSlot = el('div');
+  v.appendChild(trSlot);
+  (async () => {
+    let t;
+    try { t = await api('/api/webhooks/calls'); } catch (e) { return; }
+    if (!t.wired) {
+      trSlot.appendChild(el('div', 'storm-muted',
+        'Call-transcript wire NOT connected — this is not zero calls. The in-call records still capture every call.'));
+      return;
+    }
+    if (!t.transcripts.length) return;
+    trSlot.appendChild(el('div', 'panel-title', 'Call transcripts (pushed after each call)'));
+    for (const tr of t.transcripts.slice(0, 8)) {
+      const c = el('div', 'card');
+      const top = el('div', 'toprow');
+      top.appendChild(el('div', 'who', (tr.collected && tr.collected.caller_name) ? String(tr.collected.caller_name) : 'Caller'));
+      top.appendChild(el('div', 'when', fmtTime(tr.at) + ' · ' + tr.turns + ' turns'));
+      c.appendChild(top);
+      if (tr.summary) c.appendChild(el('div', 'scope', tr.summary));
+      const bits = [];
+      if (tr.collected) {
+        if (tr.collected.job_type) bits.push(String(tr.collected.job_type));
+        if (tr.collected.city) bits.push(String(tr.collected.city));
+        if (tr.collected.is_emergency === true) bits.push('EMERGENCY');
+      }
+      if (bits.length) c.appendChild(el('div', 'addr', bits.join(' · ')));
+      trSlot.appendChild(c);
+    }
+  })();
   let data;
   try {
     data = await api('/api/review/backlog?all=1&limit=20');
@@ -2645,6 +2718,44 @@ async function renderSettings() {
     v.appendChild(lrow);
   }
 
+  // R19: the data links, one by one. Read-only here on purpose \u2014 a link
+  // opens by setting its variable on Railway AFTER its verification passes,
+  // never from a button in the app.
+  v.appendChild(el('div', 'panel-title', 'Data links'));
+  try {
+    const dl = await api('/api/links');
+    v.appendChild(el('div', 'storm-muted', dl.master === 'live'
+      ? 'Master switch LIVE. A CUT link is a closed door, not empty data \u2014 each opens after its verification (R19).'
+      : 'Master switch CUT \u2014 every link is closed whatever its own setting. A closed door is not empty data.'));
+    for (const l of dl.links) {
+      const row = el('div', 'loc-strip');
+      const pill = el('span', 'loc-toggle' + (l.state === 'open' ? ' on' : ''), l.state === 'open' ? 'OPEN' : 'CUT');
+      row.appendChild(pill);
+      const counts = l.rowCounts
+        ? ' \u2014 ' + Object.entries(l.rowCounts).map(([t, n]) => t + ': ' + n).join(', ')
+        : '';
+      row.appendChild(el('span', '', l.link + counts));
+      v.appendChild(row);
+    }
+  } catch (e) {
+    v.appendChild(el('div', 'storm-muted', 'Link status unavailable right now.'));
+  }
+
+  // R19: the webhook wires \u2014 every source that can push to Arbo, named.
+  v.appendChild(el('div', 'panel-title', 'Webhooks'));
+  try {
+    const wh = await api('/api/webhooks');
+    for (const [name, s] of Object.entries(wh.sources)) {
+      const row = el('div', 'loc-strip');
+      row.appendChild(el('span', 'loc-toggle' + (s.configured ? ' on' : ''), s.configured ? 'WIRED' : 'NOT WIRED'));
+      row.appendChild(el('span', '', name + (s.configured
+        ? ' \u2014 ' + s.received + ' received' + (s.lastAt ? ', last ' + fmtTime(s.lastAt) : ' since deploy')
+        : ' \u2014 no secret on the server; this is not zero events')));
+      v.appendChild(row);
+    }
+  } catch (e) {
+    v.appendChild(el('div', 'storm-muted', 'Webhook status unavailable right now.'));
+  }
 }
 
 function switchTab(which) {

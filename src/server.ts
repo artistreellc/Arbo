@@ -51,7 +51,9 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { readFileSync } from 'node:fs';
 import { boot } from './index.js';
 import { createApi, type DataSource, type ApiLeadInput } from './server/api.js';
-import { hasDb, dataLinksLive, dataLinksSim, dbConfigured } from './db/client.js';
+import { hasDb, dataLinksLive, dataLinksSim, dbConfigured, getDb } from './db/client.js';
+import { DATA_LINKS, LINK_NAMES, linkOpen, linkEnvVar, openLinks, LinkCutError } from './db/links.js';
+import { WebhookIntake, createResendEmailFetcher } from './ops/webhooks.js';
 import {
   listLeads,
   listStopsBetween,
@@ -478,6 +480,21 @@ class BadRequestError extends Error {
   constructor(readonly code: 'bad_json' | 'body_too_large') { super(code); }
 }
 
+/**
+ * The webhook routes need the RAW body — a signature is computed over the
+ * exact bytes sent, and JSON.parse→stringify would silently break it.
+ */
+async function readRawBody(req: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    if (size > 1_000_000) throw new BadRequestError('body_too_large');
+    chunks.push(chunk as Buffer);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
 async function readJson(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
@@ -566,6 +583,15 @@ export function createArborRequestHandler() {
     console.error('[calendar] holds DISABLED — no Google token (R18 waits on the consent step). This is not "no calls".');
   }
 
+  // R19: the webhook intake — everything that can PUSH to Arbo. Sources
+  // without a secret are NOT WIRED and the status endpoint names them (§1B).
+  const webhooks = new WebhookIntake({
+    resendSecret: env.resend.webhookSecret ?? null,
+    elevenSecret: env.elevenlabs.postCallSecret ?? null,
+    railwayKey: env.railwayWebhookKey ?? null,
+    fetchEmail: env.resend.apiKey ? createResendEmailFetcher(env.resend.apiKey) : null,
+  });
+
   const bridge = createElevenLabsBridge({
     guardrails,
     legal,
@@ -580,7 +606,10 @@ export function createArborRequestHandler() {
     routeAnchors: () => ({ workZip: getLiveWorkZip(Date.now()) ?? getTodayWorkZip(), homeZip: env.ownerHomeZip ?? null }),
     // §29: every voice turn lands in the review backlog (RLS-locked DB, never
     // server logs). Only wired when the DB is — the bridge swallows failures.
-    ...(hasDb() ? { logTurn: (key: string, turn: Parameters<typeof appendConversationTurn>[2]) => appendConversationTurn(key, 'voice', turn) } : {}),
+    // R19: turn logging now rides the 'calls' link specifically — wired only
+    // when that link is open, so a cut link is a named boot state, not a
+    // swallowed per-turn failure.
+    ...(hasDb() && linkOpen('calls') ? { logTurn: (key: string, turn: Parameters<typeof appendConversationTurn>[2]) => appendConversationTurn(key, 'voice', turn) } : {}),
   });
 
   return async (req: IncomingMessage, res: ServerResponse) => {
@@ -681,6 +710,33 @@ export function createArborRequestHandler() {
         return res.end(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Arbo — ${title}</title><style>body{font-family:system-ui,sans-serif;max-width:640px;margin:40px auto;padding:0 16px;line-height:1.6;color:#1a1a1a}h1{font-size:1.5rem}a{color:#6d28d9}</style></head><body><h1>Arbo — ${title}</h1><p><i>Art-is-Tree LLC · Effective 2026-09-24</i></p>${bodyHtml}</body></html>`);
       }
       if (req.method === 'GET' && url.pathname === '/health') return send(...unpack(await api.health()));
+      // R19 webhook receivers — PUBLIC paths, each gated by its own
+      // signature/secret, exactly like the voice bridge. An unwired source
+      // refuses by name; nothing is ever accepted unverified.
+      if (req.method === 'POST' && url.pathname === '/webhooks/resend') {
+        const raw = await readRawBody(req);
+        const h = req.headers;
+        const out = await webhooks.handleResend(
+          {
+            id: typeof h['svix-id'] === 'string' ? h['svix-id'] : undefined,
+            timestamp: typeof h['svix-timestamp'] === 'string' ? h['svix-timestamp'] : undefined,
+            signature: typeof h['svix-signature'] === 'string' ? h['svix-signature'] : undefined,
+          },
+          raw,
+        );
+        return send(out.status, out.body);
+      }
+      if (req.method === 'POST' && url.pathname === '/webhooks/elevenlabs') {
+        const raw = await readRawBody(req);
+        const sig = req.headers['elevenlabs-signature'];
+        const out = webhooks.handleElevenLabs(typeof sig === 'string' ? sig : undefined, raw);
+        return send(out.status, out.body);
+      }
+      if (req.method === 'POST' && url.pathname === '/webhooks/railway') {
+        const raw = await readRawBody(req);
+        const out = webhooks.handleRailway(url.searchParams.get('key'), raw);
+        return send(out.status, out.body);
+      }
       if (url.pathname.startsWith('/api/') && !apiAuthorized()) {
         return send(401, { error: 'unauthorized' });
       }
@@ -1182,6 +1238,57 @@ export function createArborRequestHandler() {
           note: 'In-memory since deploy — the calendar hold is the durable copy until the data links go live.',
         });
       }
+      // R19: webhook state + captured payloads, keywall-only (customer
+      // contact info is fine in the app UI per R17, never in logs).
+      if (req.method === 'GET' && url.pathname === '/api/webhooks') {
+        return send(200, { ...webhooks.status(), recent: webhooks.recentEvents(30) });
+      }
+      if (req.method === 'GET' && url.pathname === '/api/webhooks/forms') {
+        return send(200, {
+          wired: Boolean(env.resend.webhookSecret),
+          bodyFetch: Boolean(env.resend.apiKey),
+          forms: webhooks.websiteForms(),
+          note: 'Direct wire from Resend. The email copy to Mike is untouched — this is the SAME submission, delivered twice on purpose.',
+        });
+      }
+      if (req.method === 'GET' && url.pathname === '/api/webhooks/calls') {
+        return send(200, {
+          wired: Boolean(env.elevenlabs.postCallSecret),
+          transcripts: webhooks.callTranscripts(),
+          note: 'Post-call transcripts pushed by ElevenLabs. NOT WIRED means the webhook secret is absent — that is not zero calls.',
+        });
+      }
+      // R19: the data links, one by one. States are named (§1B): master cut,
+      // link cut, or open — an open link is probed read-only with counts.
+      if (req.method === 'GET' && url.pathname === '/api/links') {
+        const master = dataLinksSim() ? 'sim' : dataLinksLive() ? 'live' : 'cut';
+        const links = await Promise.all(LINK_NAMES.map(async (link) => {
+          const open = linkOpen(link);
+          const counts: Record<string, number | 'unreadable'> = {};
+          if (open && hasDb()) {
+            for (const t of DATA_LINKS[link]) {
+              try {
+                const r = await getDb().from(t).select('*', { count: 'exact', head: true });
+                counts[t] = r.error ? 'unreadable' : (r.count ?? 0);
+              } catch {
+                counts[t] = 'unreadable';
+              }
+            }
+          }
+          return {
+            link,
+            envVar: linkEnvVar(link),
+            state: open ? 'open' : 'cut',
+            tables: DATA_LINKS[link],
+            ...(open ? { rowCounts: counts } : {}),
+          };
+        }));
+        return send(200, {
+          master,
+          links,
+          note: 'A CUT link is a closed door, not empty data. Each link opens one by one after its verification passes (docs/DATA_LINKS.md) — R19.',
+        });
+      }
       // ElevenLabs custom-LLM endpoint (the agent's Server URL points at
       // /voice/llm; the platform appends the OpenAI-style path).
       if (req.method === 'POST' && (url.pathname === '/voice/llm/chat/completions' || url.pathname === '/voice/llm/v1/chat/completions')) {
@@ -1199,6 +1306,11 @@ export function createArborRequestHandler() {
       // A bad request is the CALLER's fault and says so — 400, with which of
       // the two problems it was. Everything else is genuinely ours.
       if (err instanceof BadRequestError) return send(400, { error: err.code });
+      // R19: a cut data link refuses BY NAME — "the door is closed" must
+      // never render as a vague server error (§1B). No PII in the message.
+      if (err instanceof LinkCutError) {
+        return send(503, { error: 'link_cut', link: err.link, table: err.table, message: err.message });
+      }
       // Never put customer data or stack traces on the wire (§4.3).
       console.error('[server]', err instanceof Error ? err.message : 'error');
       return send(500, { error: 'server_error' });
@@ -1263,7 +1375,9 @@ export function startServer(port: number) {
       ? 'SIMULATION — every record is fake, no database connection is opened'
       : !dbConfigured()
         ? 'not configured'
-        : dataLinksLive() ? 'connected' : 'CONFIGURED BUT LINKS CUT (ARBO_DATA_LINKS is not "live") — no real data is being read or written';
+        : dataLinksLive()
+          ? `connected — links open: ${openLinks().join(', ') || `NONE of ${LINK_NAMES.length} (master live, every ARBO_LINK_* still cut)`}`
+          : 'CONFIGURED BUT LINKS CUT (ARBO_DATA_LINKS is not "live") — no real data is being read or written';
     console.log(`✅ ARBO backend on :${port} — guardrails v${summary.guardrailsVersion}, legal v${summary.legalVersion}, db ${dbState}`);
   });
   return server;

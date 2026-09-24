@@ -451,3 +451,37 @@ Blocked on Mike to go fully live: the Google consent must now cover BOTH
 scopes (gmail.readonly + calendar.events) — same consent flow, one extra
 checkbox. Until the token exists the calendar writer reports itself
 unconfigured by name, never quietly.
+
+## R19 — Data links reconnect ONE BY ONE (verified), website forms go direct to Arbo, webhooks for everything
+**Ruling: 2026-09-24.** Mike, verbatim: *"contecting the links for the data
+it needs one by one after a multiple step verification process and making
+the resend website forms be sent directly to arbo"* — then, same session:
+*"i want it to still be emailed to me but also go to arbo do you
+understand"*, *"and make sure its using supabase the correct way"*, and
+*"add webhooks for everything"*.
+
+What this changes:
+1. **§3's reconnect is authorized — but STAGED, never a single flip.**
+   `ARBO_DATA_LINKS=live` now opens only the MASTER; every named link
+   (`src/db/links.ts`) needs its own `ARBO_LINK_<NAME>=live`, set only after
+   that link's verification passes (docs/DATA_LINKS.md: migrations parity,
+   RLS + advisors clean — "using supabase the correct way" — row-count and
+   content review with anything unexpected flagged to Mike, tests green,
+   then open and verify live). Fail-closed at three doors: master, link,
+   and the `from()` guard in `getDb()`.
+2. **The Resend hard boundary is AMENDED for one wire:** Resend may notify
+   Arbo of what it sends (webhook → `/webhooks/resend`), and Arbo may READ a
+   sent form email's content via the Resend API. **The email copy to Mike is
+   untouched — same submission, delivered twice on purpose.** The website
+   itself stays untouchable (no site code, no DNS, no form endpoint change),
+   and Arbo still NEVER sends email — the one Resend client in the codebase
+   has a single GET method and no send path, pinned by test.
+3. **Everything that can push to Arbo, does:** Resend email lifecycle,
+   ElevenLabs post-call transcripts, Railway deploy events — one intake
+   (`src/ops/webhooks.ts`), every route signature-gated, every unwired
+   source NAMED in the status (§1B), stores in-memory and capped.
+
+What did NOT move: importing business data stays gated (§3 — connecting a
+link opens the door; nothing walks through it without its own ruling);
+sweeps stay read-only (R4); logs stay counts-and-ids (§4.3); the website,
+DNS, and SEO stay untouchable; deploy stays manual.
