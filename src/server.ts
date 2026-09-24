@@ -589,6 +589,7 @@ export function createArborRequestHandler() {
     resendSecret: env.resend.webhookSecret ?? null,
     elevenSecret: env.elevenlabs.postCallSecret ?? null,
     railwayKey: env.railwayWebhookKey ?? null,
+    twilioSmsKey: env.twilioSmsWebhookKey ?? null,
     fetchEmail: env.resend.apiKey ? createResendEmailFetcher(env.resend.apiKey) : null,
   });
 
@@ -736,6 +737,15 @@ export function createArborRequestHandler() {
         const raw = await readRawBody(req);
         const out = webhooks.handleRailway(url.searchParams.get('key'), raw);
         return send(out.status, out.body);
+      }
+      // Incoming texts to the Arbo number. Accepted texts get an EMPTY TwiML
+      // response — Arbo never replies to a text, by construction.
+      if (req.method === 'POST' && url.pathname === '/webhooks/twilio/sms') {
+        const raw = await readRawBody(req);
+        const out = webhooks.handleTwilioSms(url.searchParams.get('key'), raw);
+        if (out.status !== 200) return send(out.status, out.body);
+        res.writeHead(200, { 'content-type': 'text/xml', 'cache-control': 'no-store' });
+        return res.end('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
       }
       if (url.pathname.startsWith('/api/') && !apiAuthorized()) {
         return send(401, { error: 'unauthorized' });
@@ -1249,6 +1259,13 @@ export function createArborRequestHandler() {
           bodyFetch: Boolean(env.resend.apiKey),
           forms: webhooks.websiteForms(),
           note: 'Direct wire from Resend. The email copy to Mike is untouched — this is the SAME submission, delivered twice on purpose.',
+        });
+      }
+      if (req.method === 'GET' && url.pathname === '/api/webhooks/texts') {
+        return send(200, {
+          wired: Boolean(env.twilioSmsWebhookKey),
+          texts: webhooks.texts(),
+          note: 'Texts and photos sent to the Arbo number. Receive only — Arbo never replies. NOT WIRED is not zero texts.',
         });
       }
       if (req.method === 'GET' && url.pathname === '/api/webhooks/calls') {

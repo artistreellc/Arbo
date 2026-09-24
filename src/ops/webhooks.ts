@@ -21,7 +21,7 @@
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-export type WebhookSource = 'resend' | 'elevenlabs' | 'railway';
+export type WebhookSource = 'resend' | 'elevenlabs' | 'railway' | 'twilio';
 
 export interface WebhookEventEntry {
   at: string;
@@ -55,6 +55,20 @@ export interface CallTranscriptEntry {
   turns: number;
 }
 
+/**
+ * A text to the Arbo number (Mike, 2026-09-24: "how do i get arbo to be able
+ * to see incoming texts"). RECEIVE ONLY — Arbo never replies; the webhook
+ * answers Twilio with an empty TwiML <Response/>. Customer PII: keywall app
+ * UI only (R17), never logs (§4.3).
+ */
+export interface TextEntry {
+  at: string;
+  messageSid: string | null;
+  from: string | null;
+  body: string;
+  media: Array<{ url: string; contentType: string | null }>;
+}
+
 export interface SourceStatus {
   configured: boolean;
   received: number;
@@ -66,6 +80,9 @@ export interface SourceStatus {
 const EVENT_CAP = 300;
 const FORM_CAP = 100;
 const TRANSCRIPT_CAP = 100;
+const TEXT_CAP = 200;
+/** Twilio sends at most 10 media items per MMS. */
+const MEDIA_MAX = 10;
 const SEEN_CAP = 500;
 /** Svix guidance: reject webhooks older than 5 minutes to stop replays. */
 const SVIX_TOLERANCE_MS = 5 * 60 * 1000;
@@ -151,6 +168,7 @@ export interface WebhookIntakeOptions {
   resendSecret?: string | null;
   elevenSecret?: string | null;
   railwayKey?: string | null;
+  twilioSmsKey?: string | null;
   /** GET one sent email's content from Resend — the ONLY Resend API call Arbo makes. */
   fetchEmail?: ((emailId: string) => Promise<{ subject?: string; text?: string } | null>) | null;
   now?: () => number;
@@ -162,11 +180,13 @@ export class WebhookIntake {
   private readonly events: WebhookEventEntry[] = [];
   private readonly forms: WebsiteFormEntry[] = [];
   private readonly transcripts: CallTranscriptEntry[] = [];
+  private readonly textLog: TextEntry[] = [];
   private readonly seenEmailIds = new Set<string>();
   private readonly counters: Record<WebhookSource, { received: number; rejected: number; lastAt: string | null; lastError: string | null }> = {
     resend: { received: 0, rejected: 0, lastAt: null, lastError: null },
     elevenlabs: { received: 0, rejected: 0, lastAt: null, lastError: null },
     railway: { received: 0, rejected: 0, lastAt: null, lastError: null },
+    twilio: { received: 0, rejected: 0, lastAt: null, lastError: null },
   };
 
   constructor(opts: WebhookIntakeOptions = {}) {
@@ -321,6 +341,37 @@ export class WebhookIntake {
     return { status: 200, body: { ok: true } };
   }
 
+  /**
+   * POST /webhooks/twilio/sms?key=… — an incoming text or photo to the Arbo
+   * number. Twilio posts form-encoded fields (From, Body, NumMedia,
+   * MediaUrlN, MediaContentTypeN, MessageSid). Gated by the minted URL key,
+   * same as Railway. The caller answers Twilio with an EMPTY TwiML response:
+   * Arbo reads texts, it never sends one.
+   */
+  handleTwilioSms(givenKey: string | null, rawBody: string): { status: number; body: unknown } {
+    if (!this.opts.twilioSmsKey) return this.reject('twilio', 'not_wired');
+    if (!givenKey || !safeEqual(givenKey, this.opts.twilioSmsKey)) return this.reject('twilio', 'bad_key');
+    const f = new URLSearchParams(rawBody);
+    const sid = f.get('MessageSid') ?? f.get('SmsMessageSid');
+    const numMedia = Math.min(Math.max(Number(f.get('NumMedia') ?? '0') || 0, 0), MEDIA_MAX);
+    const media: TextEntry['media'] = [];
+    for (let i = 0; i < numMedia; i += 1) {
+      const url = f.get(`MediaUrl${i}`);
+      if (url && /^https:\/\//.test(url)) media.push({ url, contentType: f.get(`MediaContentType${i}`) });
+    }
+    this.textLog.push({
+      at: new Date(this.now()).toISOString(),
+      messageSid: sid,
+      from: f.get('From'),
+      body: (f.get('Body') ?? '').slice(0, 2000),
+      media,
+    });
+    if (this.textLog.length > TEXT_CAP) this.textLog.splice(0, this.textLog.length - TEXT_CAP);
+    // Counts and ids only — never the number or the words (§4.3).
+    this.record('twilio', media.length ? 'mms.received' : 'sms.received', `message ${sid ?? 'id-unknown'} · ${media.length} photo(s)`);
+    return { status: 200, body: null };
+  }
+
   /** §1B: a source with no secret is NOT WIRED by name — never "no events". */
   status(): { sources: Record<WebhookSource, SourceStatus>; note: string } {
     const src = (s: WebhookSource, configured: boolean): SourceStatus => ({ configured, ...this.counters[s] });
@@ -329,6 +380,7 @@ export class WebhookIntake {
         resend: src('resend', Boolean(this.opts.resendSecret)),
         elevenlabs: src('elevenlabs', Boolean(this.opts.elevenSecret)),
         railway: src('railway', Boolean(this.opts.railwayKey)),
+        twilio: src('twilio', Boolean(this.opts.twilioSmsKey)),
       },
       note: 'A source without a secret is NOT WIRED — that is not zero events. Stores are in-memory since deploy.',
     };
@@ -340,6 +392,10 @@ export class WebhookIntake {
 
   websiteForms(): WebsiteFormEntry[] {
     return [...this.forms].reverse();
+  }
+
+  texts(): TextEntry[] {
+    return [...this.textLog].reverse();
   }
 
   callTranscripts(): CallTranscriptEntry[] {
