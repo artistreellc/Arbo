@@ -99,7 +99,19 @@ export const env = {
     apiKey: get('ELEVENLABS_API_KEY'),
     /** Shared secret ElevenLabs sends to our custom-LLM bridge (we mint it). */
     bridgeSecret: get('ELEVENLABS_BRIDGE_SECRET'),
+    /** HMAC secret for the post-call transcript webhook (ElevenLabs mints it). */
+    postCallSecret: get('ELEVENLABS_POSTCALL_SECRET'),
   },
+  // R19 webhooks. The Resend API key is for READING sent form emails only —
+  // Arbo never sends email (hard boundary), and the one client that holds
+  // this key has exactly one GET method.
+  resend: {
+    apiKey: get('RESEND_API_KEY'),
+    /** Svix signing secret (whsec_…) for the Resend webhook endpoint. */
+    webhookSecret: get('RESEND_WEBHOOK_SECRET'),
+  },
+  /** Shared key in the Railway deploy-webhook URL (we mint it). */
+  railwayWebhookKey: get('RAILWAY_WEBHOOK_KEY'),
   anthropic: { apiKey: get('ANTHROPIC_API_KEY') },
   /** Access key for the ops app + /api routes (§8 admin-only surface). */
   appAccessKey: get('APP_ACCESS_KEY'),

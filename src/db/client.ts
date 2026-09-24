@@ -42,12 +42,14 @@
 */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { env } from '../env.js';
+import { linkForTable, linkOpen, LinkCutError } from './links.js';
 
 // The ARBOR backend talks to Supabase with the SERVICE ROLE key only (§4.3).
 // The service role bypasses RLS; no other key can read customer PII. This key
 // is server-side and never shipped to a client.
 
 let _client: SupabaseClient | null = null;
+let _guarded: SupabaseClient | null = null;
 
 /**
  * THE DATA LINK SWITCH — owner instruction, 2026-08-03. Mike: "cut all data
@@ -63,7 +65,10 @@ let _client: SupabaseClient | null = null;
  * see. Every surface already reports "not connected" honestly (§1B), so
  * cutting the link degrades the app into telling the truth.
  *
- * To reconnect when the rough build is done: ARBO_DATA_LINKS=live
+ * To reconnect (R19, Mike 2026-09-24: "one by one after a multiple step
+ * verification process"): ARBO_DATA_LINKS=live opens the MASTER only. Each
+ * named link then needs its own ARBO_LINK_<NAME>=live after its verification
+ * passes — see src/db/links.ts and docs/DATA_LINKS.md. Master cut = all cut.
  */
 export function dataLinksLive(): boolean {
   return process.env.ARBO_DATA_LINKS === 'live';
@@ -120,5 +125,27 @@ export function getDb(): SupabaseClient {
       auth: { persistSession: false, autoRefreshToken: false },
     });
   }
-  return _client;
+  // THE THIRD DOOR (R19, 2026-09-24): every table access goes through
+  // `.from(table)`, so the per-link switch is enforced here — once, for every
+  // repository present or future. A cut link refuses BY NAME (LinkCutError)
+  // before any query is built; an unmapped table refuses too (fails closed).
+  // No source file touches .rpc/.storage/.channel, so `from` is the whole
+  // surface — if that ever changes, the new door gets the same guard.
+  if (!_guarded) {
+    const raw = _client;
+    _guarded = new Proxy(raw, {
+      get(target, prop) {
+        if (prop === 'from') {
+          return (table: string) => {
+            const link = linkForTable(table);
+            if (!link || !linkOpen(link)) throw new LinkCutError(table, link);
+            return target.from(table);
+          };
+        }
+        const value = Reflect.get(target, prop, target) as unknown;
+        return typeof value === 'function' ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+      },
+    }) as SupabaseClient;
+  }
+  return _guarded;
 }

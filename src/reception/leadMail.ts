@@ -397,6 +397,57 @@ function parseWebsiteForm(input: LeadMailInput): LeadMailResult {
 }
 
 /**
+ * The Resend-sent copy of the website form (R19). api/contact.js on the site
+ * builds BOTH parts: a plaintext body of 'Label: value' lines plus a Message
+ * block, and an HTML table. The sweep hands plaintext when it exists — and
+ * for this sender it always does — so the line shape is primary and the
+ * HTML-table shape is the fallback, mirroring parseWebsiteForm's honesty
+ * rules: subject as name/service fallback, message verbatim, inServiceArea
+ * NULL because the form carries no city.
+ */
+function parseResendWebsiteForm(input: LeadMailInput): LeadMailResult {
+  const line = (label: string): string | undefined => {
+    const m = input.body.match(new RegExp(`^${label}:\\s*(.*)$`, 'mi'));
+    const v = m?.[1]?.trim();
+    return v && v !== 'Not specified' ? v : undefined;
+  };
+  const htmlCell = (label: string): string | undefined => {
+    const re = new RegExp(`>\\s*${label}\\s*</td>\\s*<td[^>]*>([\\s\\S]*?)</td>`, 'i');
+    const cell = input.body.match(re)?.[1];
+    if (cell === undefined) return undefined;
+    const v = decodeEntities(cell.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+    return v && v !== 'Not specified' ? v : undefined;
+  };
+  const field = (label: string) => line(label) ?? htmlCell(label);
+
+  const subj = input.subject.match(/^New estimate request from\s+(.+?)\s*[—–-]\s*(.+)$/i);
+  const name = field('Name') ?? subj?.[1]?.trim() ?? input.subject.replace(/^New estimate request from\s+/i, '').trim();
+  const phone = field('Phone');
+  const email = field('Email');
+  const address = field('Property Address');
+  const serviceRequested = field('Service Needed') ?? subj?.[2]?.trim();
+  const urgency = field('Timeline');
+  // Customer's own words, verbatim — same rule as the FormSubmit parser.
+  const message = input.body.match(/^Message:\s*\r?\n([\s\S]*)$/mi)?.[1]?.trim() || undefined;
+
+  const offScope = serviceRequested !== undefined
+    && OFF_SCOPE.test(serviceRequested) && !TREE_WORK.test(serviceRequested);
+  const details = [serviceRequested, urgency ? `Urgency: ${urgency}` : undefined, message]
+    .filter(Boolean).join(' — ') || undefined;
+
+  return {
+    isLeadNotification: true,
+    provider: 'website_form',
+    lead: {
+      name, phone, email, address, serviceRequested, urgency, details,
+      ...(offScope ? { serviceOffScope: true } : {}),
+    },
+    // NULL, not false — the form has no city/ZIP (same rule as FormSubmit).
+    inServiceArea: null,
+  };
+}
+
+/**
  * Google Local Services (LSA) customer request. The REAL sender is a per-lead
  * address `customer-request-<digits>@awexpress.google.com` — NOT the
  * `localservices-noreply@` address the original rule expected, which is why
@@ -570,6 +621,15 @@ export function classifyLeadMail(input: LeadMailInput): LeadMailResult {
   if (from.includes('@formsubmit.co') && /^New estimate request from/i.test(input.subject)) {
     return parseWebsiteForm(input);
   }
+  // The SAME website form, sent by the site's own api/contact.js through
+  // Resend (R19, 2026-09-24 — the running site uses Resend; the FormSubmit
+  // path above stays for the older mail already in the inbox). Sender is the
+  // verified Resend sender (or the resend.dev testing sender), subject shape
+  // identical. Body is 'Label: value' lines with a Message block.
+  if (/@(?:[\w-]+\.)*(?:resend\.dev|artistreevabeach\.com)(?:>|\s|$)/i.test(from.trim())
+    && /^New estimate request from/i.test(input.subject)) {
+    return parseResendWebsiteForm(input);
+  }
   // Yelp uses a per-thread reply+<token>@messaging.yelp.com sender.
   if (/@messaging\.yelp\.com/.test(from) && /^Message from .+ for Art.?is.?Tree/i.test(input.subject)) {
     return parseYelp(input);
@@ -586,7 +646,9 @@ export function classifyLeadMail(input: LeadMailInput): LeadMailResult {
 //      (CAN-SPAM), a customer writing in does not;
 //   3. an actual ask — a request-shaped sentence or an approved work order,
 //      not the word "quote" in passing.
-const PLATFORM_SENDER = /@(?:[\w-]+\.)*(?:google\.com|callrail\.com|homeadvisor\.com|angi\.com|angieslist\.com|yelp\.com|formsubmit\.co)(?:>|\s|$)/i;
+// artistreevabeach.com is Mike's own send-only form domain — no customer
+// writes from it, so unmatched mail from it must not become a phantom lead.
+const PLATFORM_SENDER = /@(?:[\w-]+\.)*(?:google\.com|callrail\.com|homeadvisor\.com|angi\.com|angieslist\.com|yelp\.com|formsubmit\.co|resend\.dev|artistreevabeach\.com)(?:>|\s|$)/i;
 const MARKETING_FOOTER = /unsubscribe|view (?:this )?(?:e-?mail )?in (?:your )?browser|manage (?:your )?(?:email )?preferences|opt[ -]?out/i;
 const WORK_ORDER = /\bwork\s*order\b/i;
 const WORK_ORDER_GO = /\bapprov\w*\b|\baccept\w*\b|\bsigned?\b|\bgo[- ]ahead\b/i;

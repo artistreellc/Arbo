@@ -93,6 +93,10 @@ the prompts and makes the calls; your job is to build.
   rankings are a live business asset and are not in scope. A change that
   *implies* reconfiguring the site (e.g. wiring a website form channel) is
   also out of scope. This is why the FormSubmit work was reverted.
+  *One R19 carve-out (2026-09-24):* Resend may **notify** Arbo of what it
+  sends (webhook) and Arbo may **read** a sent form email via the Resend API.
+  Mike's email copy, the site code, DNS, and sending config stay untouched,
+  and Arbo still never sends email.
 - **Do not ingest or store leads.** Mike handles them. Scheduled sweeps are
   READ-ONLY: scan, report issues, write nothing — no lead rows, no Gmail
   labels, no calendar edits. (Ruling R4.)
@@ -142,8 +146,14 @@ ever needs a real customer to have something to render. It refuses on a
 non-empty database, because a seed that merges into live rows makes simulated
 and real indistinguishable.
 
-**To reconnect:** only when Mike says the rough build is done. Set
-`ARBO_DATA_LINKS=live`. That is his call, not an optimisation to make quietly.
+**To reconnect (AMENDED by R19, Mike 2026-09-24: "one by one after a multiple
+step verification process"):** `ARBO_DATA_LINKS=live` opens the MASTER only.
+Each named link (`src/db/links.ts`) additionally needs `ARBO_LINK_<NAME>=live`,
+set only after that link's verification passes — see `docs/DATA_LINKS.md`.
+Enforced at the `from()` door in `getDb()`, so a cut link refuses by name even
+for code that never checked. Opening a link is still Mike's process, never an
+optimisation to make quietly — and connecting a link is NOT an import ruling:
+nothing new flows in without its own go.
 
 ## Guardrails that live in code, not prose
 
