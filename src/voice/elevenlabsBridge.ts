@@ -65,18 +65,9 @@ import { Receptionist, type Alerter, type Escalator, type LlmClient } from '../r
 import { extractVaZip, hintContextLine, proximityHint, type RouteAnchors } from '../reception/routingHint.js';
 import { CallMemory, CallRecordStore, normalizeCallerId, repeatCallerNote } from '../reception/callMemory.js';
 import { parseRequestedWindow, type RequestedWindow } from '../ops/requestedWindow.js';
-import { colorFor } from '../scheduling/config.js';
+import { buildEstimateHold, type CallHold } from '../reception/estimateHold.js';
 
-/** The R18 calendar hold — everything the writer may create. One shot, one shape. */
-export interface CallHold {
-  summary: string;
-  description: string;
-  location?: string;
-  /** Mike's real scheme (D34): the CITY color for estimate visits. */
-  colorId?: string;
-  startIso: string;
-  endIso: string;
-}
+export type { CallHold };
 
 export const SESSION_TTL_MS = 30 * 60 * 1000; // a phone call is over well inside 30 min
 
@@ -390,39 +381,17 @@ export function createElevenLabsBridge(deps: BridgeDeps): ElevenLabsBridge {
         );
         let holdOutcome: 'attempted' | 'no_writer' = 'no_writer';
         if (deps.calendarHold) {
-          const win = session.window;
-          const start = win ? win.startIso : new Date(nowMs + 30 * 60 * 1000).toISOString();
-          const end = win ? win.endIso : new Date(nowMs + 50 * 60 * 1000).toISOString();
-          // Filed EXACTLY the way Mike files his own estimates (his words,
-          // 2026-09-24, and his real events): summary "Name - 7575551234"
-          // (or "- no phone"), the address in the LOCATION field, the
-          // description opening "Estimate - ", and the CITY color from the
-          // learned D34 map (VB=4, Norfolk=10, Chesapeake=5, Portsmouth=6).
-          const digits = session.callerId ? session.callerId.replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '') : '';
-          const cityColor = colorFor('estimate', state.city);
-          const hold: CallHold = {
-            summary: `${state.name ?? 'Caller'} - ${digits || 'no phone'}`,
-            ...(state.address
-              ? {
-                  location:
-                    state.address +
-                    (state.city ? `, ${state.city}, VA` : '') +
-                    (session.callerZip ? ` ${session.callerZip}` : ''),
-                }
-              : {}),
-            ...(cityColor ? { colorId: cityColor } : {}),
-            description: [
-              `Estimate - booked by Arbo on the call. UNCONFIRMED - Mike confirms the time.`,
-              state.jobType ? `Job: ${state.jobType}` : null,
-              state.treeInfo ? `Tree: ${state.treeInfo}` : null,
-              state.proximityPowerLines ? `Power lines: ${state.proximityPowerLines}` : null,
-              win ? `Caller asked for: ${win.label}` : 'No time given - schedule with the caller.',
-            ]
-              .filter((l): l is string => l !== null)
-              .join('\n'),
-            startIso: start,
-            endIso: end,
-          };
+          // Filed EXACTLY the way Mike files his own estimates — the one
+          // shared builder (src/reception/estimateHold.ts), so Arbo's calls
+          // and Sona's calls can never drift into two formats.
+          const hold: CallHold = buildEstimateHold({
+            state,
+            callerId: session.callerId,
+            ...(session.callerZip ? { zip: session.callerZip } : {}),
+            window: session.window ?? null,
+            nowMs,
+            bookedBy: 'Arbo',
+          });
           holdOutcome = 'attempted';
           void deps.calendarHold(hold).catch((err) => {
             // Status/reason only — an error that quoted the event would put

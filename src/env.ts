@@ -112,6 +112,8 @@ export const env = {
   },
   /** Shared key in the Railway deploy-webhook URL (we mint it). */
   railwayWebhookKey: get('RAILWAY_WEBHOOK_KEY'),
+  /** Quo (Sona's phone) API key — Arbo registers its own webhooks with it. Never used to send. */
+  quoApiKey: get('QUO_API_KEY'),
   /** Shared key in the Twilio incoming-text webhook URL (we mint it). */
   twilioSmsWebhookKey: get('TWILIO_SMS_WEBHOOK_KEY'),
   anthropic: { apiKey: get('ANTHROPIC_API_KEY') },

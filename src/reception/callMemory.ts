@@ -136,7 +136,7 @@ export interface CallRecordEntry {
    * fired, not confirmed — the insert is async and a failure lands in the
    * server log, not back in this record. Honest label over a pleasing one.
    */
-  calendarHold: 'attempted' | 'no_writer';
+  calendarHold: 'attempted' | 'no_writer' | 'not_requested';
 }
 
 const RECORDS_CAP = 200;

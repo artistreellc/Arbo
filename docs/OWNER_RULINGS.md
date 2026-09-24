@@ -485,3 +485,28 @@ What did NOT move: importing business data stays gated (§3 — connecting a
 link opens the door; nothing walks through it without its own ruling);
 sweeps stay read-only (R4); logs stay counts-and-ids (§4.3); the website,
 DNS, and SEO stay untouchable; deploy stays manual.
+
+## R20 — Sona (Quo) answers the missed calls for now; Arbo learns from every one
+**Ruling: 2026-09-24.** Mike, verbatim: *"i think we should use quo and re
+think this whole section, its ai agent handles calls and sounds way better
+than 11 labs"*, then *"im just going to turn call forwarding on to quo and
+let sona handle it for a while while arbo learns from it"*, then *"auto do
+it"*.
+
+What this changes:
+1. **Missed business calls go to Quo's AI (Sona), not Arbo's own voice.**
+   Mike's T-Mobile number forwards unanswered calls after 20 seconds to the
+   Quo number (757-606-9432). The number stays on T-Mobile — no port (his
+   call: "i dont want to port the number").
+2. **Arbo learns from every Sona call automatically.** Quo pushes each call,
+   transcript, summary and text to Arbo; Arbo checks Sona's words against
+   the rules (the same code guard as Arbo's voice, plus an Opus read for
+   dates, credentials and service area), files the calendar hold Mike's way,
+   keeps the record and remembers the caller.
+3. **What does NOT move:** Arbo still never sends anything — the Quo client
+   has no message or call method. The rules still bind: Sona's slips are
+   flagged, not excused. The ElevenLabs line stays live but idle until Mike
+   decides whether to retire it.
+
+Known gap, named: Sona's rules are Quo-side instructions, not a live code
+guard — a slip is caught after the call, not prevented during it.

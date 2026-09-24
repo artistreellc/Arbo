@@ -741,6 +741,74 @@ async function inboxIntentPanel() {
   return wrap;
 }
 
+// ---------- Sona via Quo (Mike, 2026-09-24: "let sona handle it for a while while arbo learns from it") ----------
+// One renderer, two places: Today shows the latest few, Calls shows them all
+// with transcripts. A Quo that is not wired is NAMED, never a quiet zero (§1B).
+async function sonaPanel(limit, withTranscripts) {
+  let d;
+  try { d = await api('/api/quo'); }
+  catch (e) { return e.code === 401 ? null : el('div', 'storm-muted', 'Sona (Quo): status unavailable right now.'); }
+  const wrap = el('div');
+  wrap.appendChild(el('div', 'panel-title', 'Sona calls (Quo)'));
+  const st = d.status;
+  if (st.registration.state !== 'ok') {
+    wrap.appendChild(el('div', st.registration.state === 'failed' ? 'storm' : 'storm-muted', st.registration.detail));
+    if (st.registration.state === 'not_configured') return wrap;
+  }
+  if (!st.reading) {
+    wrap.appendChild(el('div', 'storm', 'Arbo cannot read Sona calls right now (no model key) — calls are kept, but no calendar holds are filed.'));
+  }
+  if (st.callsWithSlips > 0) {
+    wrap.appendChild(el('div', 'storm', 'Sona broke your rules on ' + st.callsWithSlips + ' call(s) — see the red cards. Call those customers back.'));
+  }
+  const sona = d.calls.filter((c) => c.handledBy === 'sona');
+  if (withTranscripts) {
+    wrap.appendChild(el('div', 'storm-muted', 'Since deploy: ' + st.sonaCalls + ' Sona call(s) · ' + st.holdsAttempted + ' calendar hold(s) filed · ' + st.hangups + ' hang-up(s) · ' + st.callsWithSlips + ' with rule slips.'));
+  }
+  if (!sona.length) {
+    if (st.registration.state === 'ok') wrap.appendChild(el('div', 'storm-muted', 'Wired and listening — no Sona calls since deploy.'));
+    return wrap;
+  }
+  const holdText = {
+    attempted: 'Calendar hold filed (unconfirmed)',
+    not_requested: 'No estimate asked for',
+    hangup: 'Caller hung up',
+    extraction_unavailable: 'Arbo could not read this call — no hold filed',
+    no_writer: 'Calendar not connected — no hold filed',
+    not_sona: '',
+  };
+  for (const c of sona.slice(0, limit)) {
+    const f = c.facts || {};
+    const card = el('div', 'card' + (c.slips.length || f.emergency ? ' emergency' : ''));
+    const top = el('div', 'toprow');
+    top.appendChild(el('div', 'who', f.name || c.from || 'Caller'));
+    top.appendChild(el('div', 'when', fmtTime(c.at)));
+    card.appendChild(top);
+    const b = el('div', 'badges');
+    if (f.emergency) b.appendChild(badge('EMERGENCY', 'b-emg'));
+    if (c.slips.length) b.appendChild(badge('SONA BROKE A RULE', 'b-emg'));
+    if (f.jobType) b.appendChild(badge(String(f.jobType).toUpperCase(), 'b-src'));
+    card.appendChild(b);
+    if (f.address) card.appendChild(el('div', 'addr', f.address + (f.city ? ', ' + f.city : '')));
+    if (c.summary && c.summary.length) card.appendChild(el('div', 'scope', c.summary.join(' ')));
+    else if (f.treeDetails) card.appendChild(el('div', 'scope', f.treeDetails));
+    if (f.requestedTime) card.appendChild(el('div', 'scope', 'Asked for: ' + f.requestedTime));
+    for (const sl of c.slips) card.appendChild(el('div', 'storm', 'Sona said: \u201c' + sl.said + '\u201d'));
+    if (holdText[c.hold]) card.appendChild(el('div', 'storm-muted', holdText[c.hold]));
+    const actions = el('div', 'actions');
+    if (c.from) { const call = el('a', 'callbtn', 'Call back'); call.href = 'tel:' + c.from; actions.appendChild(call); }
+    card.appendChild(actions);
+    if (withTranscripts && c.dialogue.length) {
+      const det = document.createElement('details');
+      det.appendChild(el('summary', '', 'Transcript (' + c.dialogue.length + ' lines)'));
+      for (const line of c.dialogue) det.appendChild(el('div', 'addr', (line.speaker === 'agent' ? 'Sona: ' : line.speaker === 'mike' ? 'You: ' : 'Caller: ') + line.text));
+      card.appendChild(det);
+    }
+    wrap.appendChild(card);
+  }
+  return wrap;
+}
+
 // ---------- Website forms, direct wire (R19 — same submission that emails Mike, delivered to Arbo too) ----------
 async function websiteFormsPanel() {
   let d;
@@ -827,6 +895,10 @@ async function renderToday() {
   const inboxSlot = el('div');
   v.appendChild(inboxSlot);
   inboxIntentPanel().then((b) => { if (b) inboxSlot.appendChild(b); });
+  // Sona via Quo — above the brief fetch, same links-cut lesson.
+  const sonaSlot = el('div');
+  v.appendChild(sonaSlot);
+  sonaPanel(3, false).then((b) => { if (b) sonaSlot.appendChild(b); });
   // R19: website forms delivered straight from Resend — above the brief
   // fetch for the same links-cut-early-return reason as everything here.
   const formsSlot = el('div');
@@ -1375,6 +1447,10 @@ $('twin-close').addEventListener('click', () => $('twin').classList.remove('show
 async function renderCalls() {
   const v = $('view-calls');
   v.replaceChildren();
+  // Sona via Quo — every call, with transcripts.
+  const sonaCallsSlot = el('div');
+  v.appendChild(sonaCallsSlot);
+  sonaPanel(20, true).then((b) => { if (b) sonaCallsSlot.appendChild(b); });
   // Texts + photos sent to the Arbo number (Mike, 2026-09-24). Receive only.
   const txSlot = el('div');
   v.appendChild(txSlot);
@@ -1402,7 +1478,7 @@ async function renderCalls() {
       top.appendChild(el('div', 'when', fmtTime(m.at)));
       c.appendChild(top);
       const lb = el('div', 'badges');
-      lb.appendChild(badge(m.line === 'business' ? 'BUSINESS CELL' : 'ARBO LINE', 'b-src'));
+      lb.appendChild(badge(m.line === 'business' ? 'BUSINESS CELL' : m.line === 'quo' ? 'QUO LINE' : 'ARBO LINE', 'b-src'));
       c.appendChild(lb);
       if (m.body) c.appendChild(el('div', 'scope', m.body));
       if (m.line === 'business') c.appendChild(el('div', 'storm-muted', 'Photos stay on your phone — iOS relays words only.'));

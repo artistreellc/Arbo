@@ -63,8 +63,8 @@ export interface CallTranscriptEntry {
  */
 export interface TextEntry {
   at: string;
-  /** 'arbo' = the Twilio number; 'business' = Mike's business cell, relayed by his iPhone Shortcut. */
-  line: 'arbo' | 'business';
+  /** 'arbo' = the Twilio number; 'business' = Mike's business cell (iPhone Shortcut); 'quo' = the Quo number Sona answers. */
+  line: 'arbo' | 'business' | 'quo';
   messageSid: string | null;
   from: string | null;
   body: string;
@@ -440,6 +440,11 @@ export class WebhookIntake {
     if (this.callNotes.length > NOTE_CAP) this.callNotes.splice(0, this.callNotes.length - NOTE_CAP);
     console.error(`[relay] call notes received — ${this.callNotes.length} since deploy`);
     return { ok: true };
+  }
+
+  /** A text to the Quo number, already signature-verified by the Quo intake. */
+  addQuoText(t: { at: string; messageSid: string | null; from: string | null; body: string; media: TextEntry['media'] }): void {
+    this.pushText({ ...t, line: 'quo', body: t.body.slice(0, 2000), media: t.media.slice(0, MEDIA_MAX) });
   }
 
   notes(): CallNoteEntry[] {
