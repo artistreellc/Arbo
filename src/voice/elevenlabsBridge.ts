@@ -75,6 +75,24 @@ export interface BridgeRequestBody {
   conversation_id?: string;
   metadata?: { conversation_id?: string };
   elevenlabs_extra_body?: { conversation_id?: string };
+  /** System tools the platform exposes (OpenAI function format) — end_call rides here. */
+  tools?: Array<{ type?: string; function?: { name?: string } }>;
+}
+
+/**
+ * The hang-up marker. The system prompt tells the model to END its final
+ * reply with this token after the goodbyes; it is NEVER spoken — the bridge
+ * strips it and, when the platform declared an end_call tool, emits the
+ * OpenAI tool call that actually hangs up the line. Without this, "use the
+ * end_call tool" was an instruction the wire could not carry: the bridge
+ * streams text only, so the agent said "have a good one!" and then sat in
+ * dead air until the caller gave up (Mike's test call, 2026-09-24).
+ */
+export const END_CALL_MARKER = '[[END_CALL]]';
+
+/** True when the platform offered an end_call tool this request. */
+function endCallToolOffered(body: BridgeRequestBody): boolean {
+  return (body.tools ?? []).some((t) => t?.function?.name === 'end_call');
 }
 
 export interface BridgeResponse {
@@ -291,13 +309,35 @@ export function createElevenLabsBridge(deps: BridgeDeps): ElevenLabsBridge {
       const created = Math.floor(nowMs / 1000);
       const model = body.model ?? 'arbo-receptionist';
 
+      // The hang-up: the model marks "goodbyes are done" with END_CALL_MARKER.
+      // The marker is stripped WHEREVER it appears (a mid-reply one must never
+      // be spoken either), but it only ends the call when the platform offered
+      // the tool — otherwise the reply degrades to today's behavior: goodbye
+      // said, line left open, nothing broken.
+      const wantsEndCall = turn.reply.includes(END_CALL_MARKER);
+      const reply = wantsEndCall
+        ? turn.reply.split(END_CALL_MARKER).join('').replace(/\s+$/, '').trim()
+        : turn.reply;
+      const endCall = wantsEndCall && endCallToolOffered(body);
+      const toolCalls = [
+        { index: 0, id: `call_${id}`, type: 'function', function: { name: 'end_call', arguments: '{}' } },
+      ];
+
       if (body.stream) {
         // One content chunk carrying the already-guarded reply (see header note).
         const chunk = (delta: Record<string, unknown>, finish: string | null) =>
           `data: ${JSON.stringify({ id, object: 'chat.completion.chunk', created, model, choices: [{ index: 0, delta, finish_reason: finish }] })}`;
         return {
           status: 200,
-          sse: [chunk({ role: 'assistant' }, null), chunk({ content: turn.reply }, null), chunk({}, 'stop'), 'data: [DONE]'],
+          sse: [
+            chunk({ role: 'assistant' }, null),
+            chunk({ content: reply }, null),
+            // The goodbye is spoken, THEN the platform hangs up — content and
+            // tool call ride the same completion, standard OpenAI shape.
+            ...(endCall ? [chunk({ tool_calls: toolCalls }, null)] : []),
+            chunk({}, endCall ? 'tool_calls' : 'stop'),
+            'data: [DONE]',
+          ],
         };
       }
 
@@ -308,7 +348,17 @@ export function createElevenLabsBridge(deps: BridgeDeps): ElevenLabsBridge {
           object: 'chat.completion',
           created,
           model,
-          choices: [{ index: 0, message: { role: 'assistant', content: turn.reply }, finish_reason: 'stop' }],
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: reply,
+                ...(endCall ? { tool_calls: toolCalls } : {}),
+              },
+              finish_reason: endCall ? 'tool_calls' : 'stop',
+            },
+          ],
           usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
         },
       };

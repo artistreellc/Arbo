@@ -1,5 +1,5 @@
 {
-  "version": "2026-07-31",
+  "version": "2026-09-24",
   "disclaimer": "Engineering guidance to keep the build clean and defensible. Not legal advice — Mike confirms specifics with his own attorney.",
   "tcpa": {
     "consentRequired": true,
@@ -23,7 +23,7 @@
   "callRecordingAndAiDisclosure": {
     "state": "Virginia",
     "recordingConsent": "one-party",
-    "disclosureLine": "Hi, thanks for calling Art-is-Tree — you may be speaking with our automated assistant, and calls can be recorded for quality. How can I help with your trees?",
+    "disclosureLine": "Just so you know, I'm Art-is-Tree's AI assistant, and this call is being recorded for quality purposes.",
     "disclosureRequiredAtCallStart": true
   },
   "dataPrivacy": {
