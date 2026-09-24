@@ -1375,6 +1375,50 @@ $('twin-close').addEventListener('click', () => $('twin').classList.remove('show
 async function renderCalls() {
   const v = $('view-calls');
   v.replaceChildren();
+  // Texts + photos sent to the Arbo number (Mike, 2026-09-24). Receive only.
+  const txSlot = el('div');
+  v.appendChild(txSlot);
+  (async () => {
+    let t;
+    try { t = await api('/api/webhooks/texts'); }
+    catch (e) { if (e.code !== 401) txSlot.appendChild(el('div', 'storm-muted', 'Texts: status unavailable right now.')); return; }
+    txSlot.appendChild(el('div', 'panel-title', 'Texts to the Arbo line'));
+    if (!t.wired) {
+      txSlot.appendChild(el('div', 'storm-muted',
+        'Incoming-text wire NOT connected in Twilio yet — this is not zero texts.'));
+      return;
+    }
+    if (!t.texts.length) {
+      txSlot.appendChild(el('div', 'storm-muted', 'Wired and listening — no texts since deploy.'));
+      return;
+    }
+    for (const m of t.texts.slice(0, 15)) {
+      const c = el('div', 'card');
+      const top = el('div', 'toprow');
+      top.appendChild(el('div', 'who', m.from || 'Unknown number'));
+      top.appendChild(el('div', 'when', fmtTime(m.at)));
+      c.appendChild(top);
+      if (m.body) c.appendChild(el('div', 'scope', m.body));
+      if (m.media && m.media.length) {
+        const row = el('div', 'actions');
+        m.media.forEach((p, i) => {
+          const a = el('a', 'minibtn', (p.contentType && p.contentType.indexOf('image/') === 0 ? 'Photo ' : 'Attachment ') + (i + 1) + ' ↗');
+          a.href = p.url; a.target = '_blank'; a.rel = 'noopener';
+          a.style.display = 'inline-flex'; a.style.alignItems = 'center'; a.style.textDecoration = 'none';
+          row.appendChild(a);
+        });
+        c.appendChild(row);
+      }
+      if (m.from) {
+        const actions = el('div', 'actions');
+        const call = el('a', 'callbtn', 'Call back');
+        call.href = 'tel:' + m.from;
+        actions.appendChild(call);
+        c.appendChild(actions);
+      }
+      txSlot.appendChild(c);
+    }
+  })();
   // R19: post-call transcripts pushed by ElevenLabs, when that wire is up.
   const trSlot = el('div');
   v.appendChild(trSlot);

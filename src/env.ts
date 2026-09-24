@@ -112,6 +112,8 @@ export const env = {
   },
   /** Shared key in the Railway deploy-webhook URL (we mint it). */
   railwayWebhookKey: get('RAILWAY_WEBHOOK_KEY'),
+  /** Shared key in the Twilio incoming-text webhook URL (we mint it). */
+  twilioSmsWebhookKey: get('TWILIO_SMS_WEBHOOK_KEY'),
   anthropic: { apiKey: get('ANTHROPIC_API_KEY') },
   /** Access key for the ops app + /api routes (§8 admin-only surface). */
   appAccessKey: get('APP_ACCESS_KEY'),
