@@ -555,7 +555,7 @@ What this changes:
    switch).
 5. **Who never gets texted:** a number we only dialed; a solicitor or wrong
    number — decided from the caller's WORDS, never a carrier label (the
-   spam-likely ruling of the same day); anyone who texted STOP; anyone
+   spam-likely ruling, R23); anyone who texted STOP; anyone
    Arbo or Mike already texted in 30 days; a number Sona already booked;
    our own numbers; group threads; anyone Mike excludes in the app.
    *Tightened by the pre-ship review (D78), same ruling, no new scope:*
@@ -571,3 +571,35 @@ did not contact the business first (the call-in is the consent basis,
 compliance.json). Quo's US texting (A2P 10DLC) registration is Mike's to
 complete in Quo → Settings → Trust center; until it is approved Quo refuses
 every send and the app says so by name.
+
+## R23 — "Spam Likely" can be a client: a carrier label is never evidence
+**Ruling: 2026-09-24.** Mike, verbatim: *"Spam likely calls could be clients
+a lot of spam likely calls come in as clients"*.
+
+What this means:
+1. **No code path may drop, screen, skip, or down-rank a call or a number
+   because of a carrier label** ("Spam Likely", "Scam Likely", unknown
+   caller). Audited the same day: no code reads the label anywhere. Brief
+   §2.1 ("answer every call — the label is not evidence") is carried by
+   `src/reception/judgment.ts` and pinned by `test/judgment.test.ts`.
+2. **Solicitor / wrong number is decided only from the caller's own words**,
+   spoken to Sona or texted: the Sona extractor's `callerType` and R22
+   outreach. A hang-up stays a possible client.
+3. **Mike-side settings (outside the code):** T-Mobile Scam Shield "Scam
+   Block" must be OFF (it drops Scam Likely calls before the phone rings, so
+   the 20-second forward to Sona never fires); iPhone Silence Unknown Callers
+   OFF; never decline a Spam Likely call — let it ring out so it forwards to
+   Sona (or dial the busy/declined forward in `docs/PHONE_SETUP.md`).
+4. **Sona (Quo side):** never tell her to screen or hang up on sales calls.
+   Her instructions should say: *"Answer and help every caller. Never treat
+   a call as spam because of a caller-ID label or an unknown number; if
+   unsure, take their name, number and address and let Mike decide."*
+
+**Named, not changed — waits on Mike's go.** Arbo's own voice line (cut
+under R21) has solicitor triggers a real customer can say: "your google
+listing" (answering "how did you hear about us?") and "final notice" (a
+city notice about a tree); "press one" also matches inside "express one".
+A spam turn sets a sticky `screened` flag that suppresses that call's
+record. Proposed before that line is reconnected: drop those two triggers,
+word-boundary matching, and a call-wide customer veto. `intent.ts` and
+`receptionist.ts` are SLOW::ARBO and are not touched without his go.

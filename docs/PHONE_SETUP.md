@@ -70,6 +70,12 @@ go to T-Mobile voicemail until the two optional codes are dialed.
 3. Sona's instructions must carry Mike's rules (no price, no diagnosis, no
    promised date, credentials, four cities). Until then Arbo's slip check is
    the only net, and it catches slips *after* the call.
+4. R23: Sona must never screen or hang up on a "Spam Likely" or unknown
+   caller — the instruction line is in `docs/OWNER_RULINGS.md` R23.
+
+**Carrier check (Mike's side, R23):** T-Mobile Scam Shield "Scam Block" OFF,
+iPhone Silence Unknown Callers OFF — either one stops a call before the
+20-second forward to Sona can fire. State not yet confirmed.
 
 ## Texts
 
