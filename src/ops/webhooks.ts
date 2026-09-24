@@ -301,14 +301,23 @@ export class WebhookIntake {
   handleRailway(givenKey: string | null, rawBody: string): { status: number; body: unknown } {
     if (!this.opts.railwayKey) return this.reject('railway', 'not_wired');
     if (!givenKey || !safeEqual(givenKey, this.opts.railwayKey)) return this.reject('railway', 'bad_key');
-    let payload: { type?: string; status?: string; deployment?: { id?: string }; service?: { name?: string } };
+    // Two shapes in the wild: the current one ({ type: 'Deployment.deployed',
+    // resource: { deployment: { id } } }) and the legacy one ({ type:
+    // 'DEPLOY', status, deployment: { id } }). Read both.
+    let payload: {
+      type?: string;
+      status?: string;
+      deployment?: { id?: string };
+      resource?: { deployment?: { id?: string } };
+    };
     try {
       payload = JSON.parse(rawBody) as typeof payload;
     } catch {
       return this.reject('railway', 'bad_json');
     }
     const kind = [payload.type ?? 'event', payload.status].filter(Boolean).join(':');
-    this.record('railway', kind, `deployment ${payload.deployment?.id ?? 'id-unknown'}`);
+    const deploymentId = payload.resource?.deployment?.id ?? payload.deployment?.id ?? 'id-unknown';
+    this.record('railway', kind, `deployment ${deploymentId}`);
     return { status: 200, body: { ok: true } };
   }
 

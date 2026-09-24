@@ -161,6 +161,11 @@ describe('WebhookIntake', () => {
     expect(intake.handleRailway('wrong', '{}').status).toBe(401);
     expect(intake.handleRailway('rw-key', JSON.stringify({ type: 'DEPLOY', status: 'SUCCESS', deployment: { id: 'd1' } })).status).toBe(200);
     expect(intake.recentEvents(5)[0]!.kind).toBe('DEPLOY:SUCCESS');
+    expect(intake.recentEvents(5)[0]!.summary).toBe('deployment d1');
+    // The current payload shape nests the id under resource.
+    intake.handleRailway('rw-key', JSON.stringify({ type: 'Deployment.deployed', resource: { deployment: { id: 'd2' } } }));
+    expect(intake.recentEvents(5)[0]!.kind).toBe('Deployment.deployed');
+    expect(intake.recentEvents(5)[0]!.summary).toBe('deployment d2');
   });
 });
 
