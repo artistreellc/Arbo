@@ -138,6 +138,8 @@ import {
   closeMaintenanceTask,
 } from './db/repositories.js';
 import { createCensusGeocoder } from './permitting/gis/geocode.js';
+import { createDefaultGisProvider } from './permitting/gis/liveGisProvider.js';
+import { buildEstimatePrep, type PrepJobType } from './ops/estimatePrep.js';
 import { createElevenLabsTts } from './voice/elevenlabsTts.js';
 import type { StopInput } from './ops/morningBrief.js';
 import type { EstimateState, JobState } from './ops/followUps.js';
@@ -723,6 +725,31 @@ export function createArborRequestHandler() {
       // §6E fleet surface.
       // §6B — the permitting board. Read-only; the lifecycle only moves by a
       // human, and there is no handler here that could move it.
+      // Estimate prep pack (Mike, 2026-09-24): permit screen + drive heuristic
+      // + Miss Utility + the caller's access notes, one sheet per estimate.
+      // Reads GIS and in-memory state only — writes nothing, prices nothing.
+      if (req.method === 'POST' && url.pathname === '/api/estimate/prep') {
+        const b = (await readJson(req)) as Record<string, unknown>;
+        const address = typeof b.address === 'string' ? b.address.trim() : '';
+        const city = typeof b.city === 'string' ? b.city.trim() : '';
+        if (!address || !city) return send(400, { error: 'address_and_city_required' });
+        const sheet = await buildEstimatePrep(
+          {
+            address,
+            city,
+            ...(typeof b.zip === 'string' && b.zip.trim() ? { zip: b.zip.trim() } : {}),
+            ...(typeof b.jobType === 'string' &&
+            ['removal', 'pruning', 'stump', 'land_clearing', 'other'].includes(b.jobType)
+              ? { jobType: b.jobType as PrepJobType }
+              : {}),
+            ...(typeof b.treeCount === 'number' ? { treeCount: b.treeCount } : {}),
+            ...(typeof b.nearPowerLines === 'boolean' ? { nearPowerLines: b.nearPowerLines } : {}),
+            ...(typeof b.accessNotes === 'string' ? { accessNotes: b.accessNotes } : {}),
+          },
+          createDefaultGisProvider(),
+        );
+        return send(200, sheet);
+      }
       if (req.method === 'GET' && url.pathname === '/api/permits') {
         return send(...unpack(await api.permitBoard()));
       }

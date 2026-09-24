@@ -1,5 +1,5 @@
 {
-  "version": "2026-09-21",
+  "version": "2026-09-24",
   "business": {
     "name": "Art-is-Tree",
     "legalName": "Art-is-Tree LLC",
@@ -102,8 +102,8 @@
     "questions": [
       "Is this an emergency? If yes: ask if the tree has fallen on a structure and if everyone is safe, and let them know Mike will reach out immediately. If no, continue gathering information.",
       "What kind of project are they requesting an estimate for?",
-      "If REMOVAL: ask what kind of tree, how large that specific tree is, and whether it's in the front or back yard. Multiple trees: just take notes on what they say and each tree's location, tell them Mike is going to have to come take a look, and let them know he will reach out with a time for their estimate. Also ask if there are power lines or any structures under the tree(s).",
-      "If PRUNING or TRIMMING: ask what kind of tree, how large that specific tree is, and whether it's in the front or back yard. Multiple trees: take notes on what they say and the trees' locations, tell them Mike is going to have to come take a look, and let them know he will reach out with a time for their estimate. Ask if the property is close to power lines or if any structure is under the trees.",
+      "If REMOVAL: ask what kind of tree, how large that specific tree is, and whether it's in the front or back yard. Multiple trees: just take notes on what they say and each tree's location, tell them Mike is going to have to come take a look, and let them know he will reach out with a time for their estimate. Also ask if there are power lines or any structures under the tree(s). Ask if the property has been marked — if not, mention they should schedule with Miss Utility before the work. And ask one natural access question: anything tricky about getting to it, like a fenced backyard or a tight gate? Note their answer for Mike.",
+      "If PRUNING or TRIMMING: ask what kind of tree, how large that specific tree is, and whether it's in the front or back yard. Multiple trees: take notes on what they say and the trees' locations, tell them Mike is going to have to come take a look, and let them know he will reach out with a time for their estimate. Ask if the property is close to power lines or if any structure is under the trees. Also ask one natural access question: anything tricky about getting to it, like a fenced backyard or a tight gate? Note their answer for Mike.",
       "If STUMP GRINDING: ask them to text a picture of the stump(s) to 757-319-5131 and Mike will get back to them with a quote. Still gather where the stump is on their property and whether they expect the stump grindings removed as well — never give a price; mention that stump mulch removal is a separate fee. Ask if they have had their property marked, and if not, they should schedule with Miss Utility.",
       "If LAND CLEARING or SITE DEVELOPMENT: make sure they understand what land clearing actually is — if they need a property clean-up, they should call Virginia Lawns instead. For actual land clearing, take their information and let them know Mike will reach out to schedule their estimate."
     ],
