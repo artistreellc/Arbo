@@ -346,6 +346,40 @@ describe('learning from Quo — no call dropped in silence (Mike, 2026-09-24: "N
     spy.mockRestore();
   });
 
+  it('live 2026-09-25: a 404 transcript means "none exists" and one bad call never stops the pass', async () => {
+    const api404 = createQuoApi('k', async () => ({ ok: false, status: 404, json: async () => ({ code: '0100404' }) }));
+    expect(await api404.getCallTranscript('AC404')).toBeNull();
+    const h = learner({
+      calls: [{ id: 'AC-BAD', at: NOW - 5 * MIN }, { id: 'AC-NONE', at: NOW - 60 * MIN }, { id: 'AC-OK', at: NOW - 2 * MIN }],
+      transcripts: { 'AC-OK': { status: 'completed', dialogue: talkLines() } },
+    });
+    const real = h.api.getCallTranscript;
+    h.api.getCallTranscript = async (id) => { if (id === 'AC-BAD') throw new QuoHttpError('Quo GET /call-transcripts -> 500', 500, null); return real(id); };
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await h.intake.reconcile(h.api, 'PN1', 24 * 60 * MIN)).toEqual({ learned: 2, pending: 0 });
+    spy.mockRestore();
+    const byId = Object.fromEntries(h.intake.list().map((c) => [c.callId, c]));
+    expect(byId['AC-OK']).toMatchObject({ handledBy: 'sona', hold: 'learned_only' });
+    expect(byId['AC-NONE']).toMatchObject({ hold: 'hangup' });
+    expect(h.intake.status().quoRecord).toMatchObject({ error: null, unreadable: expect.stringMatching(/1 call\(s\) could not be read/) });
+  });
+
+  it('live 2026-09-25: Sona’s lines in another number format (or blank) are still hers; the flag decides; never re-read in a loop', async () => {
+    const odd = [
+      { identifier: '17576069432', content: "Hi, you've reached Art-is-Tree.", userId: null },
+      { identifier: CALLER, content: 'I need a big oak taken down in the back yard please.', userId: null },
+      { identifier: null, content: 'Sure, let me get a few details.', userId: null },
+    ];
+    const h = learner({ calls: [{ id: 'AC-ODD', at: NOW - 5 * MIN }], transcripts: { 'AC-ODD': { status: 'completed', dialogue: odd } } });
+    await h.intake.reconcile(h.api, 'PN1', 24 * 60 * MIN);
+    const [c] = h.intake.list();
+    expect(c).toMatchObject({ handledBy: 'sona', hold: 'learned_only' });
+    expect(c!.dialogue.map((d) => d.speaker)).toEqual(['agent', 'caller', 'agent']);
+    await h.intake.reconcile(h.api, 'PN1', 24 * 60 * MIN);
+    await h.intake.reconcile(h.api, 'PN1', 24 * 60 * MIN);
+    expect(h.extract).toHaveBeenCalledTimes(1);
+  });
+
   it('Quo’s rate limit (429) is waited out, not a failed pass', async () => {
     const h = learner({ calls: [{ id: 'AC-R', at: NOW }], transcripts: { 'AC-R': { status: 'completed', dialogue: talkLines() } } });
     const real = h.api.listCalls;
