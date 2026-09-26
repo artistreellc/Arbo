@@ -165,6 +165,11 @@ interface QuoEvent {
 }
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
+/** A phone number's last 10 digits — so "+17576069432", "17576069432" and "(757) 606-9432" match. */
+const tail10 = (v: string | null | undefined): string | null => {
+  const d = (v ?? '').replace(/\D/g, '');
+  return d.length >= 10 ? d.slice(-10) : null;
+};
 /** A Quo call id (AC…) — the fallback when a transcript payload carries it as `id`. */
 const callIdOf = (v: unknown): string | null => {
   const s = str(v);
@@ -185,7 +190,7 @@ export class QuoIntake {
   /** Events verified and then NOT used, by reason — never silence (§1B). */
   private readonly dropped: Record<string, number> = {};
   private readonly bootMs: number;
-  private sweep: { lastAt: string | null; learned: number; pending: number; error: string | null } = { lastAt: null, learned: 0, pending: 0, error: null };
+  private sweep: { lastAt: string | null; learned: number; pending: number; error: string | null; unreadable: string | null } = { lastAt: null, learned: 0, pending: 0, error: null, unreadable: null };
   private registration: { state: 'not_configured' | 'pending' | 'ok' | 'failed'; detail: string } = {
     state: 'not_configured',
     detail: 'No QUO_API_KEY on the server — Sona calls are not reaching Arbo. This is not zero calls.',
@@ -342,19 +347,28 @@ export class QuoIntake {
     // Who spoke each line. Lines from the account's own numbers are Sona
     // (no user) or Mike (a user answered); everything else is the caller.
     // Without the number list, Sona greets first, so line one marks her side.
-    const agentSide = this.ownNumbers.size ? null : normalizeCallerId(str(raw[0]?.identifier) ?? undefined);
+    // When the caller's number is known, THAT decides: their lines are the
+    // caller's, every other line (our number, a blank, a number written
+    // another way) is our side. A Sona call once came through with none of
+    // her lines matching the Quo number and was re-read 78 times, never
+    // learned (2026-09-25).
+    const callerTail = tail10(e.from);
+    const ownTails = new Set([...this.ownNumbers].map((n) => tail10(n)).filter((n): n is string => n !== null));
+    const agentTail = ownTails.size ? null : tail10(str(raw[0]?.identifier));
     for (const l of raw) {
       const text = str(l.content);
       if (!text) continue;
       const id = normalizeCallerId(str(l.identifier) ?? undefined);
-      const ours = id !== null && (this.ownNumbers.size ? this.ownNumbers.has(id) : id === agentSide);
+      const idTail = tail10(str(l.identifier));
+      const ours = callerTail ? idTail !== callerTail : idTail !== null && (ownTails.size ? ownTails.has(idTail) : idTail === agentTail);
       // Quo's own call flag wins: on a call Sona answered, our side is Sona
       // even if Quo tags her lines with a user id.
       const speaker: QuoDialogueLine['speaker'] = ours ? (e.aiHandled === 'ai-agent' || !str(l.userId) ? 'agent' : 'mike') : 'caller';
       if (speaker === 'caller' && !e.from && id) e.from = id;
       e.dialogue.push({ speaker, text: text.slice(0, 1000) });
     }
-    e.handledBy = e.dialogue.some((d) => d.speaker === 'mike') ? 'mike' : e.dialogue.some((d) => d.speaker === 'agent') ? 'sona' : 'unknown';
+    // Quo's own "Sona answered" flag is the answer when it is there.
+    e.handledBy = e.aiHandled === 'ai-agent' ? 'sona' : e.dialogue.some((d) => d.speaker === 'mike') ? 'mike' : e.dialogue.some((d) => d.speaker === 'agent') ? 'sona' : 'unknown';
     if (e.handledBy !== 'sona') {
       e.hold = 'not_sona';
       const n = (sp: QuoDialogueLine['speaker']) => e.dialogue.filter((d) => d.speaker === sp).length;
@@ -463,6 +477,8 @@ export class QuoIntake {
     let learned = 0;
     let pending = 0;
     let examined = 0;
+    let unreadable = 0;
+    let unreadableWhy: string | null = null;
     try {
       const convs = await paced(() => api.listConversations({ phoneNumberId, updatedAfterIso: sinceIso }));
       for (const conv of convs) {
@@ -474,14 +490,27 @@ export class QuoIntake {
         for (const c of calls) {
           if (examined >= RECONCILE_CAP) break;
           const known = this.calls.get(c.id);
-          const misread = known?.processed && known.handledBy !== 'sona' && c.aiHandled === 'ai-agent';
+          // Re-read ONLY a webhook entry filed as "not Sona's" when Quo says she
+          // answered — once. Never loop on Arbo's own record read.
+          const misread = known?.processed && known.source === 'webhook' && known.handledBy !== 'sona' && c.aiHandled === 'ai-agent';
           if (known?.processed && !misread) continue;
           examined += 1;
           if (LIVE_CALL.has(c.status ?? '')) {
             pending += 1;
             continue;
           }
-          const tr = await paced(() => api.getCallTranscript(c.id));
+          let tr: Awaited<ReturnType<QuoApi['getCallTranscript']>>;
+          try {
+            tr = await paced(() => api.getCallTranscript(c.id));
+          } catch (err) {
+            // One unreadable call is skipped and counted — it never stops the
+            // pass (a 404 on one transcript did, 78 times, 2026-09-25). A rate
+            // limit still stops it: no hammering Quo.
+            if (err instanceof QuoHttpError && err.status === 429) throw err;
+            unreadable += 1;
+            unreadableWhy = err instanceof Error ? err.message : 'error';
+            continue;
+          }
           const atMs = Date.parse(c.createdAt ?? '') || nowMs;
           if (!tr || tr.status !== 'completed' || !tr.dialogue) {
             const settled = nowMs - atMs > SETTLE_MS && (!tr || tr.status === 'absent' || tr.status === 'failed');
@@ -503,7 +532,7 @@ export class QuoIntake {
           const dialogue = tr.dialogue.map((l) => ({ identifier: l.identifier, content: l.content, userId: l.userId }));
           this.queue = this.queue.then(async () => {
             const e = this.entry(c.id);
-            if (e.processed && !(e.handledBy !== 'sona' && c.aiHandled === 'ai-agent')) return;
+            if (e.processed && !(e.source === 'webhook' && e.handledBy !== 'sona' && c.aiHandled === 'ai-agent')) return;
             Object.assign(e, { at: c.createdAt ?? e.at, from: participant, status: c.status, aiHandled: c.aiHandled, source: 'quo_record', processed: true, dialogue: [], slips: [], facts: null, handledBy: 'unknown' });
             await this.process(e, dialogue, { fileHold: atMs >= this.bootMs, atMs });
             learned += 1;
@@ -514,8 +543,8 @@ export class QuoIntake {
         }
       }
       await this.queue;
-      this.sweep = { lastAt: new Date(nowMs).toISOString(), learned: this.sweep.learned + learned, pending, error: null };
-      if (learned || pending) console.error(`[quo] read Quo's record — learned ${learned} call(s), ${pending} not ready yet`);
+      this.sweep = { lastAt: new Date(nowMs).toISOString(), learned: this.sweep.learned + learned, pending, error: null, unreadable: unreadable ? `${unreadable} call(s) could not be read (${unreadableWhy})` : null };
+      if (learned || pending || unreadable) console.error(`[quo] read Quo's record — learned ${learned} call(s), ${pending} not ready yet, ${unreadable} unreadable`);
     } catch (err) {
       const why = err instanceof Error ? err.message : 'error';
       this.sweep = { ...this.sweep, lastAt: new Date(nowMs).toISOString(), error: why };

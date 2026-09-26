@@ -232,7 +232,15 @@ export function createQuoApi(apiKey: string, fetchImpl: FetchLike = fetch as unk
       });
     },
     async getCallTranscript(callId) {
-      const out = (await call('GET', `/call-transcripts/${encodeURIComponent(callId)}`)) as { data?: Record<string, unknown> } | null;
+      let out: { data?: Record<string, unknown> } | null;
+      try {
+        out = (await call('GET', `/call-transcripts/${encodeURIComponent(callId)}`)) as { data?: Record<string, unknown> } | null;
+      } catch (err) {
+        // Quo answers 404 for a call that has no transcript at all — that is
+        // "none exists", not "could not read" (seen live 2026-09-25).
+        if (err instanceof QuoHttpError && err.status === 404) return null;
+        throw err;
+      }
       const d = out?.data;
       if (!d) return null;
       const dialogue = Array.isArray(d.dialogue)

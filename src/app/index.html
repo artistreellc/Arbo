@@ -765,6 +765,7 @@ async function sonaPanel(limit, withTranscripts) {
   if (rec.error) {
     wrap.appendChild(el('div', 'storm', 'Arbo could not read Sona\u2019s calls from Quo (' + rec.error + ') \u2014 calls the webhook missed are not being learned. This is not zero calls.'));
   }
+  if (rec.unreadable) wrap.appendChild(el('div', 'storm-muted', 'Last read of Quo: ' + rec.unreadable + ' \u2014 tried again in 10 minutes.'));
   const notUsed = Object.entries(st.notUsed || {});
   if (notUsed.length) {
     wrap.appendChild(el('div', 'storm', 'Quo sent ' + notUsed.reduce((n, [, k]) => n + k, 0) + ' event(s) Arbo could not use (' + notUsed.map(([r, k]) => k + ' ' + r).join(', ') + ') \u2014 Arbo reads those calls from Quo\u2019s record instead.'));
