@@ -183,7 +183,7 @@ export class QuoStudy {
           files = await this.deps.drive.recent(DRIVE_FILES);
         } catch (err) {
           driveError = err instanceof DriveReadError && err.status === 403
-            ? 'Drive refused (403) — the Google sign-in does not include Drive read yet'
+            ? 'Drive refused (403) — the Google sign-in does not include Drive read yet, or the Drive API is off in Google Cloud'
             : err instanceof Error ? err.message : 'error';
         }
       } else driveError = 'not connected — no Google sign-in on the server';
