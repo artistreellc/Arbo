@@ -741,6 +741,51 @@ async function inboxIntentPanel() {
   return wrap;
 }
 
+// ---------- Where each customer stands (R24, Mike 2026-09-27: "Yes it can read only everything") ----------
+// Opus's read of every customer thread on the Quo line + the assistant's lead
+// logs. Read-only. A source it could not read is NAMED (§1B), never a quiet zero.
+const STUDY_STAGE = {
+  waiting_on_us: ['WAITING ON YOU', 'b-emg'], new_inquiry: ['NEW', 'b-src'], quoted: ['QUOTED', 'b-src'],
+  waiting_on_customer: ['WAITING ON THEM', 'b-src'], scheduled: ['SCHEDULED', 'b-src'], won: ['WON', 'b-src'],
+  lost: ['LOST', 'b-src'], not_a_customer: ['NOT A CUSTOMER', 'b-src'], unclear: ['UNCLEAR', 'b-src'],
+};
+async function studyPanel(limit) {
+  let d;
+  try { d = await api('/api/quo/study'); }
+  catch (e) { return e.code === 401 ? null : el('div', 'storm-muted', 'Customer notes: unavailable right now.'); }
+  const st = d.status;
+  const wrap = el('div');
+  wrap.appendChild(el('div', 'panel-title', 'Where each customer stands'));
+  if (!st.reading) wrap.appendChild(el('div', 'storm', 'Arbo cannot read right now (no model key) \u2014 no customer notes. This is not zero customers.'));
+  if (st.quoError) wrap.appendChild(el('div', 'storm', 'Arbo could not read Quo (' + st.quoError + ') \u2014 notes below are from the last good read.'));
+  if (st.driveError) wrap.appendChild(el('div', 'storm-muted', 'Your assistant\u2019s lead logs: NOT read (' + st.driveError + ').'));
+  const notes = (d.notes || []).filter((n) => n.stage !== 'not_a_customer');
+  const waiting = notes.filter((n) => n.stage === 'waiting_on_us').length;
+  if (!st.lastAt) { wrap.appendChild(el('div', 'storm-muted', 'Reading your customer threads\u2026 (first read starts 2 minutes after a deploy)')); return wrap; }
+  wrap.appendChild(el('div', 'storm-muted', notes.length + ' customer(s) in the last 7 days \u00b7 ' + waiting + ' waiting on you \u00b7 lead log ' + (st.driveError ? 'not read' : st.driveFiles + ' file(s) read')));
+  for (const n of notes.slice(0, limit)) {
+    const card = el('div', 'card' + (n.stage === 'waiting_on_us' ? ' emergency' : ''));
+    const top = el('div', 'toprow');
+    top.appendChild(el('div', 'who', n.customerName || n.number));
+    top.appendChild(el('div', 'when', n.lastActivityAt ? fmtTime(n.lastActivityAt) : ''));
+    card.appendChild(top);
+    const b = el('div', 'badges');
+    const [label, cls] = STUDY_STAGE[n.stage] || [String(n.stage).toUpperCase(), 'b-src'];
+    b.appendChild(badge(label, cls));
+    card.appendChild(b);
+    if (n.noWords) card.appendChild(el('div', 'storm-muted', 'No words on record yet \u2014 hang-ups only.'));
+    if (n.wants) card.appendChild(el('div', 'scope', n.wants));
+    for (const t of n.toldThem || []) card.appendChild(el('div', 'storm-muted', 'Told them: ' + t));
+    if (n.nextStep) card.appendChild(el('div', 'scope', 'Next: ' + n.nextStep));
+    if (n.sourcesDisagree) card.appendChild(el('div', 'storm', 'Records disagree: ' + n.sourcesDisagree));
+    const actions = el('div', 'actions');
+    const call = el('a', 'callbtn', 'Call'); call.href = 'tel:' + n.number; actions.appendChild(call);
+    card.appendChild(actions);
+    wrap.appendChild(card);
+  }
+  return wrap;
+}
+
 // ---------- Sona via Quo (Mike, 2026-09-24: "let sona handle it for a while while arbo learns from it") ----------
 // One renderer, two places: Today shows the latest few, Calls shows them all
 // with transcripts. A Quo that is not wired is NAMED, never a quiet zero (§1B).
@@ -1007,6 +1052,10 @@ async function renderToday() {
   const inboxSlot = el('div');
   v.appendChild(inboxSlot);
   inboxIntentPanel().then((b) => { if (b) inboxSlot.appendChild(b); });
+  // R24 customer notes — the ones waiting on Mike first, above the brief fetch.
+  const studySlot = el('div');
+  v.appendChild(studySlot);
+  studyPanel(5).then((b) => { if (b) studySlot.appendChild(b); });
   // R22 text outreach — above the brief fetch, same links-cut lesson.
   const outreachSlot = el('div');
   v.appendChild(outreachSlot);
@@ -1563,6 +1612,10 @@ $('twin-close').addEventListener('click', () => $('twin').classList.remove('show
 async function renderCalls() {
   const v = $('view-calls');
   v.replaceChildren();
+  // R24 customer notes — every customer thread, read-only.
+  const studyFull = el('div');
+  v.appendChild(studyFull);
+  studyPanel(60).then((b) => { if (b) studyFull.appendChild(b); });
   // R22 text outreach — the full list: who is ready, who was texted.
   const outreachFull = el('div');
   v.appendChild(outreachFull);

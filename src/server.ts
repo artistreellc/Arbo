@@ -57,6 +57,8 @@ import { WebhookIntake, createResendEmailFetcher } from './ops/webhooks.js';
 import { QuoIntake } from './ops/quoIntake.js';
 import { vendorLinked, vendorCutBody, cutVendorLinks } from './integrations/vendorLinks.js';
 import { createSonaExtractor } from './ops/quoExtract.js';
+import { QuoStudy, createStudyReader } from './ops/quoStudy.js';
+import { createDriveFolderReader } from './integrations/driveRead.js';
 import { createQuoApi, ensureQuoWebhooks } from './integrations/quo.js';
 import { createQuoSender } from './integrations/quoSend.js';
 import { OutreachEngine } from './ops/outreach.js';
@@ -620,6 +622,20 @@ export function createArborRequestHandler() {
     onDelivery: (id, status) => outreach?.noteDelivery(id, status),
   });
   currentQuoIntake = quoIntake;
+  // R24 (Mike, 2026-09-27: "Yes it can read only everything"): the read-only
+  // study of every customer thread on the Quo line plus the assistant's Drive
+  // lead logs. Reads only — it has no method that writes or sends.
+  const studyGoogleToken = gc.gmailOauthClientId && gc.gmailOauthClientSecret && gc.gmailOauthRefreshToken
+    ? createRefreshTokenProvider({ clientId: gc.gmailOauthClientId, clientSecret: gc.gmailOauthClientSecret, refreshToken: gc.gmailOauthRefreshToken })
+    : null;
+  const quoStudy = quoApi
+    ? new QuoStudy({
+        quo: quoApi,
+        reader: env.anthropic.apiKey ? createStudyReader(env.anthropic.apiKey) : null,
+        drive: studyGoogleToken ? createDriveFolderReader(studyGoogleToken) : null,
+      })
+    : null;
+  currentQuoStudy = quoStudy;
   if (quoApi && env.quoApiKey) {
     outreach = new OutreachEngine({
       quo: quoApi,
@@ -1361,6 +1377,12 @@ export function createArborRequestHandler() {
         return send(200, { status: quoIntake.status(), calls: quoIntake.list() });
       }
       // R22: text outreach — status, who qualifies, what went out (keywall).
+      // R24: where each customer stands (keywall; customer data held in memory).
+      if (req.method === 'GET' && url.pathname === '/api/quo/study') {
+        if (!quoStudy) return send(503, { error: 'quo_not_configured', message: 'No QUO_API_KEY on the server — nothing to study. This is not zero customers.' });
+        if (!env.appAccessKey) return send(401, { error: 'no_app_key', message: 'APP_ACCESS_KEY is not set — customer notes are locked until it is.' });
+        return send(200, { status: quoStudy.status(), notes: quoStudy.notes() });
+      }
       if (url.pathname.startsWith('/api/outreach')) {
         if (!outreach) return send(503, { error: 'quo_not_configured', message: 'No QUO_API_KEY on the server — nothing can be texted. This is not zero candidates.' });
         // This door SENDS texts and lists customer numbers held in memory —
@@ -1477,17 +1499,22 @@ let currentQuoIntake: QuoIntake | null = null;
 const QUO_LEARN_BACKFILL_MS = 7 * 24 * 60 * 60 * 1000;
 const QUO_LEARN_WINDOW_MS = 24 * 60 * 60 * 1000;
 const QUO_LEARN_EVERY_MS = 10 * 60 * 1000;
+/** R24 study cadence. */
+const QUO_STUDY_EVERY_MS = 30 * 60 * 1000;
+const QUO_STUDY_BOOT_DELAY_MS = 2 * 60 * 1000;
 /** Business line 757-319-5131 and Arbo's line 757-821-6983 (docs/PHONE_SETUP.md) — never texted by outreach. */
 const OWN_PHONE_NUMBERS = ['+17573195131', '+17578216983'];
 /** The outreach engine the running handler uses — startServer hands it the Quo line. */
 let currentOutreach: OutreachEngine | null = null;
+/** The R24 read-only study — startServer runs it on a timer once Quo is wired. */
+let currentQuoStudy: QuoStudy | null = null;
 
 /**
  * Register Arbo's webhooks with Quo and hand the intake its signing keys.
  * Every outcome is a NAMED state on /api/quo and a boot log line — a Quo
  * that is not wired must never look like a quiet phone (§1B).
  */
-async function wireQuo(intake: QuoIntake, outreach: OutreachEngine | null): Promise<{ api: ReturnType<typeof createQuoApi>; phoneNumberId: string } | null> {
+async function wireQuo(intake: QuoIntake, outreach: OutreachEngine | null): Promise<{ api: ReturnType<typeof createQuoApi>; phoneNumberId: string; numbers: string[] } | null> {
   if (!env.quoApiKey) return null;
   const domain = process.env.RAILWAY_PUBLIC_DOMAIN;
   if (!domain) {
@@ -1519,7 +1546,7 @@ async function wireQuo(intake: QuoIntake, outreach: OutreachEngine | null): Prom
       numbers,
     );
     console.log(`[quo] wired — created ${hooks.created.length}, reused ${hooks.reused.length}, failed ${hooks.failed.length}, ${numbers.length} number(s)`);
-    return first ? { api, phoneNumberId: first.id } : null;
+    return first ? { api, phoneNumberId: first.id, numbers } : null;
   } catch (err) {
     const why = err instanceof Error ? err.message : 'error';
     intake.setRegistration('failed', `Quo registration failed (${why}) — Sona calls are NOT reaching Arbo. This is not zero calls.`);
@@ -1575,6 +1602,17 @@ export function startServer(port: number) {
       if (line) {
         void intake.reconcile(line.api, line.phoneNumberId, QUO_LEARN_BACKFILL_MS);
         setInterval(() => { void intake.reconcile(line.api, line.phoneNumberId, QUO_LEARN_WINDOW_MS); }, QUO_LEARN_EVERY_MS).unref();
+        // R24 study: a week back, 2 minutes after boot (so it never shares
+        // Quo's rate limit with the boot read above), then every 30 minutes.
+        // run() never throws; unchanged threads cost no model call.
+        const study = currentQuoStudy;
+        if (study) {
+          const own = [...line.numbers, ...OWN_PHONE_NUMBERS];
+          setTimeout(() => {
+            void study.run(line.phoneNumberId, QUO_LEARN_BACKFILL_MS, own);
+            setInterval(() => { void study.run(line.phoneNumberId, QUO_LEARN_BACKFILL_MS, own); }, QUO_STUDY_EVERY_MS).unref();
+          }, QUO_STUDY_BOOT_DELAY_MS).unref();
+        }
       } else if (env.quoApiKey) console.error('[quo] NOT learning from Quo\'s record — no Quo line to read');
       if (!outreach) return;
       const tv = outreach.verifyTemplate();
