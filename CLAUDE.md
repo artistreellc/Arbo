@@ -145,6 +145,11 @@ the `job` table for a day, status `booked` — which the crew door renders as
 work orders. Reverting a writer does not unwrite what it wrote. **When you
 turn something off, go and look at what it already did.**
 
+*R24 carve-out (Mike, 2026-09-27: "Yes it can read only everything"):* Arbo
+may READ Quo and the hourly assistant's Drive lead logs to study where each
+customer stands — in memory, keywall-only, writing nothing anywhere. Reading
+is not importing: nothing goes into Arbo's database.
+
 **Use simulations instead.** `src/dev/seed.ts` writes obviously-fake records
 (`SIM-` names, `555-01xx` numbers, streets that do not exist) so no screen
 ever needs a real customer to have something to render. It refuses on a

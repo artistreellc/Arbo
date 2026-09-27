@@ -603,3 +603,27 @@ A spam turn sets a sticky `screened` flag that suppresses that call's
 record. Proposed before that line is reconnected: drop those two triggers,
 word-boundary matching, and a call-wide customer veto. `intent.ts` and
 `receptionist.ts` are SLOW::ARBO and are not touched without his go.
+
+## R24 — Arbo may READ everything (read-only): the customer study
+**Ruling: 2026-09-27.** Mike, verbatim: *"Give Arbo read only access"*, then,
+asked to confirm it may read customer names, numbers and messages from Quo
+and his Drive lead logs: *"Yes it can read only everything"*.
+
+What this changes:
+1. **Arbo may READ every customer thread on the Quo line** — Sona's calls,
+   the calls Mike answers or makes, every text in both directions (Mike's
+   and his hourly assistant's, which go out through Quo) — **and the
+   hourly assistant's Drive lead logs and ops notes** (folder
+   `1aP2VLR3mU7B95JELfwDFIZUqL1btBNQE`). Opus reads each customer's record
+   and writes one note: who, what they want, where it stands, what was
+   told to them, what is next (`src/ops/quoStudy.ts`).
+2. **Read-only, structurally.** The Drive reader is GET-only on a
+   `drive.readonly` credential; the study calls only Quo's read methods and
+   holds no sender. Pinned by `test/quoStudy.test.ts`.
+3. **Reading is not importing.** §3's "import nothing" still holds for
+   Arbo's database: notes live in memory, show only in the keywalled app,
+   and are rebuilt from the sources after a redeploy. No lead rows, no
+   Drive/Gmail/Calendar/Quo writes, nothing sent.
+
+What did NOT move: email never; calendar edits never (R18 holds only);
+texting only via R22; logs stay counts-and-ids (§4.3).
