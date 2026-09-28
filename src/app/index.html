@@ -386,8 +386,8 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
   font-size:16.5px;padding:12px 14px;display:block;font-variant-numeric:tabular-nums;transition:border-color .18s var(--ease),box-shadow .18s var(--ease)}
 .field input:focus,.field select:focus,.field textarea:focus,#yard input:focus,#yard select:focus,#bd input[type=text]:focus,.input:focus{border-color:var(--forest);outline:none;box-shadow:var(--ring)}
 .field textarea{min-height:84px;resize:vertical;line-height:1.45}
-#bd .checkfield{display:flex;align-items:center;gap:12px;min-height:56px;margin-bottom:12px}
-#bd .checkfield span{font-size:16px;font-weight:600;color:var(--ink-1);text-transform:none;letter-spacing:0}
+.checkfield{display:flex;align-items:center;gap:12px;min-height:56px;margin-bottom:4px;cursor:pointer}
+.checkfield span{font-size:16px;font-weight:600;color:var(--ink-1);text-transform:none;letter-spacing:0}
 #bd #bd-out{padding-bottom:96px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .verdict{border-radius:var(--r-lg);padding:16px 18px;margin-top:14px;border:1px solid var(--hairline);background:var(--card);box-shadow:var(--shadow-card)}
@@ -454,6 +454,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 .factmeta b{color:var(--ink-1);font-weight:650}
 .factmeta a{color:var(--info);font-weight:600;text-decoration:none}
 .srcs{font-size:12.5px}
+.internal-note{font-size:12.5px;color:var(--ink-3);background:var(--paper-2);border-radius:var(--r-sm);padding:8px 10px;margin-top:4px;line-height:1.45}
 .filepick{display:flex;align-items:center;justify-content:center;gap:12px;min-height:64px;border-radius:18px;border:1.5px dashed color-mix(in srgb,var(--forest) 45%,transparent);
   background:var(--f-50);color:var(--forest);font-weight:700;font-size:16px;cursor:pointer;margin-bottom:8px}
 .filepick input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
@@ -3655,7 +3656,7 @@ function factCard(f, isStale) {
     src.appendChild(a);
   });
   meta.appendChild(src);
-  if (f.notes) meta.appendChild(el('div', 'internal-tag', 'Internal: ' + f.notes));
+  if (f.notes) meta.appendChild(el('div', 'internal-note', 'Internal (never read to a customer): ' + f.notes));
   c.appendChild(meta);
   return c;
 }
