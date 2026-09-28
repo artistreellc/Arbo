@@ -5,6 +5,9 @@
 // the service worker never caches customer data; the installed app opens /app.
 import { describe, it, expect, afterAll, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { permitsDb, permitsChecklist, lidarMeasure } from '../src/server/r25Routes.js';
 
 const saved = { ...process.env };
@@ -133,4 +136,29 @@ describe('server wiring', () => {
       for (const i of m.icons) expect((await fetch(base + i.src)).status).toBe(200);
     } finally { srv.close(); }
   });
+
+  it('Learn desk: catalog, a no-network rule check, lessons PROPOSED and kept on disk until Mike decides', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'arbo-learn-'));
+    const { base, srv } = await serve({ APP_ACCESS_KEY: 'admin-k', ARBO_SECRET_DIR: dir, ANTHROPIC_API_KEY: undefined });
+    const h = { 'x-arbor-key': 'admin-k', 'content-type': 'application/json' };
+    try {
+      const cat = await (await fetch(base + '/api/sim/catalog', { headers: h })).json() as { total: number };
+      expect(cat.total).toBeGreaterThanOrEqual(150);
+      // The Opus run is refused by name without a model key — never faked.
+      const o = await fetch(base + '/api/sim/run', { method: 'POST', headers: h, body: JSON.stringify({ brain: 'opus' }) });
+      expect(o.status).toBe(409);
+      expect(((await o.json()) as { error: string }).error).toBe('no_model_key_on_server');
+      expect((await fetch(base + '/api/sim/run', { method: 'POST', headers: h, body: JSON.stringify({ brain: 'scripted' }) })).status).toBe(202);
+      const st = await (await fetch(base + '/api/sim/state', { headers: h })).json() as { status: string; lessons: { where: string; lessons: Array<{ id: string; status: string }> } };
+      expect(st.status).toBe('done');
+      expect(st.lessons.lessons.length).toBeGreaterThan(0);
+      expect(st.lessons.lessons.every((l) => l.status === 'proposed')).toBe(true);
+      const id = st.lessons.lessons[0]!.id;
+      const d = await fetch(base + '/api/sim/lessons/decide', { method: 'POST', headers: h, body: JSON.stringify({ id, decision: 'approved' }) });
+      expect(d.status).toBe(200);
+      const saved = JSON.parse(readFileSync(join(dir, 'sim-lessons.json'), 'utf8')) as Array<{ id: string; status: string }>;
+      expect(saved.find((l) => l.id === id)?.status).toBe('approved');
+      expect((await fetch(base + '/api/sim/lessons/decide', { method: 'POST', headers: h, body: JSON.stringify({ id, decision: 'maybe' }) })).status).toBe(400);
+    } finally { srv.close(); }
+  }, 60_000);
 });

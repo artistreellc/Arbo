@@ -81,11 +81,11 @@ export interface FiledNearMiss {
 const CATEGORY_HINTS: Array<{ match: RegExp; category: HazardCategory }> = [
   { match: /\b(power ?line|conductor|service drop|energized|electric|voltage|transformer)\b/i, category: 'electrical' },
   { match: /\b(fell|fall|falling off|slipped off|lanyard|harness|climb(ing)?|ladder|bucket|aerial lift)\b/i, category: 'fall' },
-  { match: /\b(struck|hit by|dropped|came down|swung|limb fell|widow ?maker|barber ?chair)\b/i, category: 'struck_by' },
+  { match: /\b(struck|hit by|dropped|came down|coming down|swung|limb fell|widow ?maker|barber ?chair)\b/i, category: 'struck_by' },
   { match: /\b(rope|rigging|sling|block|friction|pulley|winch|highline)\b/i, category: 'rigging' },
   { match: /\b(saw|chainsaw|chipper|pole ?saw|blade|kickback|cut)\b/i, category: 'cutting' },
   { match: /\b(truck|trailer|backing|traffic|driver|road|vehicle|cone)\b/i, category: 'vehicle' },
-  { match: /\b(wasp|bee|hornet|snake|heat|dehydrat|footing|mud|ice|lightning|wind)\b/i, category: 'environmental' },
+  { match: /\b(wasps?|bees?|hornets?|snakes?|heat|dehydrat\w*|footing|mud|ice|lightning|wind)\b/i, category: 'environmental' },
 ];
 
 export function categoriseHazard(description: string): HazardCategory {

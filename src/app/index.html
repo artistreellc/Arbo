@@ -460,6 +460,9 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 .filepick input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
 #view-measure .hud{grid-template-columns:repeat(2,1fr)}
 #view-measure .tile .badge{display:inline-block;margin-top:8px}
+.learnbar{display:flex;height:10px;border-radius:99px;background:color-mix(in srgb,var(--emergency) 22%,var(--paper-2));overflow:hidden;margin:10px 0 6px}
+.learnbar i{display:block;height:100%}.learnbar .p{background:var(--ok)}.learnbar .u{background:var(--ink-4);opacity:.45}
+.learn-row .who{font-size:17px}
 .agent-top{display:flex;gap:12px;align-items:center;margin-bottom:10px}
 .agent-ic{display:inline-grid;place-items:center;width:44px;height:44px;border-radius:14px;background:var(--f-100);color:var(--forest);flex:none}
 .agent-say{margin-top:10px;font-size:15px;color:var(--ink-1)}
@@ -511,6 +514,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
   <div id="view-permits" class="view"></div>
   <div id="view-agents" class="view"></div>
   <div id="view-measure" class="view"></div>
+  <div id="view-learn" class="view"></div>
 </main>
 
 <div id="twin" class="sheet">
@@ -3439,6 +3443,7 @@ function renderMore() {
     grid.appendChild(b);
   };
   tile('i-agents', 'Agents', 'Eight desks, one brain', () => { switchTab('agents'); renderAgents(); });
+  tile('i-learn', 'Learn', 'Train the brain', () => { switchTab('learn'); renderLearn(); });
   tile('i-lidar', 'Measure', 'LiDAR scan → DBH', () => { switchTab('measure'); renderMeasure(); });
   tile('i-permit', 'Permits', '4 cities, sourced', () => { switchTab('permits'); renderPermits(); });
   tile('i-book', 'Book', 'Estimates & prep', () => switchTab('book'));
@@ -3852,16 +3857,121 @@ function measureResult(r) {
   return wrap;
 }
 
-const VIEW_TITLES = { measure: 'Measure', agents: 'Agents', permits: 'Permits', today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Book', followups: 'Queue', calls: 'Calls', perf: 'Numbers', settings: 'Settings', more: 'More' };
+// ---------- Learn desk (R25): the simulated learning environment ----------
+// Simulated people only. A run scores the brain against the rules; every
+// failure becomes a lesson PROPOSAL. Nothing retrains itself — Mike approves
+// or rejects, and an approved lesson is an instruction for the next revision.
+const SECTION_NAMES = { front_desk: 'Front Desk', dispatcher: 'Dispatcher', chief_of_staff: 'Chief of Staff', permit_desk: 'Permit Desk', arborist: 'Arborist', crew_chief: 'Crew Chief', yard_boss: 'Yard Boss', analyst: 'Analyst' };
+let LEARN_POLL = null;
+
+async function renderLearn() {
+  const v = $('view-learn');
+  v.replaceChildren();
+  const head = el('div', 'viewhead');
+  head.appendChild(el('div', 'eyebrow', 'Training ground'));
+  head.appendChild(el('h1', '', 'Teach the brain'));
+  head.appendChild(el('p', '', 'Every problem a caller, a crew or a permit office can throw at a tree service — played against Arbo with made-up people. What it gets wrong becomes a lesson for you to approve. Nothing changes itself.'));
+  v.appendChild(head);
+  let cat, st;
+  try { [cat, st] = await Promise.all([api('/api/sim/catalog'), api('/api/sim/state')]); } catch (e) {
+    if (e.code === 401) return showKeywall();
+    v.appendChild(state('Training ground unavailable', 'Arbo could not read its scenario catalog right now.'));
+    return;
+  }
+  const hud = el('div', 'hud');
+  const tile = (n, label, cls) => { const t = el('div', 'tile' + (cls ? ' ' + cls : '')); t.appendChild(el('b', '', String(n))); t.appendChild(el('span', '', label)); return t; };
+  hud.appendChild(tile(cat.total, 'scenarios', 'accent'));
+  hud.appendChild(tile(Object.keys(cat.rules).length, 'rules tested'));
+  const r = st.report;
+  hud.appendChild(r ? tile(Math.round(r.passRate * 100) + '%', 'passed · ' + st.brain, r.passRate >= 0.9 ? 'ok-t' : 'warn') : tile('–', 'no run yet'));
+  v.appendChild(hud);
+
+  const runs = el('div', 'actions');
+  const b1 = el('button', 'actbtn', 'Run the rule check');
+  const b2 = el('button', 'minibtn', st.opusAvailable ? 'Run with Opus (' + cat.total + ' model calls)' : 'Opus run needs a model key on the server');
+  b2.disabled = !st.opusAvailable || st.status === 'running';
+  b1.disabled = st.status === 'running';
+  const go = async (brain) => {
+    b1.disabled = b2.disabled = true;
+    try { await api('/api/sim/run', { method: 'POST', body: { brain: brain } }); } catch (e) { /* the state read below names it */ }
+    renderLearn();
+  };
+  b1.addEventListener('click', () => go('scripted'));
+  b2.addEventListener('click', () => go('opus'));
+  runs.appendChild(b1); runs.appendChild(b2);
+  v.appendChild(runs);
+  v.appendChild(el('div', 'storm-muted', 'Rule check = the code guards alone, no network, a few seconds. Opus = the full brain answering every scenario the way it would on a real call.'));
+  if (st.status === 'running') {
+    v.appendChild(el('div', 'late', 'Running with ' + st.brain + ' since ' + fmtTime(st.startedAt) + '…'));
+    clearTimeout(LEARN_POLL);
+    LEARN_POLL = setTimeout(() => { if ($('view-learn').classList.contains('active')) renderLearn(); }, 5000);
+  }
+  if (st.status === 'failed') v.appendChild(el('div', 'storm', 'The last run failed (' + st.error + '). No result is shown rather than a partial one.'));
+
+  if (r) {
+    v.appendChild(el('div', 'panel-title', 'By desk'));
+    for (const [sec, s] of Object.entries(r.bySection)) {
+      const row = el('div', 'card learn-row');
+      row.appendChild(el('div', 'who', SECTION_NAMES[sec] || sec));
+      const bar = el('div', 'learnbar');
+      const pass = el('i', 'p'); pass.style.width = (s.total ? (s.passed / s.total) * 100 : 0) + '%';
+      const un = el('i', 'u'); un.style.width = (s.total ? (s.unhandled / s.total) * 100 : 0) + '%';
+      bar.appendChild(pass); bar.appendChild(un);
+      row.appendChild(bar);
+      row.appendChild(el('div', 'factmeta', s.passed + ' passed · ' + (s.failed - s.unhandled) + ' broke a rule · ' + s.unhandled + ' this brain cannot answer yet'));
+      v.appendChild(row);
+    }
+  }
+
+  const lessons = (st.lessons.lessons || []).filter(l => l.status === 'proposed');
+  v.appendChild(el('div', 'panel-title', 'Lessons waiting for you'));
+  if (st.lessons.where === 'memory') v.appendChild(el('div', 'storm-muted', 'No storage disk — lessons are held in memory and clear on the next deploy.'));
+  if (!lessons.length) v.appendChild(el('div', 'storm-muted', r ? 'Nothing waiting — every proposal from the last run has your answer.' : 'Run a check to see what the brain gets wrong.'));
+  for (const l of lessons.slice(0, 25)) {
+    const c = el('div', 'card loop-card');
+    c.appendChild(el('div', 'loop-kind', l.rule.replace(/_/g, ' ') + ' · ' + l.scenarioIds.length + ' scenario' + (l.scenarioIds.length === 1 ? '' : 's')));
+    c.appendChild(el('div', 'scope', l.proposedLesson));
+    if (l.evidence) c.appendChild(el('div', 'internal-note', 'What it said: ' + l.evidence));
+    const act = el('div', 'actions');
+    for (const [d, label, cls] of [['approved', 'Approve', 'ok'], ['rejected', 'Reject', 'bad']]) {
+      const b = el('button', 'minibtn ' + cls, label);
+      b.addEventListener('click', async () => {
+        b.disabled = true;
+        try { await api('/api/sim/lessons/decide', { method: 'POST', body: { id: l.id, decision: d } }); renderLearn(); }
+        catch (e) { b.disabled = false; b.textContent = 'Not saved — try again'; }
+      });
+      act.appendChild(b);
+    }
+    c.appendChild(act);
+    v.appendChild(c);
+  }
+  const approved = (st.lessons.lessons || []).filter(l => l.status === 'approved');
+  if (approved.length) {
+    v.appendChild(el('div', 'panel-title', 'Approved — for the next prompt revision'));
+    for (const l of approved) v.appendChild(el('div', 'due-note', l.proposedLesson));
+  }
+
+  v.appendChild(el('div', 'panel-title', 'The problems it trains on'));
+  const bySec = {};
+  for (const s of cat.scenarios) (bySec[s.section] = bySec[s.section] || []).push(s);
+  for (const [sec, list] of Object.entries(bySec)) {
+    const d = el('details', 'agent-law card');
+    d.appendChild(el('summary', '', (SECTION_NAMES[sec] || sec) + ' — ' + list.length));
+    for (const s of list) d.appendChild(el('div', 'factmeta', '• ' + s.title + ' (' + s.persona + ', level ' + s.difficulty + ')'));
+    v.appendChild(d);
+  }
+}
+
+const VIEW_TITLES = { learn: 'Learn', measure: 'Measure', agents: 'Agents', permits: 'Permits', today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Book', followups: 'Queue', calls: 'Calls', perf: 'Numbers', settings: 'Settings', more: 'More' };
 
 function switchTab(which) {
-  for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf', 'settings', 'more', 'permits', 'agents', 'measure']) {
+  for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf', 'settings', 'more', 'permits', 'agents', 'measure', 'learn']) {
     $('view-' + t).classList.toggle('active', which === t);
     const tb = $('tab-' + t); // Settings opens from the header gear — it has no nav tab
     if (tb) tb.classList.toggle('active', which === t);
   }
   // Book, Queue, Numbers and Settings sit behind More in the dock.
-  $('tab-more').classList.toggle('active', ['book', 'followups', 'perf', 'settings', 'more', 'permits', 'agents', 'measure'].indexOf(which) !== -1);
+  $('tab-more').classList.toggle('active', ['book', 'followups', 'perf', 'settings', 'more', 'permits', 'agents', 'measure', 'learn'].indexOf(which) !== -1);
   $('apptitle').textContent = VIEW_TITLES[which] || 'ARBO';
   window.scrollTo(0, 0);
 }
@@ -3888,6 +3998,7 @@ netState();
     if (want === 'permits') renderPermits();
     if (want === 'agents') renderAgents();
     if (want === 'measure') renderMeasure();
+    if (want === 'learn') renderLearn();
     switchTab(want);
   }
 }

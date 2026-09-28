@@ -52,6 +52,7 @@ import { readFileSync } from 'node:fs';
 import { permitsDb, permitsChecklist, lidarMeasure, readBytes, LIDAR_MAX_BYTES, TooLargeError } from './server/r25Routes.js';
 import { SECTION_AGENTS, runAllSections, liveSectionDeps } from './agents/sections.js';
 import { createLiveBrain } from './agents/brain.js';
+import { LearnDesk, catalog as simCatalog, type Decision } from './sim/learnDesk.js';
 import { boot } from './index.js';
 import { createApi, type DataSource, type ApiLeadInput } from './server/api.js';
 import { hasDb, dataLinksLive, dataLinksSim, dbConfigured, getDb } from './db/client.js';
@@ -555,6 +556,8 @@ export function createArborRequestHandler() {
   const alertsProvider = createNwsAlertsProvider((url, init) => fetch(url, init));
   // R25: one brain for the section desks, created once (Opus when a key is set).
   const sectionBrain = createLiveBrain();
+  // R25: the Learn desk — simulations score the brain; lessons wait for Mike.
+  const learnDesk = new LearnDesk(undefined, env.anthropic.apiKey);
   const api = createApi(createServerSource(), {
     dataLinksLive: dataLinksLive(),
     dataLinksSim: dataLinksSim(),
@@ -1320,6 +1323,26 @@ export function createArborRequestHandler() {
         const reports = await runAllSections(liveSectionDeps(api, alertsProvider));
         const summaries = await Promise.all(reports.map((r) => sectionBrain.summarize(r)));
         return send(200, { ranAt: new Date().toISOString(), reports, summaries });
+      }
+      // R25 Learn desk. Simulated people only; nothing retrains itself — a
+      // failure becomes a lesson PROPOSAL that Mike approves or rejects.
+      if (req.method === 'GET' && url.pathname === '/api/sim/catalog') {
+        return send(200, simCatalog());
+      }
+      if (req.method === 'GET' && url.pathname === '/api/sim/state') {
+        return send(200, { ...learnDesk.state, opusAvailable: learnDesk.opusAvailable, lessons: learnDesk.book.list() });
+      }
+      if (req.method === 'POST' && url.pathname === '/api/sim/run') {
+        const body = (await readJson(req)) as { brain?: string };
+        const brain = body.brain === 'opus' ? 'opus' : 'scripted';
+        const r = await learnDesk.start(brain);
+        return send(r.ok ? 202 : 409, r.ok ? { started: brain } : { error: r.reason });
+      }
+      if (req.method === 'POST' && url.pathname === '/api/sim/lessons/decide') {
+        const body = (await readJson(req)) as { id?: string; decision?: string };
+        if (!body.id || (body.decision !== 'approved' && body.decision !== 'rejected')) return send(400, { error: 'id_and_approved_or_rejected' });
+        const l = learnDesk.book.decide(body.id, body.decision as Decision);
+        return l ? send(200, { lesson: l, where: learnDesk.book.list().where }) : send(404, { error: 'no_such_lesson' });
       }
       if (req.method === 'POST' && url.pathname === '/api/agents/sweep') {
         if (!hasDb()) return send(503, { error: 'db_not_configured' });
