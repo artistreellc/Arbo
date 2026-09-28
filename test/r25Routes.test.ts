@@ -59,7 +59,7 @@ function trunkXyz(): string {
 
 describe('LiDAR measure route', () => {
   it('measures an exported scan in memory: DBH with its confidence and the sign-off', () => {
-    const r = lidarMeasure(new TextEncoder().encode(trunkXyz()), 'trunk.xyz', 'z');
+    const r = lidarMeasure(new Uint8Array(Buffer.from(trunkXyz())), 'trunk.xyz', 'z');
     expect(r.status).toBe(200);
     const b = r.body as { measurement: { dbhCm: number }; signOff: string; summary: string };
     expect(b.measurement.dbhCm).toBeGreaterThan(37);
@@ -69,7 +69,7 @@ describe('LiDAR measure route', () => {
 
   it('refuses garbage, an empty file and a missing name — by name, never as a zero', () => {
     expect(lidarMeasure(new Uint8Array(0), 'scan.ply', null)).toMatchObject({ status: 422 });
-    const junk = lidarMeasure(new TextEncoder().encode('hello tree'), 'scan.ply', null);
+    const junk = lidarMeasure(new Uint8Array(Buffer.from('hello tree')), 'scan.ply', null);
     expect(junk.status).toBe(422);
     expect((junk.body as { error: string }).error).toMatch(/ply|format|empty/);
     expect(lidarMeasure(new Uint8Array(10), null, null).status).toBe(400);
