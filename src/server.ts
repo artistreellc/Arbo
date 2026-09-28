@@ -49,7 +49,7 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFileSync } from 'node:fs';
-import { permitsDb, permitsChecklist } from './server/r25Routes.js';
+import { permitsDb, permitsChecklist, lidarMeasure, readBytes, LIDAR_MAX_BYTES, TooLargeError } from './server/r25Routes.js';
 import { SECTION_AGENTS, runAllSections, liveSectionDeps } from './agents/sections.js';
 import { createLiveBrain } from './agents/brain.js';
 import { boot } from './index.js';
@@ -1021,6 +1021,17 @@ export function createArborRequestHandler() {
           createDefaultGisProvider(),
         );
         return send(200, sheet);
+      }
+      // R25: measure a tree from an exported LiDAR scan. In memory only —
+      // nothing about the scan is stored.
+      if (req.method === 'POST' && url.pathname === '/api/lidar/measure') {
+        let bytes: Uint8Array;
+        try { bytes = await readBytes(req, LIDAR_MAX_BYTES); } catch (e) {
+          if (e instanceof TooLargeError) return send(413, { error: 'file_too_large', detail: 'Over 60 MB. Export a point cloud of just the tree (crop it in the scanning app) and try again.' });
+          throw e;
+        }
+        const r = lidarMeasure(bytes, url.searchParams.get('name'), url.searchParams.get('up'));
+        return send(r.status, r.body);
       }
       // R25: the handcrafted public-works & permits knowledge base (read-only).
       if (req.method === 'GET' && url.pathname === '/api/permits/db') {

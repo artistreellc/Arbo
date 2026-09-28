@@ -454,6 +454,11 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 .factmeta b{color:var(--ink-1);font-weight:650}
 .factmeta a{color:var(--info);font-weight:600;text-decoration:none}
 .srcs{font-size:12.5px}
+.filepick{display:flex;align-items:center;justify-content:center;gap:12px;min-height:64px;border-radius:18px;border:1.5px dashed color-mix(in srgb,var(--forest) 45%,transparent);
+  background:var(--f-50);color:var(--forest);font-weight:700;font-size:16px;cursor:pointer;margin-bottom:8px}
+.filepick input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
+#view-measure .hud{grid-template-columns:repeat(2,1fr)}
+#view-measure .tile .badge{display:inline-block;margin-top:8px}
 .agent-top{display:flex;gap:12px;align-items:center;margin-bottom:10px}
 .agent-ic{display:inline-grid;place-items:center;width:44px;height:44px;border-radius:14px;background:var(--f-100);color:var(--forest);flex:none}
 .agent-say{margin-top:10px;font-size:15px;color:var(--ink-1)}
@@ -504,6 +509,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
   <div id="view-more" class="view"></div>
   <div id="view-permits" class="view"></div>
   <div id="view-agents" class="view"></div>
+  <div id="view-measure" class="view"></div>
 </main>
 
 <div id="twin" class="sheet">
@@ -3432,6 +3438,7 @@ function renderMore() {
     grid.appendChild(b);
   };
   tile('i-agents', 'Agents', 'Eight desks, one brain', () => { switchTab('agents'); renderAgents(); });
+  tile('i-lidar', 'Measure', 'LiDAR scan → DBH', () => { switchTab('measure'); renderMeasure(); });
   tile('i-permit', 'Permits', '4 cities, sourced', () => { switchTab('permits'); renderPermits(); });
   tile('i-book', 'Book', 'Estimates & prep', () => switchTab('book'));
   tile('i-queue', 'Queue', 'Follow-ups & loops', () => switchTab('followups'));
@@ -3733,16 +3740,127 @@ async function renderAgents() {
   }
 }
 
-const VIEW_TITLES = { agents: 'Agents', permits: 'Permits', today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Book', followups: 'Queue', calls: 'Calls', perf: 'Numbers', settings: 'Settings', more: 'More' };
+// ---------- Measure desk (R25): a tree from a LiDAR scan ----------
+// A web app cannot read the iPhone's LiDAR sensor — no browser exposes it.
+// A LiDAR app captures and exports the point cloud; Arbo measures it. The
+// file is read in memory on the server and never stored. Every number comes
+// with its confidence; a number that could not be measured says why.
+const CONF_BADGE = { good: ['GOOD', 'b-est'], fair: ['FAIR', 'b-warm'], low: ['LOW', 'b-flag'], unreadable: ['UNREADABLE', 'b-pending'] };
+let LIDAR_LAST = null;
+let LIDAR_UP = '';
+
+function renderMeasure() {
+  const v = $('view-measure');
+  v.replaceChildren();
+  const head = el('div', 'viewhead');
+  head.appendChild(el('div', 'eyebrow', 'Arborist'));
+  head.appendChild(el('h1', '', 'Measure a tree'));
+  head.appendChild(el('p', '', 'Scan the tree with a LiDAR app, export the point cloud, open it here. Arbo reads trunk width at breast height, height, crown and lean.'));
+  v.appendChild(head);
+
+  const how = el('div', 'slot');
+  how.appendChild(el('div', 'panel-title', 'How to scan'));
+  for (const line of [
+    'iPhone Pro / iPad Pro with LiDAR: Polycam, 3d Scanner App (free), SiteScape or Scaniverse.',
+    'Stand 1–3 m from the trunk and walk all the way round it at chest height. A full circle is what makes the trunk width trustworthy.',
+    'Crop to the one tree, then export a POINT CLOUD (PLY, LAS or XYZ) — not a mesh, not a video.',
+    'Phone LiDAR sees about 4–5 m. Trunk width is its strength; height and crown of a big tree read as a minimum.',
+  ]) how.appendChild(el('div', 'storm-muted', line));
+  v.appendChild(how);
+
+  const pick = el('div', 'slot');
+  const lab = el('label', 'filepick');
+  lab.appendChild(icon('i-lidar'));
+  lab.appendChild(el('span', '', 'Open a scan file'));
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.ply,.las,.xyz,.pts,.txt';
+  lab.appendChild(inp);
+  pick.appendChild(lab);
+  const seg = el('div', 'seg');
+  for (const [val, label] of [['', 'Up: auto'], ['y', 'Y-up'], ['z', 'Z-up']]) {
+    const b = el('button', LIDAR_UP === val ? 'on' : '', label);
+    b.addEventListener('click', () => { LIDAR_UP = val; renderMeasure(); });
+    seg.appendChild(b);
+  }
+  const segRow = el('div', 'qrow'); segRow.appendChild(el('span', 'q', 'Which way is up in the file?')); segRow.appendChild(seg);
+  pick.appendChild(segRow);
+  const status = el('div', 'storm-muted', 'Nothing measured yet.');
+  pick.appendChild(status);
+  v.appendChild(pick);
+  const out = el('div');
+  v.appendChild(out);
+  if (LIDAR_LAST) out.appendChild(measureResult(LIDAR_LAST));
+
+  inp.addEventListener('change', async () => {
+    const f = inp.files && inp.files[0];
+    if (!f) return;
+    status.className = 'storm-muted';
+    status.textContent = 'Reading ' + f.name + ' (' + (f.size / 1048576).toFixed(1) + ' MB)…';
+    out.replaceChildren();
+    try {
+      const res = await fetch('/api/lidar/measure?name=' + encodeURIComponent(f.name) + (LIDAR_UP ? '&up=' + LIDAR_UP : ''), {
+        method: 'POST', headers: KEY ? { 'x-arbor-key': KEY } : {}, body: f,
+      });
+      if (res.status === 401) return showKeywall();
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        status.className = 'storm';
+        status.textContent = 'Not measured — ' + (body.detail || body.error || ('server said ' + res.status)) + '. No number is better than a wrong one.';
+        return;
+      }
+      LIDAR_LAST = body;
+      status.textContent = 'Measured ' + body.file.points.toLocaleString() + ' points from ' + body.file.name + '.';
+      out.appendChild(measureResult(body));
+    } catch (e) {
+      status.className = 'storm';
+      status.textContent = 'Could not reach Arbo to measure (no signal?). Nothing was measured.';
+    }
+  });
+}
+
+function measureResult(r) {
+  const m = r.measurement;
+  const wrap = el('div');
+  const hud = el('div', 'hud');
+  const metric = (value, unit, alt, label, conf) => {
+    const t = el('div', 'tile');
+    t.appendChild(el('b', '', value === null ? '–' : value + unit));
+    t.appendChild(el('span', '', label + (value !== null && alt ? ' · ' + alt : '')));
+    const cb = CONF_BADGE[conf.level] || [conf.level, 'b-pending'];
+    const b = badge(cb[0], cb[1]); b.title = conf.reason;
+    t.appendChild(b);
+    return t;
+  };
+  const round = (x, d) => Math.round(x * Math.pow(10, d)) / Math.pow(10, d);
+  hud.appendChild(metric(m.dbhCm === null ? null : round(m.dbhCm, 1), ' cm', m.dbhCm === null ? '' : round(m.dbhCm / 2.54, 1) + ' in', 'DBH', m.confidence.dbh));
+  hud.appendChild(metric(m.heightM === null ? null : round(m.heightM, 1), ' m', m.heightM === null ? '' : Math.round(m.heightM * 3.281) + ' ft', 'height', m.confidence.height));
+  hud.appendChild(metric(m.crownSpreadM === null ? null : round(m.crownSpreadM, 1), ' m', m.crownSpreadM === null ? '' : Math.round(m.crownSpreadM * 3.281) + ' ft', 'crown', m.confidence.crown));
+  hud.appendChild(metric(m.leanDeg === null ? null : round(m.leanDeg, 1), '°', '', 'lean', m.confidence.lean));
+  wrap.appendChild(hud);
+  const card = el('div', 'card');
+  card.appendChild(el('div', 'scope', r.summary));
+  for (const k of ['dbh', 'height', 'crown', 'lean']) {
+    const c = m.confidence[k];
+    card.appendChild(el('div', 'factmeta', k.toUpperCase() + ' — ' + c.level + ': ' + c.reason));
+  }
+  if (m.dbhFit) card.appendChild(el('div', 'factmeta', 'Trunk fit: saw ' + Math.round(m.dbhFit.arcCoverageDeg) + '° of the trunk, ' + m.dbhFit.inliers + ' points, scatter ' + round(m.dbhFit.rmseCm, 1) + ' cm.'));
+  wrap.appendChild(card);
+  for (const w of m.warnings) wrap.appendChild(el('div', 'late', w));
+  for (const n of r.file.notes) wrap.appendChild(el('div', 'storm-muted', n));
+  wrap.appendChild(el('div', 'internal-tag', r.signOff));
+  return wrap;
+}
+
+const VIEW_TITLES = { measure: 'Measure', agents: 'Agents', permits: 'Permits', today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Book', followups: 'Queue', calls: 'Calls', perf: 'Numbers', settings: 'Settings', more: 'More' };
 
 function switchTab(which) {
-  for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf', 'settings', 'more', 'permits', 'agents']) {
+  for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf', 'settings', 'more', 'permits', 'agents', 'measure']) {
     $('view-' + t).classList.toggle('active', which === t);
     const tb = $('tab-' + t); // Settings opens from the header gear — it has no nav tab
     if (tb) tb.classList.toggle('active', which === t);
   }
   // Book, Queue, Numbers and Settings sit behind More in the dock.
-  $('tab-more').classList.toggle('active', ['book', 'followups', 'perf', 'settings', 'more', 'permits', 'agents'].indexOf(which) !== -1);
+  $('tab-more').classList.toggle('active', ['book', 'followups', 'perf', 'settings', 'more', 'permits', 'agents', 'measure'].indexOf(which) !== -1);
   $('apptitle').textContent = VIEW_TITLES[which] || 'ARBO';
   window.scrollTo(0, 0);
 }
@@ -3768,6 +3886,7 @@ netState();
     if (want === 'more') renderMore();
     if (want === 'permits') renderPermits();
     if (want === 'agents') renderAgents();
+    if (want === 'measure') renderMeasure();
     switchTab(want);
   }
 }

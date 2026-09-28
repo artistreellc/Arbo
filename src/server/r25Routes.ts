@@ -1,7 +1,12 @@
-// R25 desks (Mike, 2026-09-28): the public-works & permits knowledge base.
+// R25 desks (Mike, 2026-09-28): the public-works & permits knowledge base
+// and the LiDAR measure.
 // Pure request → result functions so server.ts stays a list of one-line
 // routes, the same shape as api.ts. Every route here is READ-ONLY.
 
+import type { IncomingMessage } from 'node:http';
+import { parsePointCloud, type UpAxis } from '../lidar/parse.js';
+import { measureTree } from '../lidar/measure.js';
+import { summarizeTreeMeasurement, SIGN_OFF } from '../lidar/summary.js';
 import { SERVICE_CITIES, type ServiceCity } from '../lib/address.js';
 import { FACTS } from '../permitting/publicWorks/facts.js';
 import { factsFor, jobChecklist, stale, summary, type JobInput, type Maybe } from '../permitting/publicWorks/query.js';
@@ -59,4 +64,49 @@ export function permitsChecklist(body: Record<string, unknown>): RouteResult {
     burning: body.burning === true,
   };
   return { status: 200, body: { input, items: jobChecklist(input) } };
+}
+
+// ---------------------------------------------------------------------------
+// R25 LiDAR: measure a tree from a scan a LiDAR app exported (PLY / LAS / XYZ).
+// A web page cannot read the iPhone's LiDAR sensor itself; Polycam, 3d Scanner
+// App, SiteScape or Scaniverse capture, Arbo measures. Nothing is stored — the
+// file is read in memory and the numbers go back to the phone.
+
+/** A phone scan export is rarely over ~40 MB; past this the upload is refused by name. */
+export const LIDAR_MAX_BYTES = 60 * 1024 * 1024;
+/**
+ * Measuring runs on the server's one thread. 1.5M points measures in under a
+ * second; a bigger cloud is thinned evenly first, and the notes say so.
+ */
+export const LIDAR_ENDPOINT_MAX_POINTS = 1_500_000;
+
+export class TooLargeError extends Error {}
+
+export async function readBytes(req: IncomingMessage, max: number): Promise<Uint8Array> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    if (size > max) throw new TooLargeError('file_too_large');
+    chunks.push(chunk as Buffer);
+  }
+  return new Uint8Array(Buffer.concat(chunks));
+}
+
+/** POST /api/lidar/measure?name=scan.ply&up=y|z — raw file bytes in the body. */
+export function lidarMeasure(bytes: Uint8Array, name: string | null, up: string | null): RouteResult {
+  if (!name) return { status: 400, body: { error: 'filename_required', detail: 'Send the file name so Arbo can tell PLY, LAS and XYZ apart.' } };
+  const upAxis: UpAxis | undefined = up === 'y' || up === 'z' ? up : undefined;
+  const cloud = parsePointCloud(bytes, name, { upAxis, maxPoints: LIDAR_ENDPOINT_MAX_POINTS });
+  if (!cloud.ok) return { status: 422, body: { error: cloud.reason, detail: cloud.detail } };
+  const m = measureTree(cloud.points, { upAxis: cloud.upAxis.axis, units: cloud.units });
+  return {
+    status: 200,
+    body: {
+      file: { name, format: cloud.format, points: cloud.count, sourcePoints: cloud.sourceCount, units: cloud.units, upAxis: cloud.upAxis, notes: cloud.notes },
+      measurement: m,
+      summary: summarizeTreeMeasurement(m),
+      signOff: SIGN_OFF,
+    },
+  };
 }
