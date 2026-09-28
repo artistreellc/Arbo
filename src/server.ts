@@ -59,6 +59,7 @@ import { vendorLinked, vendorCutBody, cutVendorLinks } from './integrations/vend
 import { createSonaExtractor } from './ops/quoExtract.js';
 import { QuoStudy, createStudyReader } from './ops/quoStudy.js';
 import { createDriveFolderReader } from './integrations/driveRead.js';
+import { GoogleTokenStore, googleCreds, consentUrl, codeFrom, exchangeCode, GOOGLE_SCOPES } from './integrations/googleTokenStore.js';
 import { createQuoApi, ensureQuoWebhooks } from './integrations/quo.js';
 import { createQuoSender } from './integrations/quoSend.js';
 import { OutreachEngine } from './ops/outreach.js';
@@ -565,16 +566,10 @@ export function createArborRequestHandler() {
   // its absence is said out loud at boot rather than discovered in silence.
   const callMemory = new CallMemory();
   const callRecords = new CallRecordStore();
-  const gc = env.google;
-  const calendarHold = gc.gmailOauthClientId && gc.gmailOauthClientSecret && gc.gmailOauthRefreshToken
+  const calCreds = googleCredsNow();
+  const calendarHold = calCreds
     ? (() => {
-        const calApi = createGoogleCalendarApi(
-          createRefreshTokenProvider({
-            clientId: gc.gmailOauthClientId!,
-            clientSecret: gc.gmailOauthClientSecret!,
-            refreshToken: gc.gmailOauthRefreshToken!,
-          }),
-        );
+        const calApi = createGoogleCalendarApi(createRefreshTokenProvider(calCreds));
         return async (hold: {
           summary: string;
           description: string;
@@ -625,9 +620,8 @@ export function createArborRequestHandler() {
   // R24 (Mike, 2026-09-27: "Yes it can read only everything"): the read-only
   // study of every customer thread on the Quo line plus the assistant's Drive
   // lead logs. Reads only — it has no method that writes or sends.
-  const studyGoogleToken = gc.gmailOauthClientId && gc.gmailOauthClientSecret && gc.gmailOauthRefreshToken
-    ? createRefreshTokenProvider({ clientId: gc.gmailOauthClientId, clientSecret: gc.gmailOauthClientSecret, refreshToken: gc.gmailOauthRefreshToken })
-    : null;
+  const studyCreds = googleCredsNow();
+  const studyGoogleToken = studyCreds ? createRefreshTokenProvider(studyCreds) : null;
   const quoStudy = quoApi
     ? new QuoStudy({
         quo: quoApi,
@@ -1378,6 +1372,31 @@ export function createArborRequestHandler() {
       }
       // R22: text outreach — status, who qualifies, what went out (keywall).
       // R24: where each customer stands (keywall; customer data held in memory).
+      // Reconnect Google (Mike, 2026-09-28): Arbo swaps the one-time code for
+      // the token ITSELF and keeps it on its storage disk. No route ever
+      // returns the token; nothing logs it. Locked with no APP_ACCESS_KEY.
+      if (url.pathname === '/api/google/connect') {
+        if (!env.appAccessKey) return send(401, { error: 'no_app_key', message: 'APP_ACCESS_KEY is not set — Google cannot be reconnected until it is.' });
+        const cid = env.google.gmailOauthClientId;
+        const secret = env.google.gmailOauthClientSecret;
+        if (!cid || !secret) return send(503, { error: 'google_client_missing', message: 'No Google client on the server (GMAIL_OAUTH_CLIENT_ID / _SECRET) — cannot reconnect.' });
+        if (req.method === 'GET') {
+          return send(200, { consentUrl: consentUrl(cid), scopes: GOOGLE_SCOPES, token: googleTokenStore.status(), fallbackVariable: Boolean(env.google.gmailOauthRefreshToken) });
+        }
+        if (req.method === 'POST') {
+          const body = (await readJson(req)) as { pasted?: unknown };
+          const code = typeof body.pasted === 'string' ? codeFrom(body.pasted) : null;
+          if (!code) return send(400, { error: 'no_code', message: 'That does not contain a Google code — paste the whole address of the page that would not load.' });
+          const r = await exchangeCode(cid, secret, code);
+          if (!r.ok) {
+            console.error(`[google] reconnect refused: ${r.reason}`);
+            return send(r.reason === 'network' ? 502 : 400, { error: r.reason, message: r.reason === 'code_expired_or_used' ? 'Google says that code expired or was already used — tap the link again and paste the new address right away.' : `Google refused (${r.reason}).` });
+          }
+          const where = googleTokenStore.save(r.refreshToken, new Date().toISOString());
+          console.log(`[google] reconnected — token kept on ${where}; ${r.scopes.length} scope(s)`);
+          return send(200, { ok: true, where, scopes: r.scopes, token: googleTokenStore.status() });
+        }
+      }
       if (req.method === 'GET' && url.pathname === '/api/quo/study') {
         if (!quoStudy) return send(503, { error: 'quo_not_configured', message: 'No QUO_API_KEY on the server — nothing to study. This is not zero customers.' });
         if (!env.appAccessKey) return send(401, { error: 'no_app_key', message: 'APP_ACCESS_KEY is not set — customer notes are locked until it is.' });
@@ -1506,6 +1525,19 @@ const QUO_STUDY_BOOT_DELAY_MS = 2 * 60 * 1000;
 const OWN_PHONE_NUMBERS = ['+17573195131', '+17578216983'];
 /** The outreach engine the running handler uses — startServer hands it the Quo line. */
 let currentOutreach: OutreachEngine | null = null;
+/**
+ * The Google grant Mike makes from Settings → Reconnect Google (2026-09-28).
+ * Every Google token provider reads through this, so a new grant takes
+ * effect on the next refresh. The token is never returned or logged.
+ */
+const googleTokenStore = new GoogleTokenStore();
+function googleCredsNow() {
+  return googleCreds(googleTokenStore, {
+    clientId: env.google.gmailOauthClientId,
+    clientSecret: env.google.gmailOauthClientSecret,
+    refreshToken: env.google.gmailOauthRefreshToken,
+  });
+}
 /** The R24 read-only study — startServer runs it on a timer once Quo is wired. */
 let currentQuoStudy: QuoStudy | null = null;
 
@@ -1567,16 +1599,12 @@ export function startServer(port: number) {
   // With any of the three absent the reader stays null, and that is the
   // honest state, not a stub: the watch reports UNAVAILABLE every hour,
   // which an operator can act on; a watch never started is silence.
-  const g = env.google;
   // One token provider for both Gmail doors — the recent-mail reader and the
   // intent engine's thread reader share the same gmail.readonly consent.
-  const gmailToken = g.gmailOauthClientId && g.gmailOauthClientSecret && g.gmailOauthRefreshToken
-    ? createRefreshTokenProvider({
-        clientId: g.gmailOauthClientId,
-        clientSecret: g.gmailOauthClientSecret,
-        refreshToken: g.gmailOauthRefreshToken,
-      })
-    : null;
+  const gmailCreds = googleCredsNow();
+  const gmailToken = gmailCreds ? createRefreshTokenProvider(gmailCreds) : null;
+  const gts = googleTokenStore.status();
+  console.log(`[google] token source: ${gts.where === 'disk' ? 'storage disk (Reconnect Google)' : gts.where === 'memory' ? 'memory only' : env.google.gmailOauthRefreshToken ? 'Railway variable (older grant)' : 'none'}`);
   const gmailReader = gmailToken ? createGoogleGmailReader(gmailToken) : null;
   // The intent engine (R17, Mike's go 2026-09-23): Opus judged, human-in-the-
   // loop learned, surfaced only to the keywall-gated app. Each absent piece
