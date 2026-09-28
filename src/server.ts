@@ -50,6 +50,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { permitsDb, permitsChecklist } from './server/r25Routes.js';
+import { SECTION_AGENTS, runAllSections, liveSectionDeps } from './agents/sections.js';
+import { createLiveBrain } from './agents/brain.js';
 import { boot } from './index.js';
 import { createApi, type DataSource, type ApiLeadInput } from './server/api.js';
 import { hasDb, dataLinksLive, dataLinksSim, dbConfigured, getDb } from './db/client.js';
@@ -551,6 +553,8 @@ const consoleAlerter: Alerter = {
 export function createArborRequestHandler() {
   boot(); // validates guardrails + legal or throws
   const alertsProvider = createNwsAlertsProvider((url, init) => fetch(url, init));
+  // R25: one brain for the section desks, created once (Opus when a key is set).
+  const sectionBrain = createLiveBrain();
   const api = createApi(createServerSource(), {
     dataLinksLive: dataLinksLive(),
     dataLinksSim: dataLinksSim(),
@@ -1291,6 +1295,19 @@ export function createArborRequestHandler() {
       // Wave-1 agent sweep (#4 permitting, #13 owner briefing): one run each,
       // audit-logged. Deterministic cores; LLM layers say not_configured until
       // the key lands (§1B — never bluff).
+      // R25: the eight section agents. GET is the roster (static — what each
+      // desk carries, reads, may and may not do). A RUN is POST, like the
+      // sweep: once links open, a run records agent_run rows. Each report
+      // goes through the brain for a plain-English line — Opus when a key is
+      // set, otherwise a deterministic summary that says it is one.
+      if (req.method === 'GET' && url.pathname === '/api/agents/sections') {
+        return send(200, { agents: SECTION_AGENTS, brain: sectionBrain.online ? 'online' : 'offline' });
+      }
+      if (req.method === 'POST' && url.pathname === '/api/agents/sections/run') {
+        const reports = await runAllSections(liveSectionDeps(api, alertsProvider));
+        const summaries = await Promise.all(reports.map((r) => sectionBrain.summarize(r)));
+        return send(200, { ranAt: new Date().toISOString(), reports, summaries });
+      }
       if (req.method === 'POST' && url.pathname === '/api/agents/sweep') {
         if (!hasDb()) return send(503, { error: 'db_not_configured' });
         return send(200, await runAgentSweep(api, alertsProvider));

@@ -454,6 +454,14 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 .factmeta b{color:var(--ink-1);font-weight:650}
 .factmeta a{color:var(--info);font-weight:600;text-decoration:none}
 .srcs{font-size:12.5px}
+.agent-top{display:flex;gap:12px;align-items:center;margin-bottom:10px}
+.agent-ic{display:inline-grid;place-items:center;width:44px;height:44px;border-radius:14px;background:var(--f-100);color:var(--forest);flex:none}
+.agent-say{margin-top:10px;font-size:15px;color:var(--ink-1)}
+.agent-inputs{display:grid;gap:6px;margin:10px 0}
+.agent-in{display:flex;gap:8px;align-items:baseline;font-size:13.5px;color:var(--ink-2)}
+.agent-in .badge{flex:none}
+.agent-law{margin-top:10px}
+.agent-law summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--forest);min-height:44px;display:flex;align-items:center}
 .bigcheck{width:26px;height:26px;flex:none;accent-color:var(--forest)}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
@@ -495,6 +503,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
   <div id="view-settings" class="view"></div>
   <div id="view-more" class="view"></div>
   <div id="view-permits" class="view"></div>
+  <div id="view-agents" class="view"></div>
 </main>
 
 <div id="twin" class="sheet">
@@ -3422,6 +3431,7 @@ function renderMore() {
     b.addEventListener('click', go);
     grid.appendChild(b);
   };
+  tile('i-agents', 'Agents', 'Eight desks, one brain', () => { switchTab('agents'); renderAgents(); });
   tile('i-permit', 'Permits', '4 cities, sourced', () => { switchTab('permits'); renderPermits(); });
   tile('i-book', 'Book', 'Estimates & prep', () => switchTab('book'));
   tile('i-queue', 'Queue', 'Follow-ups & loops', () => switchTab('followups'));
@@ -3643,16 +3653,96 @@ function factCard(f, isStale) {
   return c;
 }
 
-const VIEW_TITLES = { permits: 'Permits', today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Book', followups: 'Queue', calls: 'Calls', perf: 'Numbers', settings: 'Settings', more: 'More' };
+// ---------- Agents desk (R25): the eight section agents ----------
+// Each desk reads, finds and PROPOSES. None sends, spends, edits a calendar
+// or changes its own rules. An input it could not read is named with why.
+const AGENT_ICONS = { 'front-desk': 'i-calls', dispatcher: 'i-route', 'chief-of-staff': 'i-today', 'permit-desk': 'i-permit', arborist: 'i-tree', 'crew-chief': 'i-shield', 'yard-boss': 'i-flag', analyst: 'i-numbers' };
+const INPUT_STATE = { read: ['READ', 'b-est'], cut: ['LINK CUT', 'b-pending'], unreadable: ['UNREADABLE', 'b-flag'] };
+const REPORT_STATUS = { ok: ['OK', 'b-est'], degraded: ['DEGRADED', 'b-warm'], blocked: ['BLOCKED', 'b-emg'] };
+let AGENT_RUN = null;
+
+async function renderAgents() {
+  const v = $('view-agents');
+  v.replaceChildren();
+  const head = el('div', 'viewhead');
+  head.appendChild(el('div', 'eyebrow', 'The brain'));
+  head.appendChild(el('h1', '', 'Eight desks, one rulebook'));
+  head.appendChild(el('p', '', 'Each section of Arbo has an agent. They read and propose — you decide. None of them can send, spend, or touch the calendar.'));
+  v.appendChild(head);
+  let roster;
+  try { roster = await api('/api/agents/sections'); } catch (e) {
+    if (e.code === 401) return showKeywall();
+    v.appendChild(state('Agent roster unavailable', 'Arbo could not read its agent roster right now.'));
+    return;
+  }
+  const runBtn = el('button', 'actbtn wide-btn', AGENT_RUN ? 'Run all eight again' : 'Run all eight now');
+  v.appendChild(runBtn);
+  v.appendChild(el('div', 'storm-muted', 'Brain: ' + (roster.brain === 'online' ? 'Opus online — each desk gets a plain-English read.' : 'offline (no model key on the server) — summaries are deterministic and say so.')));
+  runBtn.addEventListener('click', async () => {
+    runBtn.disabled = true; runBtn.textContent = 'Running the eight desks…';
+    try { AGENT_RUN = await api('/api/agents/sections/run', { method: 'POST' }); }
+    catch (e) { AGENT_RUN = { error: e.message || 'error' }; }
+    renderAgents();
+  });
+  if (AGENT_RUN && AGENT_RUN.error) v.appendChild(el('div', 'storm', 'The run did not complete (' + AGENT_RUN.error + '). No desk result is shown rather than a stale one.'));
+  const reports = {};
+  const summaries = {};
+  if (AGENT_RUN && AGENT_RUN.reports) {
+    for (const r of AGENT_RUN.reports) reports[r.agentId] = r;
+    for (const s of AGENT_RUN.summaries || []) summaries[s.agentId] = s;
+  }
+  for (const a of roster.agents) {
+    const c = el('div', 'card agent');
+    const top = el('div', 'agent-top');
+    const ic = el('span', 'agent-ic'); ic.appendChild(icon(AGENT_ICONS[a.id] || 'i-agents'));
+    top.appendChild(ic);
+    const t = el('div');
+    t.appendChild(el('div', 'who', a.name));
+    t.appendChild(el('div', 'loop-kind', a.section + ' · ' + a.roles.join(' · ')));
+    top.appendChild(t);
+    c.appendChild(top);
+    const r = reports[a.id];
+    if (r) {
+      const b = el('div', 'badges');
+      const st = REPORT_STATUS[r.status] || [r.status, 'b-pending'];
+      b.appendChild(badge(st[0], st[1]));
+      c.appendChild(b);
+      const s = summaries[a.id];
+      if (s) c.appendChild(el('div', 'scope agent-say', s.text));
+      const ins = el('div', 'agent-inputs');
+      for (const i of r.inputs) {
+        const row = el('div', 'agent-in');
+        const is = INPUT_STATE[i.state] || [i.state, 'b-pending'];
+        row.appendChild(badge(is[0], is[1]));
+        row.appendChild(el('span', '', i.name + (i.state === 'read' ? '' : ' — ' + i.detail)));
+        ins.appendChild(row);
+      }
+      c.appendChild(ins);
+      for (const f of r.findings) c.appendChild(el('div', f.severity === 'act' ? 'storm' : f.severity === 'watch' ? 'late' : 'storm-muted', f.text));
+      for (const p of r.proposals) c.appendChild(el('div', 'due-note', 'Proposal for you: ' + p.text));
+      if (r.error) c.appendChild(el('div', 'storm', 'Blocked: ' + r.error));
+    } else {
+      c.appendChild(el('div', 'scope', 'Reads: ' + a.reads.join(' · ')));
+    }
+    const law = el('details', 'agent-law');
+    law.appendChild(el('summary', '', 'What it may and may not do'));
+    law.appendChild(el('div', 'factmeta', 'May: ' + a.can.map(x => x.replace(':', ' ').replace(/_/g, ' ')).join(' · ')));
+    law.appendChild(el('div', 'factmeta', 'Never: ' + a.cannot.join(' · ')));
+    c.appendChild(law);
+    v.appendChild(c);
+  }
+}
+
+const VIEW_TITLES = { agents: 'Agents', permits: 'Permits', today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Book', followups: 'Queue', calls: 'Calls', perf: 'Numbers', settings: 'Settings', more: 'More' };
 
 function switchTab(which) {
-  for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf', 'settings', 'more', 'permits']) {
+  for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf', 'settings', 'more', 'permits', 'agents']) {
     $('view-' + t).classList.toggle('active', which === t);
     const tb = $('tab-' + t); // Settings opens from the header gear — it has no nav tab
     if (tb) tb.classList.toggle('active', which === t);
   }
   // Book, Queue, Numbers and Settings sit behind More in the dock.
-  $('tab-more').classList.toggle('active', ['book', 'followups', 'perf', 'settings', 'more', 'permits'].indexOf(which) !== -1);
+  $('tab-more').classList.toggle('active', ['book', 'followups', 'perf', 'settings', 'more', 'permits', 'agents'].indexOf(which) !== -1);
   $('apptitle').textContent = VIEW_TITLES[which] || 'ARBO';
   window.scrollTo(0, 0);
 }
@@ -3677,6 +3767,7 @@ netState();
   if (want && VIEW_TITLES[want] && want !== 'settings') {
     if (want === 'more') renderMore();
     if (want === 'permits') renderPermits();
+    if (want === 'agents') renderAgents();
     switchTab(want);
   }
 }
