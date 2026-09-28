@@ -3037,6 +3037,41 @@ async function renderSettings() {
     v.appendChild(lrow);
   }
 
+  // Reconnect Google (Mike, 2026-09-28). Arbo swaps the code for the token
+  // ON ITS SERVER and keeps it there \u2014 this card never shows a token.
+  v.appendChild(el('div', 'panel-title', 'Google (Gmail, calendar holds, Drive lead logs)'));
+  try {
+    const gs = await api('/api/google/connect');
+    const t = gs.token || {};
+    v.appendChild(el('div', t.stored ? 'storm-muted' : 'storm', t.stored
+      ? (t.where === 'disk' ? 'Connected \u2014 saved on Arbo\u2019s storage disk ' + (t.savedAt ? fmtTime(t.savedAt) : '') + '. Survives redeploys.' : 'Connected \u2014 but held in memory only (no storage disk). It will need reconnecting after the next restart.')
+      : 'Not reconnected here yet' + (gs.fallbackVariable ? ' \u2014 Arbo is using the older Railway token, which Google may have expired.' : '.')));
+    v.appendChild(el('div', 'storm-muted', '1) Tap Open Google and approve.  2) You land on a page that will not load \u2014 copy its whole address.  3) Paste it below and tap Connect. Do it within a few minutes; the code expires.'));
+    const open = el('a', 'callbtn', 'Open Google');
+    open.href = gs.consentUrl; open.target = '_blank'; open.rel = 'noopener';
+    v.appendChild(open);
+    const box = el('textarea');
+    box.style.cssText = 'width:100%;box-sizing:border-box;margin:10px 0;padding:10px;border-radius:10px;border:1px solid var(--hairline);font:inherit;background:var(--surface);color:inherit';
+    box.placeholder = 'Paste the http://localhost/?\u2026code=\u2026 address here';
+    box.rows = 3;
+    v.appendChild(box);
+    const go = el('button', 'loc-toggle', 'Connect');
+    const out = el('div', 'storm-muted');
+    go.onclick = async () => {
+      go.disabled = true; out.textContent = 'Connecting\u2026';
+      try {
+        const r = await api('/api/google/connect', { method: 'POST', body: { pasted: box.value } });
+        box.value = '';
+        out.textContent = r.where === 'disk' ? 'Connected. Gmail, calendar holds and Drive read are back \u2014 saved on the storage disk.' : 'Connected for now \u2014 but there is no storage disk, so it lasts only until the next restart.';
+      } catch (e) { out.textContent = 'Not connected \u2014 ' + (e.message === 'code_expired_or_used' ? 'that code expired or was already used. Tap Open Google again and paste the new address right away.' : e.message === 'no_code' ? 'that paste has no Google code in it. Copy the whole address.' : e.message); }
+      go.disabled = false;
+    };
+    v.appendChild(go);
+    v.appendChild(out);
+  } catch (e) {
+    v.appendChild(el('div', 'storm-muted', 'Google reconnect: unavailable right now (' + (e.message || 'error') + '). Nothing was changed.'));
+  }
+
   // R19: the data links, one by one. Read-only here on purpose \u2014 a link
   // opens by setting its variable on Railway AFTER its verification passes,
   // never from a button in the app.
