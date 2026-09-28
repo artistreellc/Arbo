@@ -140,7 +140,7 @@ export const TREE_TERMS: Record<string, string> = {
   sucker: 'Suckers are the shoots that come up from the base or the roots rather than the trunk.',
   hanger: 'A hanger is a broken limb caught up in the canopy that has not come down yet. They are a common storm hazard.',
   'widow maker': 'A widow maker is a hanging or broken limb overhead that can fall without warning — one of the things we look for first.',
-  cabling: 'Cabling is installing a support cable between limbs to take strain off a weak union. Whether a tree needs it is a call for someone looking at it.',
+  cabling: 'Cabling is installing a support cable between limbs to relieve strain on a weak union. Whether a tree needs it is a call for someone looking at it.',
   bracing: 'Bracing is a rod through a weak union to hold it together, usually alongside a cable.',
   union: 'A union is where two limbs or a limb and the trunk join. A tight, V-shaped union with bark trapped in it is weaker than a wide one.',
   'included bark': 'Included bark is bark trapped inside a tight union — it stops the two sides growing together properly and makes the union weak.',

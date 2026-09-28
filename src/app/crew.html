@@ -45,7 +45,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0B0D10">
+<meta name="theme-color" content="#0B1512">
+<meta name="color-scheme" content="dark">
 <link rel="manifest" href="/crew.webmanifest">
 <link rel="apple-touch-icon" href="/icons/arbo-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -56,36 +57,49 @@
 <style>
 /* §8C.1: one app, two doors. This is the CREW door. Nothing on this page can
    reach Mike's half — the server payload has no slot for price, tracking, or
-   customer contact, and this page never asks for any. §9 cockpit palette. */
+   customer contact, and this page never asks for any.
+   R25 "Heartwood" FIELD MODE: the same brand as Mike's app (forest + gold,
+   self-hosted Fraunces / Instrument Sans), tuned for a truck cab at dawn and
+   a job site at noon — dark base, high contrast, gloved-thumb targets. */
+@font-face{font-family:'Fraunces';src:url('/fonts/fraunces.woff2') format('woff2');font-weight:300 800;font-display:swap}
+@font-face{font-family:'Instrument Sans';src:url('/fonts/instrument-sans.woff2') format('woff2');font-weight:400 700;font-display:swap}
 :root{
-  --forest:#7C3AED; --canopy:#A78BFA; --ink:#E9ECF1; --surface:#15181D;
-  --surface-alt:#0B0D10; --border:#2A2F37; --muted:#98A0AC;
-  --emergency:#FF5A52; --warning:#FFB020; --ok:#37C98B; --info:#5AA9FF;
-  --r-md:10px; --r-lg:16px;
-  --shadow-card:inset 0 1px 0 rgba(255,255,255,.03),0 2px 10px rgba(0,0,0,.5);
+  color-scheme:dark;
+  --forest:#3F9C7A; --canopy:#E9C877; --ink:#F1F5F2; --surface:#13221C;
+  --surface-alt:#0B1512; --border:#2B3F36; --muted:#A9B8AF;
+  --emergency:#FF6B61; --warning:#F2C04E; --ok:#5FD39A; --info:#7FB2FF;
+  --r-md:14px; --r-lg:20px;
+  --serif:'Fraunces',ui-serif,Georgia,serif;
+  --shadow-card:inset 0 1px 0 rgba(255,255,255,.035),0 14px 30px -18px rgba(0,0,0,.8);
+  --go:linear-gradient(180deg,#2F7560,#1B4D3E);
 }
 *{box-sizing:border-box;margin:0;padding:0}
+button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
+:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(233,200,119,.45)}
 html{-webkit-text-size-adjust:100%}
-body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+body{font-family:'Instrument Sans',ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;
   font-size:17px;line-height:1.4;color:var(--ink);background:var(--surface-alt);
   padding-bottom:calc(24px + env(safe-area-inset-bottom))}
-header{background:var(--surface-alt);border-bottom:1px solid var(--border);
-  box-shadow:0 1px 0 rgba(124,58,237,.45);padding:14px 16px 12px;
+header{background:color-mix(in srgb,var(--surface-alt) 88%,transparent);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  border-bottom:1px solid var(--border);padding:14px 16px 12px;display:flex;align-items:center;gap:12px;
   padding-top:calc(14px + env(safe-area-inset-top));position:sticky;top:0;z-index:10}
-.brand{font-size:23px;font-weight:900;letter-spacing:.12em}
-.brand small{color:var(--canopy);font-weight:600;font-size:14px;margin-left:8px;letter-spacing:.04em}
+.mark{display:inline-grid;place-items:center;width:44px;height:44px;border-radius:14px;flex:none;color:#E9C877;
+  background:radial-gradient(120% 120% at 30% 20%,#2A6B57 0%,#1B4D3E 45%,#0E2A21 100%);box-shadow:0 8px 22px -8px rgba(0,0,0,.7)}
+.mark svg{width:28px;height:28px}
+.brand{font-family:var(--serif);font-size:24px;font-weight:650;letter-spacing:.06em;color:var(--ink)}
+.brand small{font-family:'Instrument Sans',system-ui,sans-serif;color:var(--canopy);font-weight:700;font-size:12px;margin-left:10px;letter-spacing:.2em;text-transform:uppercase}
 #dateline{font-size:14px;color:var(--muted);margin-top:2px}
 main{padding:16px;max-width:640px;margin:0 auto}
-.panel-title{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:900;
-  letter-spacing:.16em;color:var(--canopy);text-transform:uppercase;margin:18px 0 10px}
-.panel-title::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--border),transparent)}
+.panel-title{display:flex;align-items:center;gap:10px;font-family:var(--serif);font-size:20px;font-weight:600;
+  color:var(--ink);margin:24px 0 12px}
+.panel-title::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,rgba(233,200,119,.45),transparent)}
 
 /* The gate (§6V.4) — the day stays locked until all three land. */
 #gate{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
   padding:16px;margin-bottom:16px;box-shadow:var(--shadow-card)}
 #gate.locked{border-color:var(--warning)}
 #gate.unlocked{border-color:var(--ok)}
-.gate-head{font-size:13px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;
+.gate-head{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;
   color:var(--warning);margin-bottom:10px}
 #gate.unlocked .gate-head{color:var(--ok)}
 #brief-body{max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r-md);
@@ -99,8 +113,8 @@ main{padding:16px;max-width:640px;margin:0 auto}
 #gobtn{width:100%;min-height:60px;margin-top:14px;border:0;border-radius:var(--r-md);
   background:var(--surface-alt);color:var(--muted);border:1.5px solid var(--border);
   font-size:19px;font-weight:900;letter-spacing:.14em;cursor:not-allowed}
-#gobtn.ready{background:linear-gradient(180deg,#8B5CF6,#6D28D9);color:#fff;border:0;cursor:pointer;
-  box-shadow:0 4px 18px rgba(124,58,237,.4)}
+#gobtn.ready{background:var(--go);color:#fff;border:0;cursor:pointer;
+  box-shadow:0 8px 22px -8px rgba(0,0,0,.8),inset 0 1px 0 rgba(255,255,255,.12)}
 #gobtn.done{background:var(--surface);color:var(--ok);border:1.5px solid var(--ok);cursor:default}
 
 /* Clock-in question (§6M). Field-sized targets: gloves, sunlight, one hand. */
@@ -113,7 +127,7 @@ main{padding:16px;max-width:640px;margin:0 auto}
 .qopt{display:block;width:100%;min-height:56px;margin-bottom:10px;padding:12px 14px;
   text-align:left;font-size:16px;font-weight:700;border-radius:var(--r-md);
   background:var(--surface-alt);color:var(--ink);border:1.5px solid var(--border);cursor:pointer}
-.qopt.picked{border-color:var(--forest);background:rgba(124,58,237,.16);color:#fff}
+.qopt.picked{border-color:var(--canopy);background:rgba(233,200,119,.12);color:#fff}
 .qopt:last-child{margin-bottom:0}
 .jobaction{margin-top:10px}
 .jobbtn{width:100%;min-height:52px;border-radius:var(--r-md);border:1.5px solid var(--border);
@@ -126,7 +140,7 @@ main{padding:16px;max-width:640px;margin:0 auto}
 .shortfall{font-size:14px;font-weight:700;color:var(--warning);margin-bottom:10px;line-height:1.4}
 #quiz .scope{font-size:15px;color:var(--muted);line-height:1.5}
 .gate-go{width:100%;min-height:56px;margin-top:4px;border:0;border-radius:var(--r-md);
-  background:linear-gradient(180deg,#8B5CF6,#6D28D9);color:#fff;
+  background:var(--go);color:#fff;
   font-size:17px;font-weight:900;letter-spacing:.1em;cursor:pointer}
 .gate-go:disabled{background:var(--surface-alt);color:var(--muted);
   border:1.5px solid var(--border);cursor:not-allowed}
@@ -145,7 +159,7 @@ main{padding:16px;max-width:640px;margin:0 auto}
 .hz{display:flex;align-items:flex-start;gap:8px;background:#2A1D06;border:1px solid var(--warning);
   color:#FFD9A0;border-radius:var(--r-md);padding:10px 12px;margin-top:10px;font-size:14px;font-weight:700}
 .hz.power{background:#2A0E0C;border-color:var(--emergency);color:#FFB3AE}
-.permit{background:#1D1530;border:1.5px solid var(--forest);color:#D6C7FF;border-radius:var(--r-md);
+.permit{background:#10261E;border:1.5px solid var(--forest);color:#BFE5D3;border-radius:var(--r-md);
   padding:10px 12px;margin-top:10px;font-size:14px;font-weight:700}
 .photos{font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
   color:var(--muted);margin-top:10px}
@@ -155,6 +169,7 @@ main{padding:16px;max-width:640px;margin:0 auto}
   background:var(--surface);border:1px dashed var(--border);border-radius:var(--r-lg)}
 .state b{display:block;font-size:19px;color:var(--ink);margin-bottom:8px}
 .errline{color:#FF9B95;font-weight:600;margin-top:10px}
+main.door-locked #gate-slot,main.door-locked #quiz,main.door-locked #work,main.door-locked #library,main.door-locked #nearmiss{display:none}
 #whoami{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
   padding:16px;margin-bottom:16px;box-shadow:var(--shadow-card)}
 #whoami h2{font-size:15px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;
@@ -164,7 +179,7 @@ main{padding:16px;max-width:640px;margin:0 auto}
   background:var(--surface-alt);color:var(--ink);padding:0 14px;font-size:17px;margin-bottom:10px;
   font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace}
 #whoami button{width:100%;min-height:52px;border:0;border-radius:var(--r-md);
-  background:linear-gradient(180deg,#8B5CF6,#6D28D9);color:#fff;font-size:16px;font-weight:800;cursor:pointer}
+  background:var(--go);color:#fff;font-size:16px;font-weight:800;cursor:pointer}
 .signed{display:flex;align-items:center;justify-content:space-between;gap:10px;
   font-size:13px;color:var(--muted);margin-bottom:14px}
 #whoami .signed button{width:auto;flex:none;min-height:40px;border:1px solid var(--border);
@@ -215,9 +230,13 @@ main{padding:16px;max-width:640px;margin:0 auto}
 </style>
 </head>
 <body>
+<!--ARBO:SPRITE-->
 <header>
-  <div class="brand">ARBO<small>Crew</small></div>
-  <div id="dateline"></div>
+  <span class="mark"><svg aria-hidden="true"><use href="#i-ring"/></svg></span>
+  <div>
+    <div class="brand">ARBO<small>Crew</small></div>
+    <div id="dateline"></div>
+  </div>
 </header>
 <main>
   <div id="whoami"></div>
@@ -860,13 +879,44 @@ function renderWhoAmI() {
   return false;
 }
 
+// R25: the crew door has its own key (CREW_ACCESS_KEY). It opens the crew
+// routes only. Asked once per phone, and only when the server says the door
+// is locked — never guessed at, never shown as "nothing today".
+function renderDoorKey() {
+  // Hide (not just empty) the other panels: their own 401s land later and
+  // must not paint an "unavailable" line under a locked door.
+  document.querySelector('main').classList.add('door-locked');
+  const box = $('whoami');
+  box.replaceChildren();
+  box.appendChild(el('h2', '', 'Crew door key'));
+  box.appendChild(el('p', '', 'This phone needs the crew door key from the office before it can show today\u2019s work. You only do this once.'));
+  const input = document.createElement('input');
+  input.id = 'doorkey'; input.type = 'password'; input.placeholder = 'Crew door key'; input.autocomplete = 'off';
+  const go = el('button', '', 'Open the crew door');
+  const err = el('div', 'errline', KEY ? 'That key did not open the door \u2014 check it with the office.' : '');
+  go.addEventListener('click', () => {
+    const v = input.value.trim();
+    if (!v) { err.textContent = 'Enter the key from the office.'; return; }
+    try { localStorage.setItem('arboCrewKey', v); } catch (e) { /* private mode */ }
+    location.reload();
+  });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') go.click(); });
+  box.appendChild(input); box.appendChild(go); box.appendChild(err);
+}
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => { /* works online without it */ }); });
+}
+
 $('dateline').textContent = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
 if (renderWhoAmI()) {
   renderWork();
   renderLibrary();
   renderNearMiss();
-  api('/api/crew/briefing').then(renderGate).catch(() => {
-    $('gate-slot').appendChild(el('div', 'state', 'No briefing published for today yet — check with the office.'));
+  api('/api/crew/briefing').then(renderGate).catch((e) => {
+    if (e.code === 401) return renderDoorKey();
+    $('gate-slot').appendChild(el('div', 'state', e.code === 404
+      ? 'No briefing published for today yet — check with the office.'
+      : 'Could not read today\u2019s briefing (' + (e.code === 503 ? 'the office system is not connected' : 'no answer') + '). That is not \u201cno briefing\u201d \u2014 do not start work; call the office.'));
   });
 }
 </script>

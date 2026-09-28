@@ -627,3 +627,50 @@ What this changes:
 
 What did NOT move: email never; calendar edits never (R18 holds only);
 texting only via R22; logs stay counts-and-ids (§4.3).
+
+## R25 — Build the whole platform: premium, installable, every section, field-test ready
+**Ruling: 2026-09-28.** Mike, verbatim: *"I want this app to look and feel as
+if it is a 20,000 dollar project. No template for the design it needs to be
+hand built and original. It's needs to be focused on easy of use but
+severely complex in it functions. I need you to finish this apps framework
+and coding for all parts. It needs to be optimized for mobile and be able to
+be as an actual app on home screens of phones both major operating systems.
+It needs to be compatible of connect to lidar and it needs a public works and
+permits handcrafted data base. The crew portal needs to be designed as well
+and. Build this app from the ground up with your brief and is add ons and use
+your skills and plug ins to research the best things for it and how it will
+be the operating system of my tree service. Train its brain and reference all
+complexity and issues as an adaptive learning interface and over come all.
+Make the 8 agents you need to have working in each section of the app and the
+opus brain a complete list of problems a human might face via a simulated
+learning environment. Keep working until you have a finished project that is
+ready to be field tested and to go live."*
+
+What this changes:
+1. **Scope gate opened by the owner.** "Current approved scope: receptionist
+   + permitting" becomes **every section of the app** (CLAUDE.md updated).
+   Mike's instruction is the approval; add-ons still follow the read order
+   and conflicts still stop and ask.
+2. **Design is hand-built.** An original design system — no UI kit, no
+   template, no CSS framework — shared by the owner app and the crew portal.
+3. **Installable on iPhone and Android home screens** as a web app (manifest,
+   service worker, icons, offline shell). App-store listing is a separate
+   step (developer accounts) and is not implied.
+4. **LiDAR.** Arbo reads point-cloud files exported by phone LiDAR scanning
+   apps and measures from them. A web app cannot drive the iPhone LiDAR
+   sensor directly; that limit is said on screen, never hidden.
+5. **Public works & permits database**, handcrafted per city with a source
+   and a verified-on date for every fact; permit language stays PERMIT LIKELY
+   / REVIEW NEEDED / NO OVERLAY–VERIFY and never "you're clear".
+6. **Eight section agents** on the existing binder, and a **simulated
+   learning environment**: a catalog of problems real people bring to a tree
+   service, run against the brain and scored against Mike's rules. The brain
+   "learns" by lessons Mike approves — nothing retrains itself, rewrites its
+   own rules, or changes code (R17 boundary).
+
+What did NOT move: data links stay cut until Mike opens them one by one
+(§3, R19) — "go live" is his process, not an optimisation; nothing is
+imported from live business activity beyond R24's read-only study; email
+never; calendar edits never (R18 holds only); texting only via R22; logs
+stay counts-and-ids (§4.3); the website, Resend and SEO stay out of scope;
+deploys stay manual.

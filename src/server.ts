@@ -49,6 +49,13 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFileSync } from 'node:fs';
+// Service-worker cache version when no commit SHA is set: changes every boot,
+// so a cache can never be pinned forever.
+const BOOTED_AT = Date.now().toString(36);
+import { permitsDb, permitsChecklist, lidarMeasure, readBytes, LIDAR_MAX_BYTES, TooLargeError } from './server/r25Routes.js';
+import { SECTION_AGENTS, runAllSections, onDemandSectionDeps } from './agents/sections.js';
+import { createLiveBrain } from './agents/brain.js';
+import { LearnDesk, catalog as simCatalog, type Decision } from './sim/learnDesk.js';
 import { boot } from './index.js';
 import { createApi, type DataSource, type ApiLeadInput } from './server/api.js';
 import { hasDb, dataLinksLive, dataLinksSim, dbConfigured, getDb } from './db/client.js';
@@ -550,6 +557,11 @@ const consoleAlerter: Alerter = {
 export function createArborRequestHandler() {
   boot(); // validates guardrails + legal or throws
   const alertsProvider = createNwsAlertsProvider((url, init) => fetch(url, init));
+  // R25: one brain for the section desks, created once (Opus when a key is set).
+  const sectionBrain = createLiveBrain();
+  // R25: the Learn desk — simulations score the brain; lessons wait for Mike.
+  const learnDesk = new LearnDesk(undefined, env.anthropic.apiKey);
+  let lidarBusy = false;
   const api = createApi(createServerSource(), {
     dataLinksLive: dataLinksLive(),
     dataLinksSim: dataLinksSim(),
@@ -685,6 +697,8 @@ export function createArborRequestHandler() {
     const apiAuthorized = (): boolean => {
       if (env.appAccessKey) {
         const given = req.headers['x-arbor-key'] ?? url.searchParams.get('key');
+        // R25: the crew key opens the crew door's own routes and nothing else.
+        if (env.crewAccessKey && given === env.crewAccessKey && url.pathname.startsWith('/api/crew/')) return true;
         return given === env.appAccessKey;
       }
       return !hasDb();
@@ -722,7 +736,7 @@ export function createArborRequestHandler() {
       // bookmark, nothing else changes.
       if (req.method === 'GET' && url.pathname === '/') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=3600' });
-        return res.end(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Arbo — Art-is-Tree LLC</title><style>body{font-family:system-ui,sans-serif;background:#0B0D10;color:#EDEFF3;max-width:640px;margin:0 auto;padding:48px 20px;line-height:1.6}h1{font-size:2rem;letter-spacing:.06em}h1 small{color:#A78BFA;font-size:1rem;font-weight:500;margin-left:8px}p{color:#B8BFCA}a.btn{display:inline-block;margin-top:20px;background:linear-gradient(180deg,#8B5CF6,#6D28D9);color:#fff;text-decoration:none;font-weight:700;padding:14px 28px;border-radius:12px}nav{margin-top:48px;font-size:.9rem}nav a{color:#A78BFA;text-decoration:none;margin-right:20px}</style></head><body><h1>ARBO<small>Art-is-Tree</small></h1><p>Arbo is the reception and operations assistant of <b>Art-is-Tree LLC</b>, a licensed and insured tree service in Virginia Beach, Norfolk, Chesapeake, and Portsmouth, Virginia.</p><p>Arbo keeps the record of every company call and message, takes estimate requests, and helps the owner schedule visits. It connects to the company's own email and calendar to surface customer inquiries and hold estimate appointments — for this one business, run by its owner.</p><p>Calls to Art-is-Tree that go unanswered may be handled by an AI assistant and are recorded for quality purposes.</p><a class="btn" href="/app">Open the app</a><nav><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Service</a><a href="tel:+17573195131">Call Art-is-Tree</a></nav></body></html>`);
+        return res.end(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Arbo — Art-is-Tree LLC</title><style>@font-face{font-family:Fraunces;src:url(/fonts/fraunces.woff2) format('woff2');font-weight:300 800}@font-face{font-family:'Instrument Sans';src:url(/fonts/instrument-sans.woff2) format('woff2');font-weight:400 700}body{font-family:'Instrument Sans',system-ui,sans-serif;background:#F7F5F0;color:#13201A;max-width:640px;margin:0 auto;padding:56px 20px;line-height:1.6}h1{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:2.4rem;letter-spacing:.06em;color:#1B4D3E}h1 small{font-family:'Instrument Sans',system-ui,sans-serif;color:#9A7212;font-size:.8rem;font-weight:600;letter-spacing:.2em;text-transform:uppercase;margin-left:10px}p{color:#3B4A43}a.btn{display:inline-block;margin-top:20px;background:linear-gradient(180deg,#245F4D,#1B4D3E);color:#fff;text-decoration:none;font-weight:700;padding:15px 30px;border-radius:16px;box-shadow:0 8px 22px -8px rgba(8,26,20,.42)}nav{margin-top:48px;font-size:.9rem}nav a{color:#1B4D3E;text-decoration:none;margin-right:20px;font-weight:600}</style></head><body><h1>ARBO<small>Art-is-Tree</small></h1><p>Arbo is the reception and operations assistant of <b>Art-is-Tree LLC</b>, a licensed and insured tree service in Virginia Beach, Norfolk, Chesapeake, and Portsmouth, Virginia.</p><p>Arbo keeps the record of every company call and message, takes estimate requests, and helps the owner schedule visits. It connects to the company's own email and calendar to surface customer inquiries and hold estimate appointments — for this one business, run by its owner.</p><p>Calls to Art-is-Tree that go unanswered may be handled by an AI assistant and are recorded for quality purposes.</p><a class="btn" href="/app">Open the app</a><nav><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Service</a><a href="tel:+17573195131">Call Art-is-Tree</a></nav></body></html>`);
       }
       if (req.method === 'GET' && url.pathname === '/app') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
@@ -739,26 +753,55 @@ export function createArborRequestHandler() {
         return res.end(JSON.stringify({
           name: crew ? 'Arbo Crew' : 'Arbo — Art-is-Tree',
           short_name: crew ? 'Arbo Crew' : 'Arbo',
-          start_url: crew ? '/crew' : '/',
+          // R25: the cockpit opens straight into the app (/app), not the
+          // public front door at '/'. Scope stays '/' so both are in-app.
+          id: crew ? '/crew' : '/app',
+          start_url: crew ? '/crew' : '/app',
           scope: crew ? '/crew' : '/',
           display: 'standalone',
           orientation: 'portrait',
-          background_color: '#0B0D10',
-          theme_color: '#0B0D10',
-          icons: [192, 512].map((s) => ({
-            src: `/icons/arbo-${s}.png`, sizes: `${s}x${s}`, type: 'image/png', purpose: 'any maskable',
-          })),
+          background_color: crew ? '#0B1512' : '#F7F5F0',
+          theme_color: crew ? '#0B1512' : '#1B4D3E',
+          description: crew ? 'Art-is-Tree crew door — work orders and the gated briefing.' : 'Art-is-Tree operations — calls, calendar, permits, crew.',
+          icons: [
+            ...[192, 512].map((s) => ({ src: `/icons/arbo-${s}.png`, sizes: `${s}x${s}`, type: 'image/png', purpose: 'any' })),
+            { src: '/icons/arbo-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          ],
+          ...(crew ? {} : {
+            shortcuts: [
+              { name: 'Calls', url: '/app#calls' },
+              { name: 'Calendar', url: '/app#cal' },
+              { name: 'Crew door', url: '/crew' },
+            ],
+          }),
         }));
       }
       {
-        const m = url.pathname.match(/^\/icons\/(arbo-(?:180|192|512)\.png)$/);
+        const m = url.pathname.match(/^\/icons\/(arbo-(?:180|192|512|maskable-512)\.png)$/);
         if (req.method === 'GET' && m) {
-          // Only the three known filenames — the regex IS the allow-list, so
+          // Only the four known filenames — the regex IS the allow-list, so
           // no path can walk out of the icons directory.
           const file = new URL(`./app/icons/${m[1]}`, import.meta.url);
           res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'public, max-age=86400' });
           return res.end(readFileSync(file));
         }
+      }
+      // R25: the self-hosted type (SIL OFL) — two known files, the regex is
+      // the allow-list. Fonts never come from another host.
+      {
+        const f = url.pathname.match(/^\/fonts\/(fraunces|instrument-sans)\.woff2$/);
+        if (req.method === 'GET' && f) {
+          res.writeHead(200, { 'content-type': 'font/woff2', 'cache-control': 'public, max-age=31536000, immutable' });
+          return res.end(readFileSync(new URL(`./app/fonts/${f[1]}.woff2`, import.meta.url)));
+        }
+      }
+      // R25: the service worker (installable app + offline shell). Versioned
+      // by the deployed commit so a deploy replaces the old cache. Served
+      // no-store from the root so its scope covers /app and /crew.
+      if (req.method === 'GET' && url.pathname === '/sw.js') {
+        const version = (process.env.RAILWAY_GIT_COMMIT_SHA || `boot-${BOOTED_AT}`).slice(0, 16);
+        res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store', 'service-worker-allowed': '/' });
+        return res.end(readFileSync(new URL('./app/sw.js', import.meta.url), 'utf8').replace('__ARBO_VERSION__', version));
       }
       // Public legal pages — exist so the Google OAuth consent screen has
       // real URLs to point at (publishing requires them for Gmail scopes).
@@ -985,6 +1028,32 @@ export function createArborRequestHandler() {
           createDefaultGisProvider(),
         );
         return send(200, sheet);
+      }
+      // R25: measure a tree from an exported LiDAR scan. In memory only —
+      // nothing about the scan is stored.
+      if (req.method === 'POST' && url.pathname === '/api/lidar/measure') {
+        // One measure at a time: it runs on the server's one thread, and a
+        // second big scan behind it would stall calls and webhooks.
+        if (lidarBusy) return send(429, { error: 'measuring_another_scan', detail: 'Arbo is measuring another scan right now — try again in a few seconds.' });
+        lidarBusy = true;
+        try {
+          let bytes: Uint8Array;
+          try { bytes = await readBytes(req, LIDAR_MAX_BYTES); } catch (e) {
+            if (e instanceof TooLargeError) return send(413, { error: 'file_too_large', detail: 'Over 60 MB. Export a point cloud of just the tree (crop it in the scanning app) and try again.' });
+            throw e;
+          }
+          const r = lidarMeasure(bytes, url.searchParams.get('name'), url.searchParams.get('up'));
+          return send(r.status, r.body);
+        } finally { lidarBusy = false; }
+      }
+      // R25: the handcrafted public-works & permits knowledge base (read-only).
+      if (req.method === 'GET' && url.pathname === '/api/permits/db') {
+        const r = permitsDb(url.searchParams.get('city'));
+        return send(r.status, r.body);
+      }
+      if (req.method === 'POST' && url.pathname === '/api/permits/checklist') {
+        const r = permitsChecklist((await readJson(req)) as Record<string, unknown>);
+        return send(r.status, r.body);
       }
       if (req.method === 'GET' && url.pathname === '/api/permits') {
         return send(...unpack(await api.permitBoard()));
@@ -1252,6 +1321,40 @@ export function createArborRequestHandler() {
       // Wave-1 agent sweep (#4 permitting, #13 owner briefing): one run each,
       // audit-logged. Deterministic cores; LLM layers say not_configured until
       // the key lands (§1B — never bluff).
+      // R25: the eight section agents. GET is the roster (static — what each
+      // desk carries, reads, may and may not do). A RUN is POST, like the
+      // sweep — and it is READ-ONLY: the six scheduled agents (which record
+      // runs and raise events) are left to the hourly sweep. Each report
+      // goes through the brain for a plain-English line — Opus when a key is
+      // set, otherwise a deterministic summary that says it is one.
+      if (req.method === 'GET' && url.pathname === '/api/agents/sections') {
+        return send(200, { agents: SECTION_AGENTS, brain: sectionBrain.online ? 'online' : 'offline' });
+      }
+      if (req.method === 'POST' && url.pathname === '/api/agents/sections/run') {
+        const reports = await runAllSections(onDemandSectionDeps(api, alertsProvider));
+        const summaries = await Promise.all(reports.map((r) => sectionBrain.summarize(r)));
+        return send(200, { ranAt: new Date().toISOString(), reports, summaries });
+      }
+      // R25 Learn desk. Simulated people only; nothing retrains itself — a
+      // failure becomes a lesson PROPOSAL that Mike approves or rejects.
+      if (req.method === 'GET' && url.pathname === '/api/sim/catalog') {
+        return send(200, simCatalog());
+      }
+      if (req.method === 'GET' && url.pathname === '/api/sim/state') {
+        return send(200, { ...learnDesk.state, opusAvailable: learnDesk.opusAvailable, lessons: learnDesk.book.list() });
+      }
+      if (req.method === 'POST' && url.pathname === '/api/sim/run') {
+        const body = (await readJson(req)) as { brain?: string };
+        const brain = body.brain === 'opus' ? 'opus' : 'scripted';
+        const r = await learnDesk.start(brain);
+        return send(r.ok ? 202 : 409, r.ok ? { started: brain } : { error: r.reason });
+      }
+      if (req.method === 'POST' && url.pathname === '/api/sim/lessons/decide') {
+        const body = (await readJson(req)) as { id?: string; decision?: string };
+        if (!body.id || (body.decision !== 'approved' && body.decision !== 'rejected')) return send(400, { error: 'id_and_approved_or_rejected' });
+        const l = learnDesk.book.decide(body.id, body.decision as Decision);
+        return l ? send(200, { lesson: l, where: learnDesk.book.list().where }) : send(404, { error: 'no_such_lesson' });
+      }
       if (req.method === 'POST' && url.pathname === '/api/agents/sweep') {
         if (!hasDb()) return send(503, { error: 'db_not_configured' });
         return send(200, await runAgentSweep(api, alertsProvider));

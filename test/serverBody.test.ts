@@ -82,7 +82,7 @@ describe('request body handling', () => {
     type Manifest = { start_url: string; scope: string; display: string };
     const admin = await (await fetch(`${base}/manifest.webmanifest`)).json() as Manifest;
     const crew = await (await fetch(`${base}/crew.webmanifest`)).json() as Manifest;
-    expect(admin.start_url).toBe('/');
+    expect(admin.start_url).toBe('/app'); // R25: the installed cockpit opens the app, not the public front door
     expect(crew.start_url).toBe('/crew');
     expect(admin.display).toBe('standalone');
     expect(crew.scope).toBe('/crew');
