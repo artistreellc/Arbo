@@ -227,6 +227,10 @@ skips the build. That pattern is **load-bearing**: do not remove it, do not
 re-arms auto-deploy. The dashboard toggle may still read "enabled"; the
 pattern is what makes it inert.
 
+**Start command (D84):** the Railway service runs `node --import tsx src/server.ts`
+directly — not `npm start` — so a deploy's SIGTERM ends in a clean exit 0
+instead of a false "crash". Keep it that way.
+
 **Then verify all three:**
 1. build log `git_ref` matches your SHA,
 2. `db connected` in the deploy log,

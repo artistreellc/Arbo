@@ -1681,6 +1681,20 @@ export function startServer(port: number) {
           : 'CONFIGURED BUT LINKS CUT (ARBO_DATA_LINKS is not "live") — no real data is being read or written';
     console.log(`✅ ARBO backend on :${port} — guardrails v${summary.guardrailsVersion}, legal v${summary.legalVersion}, db ${dbState}`);
   });
+  // Railway stops the old copy with SIGTERM on every deploy. Without a handler
+  // Node dies on the signal, npm prints "command failed … signal SIGTERM", and
+  // Railway reports a normal handoff as a CRASH (Mike saw one, 2026-09-28).
+  // Close cleanly and exit 0; a stuck close still exits within 5 s.
+  let stopping = false;
+  const stop = (sig: string) => {
+    if (stopping) return;
+    stopping = true;
+    console.log(`[shutdown] ${sig} — closing cleanly (normal during a deploy)`);
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 5_000).unref();
+  };
+  process.once('SIGTERM', () => stop('SIGTERM'));
+  process.once('SIGINT', () => stop('SIGINT'));
   return server;
 }
 
