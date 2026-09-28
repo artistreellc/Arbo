@@ -81,7 +81,8 @@ the prompts and makes the calls; your job is to build.
 6. NEW SCOPE IS GATED. An add-on may propose new scope, but it must say so at
    the top ("PROPOSES NEW SCOPE: ..."). Do not build new scope until Mike
    approves it. Nothing new gets built silently. Current approved scope:
-   receptionist + permitting. Everything else is parked.
+   EVERY section of the app (R25, Mike 2026-09-28: "finish this apps framework
+   and coding for all parts"). Hard boundaries below still hold.
 
 7. MONTHLY MERGE. At the end of each month, add-ons are merged into the base
    brief and the Arbo folder resets to one file.
