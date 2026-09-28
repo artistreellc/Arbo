@@ -61,14 +61,25 @@ function load(file: string): string {
   return html;
 }
 
+/**
+ * The hand-drawn icon sprite (R25), inlined where a page carries the
+ * `<!--ARBO:SPRITE-->` marker so `<use href="#i-…">` works with no request.
+ */
+function withSprite(html: string): string {
+  // Inline SVG in HTML needs no xmlns; dropping it keeps the page free of
+  // any other host's name (test/appUi.test.ts host allow-list).
+  const sprite = load('sprite.svg').replace(' xmlns="http://www.w3.org/2000/svg"', '');
+  return html.includes('<!--ARBO:SPRITE-->') ? html.replace('<!--ARBO:SPRITE-->', sprite) : html;
+}
+
 /** The ADMIN door (Mike's cockpit). */
 export function loadAppHtml(): string {
-  return load('index.html');
+  return withSprite(load('index.html'));
 }
 
 /** The CREW door (§8C.1) — work orders + the gated briefing, nothing else. */
 export function loadCrewHtml(): string {
-  return load('crew.html');
+  return withSprite(load('crew.html'));
 }
 
 /**

@@ -722,7 +722,7 @@ export function createArborRequestHandler() {
       // bookmark, nothing else changes.
       if (req.method === 'GET' && url.pathname === '/') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=3600' });
-        return res.end(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Arbo — Art-is-Tree LLC</title><style>body{font-family:system-ui,sans-serif;background:#0B0D10;color:#EDEFF3;max-width:640px;margin:0 auto;padding:48px 20px;line-height:1.6}h1{font-size:2rem;letter-spacing:.06em}h1 small{color:#A78BFA;font-size:1rem;font-weight:500;margin-left:8px}p{color:#B8BFCA}a.btn{display:inline-block;margin-top:20px;background:linear-gradient(180deg,#8B5CF6,#6D28D9);color:#fff;text-decoration:none;font-weight:700;padding:14px 28px;border-radius:12px}nav{margin-top:48px;font-size:.9rem}nav a{color:#A78BFA;text-decoration:none;margin-right:20px}</style></head><body><h1>ARBO<small>Art-is-Tree</small></h1><p>Arbo is the reception and operations assistant of <b>Art-is-Tree LLC</b>, a licensed and insured tree service in Virginia Beach, Norfolk, Chesapeake, and Portsmouth, Virginia.</p><p>Arbo keeps the record of every company call and message, takes estimate requests, and helps the owner schedule visits. It connects to the company's own email and calendar to surface customer inquiries and hold estimate appointments — for this one business, run by its owner.</p><p>Calls to Art-is-Tree that go unanswered may be handled by an AI assistant and are recorded for quality purposes.</p><a class="btn" href="/app">Open the app</a><nav><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Service</a><a href="tel:+17573195131">Call Art-is-Tree</a></nav></body></html>`);
+        return res.end(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Arbo — Art-is-Tree LLC</title><style>@font-face{font-family:Fraunces;src:url(/fonts/fraunces.woff2) format('woff2');font-weight:300 800}@font-face{font-family:'Instrument Sans';src:url(/fonts/instrument-sans.woff2) format('woff2');font-weight:400 700}body{font-family:'Instrument Sans',system-ui,sans-serif;background:#F7F5F0;color:#13201A;max-width:640px;margin:0 auto;padding:56px 20px;line-height:1.6}h1{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:2.4rem;letter-spacing:.06em;color:#1B4D3E}h1 small{font-family:'Instrument Sans',system-ui,sans-serif;color:#9A7212;font-size:.8rem;font-weight:600;letter-spacing:.2em;text-transform:uppercase;margin-left:10px}p{color:#3B4A43}a.btn{display:inline-block;margin-top:20px;background:linear-gradient(180deg,#245F4D,#1B4D3E);color:#fff;text-decoration:none;font-weight:700;padding:15px 30px;border-radius:16px;box-shadow:0 8px 22px -8px rgba(8,26,20,.42)}nav{margin-top:48px;font-size:.9rem}nav a{color:#1B4D3E;text-decoration:none;margin-right:20px;font-weight:600}</style></head><body><h1>ARBO<small>Art-is-Tree</small></h1><p>Arbo is the reception and operations assistant of <b>Art-is-Tree LLC</b>, a licensed and insured tree service in Virginia Beach, Norfolk, Chesapeake, and Portsmouth, Virginia.</p><p>Arbo keeps the record of every company call and message, takes estimate requests, and helps the owner schedule visits. It connects to the company's own email and calendar to surface customer inquiries and hold estimate appointments — for this one business, run by its owner.</p><p>Calls to Art-is-Tree that go unanswered may be handled by an AI assistant and are recorded for quality purposes.</p><a class="btn" href="/app">Open the app</a><nav><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Service</a><a href="tel:+17573195131">Call Art-is-Tree</a></nav></body></html>`);
       }
       if (req.method === 'GET' && url.pathname === '/app') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
@@ -739,26 +739,55 @@ export function createArborRequestHandler() {
         return res.end(JSON.stringify({
           name: crew ? 'Arbo Crew' : 'Arbo — Art-is-Tree',
           short_name: crew ? 'Arbo Crew' : 'Arbo',
-          start_url: crew ? '/crew' : '/',
+          // R25: the cockpit opens straight into the app (/app), not the
+          // public front door at '/'. Scope stays '/' so both are in-app.
+          id: crew ? '/crew' : '/app',
+          start_url: crew ? '/crew' : '/app',
           scope: crew ? '/crew' : '/',
           display: 'standalone',
           orientation: 'portrait',
-          background_color: '#0B0D10',
-          theme_color: '#0B0D10',
-          icons: [192, 512].map((s) => ({
-            src: `/icons/arbo-${s}.png`, sizes: `${s}x${s}`, type: 'image/png', purpose: 'any maskable',
-          })),
+          background_color: crew ? '#0B1512' : '#F7F5F0',
+          theme_color: crew ? '#0B1512' : '#1B4D3E',
+          description: crew ? 'Art-is-Tree crew door — work orders and the gated briefing.' : 'Art-is-Tree operations — calls, calendar, permits, crew.',
+          icons: [
+            ...[192, 512].map((s) => ({ src: `/icons/arbo-${s}.png`, sizes: `${s}x${s}`, type: 'image/png', purpose: 'any' })),
+            { src: '/icons/arbo-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          ],
+          ...(crew ? {} : {
+            shortcuts: [
+              { name: 'Calls', url: '/app#calls' },
+              { name: 'Calendar', url: '/app#cal' },
+              { name: 'Crew door', url: '/crew' },
+            ],
+          }),
         }));
       }
       {
-        const m = url.pathname.match(/^\/icons\/(arbo-(?:180|192|512)\.png)$/);
+        const m = url.pathname.match(/^\/icons\/(arbo-(?:180|192|512|maskable-512)\.png)$/);
         if (req.method === 'GET' && m) {
-          // Only the three known filenames — the regex IS the allow-list, so
+          // Only the four known filenames — the regex IS the allow-list, so
           // no path can walk out of the icons directory.
           const file = new URL(`./app/icons/${m[1]}`, import.meta.url);
           res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'public, max-age=86400' });
           return res.end(readFileSync(file));
         }
+      }
+      // R25: the self-hosted type (SIL OFL) — two known files, the regex is
+      // the allow-list. Fonts never come from another host.
+      {
+        const f = url.pathname.match(/^\/fonts\/(fraunces|instrument-sans)\.woff2$/);
+        if (req.method === 'GET' && f) {
+          res.writeHead(200, { 'content-type': 'font/woff2', 'cache-control': 'public, max-age=31536000, immutable' });
+          return res.end(readFileSync(new URL(`./app/fonts/${f[1]}.woff2`, import.meta.url)));
+        }
+      }
+      // R25: the service worker (installable app + offline shell). Versioned
+      // by the deployed commit so a deploy replaces the old cache. Served
+      // no-store from the root so its scope covers /app and /crew.
+      if (req.method === 'GET' && url.pathname === '/sw.js') {
+        const version = (process.env.RAILWAY_GIT_COMMIT_SHA || 'dev').slice(0, 12);
+        res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store', 'service-worker-allowed': '/' });
+        return res.end(readFileSync(new URL('./app/sw.js', import.meta.url), 'utf8').replace('__ARBO_VERSION__', version));
       }
       // Public legal pages — exist so the Google OAuth consent screen has
       // real URLs to point at (publishing requires them for Gmail scopes).
