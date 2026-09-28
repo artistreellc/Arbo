@@ -444,6 +444,16 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
   .sheet{max-width:780px;left:50%;transform:translateX(-50%);border-left:1px solid var(--hairline);border-right:1px solid var(--hairline)}
 }
 .wide-btn{width:100%}
+.qrow{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;padding:10px 0;border-bottom:1px solid var(--hairline)}
+.qrow .q{font-weight:600;font-size:15px;flex:1 1 220px}
+.seg{display:inline-flex;background:var(--paper-2);border-radius:var(--r-pill);padding:3px;gap:2px}
+.seg button{min-height:44px;border:0;background:none;border-radius:var(--r-pill);padding:0 14px;font-size:13.5px;font-weight:700;color:var(--ink-3)}
+.seg button.on{background:var(--card);color:var(--forest);box-shadow:0 1px 3px rgba(20,40,30,.14)}
+.check-item .who{font-size:17px;margin-top:8px}
+.factmeta{font-size:13.5px;color:var(--ink-3);margin-top:10px;display:grid;gap:4px}
+.factmeta b{color:var(--ink-1);font-weight:650}
+.factmeta a{color:var(--info);font-weight:600;text-decoration:none}
+.srcs{font-size:12.5px}
 .bigcheck{width:26px;height:26px;flex:none;accent-color:var(--forest)}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
@@ -484,6 +494,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
   <div id="view-perf" class="view"></div>
   <div id="view-settings" class="view"></div>
   <div id="view-more" class="view"></div>
+  <div id="view-permits" class="view"></div>
 </main>
 
 <div id="twin" class="sheet">
@@ -3411,6 +3422,7 @@ function renderMore() {
     b.addEventListener('click', go);
     grid.appendChild(b);
   };
+  tile('i-permit', 'Permits', '4 cities, sourced', () => { switchTab('permits'); renderPermits(); });
   tile('i-book', 'Book', 'Estimates & prep', () => switchTab('book'));
   tile('i-queue', 'Queue', 'Follow-ups & loops', () => switchTab('followups'));
   tile('i-numbers', 'Numbers', 'Money, fleet, crew', () => switchTab('perf'));
@@ -3492,16 +3504,155 @@ if ('serviceWorker' in navigator) {
 }
 window.addEventListener('scroll', () => { $('appbar').classList.toggle('scrolled', window.scrollY > 4); }, { passive: true });
 
-const VIEW_TITLES = { today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Book', followups: 'Queue', calls: 'Calls', perf: 'Numbers', settings: 'Settings', more: 'More' };
+// ---------- Permits desk (R25): the handcrafted public-works & permits base ----------
+// Output words stay the law's: PERMIT LIKELY / REVIEW NEEDED / NO OVERLAY — VERIFY,
+// plus CALL FIRST and TICKET REQUIRED. Never "clear". An unanswered question
+// goes in as 'unknown' and comes back REVIEW NEEDED, naming what is unknown.
+const PERMIT_STATUS = {
+  'PERMIT LIKELY': ['PERMIT LIKELY', 'b-permit-likely'],
+  'REVIEW NEEDED': ['REVIEW NEEDED', 'b-review'],
+  'NO OVERLAY–VERIFY': ['NO OVERLAY — VERIFY W/ CITY', 'b-verify'],
+  'CALL FIRST': ['CALL FIRST', 'b-flag'],
+  'TICKET REQUIRED': ['TICKET REQUIRED', 'b-warm'],
+};
+const TOPIC_NAMES = {
+  private_tree_cbpa: 'Bay buffer (CBPA / RPA)', street_tree_row: 'Street & city trees', row_work_mot: 'Working in the street',
+  historic: 'Historic districts', wetlands: 'Wetlands', disposal: 'Debris & disposal', burning: 'Burning',
+  utility_811: 'VA811 — digging & stumps', power_lines: 'Power lines', licensing: 'Contractor licensing',
+  hazard_order: 'Hazard-tree orders', eagle_wildlife: 'Eagles & wildlife',
+};
+let PERMIT_CITY = 'Virginia Beach';
+const PERMIT_ANS = { inRpa: 'unknown', nearPowerLines: 'unknown', inRightOfWay: 'unknown', historicDistrict: 'unknown', stumpGrinding: false, haulingDebris: false, burning: false };
+
+async function renderPermits() {
+  const v = $('view-permits');
+  v.replaceChildren();
+  const head = el('div', 'viewhead');
+  head.appendChild(el('div', 'eyebrow', 'Permit Desk'));
+  head.appendChild(el('h1', '', 'Permits & public works'));
+  head.appendChild(el('p', '', 'Every rule carries its source and the date it was checked. Anything a source did not state plainly says UNCONFIRMED — call before it goes to a customer.'));
+  v.appendChild(head);
+  const cities = el('div', 'chips');
+  for (const c of ['Virginia Beach', 'Norfolk', 'Chesapeake', 'Portsmouth']) {
+    const b = el('button', 'loc-toggle' + (PERMIT_CITY === c ? ' on' : ''), c);
+    b.addEventListener('click', () => { PERMIT_CITY = c; renderPermits(); });
+    cities.appendChild(b);
+  }
+  v.appendChild(cities);
+
+  // Job check — the site questions, each Yes / No / Don't know.
+  const job = el('div', 'slot');
+  job.appendChild(el('div', 'panel-title', 'Job check — ' + PERMIT_CITY));
+  const tri = (key, q) => {
+    const row = el('div', 'qrow');
+    row.appendChild(el('span', 'q', q));
+    const seg = el('div', 'seg');
+    for (const [val, label] of [[true, 'Yes'], [false, 'No'], ['unknown', 'Don’t know']]) {
+      const b = el('button', PERMIT_ANS[key] === val ? 'on' : '', label);
+      b.addEventListener('click', () => { PERMIT_ANS[key] = val; renderPermits(); });
+      seg.appendChild(b);
+    }
+    row.appendChild(seg);
+    job.appendChild(row);
+  };
+  tri('inRpa', 'Inside the Bay buffer (RPA)?');
+  tri('nearPowerLines', 'Branches within 10 ft of a power line?');
+  tri('inRightOfWay', 'Tree or work in the street / right-of-way?');
+  tri('historicDistrict', 'In a historic district?');
+  const flag = (key, q) => {
+    const lab = el('label', 'checkfield');
+    const box = document.createElement('input');
+    box.type = 'checkbox'; box.className = 'bigcheck'; box.checked = PERMIT_ANS[key];
+    box.addEventListener('change', () => { PERMIT_ANS[key] = box.checked; renderPermits(); });
+    lab.appendChild(box);
+    lab.appendChild(el('span', '', q));
+    job.appendChild(lab);
+  };
+  flag('stumpGrinding', 'Stump grinding');
+  flag('haulingDebris', 'Hauling the debris away');
+  flag('burning', 'Burning on site');
+  const out = el('div');
+  job.appendChild(out);
+  v.appendChild(job);
+  api('/api/permits/checklist', { method: 'POST', body: Object.assign({ city: PERMIT_CITY }, PERMIT_ANS) }).then((r) => {
+    for (const it of r.items) {
+      const c = el('div', 'card check-item');
+      const st = PERMIT_STATUS[it.status] || [it.status, 'b-pending'];
+      const b = el('div', 'badges'); b.appendChild(badge(st[0], st[1]));
+      c.appendChild(b);
+      c.appendChild(el('div', 'who', it.step));
+      c.appendChild(el('div', 'scope', it.why));
+      out.appendChild(c);
+    }
+  }).catch((e) => out.appendChild(el('div', 'storm', 'Checklist unavailable right now (' + (e.message || 'error') + '). An empty list here is not an answer — Arbo could not check.')));
+
+  // The facts, by topic.
+  let db;
+  try { db = await api('/api/permits/db?city=' + encodeURIComponent(PERMIT_CITY)); } catch (e) {
+    if (e.code === 401) return showKeywall();
+    v.appendChild(state('Permit base unavailable', 'Arbo could not read its permit base right now. That is not the same as “no rules”.'));
+    return;
+  }
+  const staleSet = new Set(db.stale);
+  const byTopic = {};
+  for (const f of db.facts) (byTopic[f.topic] = byTopic[f.topic] || []).push(f);
+  for (const topic of Object.keys(TOPIC_NAMES)) {
+    const list = byTopic[topic];
+    if (!list) continue;
+    v.appendChild(el('div', 'panel-title', TOPIC_NAMES[topic]));
+    for (const f of list) v.appendChild(factCard(f, staleSet.has(f.id)));
+  }
+}
+
+function factCard(f, isStale) {
+  const c = el('div', 'card fact');
+  const b = el('div', 'badges');
+  b.appendChild(badge(f.city.toUpperCase(), 'b-src'));
+  b.appendChild(badge(f.confidence, f.confidence === 'SOURCED' ? 'b-est' : 'b-flag'));
+  if (isStale) b.appendChild(badge('RE-CHECK DUE', 'b-warm'));
+  c.appendChild(b);
+  c.appendChild(el('div', 'who', f.title));
+  c.appendChild(el('div', 'scope', f.rule));
+  const meta = el('div', 'factmeta');
+  if (f.whoToCall) {
+    const w = el('div');
+    w.appendChild(el('b', '', f.whoToCall.office));
+    if (f.whoToCall.phone) {
+      const a = el('a', '', ' · ' + f.whoToCall.phone);
+      a.href = 'tel:' + f.whoToCall.phone.replace(/[^0-9+]/g, '');
+      w.appendChild(a);
+    }
+    if (f.whoToCall.email) w.appendChild(document.createTextNode(' · ' + f.whoToCall.email));
+    meta.appendChild(w);
+  }
+  if (f.form) meta.appendChild(el('div', '', 'Form: ' + f.form.name));
+  if (f.fee) meta.appendChild(el('div', '', 'Government fee: ' + f.fee));
+  if (f.leadTime) meta.appendChild(el('div', '', 'Lead time: ' + f.leadTime));
+  const src = el('div', 'srcs');
+  src.appendChild(document.createTextNode('Checked ' + f.verifiedOn + ' · '));
+  f.sourceUrls.forEach((u, i) => {
+    if (i) src.appendChild(document.createTextNode(' · '));
+    if (u.indexOf('arbo:') === 0) { src.appendChild(document.createTextNode('Mike’s permit correspondence')); return; }
+    const a = el('a', '', 'source ' + (i + 1));
+    a.href = u; a.target = '_blank'; a.rel = 'noopener';
+    src.appendChild(a);
+  });
+  meta.appendChild(src);
+  if (f.notes) meta.appendChild(el('div', 'internal-tag', 'Internal: ' + f.notes));
+  c.appendChild(meta);
+  return c;
+}
+
+const VIEW_TITLES = { permits: 'Permits', today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Book', followups: 'Queue', calls: 'Calls', perf: 'Numbers', settings: 'Settings', more: 'More' };
 
 function switchTab(which) {
-  for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf', 'settings', 'more']) {
+  for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf', 'settings', 'more', 'permits']) {
     $('view-' + t).classList.toggle('active', which === t);
     const tb = $('tab-' + t); // Settings opens from the header gear — it has no nav tab
     if (tb) tb.classList.toggle('active', which === t);
   }
   // Book, Queue, Numbers and Settings sit behind More in the dock.
-  $('tab-more').classList.toggle('active', ['book', 'followups', 'perf', 'settings', 'more'].indexOf(which) !== -1);
+  $('tab-more').classList.toggle('active', ['book', 'followups', 'perf', 'settings', 'more', 'permits'].indexOf(which) !== -1);
   $('apptitle').textContent = VIEW_TITLES[which] || 'ARBO';
   window.scrollTo(0, 0);
 }
@@ -3525,6 +3676,7 @@ netState();
   const want = (location.hash || '').slice(1);
   if (want && VIEW_TITLES[want] && want !== 'settings') {
     if (want === 'more') renderMore();
+    if (want === 'permits') renderPermits();
     switchTab(want);
   }
 }

@@ -49,6 +49,7 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFileSync } from 'node:fs';
+import { permitsDb, permitsChecklist } from './server/r25Routes.js';
 import { boot } from './index.js';
 import { createApi, type DataSource, type ApiLeadInput } from './server/api.js';
 import { hasDb, dataLinksLive, dataLinksSim, dbConfigured, getDb } from './db/client.js';
@@ -1014,6 +1015,15 @@ export function createArborRequestHandler() {
           createDefaultGisProvider(),
         );
         return send(200, sheet);
+      }
+      // R25: the handcrafted public-works & permits knowledge base (read-only).
+      if (req.method === 'GET' && url.pathname === '/api/permits/db') {
+        const r = permitsDb(url.searchParams.get('city'));
+        return send(r.status, r.body);
+      }
+      if (req.method === 'POST' && url.pathname === '/api/permits/checklist') {
+        const r = permitsChecklist((await readJson(req)) as Record<string, unknown>);
+        return send(r.status, r.body);
       }
       if (req.method === 'GET' && url.pathname === '/api/permits') {
         return send(...unpack(await api.permitBoard()));
