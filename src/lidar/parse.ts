@@ -446,6 +446,9 @@ function readPlyBinary(
         const cs = PLY_SIZE[prop.countType];
         if (off + cs > len) return false;
         const c = readScalar(dv, off, prop.countType, le);
+        // A negative or fractional count is a corrupt file — refuse, never
+        // spin (a -1 count with 1-byte items would not move the cursor).
+        if (!Number.isInteger(c) || c < 0) return false;
         off += cs + c * PLY_SIZE[prop.type];
       } else {
         const s = PLY_SIZE[prop.type];

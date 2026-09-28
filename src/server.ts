@@ -49,8 +49,11 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFileSync } from 'node:fs';
+// Service-worker cache version when no commit SHA is set: changes every boot,
+// so a cache can never be pinned forever.
+const BOOTED_AT = Date.now().toString(36);
 import { permitsDb, permitsChecklist, lidarMeasure, readBytes, LIDAR_MAX_BYTES, TooLargeError } from './server/r25Routes.js';
-import { SECTION_AGENTS, runAllSections, liveSectionDeps } from './agents/sections.js';
+import { SECTION_AGENTS, runAllSections, onDemandSectionDeps } from './agents/sections.js';
 import { createLiveBrain } from './agents/brain.js';
 import { LearnDesk, catalog as simCatalog, type Decision } from './sim/learnDesk.js';
 import { boot } from './index.js';
@@ -558,6 +561,7 @@ export function createArborRequestHandler() {
   const sectionBrain = createLiveBrain();
   // R25: the Learn desk — simulations score the brain; lessons wait for Mike.
   const learnDesk = new LearnDesk(undefined, env.anthropic.apiKey);
+  let lidarBusy = false;
   const api = createApi(createServerSource(), {
     dataLinksLive: dataLinksLive(),
     dataLinksSim: dataLinksSim(),
@@ -795,7 +799,7 @@ export function createArborRequestHandler() {
       // by the deployed commit so a deploy replaces the old cache. Served
       // no-store from the root so its scope covers /app and /crew.
       if (req.method === 'GET' && url.pathname === '/sw.js') {
-        const version = (process.env.RAILWAY_GIT_COMMIT_SHA || 'dev').slice(0, 12);
+        const version = (process.env.RAILWAY_GIT_COMMIT_SHA || `boot-${BOOTED_AT}`).slice(0, 16);
         res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store', 'service-worker-allowed': '/' });
         return res.end(readFileSync(new URL('./app/sw.js', import.meta.url), 'utf8').replace('__ARBO_VERSION__', version));
       }
@@ -1028,13 +1032,19 @@ export function createArborRequestHandler() {
       // R25: measure a tree from an exported LiDAR scan. In memory only —
       // nothing about the scan is stored.
       if (req.method === 'POST' && url.pathname === '/api/lidar/measure') {
-        let bytes: Uint8Array;
-        try { bytes = await readBytes(req, LIDAR_MAX_BYTES); } catch (e) {
-          if (e instanceof TooLargeError) return send(413, { error: 'file_too_large', detail: 'Over 60 MB. Export a point cloud of just the tree (crop it in the scanning app) and try again.' });
-          throw e;
-        }
-        const r = lidarMeasure(bytes, url.searchParams.get('name'), url.searchParams.get('up'));
-        return send(r.status, r.body);
+        // One measure at a time: it runs on the server's one thread, and a
+        // second big scan behind it would stall calls and webhooks.
+        if (lidarBusy) return send(429, { error: 'measuring_another_scan', detail: 'Arbo is measuring another scan right now — try again in a few seconds.' });
+        lidarBusy = true;
+        try {
+          let bytes: Uint8Array;
+          try { bytes = await readBytes(req, LIDAR_MAX_BYTES); } catch (e) {
+            if (e instanceof TooLargeError) return send(413, { error: 'file_too_large', detail: 'Over 60 MB. Export a point cloud of just the tree (crop it in the scanning app) and try again.' });
+            throw e;
+          }
+          const r = lidarMeasure(bytes, url.searchParams.get('name'), url.searchParams.get('up'));
+          return send(r.status, r.body);
+        } finally { lidarBusy = false; }
       }
       // R25: the handcrafted public-works & permits knowledge base (read-only).
       if (req.method === 'GET' && url.pathname === '/api/permits/db') {
@@ -1313,14 +1323,15 @@ export function createArborRequestHandler() {
       // the key lands (§1B — never bluff).
       // R25: the eight section agents. GET is the roster (static — what each
       // desk carries, reads, may and may not do). A RUN is POST, like the
-      // sweep: once links open, a run records agent_run rows. Each report
+      // sweep — and it is READ-ONLY: the six scheduled agents (which record
+      // runs and raise events) are left to the hourly sweep. Each report
       // goes through the brain for a plain-English line — Opus when a key is
       // set, otherwise a deterministic summary that says it is one.
       if (req.method === 'GET' && url.pathname === '/api/agents/sections') {
         return send(200, { agents: SECTION_AGENTS, brain: sectionBrain.online ? 'online' : 'offline' });
       }
       if (req.method === 'POST' && url.pathname === '/api/agents/sections/run') {
-        const reports = await runAllSections(liveSectionDeps(api, alertsProvider));
+        const reports = await runAllSections(onDemandSectionDeps(api, alertsProvider));
         const summaries = await Promise.all(reports.map((r) => sectionBrain.summarize(r)));
         return send(200, { ranAt: new Date().toISOString(), reports, summaries });
       }

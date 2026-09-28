@@ -3547,7 +3547,9 @@ const TOPIC_NAMES = {
 let PERMIT_CITY = 'Virginia Beach';
 const PERMIT_ANS = { inRpa: 'unknown', nearPowerLines: 'unknown', inRightOfWay: 'unknown', historicDistrict: 'unknown', stumpGrinding: false, haulingDebris: false, burning: false };
 
+let PERMIT_GEN = 0;
 async function renderPermits() {
+  const gen = ++PERMIT_GEN;
   const v = $('view-permits');
   v.replaceChildren();
   const head = el('div', 'viewhead');
@@ -3598,6 +3600,7 @@ async function renderPermits() {
   job.appendChild(out);
   v.appendChild(job);
   api('/api/permits/checklist', { method: 'POST', body: Object.assign({ city: PERMIT_CITY }, PERMIT_ANS) }).then((r) => {
+    if (gen !== PERMIT_GEN) return; // a newer render owns the screen
     for (const it of r.items) {
       const c = el('div', 'card check-item');
       const st = PERMIT_STATUS[it.status] || [it.status, 'b-pending'];
@@ -3612,10 +3615,12 @@ async function renderPermits() {
   // The facts, by topic.
   let db;
   try { db = await api('/api/permits/db?city=' + encodeURIComponent(PERMIT_CITY)); } catch (e) {
+    if (gen !== PERMIT_GEN) return;
     if (e.code === 401) return showKeywall();
     v.appendChild(state('Permit base unavailable', 'Arbo could not read its permit base right now. That is not the same as “no rules”.'));
     return;
   }
+  if (gen !== PERMIT_GEN) return;
   const staleSet = new Set(db.stale);
   const byTopic = {};
   for (const f of db.facts) (byTopic[f.topic] = byTopic[f.topic] || []).push(f);
@@ -3649,7 +3654,7 @@ function factCard(f, isStale) {
     meta.appendChild(w);
   }
   if (f.form) meta.appendChild(el('div', '', 'Form: ' + f.form.name));
-  if (f.fee) meta.appendChild(el('div', '', 'Government fee: ' + f.fee));
+  if (f.fee) meta.appendChild(el('div', '', 'Government-set figure (fee, fine or license tier): ' + f.fee));
   if (f.leadTime) meta.appendChild(el('div', '', 'Lead time: ' + f.leadTime));
   const src = el('div', 'srcs');
   src.appendChild(document.createTextNode('Checked ' + f.verifiedOn + ' · '));
@@ -3674,7 +3679,9 @@ const INPUT_STATE = { read: ['READ', 'b-est'], cut: ['LINK CUT', 'b-pending'], u
 const REPORT_STATUS = { ok: ['OK', 'b-est'], degraded: ['DEGRADED', 'b-warm'], blocked: ['BLOCKED', 'b-emg'] };
 let AGENT_RUN = null;
 
+let AGENT_GEN = 0;
 async function renderAgents() {
+  const gen = ++AGENT_GEN;
   const v = $('view-agents');
   v.replaceChildren();
   const head = el('div', 'viewhead');
@@ -3684,12 +3691,15 @@ async function renderAgents() {
   v.appendChild(head);
   let roster;
   try { roster = await api('/api/agents/sections'); } catch (e) {
+    if (gen !== AGENT_GEN) return;
     if (e.code === 401) return showKeywall();
     v.appendChild(state('Agent roster unavailable', 'Arbo could not read its agent roster right now.'));
     return;
   }
+  if (gen !== AGENT_GEN) return;
   const runBtn = el('button', 'actbtn wide-btn', AGENT_RUN ? 'Run all eight again' : 'Run all eight now');
   v.appendChild(runBtn);
+  v.appendChild(el('div', 'storm-muted', 'A run here only reads. The six scheduled agents (weather, booking, collections, safety, permitting, briefing) run on the hourly sweep and show here as \u201cnot wired in this run\u201d.'));
   v.appendChild(el('div', 'storm-muted', 'Brain: ' + (roster.brain === 'online' ? 'Opus online — each desk gets a plain-English read.' : 'offline (no model key on the server) — summaries are deterministic and say so.')));
   runBtn.addEventListener('click', async () => {
     runBtn.disabled = true; runBtn.textContent = 'Running the eight desks…';
@@ -3800,6 +3810,11 @@ function renderMeasure() {
   inp.addEventListener('change', async () => {
     const f = inp.files && inp.files[0];
     if (!f) return;
+    if (f.size > 60 * 1048576) {
+      status.className = 'storm';
+      status.textContent = 'That file is over 60 MB. Crop the scan to just the tree in the scanning app, export again, and open that.';
+      return;
+    }
     status.className = 'storm-muted';
     status.textContent = 'Reading ' + f.name + ' (' + (f.size / 1048576).toFixed(1) + ' MB)…';
     out.replaceChildren();
@@ -3864,7 +3879,9 @@ function measureResult(r) {
 const SECTION_NAMES = { front_desk: 'Front Desk', dispatcher: 'Dispatcher', chief_of_staff: 'Chief of Staff', permit_desk: 'Permit Desk', arborist: 'Arborist', crew_chief: 'Crew Chief', yard_boss: 'Yard Boss', analyst: 'Analyst' };
 let LEARN_POLL = null;
 
+let LEARN_GEN = 0;
 async function renderLearn() {
+  const gen = ++LEARN_GEN;
   const v = $('view-learn');
   v.replaceChildren();
   const head = el('div', 'viewhead');
@@ -3874,10 +3891,12 @@ async function renderLearn() {
   v.appendChild(head);
   let cat, st;
   try { [cat, st] = await Promise.all([api('/api/sim/catalog'), api('/api/sim/state')]); } catch (e) {
+    if (gen !== LEARN_GEN) return;
     if (e.code === 401) return showKeywall();
     v.appendChild(state('Training ground unavailable', 'Arbo could not read its scenario catalog right now.'));
     return;
   }
+  if (gen !== LEARN_GEN) return;
   const hud = el('div', 'hud');
   const tile = (n, label, cls) => { const t = el('div', 'tile' + (cls ? ' ' + cls : '')); t.appendChild(el('b', '', String(n))); t.appendChild(el('span', '', label)); return t; };
   hud.appendChild(tile(cat.total, 'scenarios', 'accent'));
@@ -3993,7 +4012,7 @@ netState();
 // Home-screen shortcuts open a section directly (/app#calls, /app#cal).
 {
   const want = (location.hash || '').slice(1);
-  if (want && VIEW_TITLES[want] && want !== 'settings') {
+  if (want && Object.prototype.hasOwnProperty.call(VIEW_TITLES, want) && want !== 'settings') {
     if (want === 'more') renderMore();
     if (want === 'permits') renderPermits();
     if (want === 'agents') renderAgents();

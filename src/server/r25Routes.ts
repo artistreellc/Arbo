@@ -90,7 +90,7 @@ export async function readBytes(req: IncomingMessage, max: number): Promise<Uint
     if (size > max) throw new TooLargeError('file_too_large');
     chunks.push(chunk as Buffer);
   }
-  return new Uint8Array(Buffer.concat(chunks));
+  return Buffer.concat(chunks); // a Buffer IS a Uint8Array — no second copy
 }
 
 /** POST /api/lidar/measure?name=scan.ply&up=y|z — raw file bytes in the body. */

@@ -110,7 +110,7 @@ describe('server wiring', () => {
       const r = await fetch(base + '/sw.js');
       expect(r.status).toBe(200);
       const js = await r.text();
-      expect(js).toContain("'abcdef123456'");
+      expect(js).toContain("'abcdef1234567890'");
       expect(js).toContain("url.pathname.startsWith('/api/')");
       expect(js).toContain("url.pathname.startsWith('/webhooks/')");
       expect(js).not.toContain('__ARBO_VERSION__');

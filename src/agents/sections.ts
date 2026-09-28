@@ -272,6 +272,28 @@ export function liveSectionDeps(api: Api, alerts: AlertsProvider, now = new Date
   };
 }
 
+/**
+ * The ON-DEMAND wiring (Mike's "Run all eight" tap). Strictly read-only even
+ * with the links open: the six scheduled agents are left out — each records
+ * an agent_run row and raises bus events, and the owner briefing writes tree
+ * forecasts — so they run on the hourly sweep only, and here each is named
+ * "not wired in this run". The section run itself is not recorded.
+ */
+export function onDemandSectionDeps(api: Api, alerts: AlertsProvider, now = new Date()): SectionDeps {
+  const live = liveSectionDeps(api, alerts, now);
+  return {
+    now: live.now,
+    hasDb: live.hasDb,
+    linkOpen: live.linkOpen,
+    api: live.api,
+    alerts: live.alerts,
+    guardrails: live.guardrails,
+    legal: live.legal,
+    knowledgeBase: live.knowledgeBase,
+    startRun: async () => ({ id: null, finish: async () => {} }),
+  };
+}
+
 // ─── Input machinery ────────────────────────────────────────────────────────
 
 interface Read {

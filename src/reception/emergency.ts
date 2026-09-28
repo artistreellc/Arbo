@@ -59,7 +59,7 @@ const HARD: Array<{ re: RegExp; reason: string }> = [
   { re: /\b(down|touching|tangled|arcing|sparking|on)\b[^.]{0,30}\b(power ?line|powerline|electrical wire)\b/i, reason: 'power line involved' },
   { re: /\b(someone|somebody|person|kid|child|anyone|neighbor)\b[^.]{0,30}\b(hurt|injured|trapped|stuck|pinned|in danger)\b/i, reason: 'person in danger' },
   // R25 sim: callers say "a line down" / "wires down" without the word power.
-  { re: /(lines?|wires?)\b[^.]{0,15}\b(down|arcing|sparking|on fire)\b|\bdowned (lines?|wires?)\b/i, reason: 'power line involved' },
+  { re: /\b(lines?|wires?)\b[^.]{0,15}\b(down|arcing|sparking|on fire)\b|\bdowned (lines?|wires?)\b/i, reason: 'power line involved' },
   // R25 sim: "one of your guys fell out of the tree… he's not moving".
   { re: /\b(not moving|not breathing|unconscious|passed out|bleeding bad(ly)?)\b|\bfell (out of|from) (the|a) tree\b/i, reason: 'person in danger' },
   { re: /\bblock(ing|ed)?\b[^.]{0,20}\b(driveway|road|street|exit|door)\b/i, reason: 'access blocked' },
