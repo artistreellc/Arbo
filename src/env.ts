@@ -127,6 +127,11 @@ export const env = {
   anthropic: { apiKey: get('ANTHROPIC_API_KEY') },
   /** Access key for the ops app + /api routes (§8 admin-only surface). */
   appAccessKey: get('APP_ACCESS_KEY'),
+  /**
+   * R25: the CREW door's own key. Opens /api/crew/* ONLY — never Mike's
+   * routes. Unset = the crew door is Mike's key only, and the page says so.
+   */
+  crewAccessKey: get('CREW_ACCESS_KEY'),
   twilio: {
     accountSid: get('TWILIO_ACCOUNT_SID'),
     authToken: get('TWILIO_AUTH_TOKEN'),

@@ -690,6 +690,8 @@ export function createArborRequestHandler() {
     const apiAuthorized = (): boolean => {
       if (env.appAccessKey) {
         const given = req.headers['x-arbor-key'] ?? url.searchParams.get('key');
+        // R25: the crew key opens the crew door's own routes and nothing else.
+        if (env.crewAccessKey && given === env.crewAccessKey && url.pathname.startsWith('/api/crew/')) return true;
         return given === env.appAccessKey;
       }
       return !hasDb();
