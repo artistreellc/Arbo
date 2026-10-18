@@ -266,7 +266,7 @@ main{padding:8px 16px 16px;max-width:680px;margin:0 auto}
 nav{
   position:fixed;left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom));z-index:30;display:flex;gap:2px;
   height:var(--dock-h);padding:8px;border-radius:26px;
-  background:color-mix(in srgb,var(--card) 82%,transparent);
+  background:color-mix(in srgb,var(--card) 94%,transparent);
   backdrop-filter:saturate(1.5) blur(22px);-webkit-backdrop-filter:saturate(1.5) blur(22px);
   border:1px solid var(--border);box-shadow:var(--shadow-float)}
 nav button{flex:1 1 0;min-width:0;min-height:56px;border:0;background:none;border-radius:19px;color:var(--ink-3);
@@ -281,12 +281,13 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 
 /* ── More sheet: every surface within two taps (§9) ──────────────────── */
 .grid-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:6px}
-.gtile{display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;gap:12px;min-height:104px;padding:14px;
+.gtile{display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:12px;min-height:104px;padding:14px;
   border-radius:var(--r-lg);border:1px solid var(--hairline);background:var(--card);box-shadow:var(--shadow-card);text-align:left;color:var(--ink-1)}
 .gtile .ico{width:26px;height:26px;color:var(--forest)}
 .gtile b{font-family:var(--serif);font-weight:600;font-size:16.5px;line-height:1.1}
 .gtile small{display:block;color:var(--ink-3);font-size:11.5px;font-weight:500;margin-top:3px;line-height:1.3}
 .gtile.active{border-color:color-mix(in srgb,var(--forest) 45%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--forest) 30%,transparent),var(--shadow-card)}
+.gtile:disabled{opacity:.55;box-shadow:none}
 .install-card{display:none;margin-top:14px}
 .install-card.show{display:block}
 
@@ -304,6 +305,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 #keywall input::placeholder{color:rgba(244,239,224,.55)}
 #keywall input:focus{outline:none;border-color:#E9C877;box-shadow:0 0 0 3px rgba(233,200,119,.25)}
 #keywall button{width:100%;max-width:340px;min-height:56px;border:0;border-radius:16px;background:#E9C877;color:#1B2A12;font-size:16px;font-weight:700;box-shadow:var(--shadow-pop)}
+#keywall button:disabled{opacity:.7}
 .errline{color:var(--emergency);margin-top:12px;font-weight:600;min-height:24px}
 #keywall .errline{color:#FFB3A6}
 
@@ -431,6 +433,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 /* ── Wide screens: the office desk ───────────────────────────────────── */
 @media (min-width:900px){
   main{max-width:1120px;padding:12px 32px 24px}
+  header{padding-left:32px;padding-right:32px}.hrow{max-width:1056px}
   .view.active{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
   .view > *{grid-column:auto}
   .view .viewhead,.view .hero,.view .systems,.view .sect,.view .zip-run,.view .state,.view .panel-title,.view .storm,.view .storm-muted,.view .feed-state,.view .routebtn,.view .hudbtn,.view .hud,.view .grid-tiles{grid-column:1 / -1}
@@ -486,7 +489,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 <div id="keywall">
   <svg class="kmark" aria-hidden="true"><use href="#i-ring"/></svg>
   <h1>ARBO</h1>
-  <p>Art-is-Tree ops. Enter your access key — you only do this once per device.</p>
+  <p>Art-is-Tree ops. Enter your access key to open Arbo on this phone.</p>
   <input id="keyinput" type="password" inputmode="text" autocomplete="current-password" placeholder="Access key">
   <button id="keygo">Open</button>
   <div class="errline" id="keyerr"></div>
@@ -582,7 +585,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
   <button id="tab-calls"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-calls"/></svg><span>Calls</span></span></button>
   <button id="tab-cal"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-calendar"/></svg><span>Calendar</span></span></button>
   <button id="tab-leads"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-leads"/></svg><span>Leads</span></span></button>
-  <button id="tab-more"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg><span>More</span></span></button>
+  <button id="tab-more"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-more"/></svg><span>More</span></span></button>
   <!-- Book, Queue and Numbers live in More (every surface within two taps, §9);
        their buttons stay so every existing link to them keeps working. -->
   <button id="tab-book" class="dock-hidden"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-book"/></svg><span>Book</span></span></button>
@@ -651,10 +654,21 @@ function saveFailText(e) {
 }
 function showSaveFail(box, e) { const n = box.querySelector(':scope > .save-err') || box.appendChild(el('div', 'errline save-err')); n.textContent = saveFailText(e); return n; }
 
+// A card time always carries its day, by calendar day: '3:05 PM' today,
+// 'Yesterday 3:05 PM' / 'Tomorrow 3:05 PM', 'Tue 3:05 PM' within six days,
+// 'Sep 28, 3:05 PM' beyond. No time, or one that will not parse, is blank.
 function fmtTime(iso) {
   if (!iso) return '';
   const d = new Date(iso);
-  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (Number.isNaN(d.getTime())) return '';
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const midnight = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((midnight(d) - midnight(new Date())) / 86400000); // round: a DST day is 23 or 25 h
+  if (days === 0) return time;
+  if (days === -1) return 'Yesterday ' + time;
+  if (days === 1) return 'Tomorrow ' + time;
+  if (Math.abs(days) <= 6) return d.toLocaleDateString([], { weekday: 'short' }) + ' ' + time;
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ', ' + time;
 }
 
 function mapsLink(address, city) {
@@ -3117,19 +3131,47 @@ async function renderFollowUps() {
 function showKeywall(msg) {
   $('keyerr').textContent = msg || '';
   $('keywall').classList.add('show');
+  keywallChrome(true);
 }
-$('keygo').addEventListener('click', async () => {
-  KEY = $('keyinput').value.trim();
-  localStorage.setItem('arborKey', KEY);
+// The browser bar matches the forest key screen while it is up, then takes
+// back the page's own Day / Night colours (kept on each tag the first time).
+function keywallChrome(on) {
+  for (const m of document.querySelectorAll('meta[name="theme-color"]')) {
+    if (!m.dataset.base) m.dataset.base = m.content;
+    m.content = on ? '#245F4D' : m.dataset.base;
+  }
+}
+function hideKeywall() {
+  $('keywall').classList.remove('show');
+  keywallChrome(false);
+}
+// Open. The key is kept only once Arbo has checked it — "couldn't check it"
+// must never read as "it worked" (§1B).
+async function unlockWithKey() {
+  const btn = $('keygo');
+  const typed = $('keyinput').value.trim();
+  if (!typed) return showKeywall('Enter your access key.');
+  KEY = typed;
+  $('keyerr').textContent = '';
+  btn.disabled = true;
+  btn.textContent = 'Checking…';
   try {
     await api('/api/leads?limit=1');
-    $('keywall').classList.remove('show');
-    refreshAll();
   } catch (e) {
-    if (e.code === 401) showKeywall('That key didn’t work — check it and try again.');
-    else { $('keywall').classList.remove('show'); refreshAll(); }
+    if (e.code === 401) return showKeywall('That key didn’t work — check it and try again.');
+    // No signal, or the host's own non-JSON 502/504 mid-deploy: the key was never checked.
+    if (!e.code || e.message === 'error') return showKeywall('Couldn’t reach Arbo to check the key — check your signal and try again.');
+    // Any other answer is Arbo's own, from past the key gate (a cut link's 503): the key is good.
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Open';
   }
-});
+  try { localStorage.setItem('arborKey', KEY); } catch (e) { /* private mode: the key lasts this visit */ }
+  hideKeywall();
+  refreshAll();
+  refreshActiveMoreView();
+}
+$('keygo').addEventListener('click', unlockWithKey);
 $('keyinput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('keygo').click(); });
 
 // ---------- Settings (cycle 34): every lead channel gets its own switch ----------
@@ -3463,7 +3505,7 @@ function renderMore() {
   const head = el('div', 'viewhead');
   head.appendChild(el('div', 'eyebrow', 'Arbo'));
   head.appendChild(el('h1', '', 'Everything else'));
-  head.appendChild(el('p', '', 'Each desk has its own agent. Tap in.'));
+  head.appendChild(el('p', '', 'The rest of Arbo, one tap away.'));
   v.appendChild(head);
   const grid = el('div', 'grid-tiles');
   const tile = (ic, title, note, go) => {
@@ -3475,6 +3517,7 @@ function renderMore() {
     b.appendChild(w);
     b.addEventListener('click', go);
     grid.appendChild(b);
+    return b;
   };
   tile('i-agents', 'Agents', 'Eight desks, one brain', () => { switchTab('agents'); renderAgents(); });
   tile('i-learn', 'Learn', 'Train the brain', () => { switchTab('learn'); renderLearn(); });
@@ -3482,10 +3525,18 @@ function renderMore() {
   tile('i-permit', 'Permits', '4 cities, sourced', () => { switchTab('permits'); renderPermits(); });
   tile('i-book', 'Book', 'Estimates & prep', () => switchTab('book'));
   tile('i-queue', 'Queue', 'Follow-ups & loops', () => switchTab('followups'));
-  tile('i-numbers', 'Numbers', 'Money, fleet, crew', () => switchTab('perf'));
-  tile('i-crew', 'Crew door', 'What the crew sees', () => window.open('/crew', '_blank', 'noopener'));
-  tile('i-message', 'Talk', 'Voice with Arbo', () => window.open('/talk', '_blank', 'noopener'));
-  tile('i-settings', 'Settings', 'Links, Google, ZIP', () => { switchTab('settings'); renderSettings(); });
+  tile('i-numbers', 'Numbers', 'Which areas & ads pay', () => switchTab('perf'));
+  tile('i-crew', 'Crew', 'What the crew sees', () => window.open('/crew', '_blank', 'noopener'));
+  const talk = tile('i-message', 'Talk', 'Voice with Arbo', () => window.open('/talk', '_blank', 'noopener'));
+  // R21: the same switch Today reads. While Arbo's own line is cut the tile
+  // says so instead of opening a page that can only say "off". A status Arbo
+  // could not read leaves the tile as it is.
+  api('/api/reception/status').then((s) => {
+    if (!s.linkCut) return;
+    talk.disabled = true;
+    talk.querySelector('small').textContent = 'Off while Sona answers calls';
+  }).catch(() => {});
+  // Settings opens from the header button on every screen — no second door here.
   v.appendChild(grid);
 
   v.appendChild(el('div', 'panel-title', 'Appearance'));
@@ -3498,7 +3549,7 @@ function renderMore() {
   }
   v.appendChild(seg);
 
-  v.appendChild(el('div', 'panel-title', 'On your home screen'));
+  v.appendChild(el('div', 'panel-title', 'Install'));
   v.appendChild(installCard());
 }
 
@@ -3532,7 +3583,7 @@ function installCard() {
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
   c.appendChild(el('div', 'who', 'Put Arbo on your home screen'));
   if (ios) {
-    c.appendChild(el('div', 'scope', 'In Safari: tap the Share button, then “Add to Home Screen”. Arbo opens full-screen like any app.'));
+    c.appendChild(el('div', 'scope', 'In Safari: tap the Share button, then “Add to Home Screen”. Arbo opens full-screen like any app. You’ll enter your access key once more the first time you open it.'));
   } else if (INSTALL_EVT) {
     const b = el('button', 'actbtn', 'Install Arbo');
     b.addEventListener('click', async () => {
@@ -3554,7 +3605,7 @@ function netState() {
   $('offline').classList.toggle('show', !on);
   sysSet('network', on ? 'ok' : 'down', on ? 'online' : 'offline');
 }
-window.addEventListener('online', () => { netState(); refreshAll(); });
+window.addEventListener('online', () => { netState(); autoRefresh(); });
 window.addEventListener('offline', netState);
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => { /* app still works online */ }); });
@@ -4017,6 +4068,17 @@ async function renderLearn() {
 
 const VIEW_TITLES = { learn: 'Learn', measure: 'Measure', agents: 'Agents', permits: 'Permits', today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Book', followups: 'Queue', calls: 'Calls', perf: 'Numbers', settings: 'Settings', more: 'More' };
 
+// The line under ARBO. Today's hero already carries the date, so Today shows
+// the name alone; every screen says SIMULATION while the data is practice data.
+// On a dated screen SIMULATION takes the name's place, so the line still fits
+// one row on a phone.
+const APPSUB_DATE = new Date().toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+let CUR_TAB = 'today';
+function setAppSub() {
+  const sim = LINKS === 'simulation' ? 'SIMULATION · ' : '';
+  $('appsub').textContent = CUR_TAB === 'today' ? sim + 'Art-is-Tree' : sim ? sim + APPSUB_DATE : APPSUB_DATE + ' · Art-is-Tree';
+}
+
 function switchTab(which) {
   for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf', 'settings', 'more', 'permits', 'agents', 'measure', 'learn']) {
     $('view-' + t).classList.toggle('active', which === t);
@@ -4026,6 +4088,8 @@ function switchTab(which) {
   // Book, Queue, Numbers and Settings sit behind More in the dock.
   $('tab-more').classList.toggle('active', ['book', 'followups', 'perf', 'settings', 'more', 'permits', 'agents', 'measure', 'learn'].indexOf(which) !== -1);
   $('apptitle').textContent = VIEW_TITLES[which] || 'ARBO';
+  CUR_TAB = which;
+  setAppSub();
   window.scrollTo(0, 0);
 }
 for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf']) {
@@ -4033,15 +4097,37 @@ for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf'])
 }
 $('tab-more').addEventListener('click', () => { renderMore(); switchTab('more'); });
 
-function refreshAll() { renderToday(); renderLeads(); renderCalendar(); renderBook(); renderFollowUps(); renderCalls(); renderPerformance(); }
+// The screens ↻ redraws. The minute timer redraws them too, unless one holds typed text.
+const TIMED = { today: renderToday, leads: renderLeads, cal: renderCalendar, book: renderBook, followups: renderFollowUps, calls: renderCalls, perf: renderPerformance };
+function refreshAll() { for (const t in TIMED) TIMED[t](); }
+// ↻ and the key screen also redraw a More desk that is on screen — refreshAll never draws those.
+function refreshActiveMoreView() {
+  const r = { settings: renderSettings, permits: renderPermits, agents: renderAgents, measure: renderMeasure, learn: renderLearn, more: renderMore };
+  for (const t in r) {
+    if ($('view-' + t).classList.contains('active')) { r[t](); return; }
+  }
+}
+// Typed and not yet saved: a rebuild would wipe it without a word.
+function holdsTyping(v) {
+  return [...v.querySelectorAll('input, textarea')].some((n) => n.value && !/^(checkbox|radio|file)$/.test(n.type));
+}
+// The refresh Arbo does on its own: every minute, back on screen, back online.
+// Today always redraws (storm banner, schedule ring, loops); a screen holding
+// typed text waits for ↻. Settings is never on it, so a half-typed ZIP survives.
+function autoRefresh() {
+  if (document.hidden || $('keywall').classList.contains('show')) return;
+  for (const t in TIMED) if (!holdsTyping($('view-' + t))) TIMED[t]();
+}
 $('refresh').addEventListener('click', () => {
   $('refresh').classList.remove('spin'); void $('refresh').offsetWidth; $('refresh').classList.add('spin');
   refreshAll();
+  refreshActiveMoreView();
 });
 $('settings-btn').addEventListener('click', () => { switchTab('settings'); renderSettings(); });
 
 $('dateline').textContent = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
-$('appsub').textContent = new Date().toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) + ' · Art-is-Tree';
+setAppSub();
+LINKS_READY.then(setAppSub);
 netState();
 // Home-screen shortcuts open a section directly (/app#calls, /app#cal).
 {
@@ -4056,7 +4142,8 @@ netState();
   }
 }
 refreshAll();
-setInterval(refreshAll, 60000);
+setInterval(autoRefresh, 60000);
+document.addEventListener('visibilitychange', autoRefresh);
 </script>
 </body>
 </html>
