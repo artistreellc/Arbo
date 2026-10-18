@@ -118,8 +118,10 @@ describe('A2/A3 — on demand, every row says one plain fact', () => {
   it('left to the hourly check, not in the practice data, and not built are three different states', async () => {
     const reports = await runAllSections(simDeps());
     const input = (name: string) => reports.flatMap((r) => r.inputs).find((i) => i.name === name)!;
+    // QA round 3: in practice data the hourly check never runs (the real hasDb() is false),
+    // so the row says it is off — never that something else is reading it.
     for (const name of ["tomorrow's booked stops", 'owner briefing', 'permit screens for recent leads', 'crew certifications & near-miss log', 'open invoices']) {
-      expect(input(name), name).toMatchObject({ state: 'notrun', detail: 'runs on the hourly check, not from this button' });
+      expect(input(name), name).toMatchObject({ state: 'notrun', detail: 'left to the hourly check, which is off until its data is connected' });
     }
     expect(input('call review backlog')).toMatchObject({ state: 'sim', detail: 'not in the practice data' });
     expect(input('site photos')).toMatchObject({ state: 'notbuilt', detail: 'there is no photo reader yet' });
@@ -180,17 +182,20 @@ describe('A5 — the notes above the desks', () => {
   const agents = fn('renderAgents');
 
   it('when it ran is plain help; past 15 minutes it is a warning', () => {
-    expect(agents).toContain("'Ran ' + fmtWhen(AGENT_RUN.ranAt)");
-    expect(agents).toContain("stale ? 'feed-state unset' : 'storm-muted'");
+    // QA round 3: the time rides on the help line; stale, it is a warning line of its own.
+    expect(agents).toContain("'Ran ' + fmtWhen(ranAt)");
+    expect(agents).toContain("if (stale) v.appendChild(el('div', 'feed-state unset',");
     expect(agents).not.toContain('these results are as of then');
     // A stale line keeps the same gap under the Run button as the help line does.
     expect(html).toContain('.wide-btn + .storm-muted{margin-top:14px}');
     expect(html).toContain('#view-agents .wide-btn + .feed-state{margin-top:14px}');
   });
 
-  it('the run note is short and names the hourly check; AI off is a not-set-up line', () => {
-    expect(agents).toContain("'Run only looks — it never changes anything. Booking, collections, safety, permits and the morning briefing run on the hourly check once their data is connected.'");
-    expect(agents).toContain("el('div', 'feed-state unset', 'AI summaries are off — the server has no AI key yet. Each desk shows a plain count.')");
+  it('the run note is short; AI off is a not-set-up line', () => {
+    // QA round 3: the hourly check is named on each NOT RUN row (sections.ts hourlyOnly), not repeated here.
+    expect(agents).toContain("'Run only looks — it never changes anything.'");
+    expect(agents).not.toContain('morning briefing run on the hourly check');
+    expect(agents).toContain("el('div', 'feed-state unset', 'AI off — plain counts only, no AI key yet.')");
     expect(agents).toContain("el('div', 'storm-muted', 'Brain: Opus online — each desk gets a plain-English read.')");
   });
 
@@ -264,7 +269,8 @@ describe('L3 — Learn layout and quoted evidence', () => {
   });
 
   it('both run buttons share one shape; the problems rows read as card titles', () => {
-    expect(learn).toContain("el('button', 'actbtn alt', st.opusAvailable ?");
+    // QA round 3: a short label either way, so the pair fits one row; why Opus is off is the line below.
+    expect(learn).toContain("el('button', 'actbtn alt', 'Run with Opus')");
     expect(html).toContain('.actbtn.alt{background:var(--card);color:var(--ink-1);border:1px solid var(--border);box-shadow:none}');
     expect(learn).toContain("sum.appendChild(el('span', 'who', SECTION_NAMES[sec] || sec));");
     expect(learn).toContain("sum.appendChild(el('span', 'n', plural(list.length, 'problem')));");

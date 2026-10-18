@@ -232,6 +232,11 @@ export interface SectionDeps {
   hasDb: () => boolean;
   /** The R19 per-link switch. */
   linkOpen: (link: DataLink) => boolean;
+  /**
+   * Whether the hourly sweep is actually armed — the REAL hasDb(), which the
+   * practice-data run does not override. Undefined = assume armed.
+   */
+  hourlySweep?: boolean;
   api?: SectionReadApi;
   alerts?: AlertsProvider;
   // The existing agents, wrapped. Undefined = not wired this run (named).
@@ -281,7 +286,7 @@ export function liveSectionDeps(api: Api, alerts: AlertsProvider, now = new Date
  * with the links open: the six scheduled agents are left out — each records
  * an agent_run row and raises bus events, and the owner briefing writes tree
  * forecasts — so they run on the hourly sweep only, and here each is named
- * HOURLY_ONLY (state 'notrun'; the Dispatcher reads the weather feed itself
+ * by hourlyOnly (state 'notrun'; the Dispatcher reads the weather feed itself
  * instead). The section run itself is not recorded.
  */
 export function onDemandSectionDeps(api: Api, alerts: AlertsProvider, now = new Date()): SectionDeps {
@@ -290,6 +295,9 @@ export function onDemandSectionDeps(api: Api, alerts: AlertsProvider, now = new 
     now: live.now,
     hasDb: live.hasDb,
     linkOpen: live.linkOpen,
+    // Read here, from the real switch: the sweep's tick runs only when hasDb()
+    // is true (sweep.ts), and the practice-data route overrides hasDb, not this.
+    hourlySweep: hasDb(),
     api: live.api,
     alerts: live.alerts,
     guardrails: live.guardrails,
@@ -335,7 +343,10 @@ function plainErr(err: unknown): string {
 // Not read on purpose — never 'unreadable', which means we tried and could not.
 const notWired = (what: string): Read => ({ state: 'notrun', detail: `not connected in this run: ${what}` });
 // A wrapped agent left to the hourly sweep: it records runs and raises events, so the button never starts it.
-const HOURLY_ONLY: Read = { state: 'notrun', detail: 'runs on the hourly check, not from this button' };
+// "Runs on the hourly check" only when that check is armed — in practice data nothing else reads it (§1B).
+const hourlyOnly = (d: SectionDeps): Read => d.hourlySweep === false
+  ? { state: 'notrun', detail: 'left to the hourly check, which is off until its data is connected' }
+  : { state: 'notrun', detail: 'runs on the hourly check, not from this button' };
 const propose = (kind: string, text: string): Proposal => ({ kind, text, needsMike: true });
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -473,7 +484,7 @@ const INPUTS: Record<SectionId, InputSpec[]> = {
     {
       name: IN.bookedStops, links: ['jobs', 'estimates', 'properties', 'ops'], wraps: 'bookingAgent',
       async read(d) {
-        if (!d.booking) return HOURLY_ONLY;
+        if (!d.booking) return hourlyOnly(d);
         const r = await d.booking();
         const wrapped = { agent: 'booking', status: r.status, summary: `stops=${r.stopsChecked} issues=${r.issues} newly_raised=${r.newlyRaised}` };
         if (r.status !== 'ok') return { state: 'unreadable', detail: 'the booking agent reported an error', wrapped };
@@ -509,7 +520,7 @@ const INPUTS: Record<SectionId, InputSpec[]> = {
     {
       name: IN.briefing, links: ['estimates', 'jobs', 'properties', 'contacts', 'leads'], wraps: 'ownerBriefingAgent',
       async read(d) {
-        if (!d.ownerBriefing) return HOURLY_ONLY;
+        if (!d.ownerBriefing) return hourlyOnly(d);
         const r = await d.ownerBriefing();
         const s = r.sections;
         const wrapped = { agent: 'owner-briefing', status: r.status, summary: `brief=${s.brief} loops=${s.openLoops} storm=${s.storm} due=${s.comingDue}` };
@@ -529,7 +540,7 @@ const INPUTS: Record<SectionId, InputSpec[]> = {
     {
       name: IN.permitScreens, links: ['leads', 'permits', 'ops'], wraps: 'permittingAgent',
       async read(d) {
-        if (!d.permitting) return HOURLY_ONLY;
+        if (!d.permitting) return hourlyOnly(d);
         const r = await d.permitting();
         const wrapped = { agent: 'permitting', status: r.status, summary: `events=${r.eventsProcessed} screens_missing=${r.screensMissing}` };
         if (r.status !== 'ok') return { state: 'unreadable', detail: 'the permitting agent reported an error', wrapped };
@@ -590,7 +601,7 @@ const INPUTS: Record<SectionId, InputSpec[]> = {
     {
       name: IN.crewSafety, links: ['crew', 'safety', 'ops'], wraps: 'safetyAgent',
       async read(d) {
-        if (!d.safety) return HOURLY_ONLY;
+        if (!d.safety) return hourlyOnly(d);
         const r = await d.safety();
         const c = r.certs;
         const wrapped = {
@@ -629,7 +640,7 @@ const INPUTS: Record<SectionId, InputSpec[]> = {
     {
       name: IN.invoices, links: ['jobs', 'ops'], wraps: 'collectionsAgent',
       async read(d) {
-        if (!d.collections) return HOURLY_ONLY;
+        if (!d.collections) return hourlyOnly(d);
         const r = await d.collections();
         const wrapped = { agent: 'collections', status: r.status, summary: `feed=${r.feed} overdue=${r.overdue} suppressed=${r.suppressed} unknown=${r.unknown} newly_raised=${r.newlyRaised}` };
         if (r.status !== 'ok' || r.feed !== 'ok') {
@@ -651,7 +662,9 @@ const INPUTS: Record<SectionId, InputSpec[]> = {
       read: (d) => viaApi<{ units: unknown[]; down: number }>(IN.fleet, d.api?.fleetUnits, (b) => ({
         state: 'read', detail: `${plural(b.units.length, 'unit', 'units')}, ${b.down} down`,
         findings: b.down > 0 ? [{ severity: 'act', text: `${plural(b.down, 'unit is', 'units are')} DOWN — scheduling will not assign ${b.down === 1 ? 'it' : 'them'}.` }] : [],
-        proposals: b.down > 0 ? [propose('parts_review', 'Review the breakdown plan. Arbo never orders parts — a human buys (§6E2.3).')] : [],
+        // Points at what exists: the unit's card under Fleet on the Queue. No breakdown plan is
+        // kept to review — it is only shown when a breakdown is filed — so the copy never names one.
+        proposals: b.down > 0 ? [propose('parts_review', `Decide on the repair for ${b.down === 1 ? 'the DOWN unit' : `the ${b.down} DOWN units`} under Fleet on the Queue. Arbo never orders parts — a human buys (§6E2.3).`)] : [],
       })),
     },
   ],

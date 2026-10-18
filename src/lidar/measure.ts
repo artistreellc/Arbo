@@ -190,14 +190,14 @@ export function measureTree(points: Float32Array, opts: MeasureOptions = {}): Tr
 
   // 3. DBH.
   if (!stem) {
-    result.confidence.dbh = unreadable('stem_not_found: no trunk-like column of points 0.3–2.5 m above ground');
-    result.confidence.lean = unreadable('stem_not_found: no trunk-like column of points 0.3–2.5 m above ground');
+    result.confidence.dbh = unreadable('stem_not_found: no trunk-like column of points about 1–8 ft (0.3–2.5 m) above ground');
+    result.confidence.lean = unreadable('stem_not_found: no trunk-like column of points about 1–8 ft (0.3–2.5 m) above ground');
     warnings.push('No trunk found in the scan; height and crown use the whole scan.');
   } else {
     const bh = ground + BREAST_HEIGHT_M;
     const fit = fitSlice(cloud, stem, bh - SLICE_HALF_M, bh + SLICE_HALF_M, 1);
     if (!fit) {
-      result.confidence.dbh = unreadable('dbh_slice_unreadable: too few trunk points at 1.27–1.47 m to fit a circle');
+      result.confidence.dbh = unreadable('dbh_slice_unreadable: too few trunk points at about 4.2–4.8 ft (breast height) to fit a circle');
     } else {
       result.dbhCm = round1(fit.r * 200);
       result.dbhFit = { inliers: fit.inliers, rmseCm: round2(fit.rmse * 100), arcCoverageDeg: Math.round(fit.arcDeg) };
@@ -235,8 +235,8 @@ export function measureTree(points: Float32Array, opts: MeasureOptions = {}): Tr
   const top = sortedUp[Math.max(0, sortedUp.length - k)] ?? ground;
   const height = top - ground;
   if (!(height > 0.3)) {
-    result.confidence.height = unreadable('no_height: nothing in the scan rises more than 0.3 m above ground');
-    result.confidence.crown = unreadable('no_height: nothing in the scan rises more than 0.3 m above ground');
+    result.confidence.height = unreadable('no_height: nothing in the scan rises more than about 1 ft (0.3 m) above ground');
+    result.confidence.crown = unreadable('no_height: nothing in the scan rises more than about 1 ft (0.3 m) above ground');
     return result;
   }
   result.heightM = round2(height);
@@ -258,7 +258,7 @@ export function measureTree(points: Float32Array, opts: MeasureOptions = {}): Tr
   result.crownSpreadM = round2(crown.major);
   let cc: MetricConfidence = {
     level: 'fair',
-    reason: `no validated phone-LiDAR crown method; counts everything above one-third height within ${NEIGHBOURHOOD_M} m of the stem`,
+    reason: `no validated phone-LiDAR crown method; counts everything above one-third height within about 40 ft (${NEIGHBOURHOOD_M} m) of the stem`,
   };
   if (height > CLEAN_RANGE_M || crown.major > 2 * CLEAN_RANGE_M) {
     cc = worse(cc, 'low', 'the crown reaches beyond the phone’s clean range, about 13 ft (4 m); edges and top are likely missing');
@@ -289,7 +289,7 @@ function dbhConfidence(fit: Circle, warnings: string[]): MetricConfidence {
   if (fit.inliers < fit.slicePoints * 0.4) {
     c = worse(c, 'fair', 'many points at breast height are off the trunk circle (branches, brush or a second stem)');
   }
-  if (fit.r * 2 > 2.5) c = worse(c, 'low', 'diameter over 2.5 m is outside what a phone scan resolves; check the scan and units');
+  if (fit.r * 2 > 2.5) c = worse(c, 'low', 'diameter over about 8 ft (2.5 m) is outside what a phone scan resolves; check the scan and units');
   // The apps and the Kasa fit both lean small (research part B).
   return c;
 }
