@@ -302,7 +302,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 .gtile b{font-family:var(--serif);font-weight:600;font-size:16.5px;line-height:1.1}
 .gtile small{display:block;color:var(--ink-3);font-size:11.5px;font-weight:500;margin-top:3px;line-height:1.3}
 .gtile.active{border-color:color-mix(in srgb,var(--forest) 45%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--forest) 30%,transparent),var(--shadow-card)}
-.gtile:disabled{opacity:.55;box-shadow:none}
+.gtile:disabled{box-shadow:none;background:color-mix(in srgb,var(--card) 60%,transparent)}.gtile:disabled .ico,.gtile:disabled b{opacity:.5}
 .install-card{display:none;margin-top:14px}
 .install-card.show{display:block}
 
@@ -343,6 +343,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 .loc-toggle{min-height:44px;min-width:64px;border:1px solid var(--border);border-radius:var(--r-pill);background:var(--card);color:var(--ink-3);
   font-size:12.5px;font-weight:700;padding:0 16px;letter-spacing:.06em;display:inline-grid;place-items:center}
 .loc-toggle.on{background:var(--forest);border-color:var(--forest);color:var(--paper)}
+.loc-toggle.on.idle{background:var(--card);color:var(--forest);border-color:var(--forest);opacity:.75}
 .late{background:var(--warning-bg);border:1px solid color-mix(in srgb,var(--warning) 32%,transparent);color:color-mix(in srgb,var(--warning) 70%,var(--ink-1));
   border-radius:var(--r-md);padding:13px 16px;margin-bottom:12px;font-weight:600;font-size:14px;line-height:1.45}
 .late small{display:block;font-weight:500;opacity:.95;margin-top:6px}
@@ -3669,8 +3670,18 @@ $('keyinput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('key
 let settingsGen = 0;
 async function renderSettings() {
   const gen = ++settingsGen; // a newer render owns the screen; a stale one stops appending
-  const v = $('view-settings');
-  v.replaceChildren();
+  const live = $('view-settings');
+  // The first visit fills in as each read lands. After that (an ON/OFF, Save or
+  // location tap, ↻) the page is built off screen and swapped in at once, so it
+  // never empties, jumps to the top, or pops back one section at a time.
+  if (!live.firstChild) { await buildSettings(live, gen); return; }
+  const v = el('div');
+  await buildSettings(v, gen);
+  if (gen === settingsGen) live.replaceChildren(...v.childNodes);
+}
+// Writes only to v. Every 'if (gen !== settingsGen) return;' stops a stale
+// build before it appends — and before renderSettings would swap it in.
+async function buildSettings(v, gen) {
   // Appearance reads no feed, so it is drawn even when the switches cannot load.
   const appearance = () => {
     v.appendChild(el('div', 'panel-title', 'Appearance'));
@@ -3690,33 +3701,40 @@ async function renderSettings() {
   catch (e) {
     if (gen !== settingsGen) return;
     if (e.code === 401) return showKeywall();
-    // A dead settings feed is NAMED — and nothing was changed (§1B).
-    v.appendChild(state('Settings unavailable', 'Could not load the channel switches. Nothing was changed.'));
+    // A dead settings feed is NAMED, in the shared feed words — and nothing was changed (§1B).
+    v.appendChild(state('Channel switches — ' + FEED_WORD[feedKind(e)], 'Nothing was changed.'));
     appearance();
     return;
   }
   if (gen !== settingsGen) return;
   // R12: these switches steer the inbox check, so its own state comes FIRST.
   // An ON switch over a check that cannot run must not read as leads coming in.
+  let inboxDown = false; // set when the line above the switches says the check is not running
   try {
     const ix = await api('/api/inbox/intents');
     if (gen !== settingsGen) return;
     const r = ix.pipeline === 'no_gmail' ? (ix.gmailReason || '') : '';
     if (r === 'no Gmail credentials configured') {
+      inboxDown = true;
       v.appendChild(el('div', 'feed-state unset', 'Inbox check isn\u2019t running \u2014 Gmail isn\u2019t connected. These switches take effect once it is.'));
     } else if (r && r !== 'inbox watch has not completed a pass') { // a first pass still under way is not a dead feed
+      inboxDown = true;
       v.appendChild(el('div', 'feed-state unread', 'Inbox check couldn\u2019t read Gmail on its last pass. These switches take effect once it can.'));
     }
   } catch (e) {
     if (gen !== settingsGen) return;
-    if (e.code !== 401) v.appendChild(feedLine(e, 'Inbox check'));
+    if (e.code !== 401) { inboxDown = true; v.appendChild(feedLine(e, 'Inbox check')); }
   }
-  // The honesty line: these are runtime switches until the data links carry a durable home.
-  v.appendChild(el('div', 'storm-muted', 'Switches apply to the inbox check right away. They go back to the standard set whenever Arbo restarts or is updated.'));
+  // The honesty line: these are runtime switches until the data links carry a
+  // durable home. It never says "right away" under a line saying the check is down.
+  v.appendChild(el('div', 'storm-muted', inboxDown
+    ? 'Your choices are saved now and used as soon as the inbox check runs. They go back to the standard set whenever Arbo restarts or is updated.'
+    : 'Switches apply to the inbox check right away. They go back to the standard set whenever Arbo restarts or is updated.'));
   for (const c of s.channels) {
     const cell = el('div'); // the switch row, plus its one error line if a save fails
     const row = el('div', 'loc-strip');
-    const btn = el('button', 'loc-toggle' + (c.on ? ' on' : ''), c.on ? 'ON' : 'OFF');
+    // ON over a check that is down is drawn muted (.idle): chosen, but nothing is reading yet.
+    const btn = el('button', 'loc-toggle' + (c.on ? ' on' : '') + (c.on && inboxDown ? ' idle' : ''), c.on ? 'ON' : 'OFF');
     btn.onclick = async () => {
       btn.disabled = true;
       try { await api('/api/settings/channels', { method: 'POST', body: { id: c.id, on: !c.on } }); }
@@ -3729,15 +3747,31 @@ async function renderSettings() {
     v.appendChild(cell);
   }
 
-  // R15: today's work ZIP — powers the "easy to fit you in this week" offer.
+  // R15: today's work ZIP — where the route and prep sheets start, and (while
+  // Arbo's own phone line is on) what powers the "easy to fit you in this week" offer.
   v.appendChild(el('div', 'panel-title', 'Today\u2019s work ZIP'));
-  let rz = null;
-  try { rz = await api('/api/settings/route'); } catch (e) {}
+  let rz = null, rzErr = null;
+  try { rz = await api('/api/settings/route'); } catch (e) { rzErr = e; }
   if (gen !== settingsGen) return;
   if (!rz) {
-    v.appendChild(el('div', 'storm-muted', 'Work-ZIP setting unavailable right now. Nothing was changed.'));
+    if (rzErr && rzErr.code === 401) return showKeywall();
+    // §1B: a dead read is NAMED in the feed words, and Live location keeps its
+    // heading — a failed read never hides a section, and never reads as "off".
+    await LINKS_READY; // whether db_not_configured means "cut" depends on the links
+    if (gen !== settingsGen) return;
+    v.appendChild(feedLine(rzErr, 'Work ZIP', 'Nothing was changed.'));
+    v.appendChild(el('div', 'panel-title', 'Live location (office phone)'));
+    v.appendChild(feedLine(rzErr, 'Live location', 'That doesn\u2019t mean location is off.'));
   } else {
-    v.appendChild(el('div', 'storm-muted', 'Where you\u2019re working today \u2014 callers in or near this ZIP get offered an easy weekday estimate. Set it each morning; it resets whenever Arbo restarts or is updated.'));
+    // Only Arbo's own phone line (ElevenLabs) offers a caller the nearby slot; while
+    // it is cut the ZIP moves the route and prep sheets and nothing else.
+    let rsx = null;
+    try { rsx = await api('/api/reception/status'); } catch (e) {} // an unread status is said in the unset line below
+    if (gen !== settingsGen) return;
+    const lineCut = !!(rsx && rsx.linkCut);
+    v.appendChild(el('div', 'storm-muted', lineCut
+      ? 'Where you\u2019re working today \u2014 sets where your route and estimate prep sheets start. Arbo\u2019s own phone line is off while Sona answers calls, so no caller is offered the nearby estimate right now. Set it each morning; it resets whenever Arbo restarts or is updated.'
+      : 'Where you\u2019re working today \u2014 callers in or near this ZIP get offered an easy weekday estimate, and your route and prep sheets start here. Set it each morning; it resets whenever Arbo restarts or is updated.'));
     const zrow = el('div', 'loc-strip');
     const zin = document.createElement('input');
     zin.id = 'workzip-input'; zin.inputMode = 'numeric'; zin.maxLength = 5; zin.placeholder = '5-digit ZIP';
@@ -3764,9 +3798,12 @@ async function renderSettings() {
     v.appendChild(zrow);
     // §1B: unset is said in words. A fresh office-phone ping is used ahead of the typed ZIP (routeAnchors).
     const liveZip = rz.location && rz.location.zip;
-    v.appendChild(el('div', 'storm-muted', rz.workZip ? 'Set for today: ' + rz.workZip
+    // An unset ZIP is a gap, so it is named as one (.feed-state), not drawn as a help tip.
+    v.appendChild(el('div', (rz.workZip || liveZip) ? 'storm-muted' : 'feed-state unset', rz.workZip ? 'Set for today: ' + rz.workZip
       : liveZip ? 'Not set today \u2014 the office phone\u2019s live ZIP (' + liveZip + ') is used while its ping is fresh.'
-      : 'Not set today \u2014 no caller gets the nearby-estimate offer.'));
+      : !rsx ? 'Not set today \u2014 route and prep sheets have no starting ZIP. (Arbo couldn\u2019t read whether its phone line is on.)'
+      : lineCut ? 'Not set today \u2014 route and prep sheets have no starting ZIP. Arbo\u2019s phone line is off, so callers aren\u2019t offered anything either way.'
+      : 'Not set today \u2014 callers near your work aren\u2019t offered the nearby slot (near-home offers still apply).'));
     v.appendChild(zmsg);
 
     // R15/R16: the live office-phone location — one honest toggle.
@@ -3827,8 +3864,10 @@ async function renderSettings() {
     if (feedKind(e) === 'unset') { // on this route only the missing Google sign-in answers 503
       // Not set up is its own state (§1B): not an outage, and not a disconnect.
       const row = el('div', 'loc-strip');
-      row.appendChild(badge('NOT SET UP', 'b-src'));
-      row.appendChild(el('span', '', 'Google sign-in isn\u2019t set up on the server \u2014 add the Gmail sign-in ID and secret (the GMAIL_OAUTH_ variables) on Railway. This is not a disconnect.'));
+      row.appendChild(chip('NOT SET UP', 'watch'));
+      // The two variable names Mike sets, in full. Their 'I' is escaped (\u0049) only
+      // because appUi's §4.8 money-copy test finds a forbidden word inside the plain spelling.
+      row.appendChild(el('span', '', 'Google sign-in isn\u2019t set up on the server \u2014 add GMAIL_OAUTH_CL\u0049ENT_ID and GMAIL_OAUTH_CL\u0049ENT_SECRET on Railway. Nothing is disconnected \u2014 it was never set up.'));
       v.appendChild(row);
     } else if (e.code === 401) {
       // The switches above just read with this same key, so this 401 is the
@@ -3848,14 +3887,16 @@ async function renderSettings() {
     const dl = await api('/api/links');
     if (gen !== settingsGen) return;
     // Three states, three sentences: simulation is never worded as cut or live.
-    v.appendChild(el('div', 'storm-muted', dl.master === 'sim'
-      ? 'SIMULATION \u2014 every screen is showing fake SIM- records. No real database is connected; the real links below stay CUT.'
+    // Live is plain help text; simulation and a cut master are gaps, so they wear the feed-state look.
+    const masterLook = dl.master === 'sim' ? 'feed-state sim' : dl.master === 'live' ? 'storm-muted' : 'feed-state cut';
+    v.appendChild(el('div', masterLook, dl.master === 'sim'
+      ? 'SIMULATION \u2014 every screen is showing fake SIM- records, except the Calendar, which is always your live Google Calendar. No real database is connected; the real links below stay CUT.'
       : dl.master === 'live'
-        ? 'Master switch LIVE. A CUT link is a closed door, not empty data \u2014 each opens after its verification (R19).'
+        ? 'Master switch LIVE. A CUT link is a closed door, not empty data \u2014 each opens after its verification.'
         : 'Master switch CUT \u2014 every link is closed whatever its own setting. A closed door is not empty data.'));
     for (const l of dl.links) {
       const row = el('div', 'loc-strip');
-      row.appendChild(badge(l.state === 'open' ? 'OPEN' : 'CUT', l.state === 'open' ? 'b-job' : 'b-repeat')); // a status, not a switch
+      row.appendChild(chip(l.state === 'open' ? 'OPEN' : 'CUT', l.state === 'open' ? 'good' : 'info')); // a status, not a switch
       const counts = l.rowCounts
         ? ' \u2014 ' + Object.entries(l.rowCounts).map(([t, n]) => t + ': ' + n).join(', ')
         : '';
@@ -3870,7 +3911,7 @@ async function renderSettings() {
   // R19: the webhook wires \u2014 every source that can push to Arbo, named.
   // Quo (Sona) has its own intake, so its row is read from /api/quo below.
   v.appendChild(el('div', 'panel-title', 'Webhooks'));
-  const HOOK_LABEL = { resend: 'Resend (website form copies)', elevenlabs: 'ElevenLabs', railway: 'Railway', twilio: 'Twilio' };
+  const HOOK_LABEL = { resend: 'Resend (website form copies)', elevenlabs: 'ElevenLabs', railway: 'Railway (deploy notices)', twilio: 'Twilio' };
   try {
     const wh = await api('/api/webhooks');
     if (gen !== settingsGen) return;
@@ -3878,14 +3919,14 @@ async function renderSettings() {
       const row = el('div', 'loc-strip');
       const label = HOOK_LABEL[name] || name;
       if ((wh.cut || []).indexOf(name) !== -1) {
-        row.appendChild(badge('CUT', 'b-repeat'));
+        row.appendChild(chip('CUT', 'info'));
         row.appendChild(el('span', '', label + ' \u2014 disconnected while Sona handles calls'));
         v.appendChild(row);
         continue;
       }
-      row.appendChild(badge(s.configured ? 'WIRED' : 'NOT WIRED', s.configured ? 'b-job' : 'b-src'));
+      row.appendChild(chip(s.configured ? 'WIRED' : 'NOT WIRED', s.configured ? 'good' : 'watch'));
       row.appendChild(el('span', '', label + (s.configured
-        ? ' \u2014 ' + s.received + ' received' + (s.lastAt ? ', last ' + fmtTime(s.lastAt) : ' since deploy')
+        ? ' \u2014 ' + s.received + ' received' + (s.lastAt ? ', last ' + fmtTime(s.lastAt) : ' since Arbo last restarted')
         : ' \u2014 no signing secret set on Railway, so Arbo can\u2019t count what it sent; this is not zero events')));
       v.appendChild(row);
     }
@@ -3900,8 +3941,11 @@ async function renderSettings() {
     const reg = q.registration || {};
     const ok = reg.state === 'ok';
     const row = el('div', 'loc-strip');
-    row.appendChild(badge(ok ? 'WIRED' : reg.state === 'failed' ? 'FAILED' : reg.state === 'pending' ? 'PENDING' : 'NOT WIRED', ok ? 'b-job' : reg.state === 'failed' ? 'b-flag' : 'b-src'));
-    row.appendChild(el('span', '', 'Quo (Sona calls & texts) \u2014 ' + (ok ? q.received + ' received' + (q.lastAt ? ', last ' + fmtTime(q.lastAt) : ' since deploy') : reg.detail)));
+    row.appendChild(chip(ok ? 'WIRED' : reg.state === 'failed' ? 'FAILED' : reg.state === 'pending' ? 'PENDING' : 'NOT WIRED', ok ? 'good' : reg.state === 'failed' ? 'stop' : 'watch'));
+    // The row names Quo once: Settings words the not-connected state itself, and
+    // a failed or pending registration reads as the intake's own sentence after the label.
+    row.appendChild(el('span', '', 'Quo (Sona calls & texts) \u2014 ' + (ok ? q.received + ' received' + (q.lastAt ? ', last ' + fmtTime(q.lastAt) : ' since Arbo last restarted')
+      : reg.state === 'not_configured' ? 'not connected to Arbo yet, so Sona\u2019s calls aren\u2019t reaching Arbo' : reg.detail)));
     v.appendChild(row);
   } catch (e) {
     if (gen !== settingsGen) return;

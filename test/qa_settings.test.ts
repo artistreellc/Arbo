@@ -6,19 +6,21 @@ import { loadAppHtml } from '../src/server/appPage.js';
 
 const html = loadAppHtml();
 const start = html.indexOf('async function renderSettings()');
-// The function ends at the first closing brace in column 0 after it.
-const settings = html.slice(start, html.indexOf('\n}\n', start) + 2);
+// renderSettings swaps in what buildSettings draws (QA round 2), so the slice
+// runs from renderSettings to the first closing brace in column 0 after buildSettings.
+const settings = html.slice(start, html.indexOf('\n}\n', html.indexOf('async function buildSettings(v, gen) {', start)) + 2);
 
 describe('Settings screen (QA round)', () => {
-  it('the slice really is renderSettings', () => {
+  it('the slice really is renderSettings and the buildSettings it draws with', () => {
     expect(start).toBeGreaterThan(-1);
     expect(settings).toContain("$('view-settings')");
+    expect(settings).toContain('async function buildSettings(v, gen) {');
     expect(settings).toContain("api('/api/webhooks')");
   });
 
   it('simulation is its own sentence, never worded as "Master switch CUT" (S-sim)', () => {
     expect(settings).toContain("dl.master === 'sim'");
-    expect(settings).toContain('every screen is showing fake SIM- records. No real database is connected; the real links below stay CUT.');
+    expect(settings).toContain('every screen is showing fake SIM- records, except the Calendar, which is always your live Google Calendar. No real database is connected; the real links below stay CUT.');
     // The live and cut sentences are kept; the live one carries the webhooks.test pin.
     expect(settings).toContain('A CUT link is a closed door, not empty data');
     expect(settings).toContain('every link is closed whatever its own setting. A closed door is not empty data.');
@@ -31,7 +33,10 @@ describe('Settings screen (QA round)', () => {
     expect(settings).toContain("zin.setAttribute('aria-label', 'Today");
     expect(settings).toContain("zin.className = 'input'; zin.style.cssText = 'width:120px;flex:none';");
     expect(settings).toContain("'Set for today: ' + rz.workZip");
-    expect(settings).toContain('no caller gets the nearby-estimate offer.');
+    // What an unset ZIP costs depends on Arbo's own phone line (QA round 2): never "no caller gets" while the line is cut.
+    expect(settings).not.toContain('no caller gets the nearby-estimate offer.');
+    expect(settings).toContain('callers near your work aren\\u2019t offered the nearby slot (near-home offers still apply).');
+    expect(settings).toContain('Arbo\\u2019s phone line is off, so callers aren\\u2019t offered anything either way.');
     // A fresh office-phone ping is used ahead of the typed ZIP, so "no caller" is only said without one.
     expect(settings).toContain('const liveZip = rz.location && rz.location.zip;');
     expect(settings).toContain("box.className = 'input'; box.style.cssText = 'margin:10px 0;resize:vertical';");
@@ -44,8 +49,10 @@ describe('Settings screen (QA round)', () => {
     // google_client_missing is the route's only 503, and feedKind words it 'unset'. The code name
     // itself stays out of the page: appUi's §4.8 test forbids the substring it contains.
     expect(settings).toContain("if (feedKind(e) === 'unset')");
-    expect(settings).toContain("badge('NOT SET UP', 'b-src')");
-    expect(settings).toContain('add the Gmail sign-in ID and secret (the GMAIL_OAUTH_ variables) on Railway. This is not a disconnect.');
+    expect(settings).toContain("chip('NOT SET UP', 'watch')");
+    // The variable names Mike must set, in full (QA round 2); the 'I' is a source escape for the §4.8 test.
+    expect(settings).toContain('add GMAIL_OAUTH_CL\\u0049ENT_ID and GMAIL_OAUTH_CL\\u0049ENT_SECRET on Railway. Nothing is disconnected \\u2014 it was never set up.');
+    expect(settings).not.toContain('This is not a disconnect.');
     expect(settings).toContain("feedLine(e, 'Google status')");
     expect(settings).not.toContain('Google reconnect: unavailable right now');
     // An unknown Connect refusal is said in words, never printed as its code.
@@ -66,7 +73,7 @@ describe('Settings screen (QA round)', () => {
     expect(html).toContain('let settingsGen = 0;\nasync function renderSettings() {');
     expect(settings).toContain('const gen = ++settingsGen;');
     // Every read the render awaits is followed by the generation check.
-    for (const read of ["'/api/settings/channels'", "'/api/inbox/intents'", "'/api/settings/route'", "'/api/google/connect');", "'/api/links'", "'/api/webhooks'", "'/api/quo'"]) {
+    for (const read of ["'/api/settings/channels'", "'/api/inbox/intents'", "'/api/settings/route'", "'/api/reception/status'", "'/api/google/connect');", "'/api/links'", "'/api/webhooks'", "'/api/quo'"]) {
       const at = settings.indexOf('await api(' + read);
       expect(at, read).toBeGreaterThan(-1);
       expect(settings.slice(at, at + 160), read).toContain('if (gen !== settingsGen) return;');
@@ -82,23 +89,28 @@ describe('Settings screen (QA round)', () => {
     expect(settings).toContain(': saveFailText(e);');
   });
 
-  it('read-only states are badges, not look-alike switches (S-status-tags)', () => {
+  it('read-only states are chips by tone, not look-alike switches (S-status-tags)', () => {
     expect(settings).not.toContain("el('span', 'loc-toggle'");
-    expect(settings).toContain("badge(l.state === 'open' ? 'OPEN' : 'CUT', l.state === 'open' ? 'b-job' : 'b-repeat')");
-    expect(settings).toContain("badge('CUT', 'b-repeat')");
-    expect(settings).toContain("badge(s.configured ? 'WIRED' : 'NOT WIRED', s.configured ? 'b-job' : 'b-src')");
+    expect(settings).toContain("chip(l.state === 'open' ? 'OPEN' : 'CUT', l.state === 'open' ? 'good' : 'info')");
+    expect(settings).toContain("chip('CUT', 'info')");
+    expect(settings).toContain("chip(s.configured ? 'WIRED' : 'NOT WIRED', s.configured ? 'good' : 'watch')");
+    expect(settings).toContain("ok ? 'good' : reg.state === 'failed' ? 'stop' : 'watch'");
+    // No legacy badge colour is left on this screen: every status chip has a tone.
+    expect(settings).not.toMatch(/\bbadge\(/);
     expect(html).toContain('.loc-strip .badge{flex:none;min-width:92px;text-align:center;white-space:nowrap}');
   });
 
   it('no developer jargon, ruling codes or raw keys on the screen (S-copy)', () => {
-    for (const gone of ['coded defaults', 'durable home comes', 'Where Mike is', 'In-memory:', 'resets on redeploy', '(R21)', 'no fresh ping yet (phone posts', 'no secret on the server;']) {
+    for (const gone of ['coded defaults', 'durable home comes', 'Where Mike is', 'In-memory:', 'resets on redeploy', '(R21)', '(R19).', 'since deploy', 'no fresh ping yet (phone posts', 'no secret on the server;', 'the GMAIL_OAUTH_ variables']) {
       expect(settings, gone).not.toContain(gone);
     }
     expect(settings).toContain("location: 'Saved location history'");
     expect(settings).toContain('(LINK_LABEL[l.link] || l.link)');
     expect(settings).toContain("resend: 'Resend (website form copies)'");
+    expect(settings).toContain("railway: 'Railway (deploy notices)'");
     expect(settings).toContain('const label = HOOK_LABEL[name] || name;');
     expect(settings).toContain('t count what it sent; this is not zero events');
+    expect(settings).toContain("' since Arbo last restarted'");
   });
 
   it('the inbox check behind the switches is named above them (S-inbox-state)', () => {

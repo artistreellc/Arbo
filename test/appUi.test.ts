@@ -276,14 +276,16 @@ describe('ARBOR app shell', () => {
     expect(html).toContain('id="settings-btn"');
     expect(html).toContain('/api/settings/channels');
     expect(html).toContain('go back to the standard set whenever Arbo restarts or is updated');
-    expect(html).toContain('Could not load the channel switches. Nothing was changed.');
+    // QA round 2: a dead switches feed is named in the shared feed words, and nothing was changed.
+    expect(html).toContain("state('Channel switches — ' + FEED_WORD[feedKind(e)], 'Nothing was changed.')");
   });
 
   it("today's work ZIP is settable, and honest about its in-memory life (R15)", () => {
     expect(html).toContain('/api/settings/route');
     expect(html).toContain('Today\\u2019s work ZIP');
     expect(html).toContain('Set it each morning; it resets whenever Arbo restarts or is updated');
-    expect(html).toContain('Work-ZIP setting unavailable right now. Nothing was changed.');
+    // QA round 2: a dead work-ZIP read is a named feed line, never a help tip.
+    expect(html).toContain("feedLine(rzErr, 'Work ZIP', 'Nothing was changed.')");
   });
 
   it('the location toggle and route planner are on the settings screen, honest in both modes (R15/R16)', () => {
