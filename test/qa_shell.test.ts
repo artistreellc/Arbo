@@ -25,8 +25,11 @@ function pageFn<T>(name: string, deps: Record<string, unknown> = {}): T {
 }
 
 type Field = { value: string; type: string };
-const view = (fields: Field[] = [], active = false) => ({
+// `held` lists what the view has on screen ('details[open]', '.lead-filed'):
+// querySelector finds it only when the page asks for that exact selector.
+const view = (fields: Field[] = [], active = false, held: string[] = []) => ({
   querySelectorAll: () => fields,
+  querySelector: (sel: string) => (sel.split(',').some((s) => held.includes(s.trim())) ? { held: true } : null),
   classList: { contains: (c: string) => c === 'active' && active },
 });
 
@@ -105,7 +108,9 @@ describe('the Talk pages', () => {
 
 describe('the key screen', () => {
   it('promises only what it can keep, on the screen and on the iPhone install card', () => {
-    expect(html).toContain('Art-is-Tree ops. Enter your access key to open Arbo on this phone.');
+    // The same screen opens Arbo on the office computer, so it says device, not phone.
+    expect(html).toContain('Art-is-Tree ops. Enter your access key to open Arbo on this device.');
+    expect(html).not.toContain('open Arbo on this phone');
     expect(html).not.toContain('once per device');
     expect(between('function installCard(', '// ---------- Offline')).toContain('You’ll enter your access key once more the first time you open it.');
     expect(html).toContain('#keywall button:disabled{opacity:.7}');
@@ -203,11 +208,16 @@ describe('refresh', () => {
     expect(handler.indexOf('refreshActiveMoreView()')).toBeGreaterThan(handler.indexOf('refreshAll()'));
   });
 
-  it('the minute timer keeps Today fresh, skips a hidden page, and never wipes typed text', () => {
+  it('the minute timer keeps Today fresh, skips a hidden page, and never wipes typed text, an open transcript or a spam Undo', () => {
     const holdsTyping = pageFn<(v: unknown) => boolean>('holdsTyping');
     expect(holdsTyping(view([{ value: '', type: 'text' }, { value: 'on', type: 'checkbox' }]))).toBe(false);
     expect(holdsTyping(view([{ value: '12 Oak St', type: 'text' }]))).toBe(true);
     expect(holdsTyping(view([{ value: '2026-11-01', type: 'date' }]))).toBe(true);
+    // Calls: a transcript Mike opened. Leads: a card filed as spam, its Undo still on offer.
+    expect(holdsTyping(view([], false, ['details[open]']))).toBe(true);
+    expect(holdsTyping(view([], false, ['.lead-filed']))).toBe(true);
+    // A closed transcript holds nothing.
+    expect(holdsTyping(view([], false, ['details']))).toBe(false);
 
     const ran: string[] = [];
     const TIMED = Object.fromEntries(['today', 'leads', 'book', 'calls'].map((t) => [t, () => ran.push(t)]));
@@ -227,6 +237,12 @@ describe('refresh', () => {
     wallUp = true;
     tick();
     expect(ran).toHaveLength(3);
+    // An open transcript keeps Calls as it is; Today and Leads still redraw.
+    wallUp = false;
+    els['view-calls'] = view([], false, ['details[open]']);
+    tick();
+    expect(ran.slice(3)).toEqual(['today', 'leads']);
+    expect(between('function holdsTyping(', '\n}')).toContain("v.querySelector('details[open], .lead-filed')");
 
     const timed = between('const TIMED = {', '};');
     for (const r of ['renderToday', 'renderLeads', 'renderCalendar', 'renderBook', 'renderFollowUps', 'renderCalls', 'renderPerformance']) expect(timed).toContain(r);
@@ -262,13 +278,17 @@ describe('the header', () => {
   });
 });
 
-describe('fmtTime: a card time always carries its day', () => {
+describe('fmtWhen: one human date and time for every card', () => {
   afterEach(() => { vi.useRealTimers(); });
-  const fmt = pageFn<(iso: unknown) => string>('fmtTime');
+  const fmt = pageFn<(v: unknown) => string>('fmtWhen');
+  // The legacy name its callers still use is the same format, nothing of its own.
+  const legacy = pageFn<(iso: unknown) => string>('fmtTime', { fmtWhen: fmt });
   const t = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const day = (d: Date) => d.toLocaleDateString([], { month: 'short', day: 'numeric' });
   const now = (d: Date) => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(d); };
+  const enUS = Intl.DateTimeFormat().resolvedOptions().locale === 'en-US';
 
-  it('today is the time alone; yesterday and tomorrow say so; this week names the day; older names the date', () => {
+  it('today is the time alone; yesterday and tomorrow say so; this week names the day; older is the date alone', () => {
     now(new Date(2026, 9, 18, 10, 0));
     const cases: Array<[Date, (d: Date) => string]> = [
       [new Date(2026, 9, 18, 15, 5), (d) => t(d)],
@@ -276,10 +296,18 @@ describe('fmtTime: a card time always carries its day', () => {
       [new Date(2026, 9, 19, 8, 0), (d) => 'Tomorrow ' + t(d)],
       [new Date(2026, 9, 15, 9, 30), (d) => d.toLocaleDateString([], { weekday: 'short' }) + ' ' + t(d)],
       [new Date(2026, 9, 22, 9, 30), (d) => d.toLocaleDateString([], { weekday: 'short' }) + ' ' + t(d)],
-      [new Date(2026, 9, 11, 9, 30), (d) => d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ', ' + t(d)],
-      [new Date(2026, 8, 28, 15, 5), (d) => d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ', ' + t(d)],
+      [new Date(2026, 9, 11, 9, 30), (d) => day(d)],
+      [new Date(2026, 8, 28, 15, 5), (d) => day(d)],
     ];
-    for (const [d, want] of cases) expect(fmt(d.toISOString()), d.toString()).toBe(want(d));
+    for (const [d, want] of cases) {
+      expect(fmt(d.toISOString()), d.toString()).toBe(want(d));
+      expect(legacy(d.toISOString()), d.toString()).toBe(want(d));
+    }
+    if (enUS) {
+      expect(fmt(new Date(2026, 9, 11, 9, 30).toISOString())).toBe('Oct 11');
+      expect(fmt(new Date(2026, 8, 28, 15, 5).toISOString())).toBe('Sep 28');
+    }
+    expect(between('function fmtTime(', '\n}')).toBe('function fmtTime(iso) {\n  return fmtWhen(iso);');
   });
 
   it('compares calendar days, not 24-hour windows', () => {
@@ -291,7 +319,36 @@ describe('fmtTime: a card time always carries its day', () => {
     expect(fmt(early.toISOString())).toBe(t(early));
   });
 
-  it('no time, or one that does not parse, is blank — never "Invalid Date"', () => {
-    for (const x of ['', null, undefined, 'not a time']) expect(fmt(x)).toBe('');
+  it('a bare YYYY-MM-DD is that calendar day in any time zone — never the day before in ET', () => {
+    const saved = process.env.TZ;
+    try {
+      for (const tz of ['America/New_York', 'America/Los_Angeles', 'UTC', 'Pacific/Auckland']) {
+        process.env.TZ = tz;
+        now(new Date(2026, 9, 18, 10, 0));
+        expect(fmt('2026-09-28'), tz).toBe(day(new Date(2026, 8, 28)));
+        if (enUS) expect(fmt('2026-09-28'), tz).toBe('Sep 28');
+        // A date with no time is a date, even today — never a made-up midnight time.
+        expect(fmt('2026-10-18'), tz).toBe(day(new Date(2026, 9, 18)));
+      }
+    } finally {
+      if (saved === undefined) delete process.env.TZ;
+      else process.env.TZ = saved;
+    }
+  });
+
+  it('a date in another year names the year', () => {
+    now(new Date(2026, 9, 18, 10, 0));
+    const old = new Date(2025, 9, 3, 9, 0);
+    expect(fmt(old.toISOString())).toBe(old.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }));
+    expect(fmt(old.toISOString())).toContain('2025');
+    expect(fmt('2025-10-03')).toContain('2025');
+    if (enUS) expect(fmt('2025-10-03')).toBe('Oct 3, 2025');
+  });
+
+  it('no time, or one that does not parse, is blank — never "Invalid Date" or a different day', () => {
+    for (const x of ['', null, undefined, 'not a time', '2026-02-30', '2026-13-01']) {
+      expect(fmt(x), String(x)).toBe('');
+      expect(legacy(x), String(x)).toBe('');
+    }
   });
 });

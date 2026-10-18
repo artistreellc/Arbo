@@ -82,6 +82,7 @@
   --border:rgba(19,32,26,.12); --hairline:rgba(19,32,26,.075); --muted:var(--ink-3);
   --emergency:#C2413B; --warning:#A87A0A; --ok:#2E7D5B; --info:#2461C8;
   --emergency-bg:#FBEFEC; --warning-bg:#FBF3DE; --ok-bg:#EAF4EE; --info-bg:#EAF0FB;
+  --on-emergency:#FFFFFF; /* text on a solid alarm chip. Night uses dark ink: white on #F07D72 is ~2.6:1, #2B0D0A ~6.8:1 */
   /* geometry */
   --r-xs:6px; --r-sm:10px; --r-md:14px; --r-lg:20px; --r-xl:28px; --r-pill:999px;
   --serif:'Fraunces',ui-serif,Georgia,'Times New Roman',serif;
@@ -104,6 +105,7 @@
   --border:rgba(234,241,236,.13); --hairline:rgba(234,241,236,.075);
   --emergency:#F07D72; --warning:#E6B84A; --ok:#63C08F; --info:#7FA8F2;
   --emergency-bg:#2C1714; --warning-bg:#2A2310; --ok-bg:#12281D; --info-bg:#142035;
+  --on-emergency:#2B0D0A;
   --f-50:#12211B; --f-100:#173026; --seg-on:#1F3B30;
   --shadow-card:0 1px 0 rgba(255,255,255,.03) inset,0 12px 30px -18px rgba(0,0,0,.7);
   --shadow-pop:0 8px 22px -8px rgba(0,0,0,.7);
@@ -118,6 +120,7 @@
   --border:rgba(234,241,236,.13); --hairline:rgba(234,241,236,.075);
   --emergency:#F07D72; --warning:#E6B84A; --ok:#63C08F; --info:#7FA8F2;
   --emergency-bg:#2C1714; --warning-bg:#2A2310; --ok-bg:#12281D; --info-bg:#142035;
+  --on-emergency:#2B0D0A;
   --f-50:#12211B; --f-100:#173026; --seg-on:#1F3B30;
   --shadow-card:0 1px 0 rgba(255,255,255,.03) inset,0 12px 30px -18px rgba(0,0,0,.7);
   --shadow-pop:0 8px 22px -8px rgba(0,0,0,.7);
@@ -259,14 +262,20 @@ main{padding:8px 16px 16px;max-width:680px;margin:0 auto}
 .b-review{background:var(--info);color:#fff}
 .b-verify{border-color:var(--border);color:var(--ink-3)}
 .b-pending{background:var(--paper-2);color:var(--ink-3);border-color:var(--hairline)}
+/* ONE status -> colour table for every chip on every screen (script: TONE / chip()). alarm = life-safety, the strongest chip — nothing outranks it; stop = blocked / broken / do not proceed; watch = needs a look, or unknown; good = checked and fine; info = context, or a gap on purpose (cut, not simulated, not run). */
+.t-alarm{background:var(--emergency);color:var(--on-emergency);border-color:var(--emergency);box-shadow:0 0 0 2px color-mix(in srgb,var(--emergency) 22%,transparent)}
+.t-stop{background:var(--emergency-bg);color:var(--emergency);border-color:color-mix(in srgb,var(--emergency) 50%,transparent)}
+.t-watch{background:var(--warning-bg);color:color-mix(in srgb,var(--warning) 78%,var(--ink-1));border-color:color-mix(in srgb,var(--warning) 45%,transparent)}
+.t-good{background:var(--ok-bg);color:var(--ok);border-color:color-mix(in srgb,var(--ok) 40%,transparent)}
+.t-info{background:var(--paper-2);color:var(--ink-3);border-color:var(--hairline)}
 .ordernum{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--forest);color:var(--paper);
   font-family:var(--sans);font-size:13px;font-weight:700;margin-right:10px;flex:none;font-variant-numeric:tabular-nums}
 .section-title{font-family:var(--serif);font-size:17px;font-weight:600;color:var(--ink-1);margin:26px 2px 10px}
 
 /* ── States (a dead feed is NAMED, never a quiet zero — §1B) ────────── */
 .state{text-align:center;padding:34px 22px;color:var(--ink-3);font-size:15px;background:var(--card);
-  border:1px dashed var(--border);border-radius:var(--r-lg)}
-.state b{display:block;font-family:var(--serif);font-size:21px;font-weight:600;color:var(--ink-1);margin-bottom:8px}
+  border:1px dashed var(--border);border-radius:var(--r-lg);margin-bottom:12px}
+.state b{display:block;font-family:var(--serif);font-size:21px;font-weight:600;color:var(--ink-1);margin-bottom:8px;text-wrap:balance}
 
 /* ── Dock ─────────────────────────────────────────────────────────────── */
 nav{
@@ -314,18 +323,21 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 #keywall button:disabled{opacity:.7}
 .errline{color:var(--emergency);margin-top:12px;font-weight:600;min-height:24px}
 #keywall .errline{color:#FFB3A6}
+.view .errline:empty,.sheet .errline:empty{display:none}
 
 /* ── Callouts & status lines ─────────────────────────────────────────── */
+/* .storm = red alarm · .late = amber warning · .feed-state = one line naming a feed Arbo could not read · dashed .state = a whole primary feed it could not read (or a real empty) · .storm-muted = help text only */
 .storm{background:var(--emergency-bg);border:1px solid color-mix(in srgb,var(--emergency) 28%,transparent);color:color-mix(in srgb,var(--emergency) 75%,var(--ink-1));
   border-radius:var(--r-md);padding:13px 16px;margin-bottom:12px;font-weight:600;font-size:14px;line-height:1.45}
 .storm small{display:block;font-weight:500;opacity:.9;margin-top:4px}
-.storm-muted{color:var(--ink-3);font-size:13.5px;line-height:1.55;margin-bottom:12px;padding-left:16px;position:relative}
-.storm-muted::before{content:'';position:absolute;left:2px;top:.62em;width:6px;height:6px;border-radius:50%;background:var(--ink-4)}
-/* A feed Arbo could not read (§1B) — its own row, never styled like a help tip. */
-.feed-state{color:var(--ink-2);font-size:13.5px;font-weight:600;line-height:1.55;margin-bottom:12px;padding-left:18px;position:relative}
-.feed-state::before{content:'';position:absolute;left:1px;top:.5em;width:8px;height:8px;border-radius:50%;background:var(--warning)}
+.storm-muted{color:var(--ink-3);font-size:13.5px;line-height:1.55;margin-bottom:12px;text-wrap:pretty}
+/* A feed Arbo could not read (§1B) — its own row, never styled like a help tip.
+   The dot follows FEED_TONE: amber filled = not set up, grey = cut or not simulated
+   (a gap on purpose), hollow amber = couldn't read it (unknown, not danger). */
+.feed-state{color:var(--ink-2);font-size:13.5px;font-weight:600;line-height:1.55;margin-bottom:12px;padding-left:18px;position:relative;text-wrap:pretty}
+.feed-state::before{content:'';position:absolute;left:1px;top:.5em;width:8px;height:8px;border-radius:50%;background:var(--warning);box-sizing:border-box}
 .feed-state.cut::before,.feed-state.sim::before{background:var(--ink-4)}
-.feed-state.unread::before{background:var(--emergency)}
+.feed-state.unread::before{background:none;border:2px solid var(--warning)}
 .loc-strip{display:flex;align-items:center;gap:12px;margin-bottom:12px;font-size:14px;color:var(--ink-2)}
 .loc-strip .badge{flex:none;min-width:92px;text-align:center;white-space:nowrap}
 .loc-toggle{min-height:44px;min-width:64px;border:1px solid var(--border);border-radius:var(--r-pill);background:var(--card);color:var(--ink-3);
@@ -509,7 +521,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 <div id="keywall">
   <svg class="kmark" aria-hidden="true"><use href="#i-ring"/></svg>
   <h1>ARBO</h1>
-  <p>Art-is-Tree ops. Enter your access key to open Arbo on this phone.</p>
+  <p>Art-is-Tree ops. Enter your access key to open Arbo on this device.</p>
   <input id="keyinput" type="password" inputmode="text" autocomplete="current-password" placeholder="Access key">
   <button id="keygo">Open</button>
   <div class="errline" id="keyerr"></div>
@@ -661,7 +673,7 @@ function feedKind(e) { // 'cut' | 'sim' | 'unset' | 'unread'
 }
 const FEED_WORD = { cut: 'cut on purpose', sim: 'not in the practice data', unset: 'not set up yet', unread: 'couldn’t read it' };
 const FEED_TAG = { cut: 'cut', sim: 'not simulated', unset: 'not set up', unread: 'unreadable' }; // chips, tiles, ring legend
-const FEED_SAYS = { cut: 'This data link is cut on purpose.', sim: 'Not part of the practice data — nothing was read.', unset: 'Not set up on the server yet.', unread: 'Arbo couldn’t read it just now.' };
+const FEED_SAYS = { cut: 'Nothing was deleted — it stays off until you reconnect it.', sim: 'Nothing was read.', unset: 'Arbo has nothing to read until it is connected.', unread: 'The read failed just now.' }; // a card body: adds to the FEED_WORD headline, never repeats it
 const RETRY = 'Tap ↻ at the top to try again.';
 function feedSays(e) { return FEED_SAYS[feedKind(e)]; }
 function feedLine(e, what, tail) { const k = feedKind(e); return el('div', 'feed-state ' + k, what + ': ' + FEED_WORD[k] + '.' + (k === 'unread' ? ' ' + RETRY : '') + (tail ? ' ' + tail : '')); }
@@ -674,21 +686,61 @@ function saveFailText(e) {
 }
 function showSaveFail(box, e) { const n = box.querySelector(':scope > .save-err') || box.appendChild(el('div', 'errline save-err')); n.textContent = saveFailText(e); return n; }
 
-// A card time always carries its day, by calendar day: '3:05 PM' today,
-// 'Yesterday 3:05 PM' / 'Tomorrow 3:05 PM', 'Tue 3:05 PM' within six days,
-// 'Sep 28, 3:05 PM' beyond. No time, or one that will not parse, is blank.
-function fmtTime(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
+// ONE status -> colour table. Every chip says what it means with one of five tones (alarm > stop > watch > good > info).
+// TONE WORDS (the canonical list) — a new chip finds its word here, or the nearest kin of it:
+//   alarm = EMERGENCY, POWER LINES, the power-line CALL FIRST, NO AERIAL WORK (nothing is stronger)
+//   stop = BLOCKED, GUARD BLOCKED A REPLY, SONA BROKE A RULE, EXPIRED, NO RECORD, NEVER TESTED, DOWN, NOT SCHEDULABLE,
+//     FINAL — CALL THEM, FAILED, TICKET REQUIRED, STRUCTURES, HOT (lead)
+//   watch = WARM, PERMIT LIKELY, REVIEW NEEDED, PERMIT SCREEN PENDING, UNCONFIRMED / any non-SOURCED fact, RE-CHECK DUE,
+//     UNREADABLE, MISSING INPUTS, FAIR, LOW, NOT SET UP, NOT WIRED, PENDING, NO EXPIRY DATE, EXPIRES SOON, WEEK UNKNOWN,
+//     OWES THIS WEEK, OVERDUE, DUE NOW, COMING DUE (property), PAST DUE, SECOND NOTICE, LATE FEE, NEEDS ATTENTION,
+//     N OPEN TASKS, SIZE UNKNOWN, CARDS UNKNOWN, BELOW AVERAGE, WAITING ON YOU, IN RPA, FOLLOW-UP, NO-SHOW SAVE,
+//     a non-power CALL FIRST, an unknown crew role
+//   good = READ, OK, GOOD, SOURCED, QUALIFIED, WIRED, OPEN, UP, ABOVE AVERAGE, WEEK DONE, REVIEWED
+//   info = CUT / LINK CUT, NOT SIMULATED, NOT RUN, NOT BUILT, NO OVERLAY — VERIFY W/ CITY, JOB, ESTIMATE, FIRST-TIMER,
+//     REPEAT, SPAM, COOL, OFF ROSTER, AT AVERAGE, NOT ENOUGH DATA, RENEWAL DUE, SEASONAL, REVIEW ASK,
+//     COMING DUE (growth nudge), + PROOF OF INSURANCE, and every identity tag (city, channel, line, job type, role,
+//     source, money amount, counts, study stages other than WAITING ON YOU)
+const TONE = { alarm: 't-alarm', stop: 't-stop', watch: 't-watch', good: 't-good', info: 't-info' };
+// A feed state as a tone: a gap on purpose is grey; anything Arbo does not know is amber.
+const FEED_TONE = { cut: 'info', sim: 'info', unset: 'watch', unread: 'watch' };
+// An unmapped tone reads as "needs a look" — never as calm or good.
+function chip(text, tone) {
+  return badge(text, TONE[tone] || TONE.watch);
+}
+// '1 stop', '2 stops', '1 emergency', '3 emergencies' — never 'stop(s)'.
+function plural(n, one, many) {
+  return n + ' ' + (n === 1 ? one : (many || one + 's'));
+}
+// ONE human date/time for every card: '2:15 PM' today, 'Yesterday 2:15 PM' /
+// 'Tomorrow 2:15 PM', 'Tue 2:15 PM' within six days, 'Oct 3' beyond (', 2025'
+// when not this year). A bare 'YYYY-MM-DD' is that local calendar day — new
+// Date() would read it as UTC midnight and show the day before in ET.
+// Missing or unparseable (a day that does not exist included): ''.
+function fmtWhen(v) {
+  if (!v) return '';
+  const ymd = typeof v === 'string' && /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+  const d = ymd ? new Date(+ymd[1], +ymd[2] - 1, +ymd[3]) : new Date(v);
   if (Number.isNaN(d.getTime())) return '';
-  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (ymd && (d.getMonth() !== +ymd[2] - 1 || d.getDate() !== +ymd[3])) return ''; // '2026-02-30' rolls over; never show a different day
+  const now = new Date();
+  const date = d.toLocaleDateString([], d.getFullYear() === now.getFullYear()
+    ? { month: 'short', day: 'numeric' }
+    : { month: 'short', day: 'numeric', year: 'numeric' });
+  if (ymd) return date;
   const midnight = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-  const days = Math.round((midnight(d) - midnight(new Date())) / 86400000); // round: a DST day is 23 or 25 h
+  const days = Math.round((midnight(d) - midnight(now)) / 86400000); // round: a DST day is 23 or 25 h
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   if (days === 0) return time;
   if (days === -1) return 'Yesterday ' + time;
   if (days === 1) return 'Tomorrow ' + time;
   if (Math.abs(days) <= 6) return d.toLocaleDateString([], { weekday: 'short' }) + ' ' + time;
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ', ' + time;
+  return date;
+}
+
+// Legacy name kept for its callers: every card time is fmtWhen.
+function fmtTime(iso) {
+  return fmtWhen(iso);
 }
 
 function mapsLink(address, city) {
@@ -4572,8 +4624,9 @@ function refreshActiveMoreView() {
     if ($('view-' + t).classList.contains('active')) { r[t](); return; }
   }
 }
-// Typed and not yet saved: a rebuild would wipe it without a word.
+// Typed and not yet saved, a transcript held open, or a spam Undo still on offer: a rebuild would wipe it without a word. ↻ still redraws.
 function holdsTyping(v) {
+  if (v.querySelector('details[open], .lead-filed')) return true;
   return [...v.querySelectorAll('input, textarea')].some((n) => n.value && !/^(checkbox|radio|file)$/.test(n.type));
 }
 // The refresh Arbo does on its own: every minute, back on screen, back online.
