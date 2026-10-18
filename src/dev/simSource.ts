@@ -151,6 +151,7 @@ export function createSimSource(): DataSource {
     stopsBetween: async () => SIM_JOBS.map((j) => ({
       id: j.jobId, kind: 'job' as const, timeIso: j.scheduledFor, name: 'SIM-Test',
       phone: p(1), address: j.address, city: j.city, isFirstTimer: true, scope: j.scope,
+      nearPowerLines: j.hazardPowerLines,
     })),
 
     newLeads: async (limit: number) => SIM_LEADS.slice(0, limit),
