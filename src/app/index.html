@@ -203,6 +203,10 @@ main{padding:8px 16px 16px;max-width:680px;margin:0 auto}
 .hstat b{display:block;font-family:var(--serif);font-weight:600;font-size:26px;line-height:1;font-variant-numeric:tabular-nums;color:#FBF8EF}
 .hstat span{display:block;font-size:10.5px;font-weight:650;letter-spacing:.12em;text-transform:uppercase;color:rgba(244,239,224,.7);margin-top:6px}
 .hstat.warn b{color:#F2CF73}.hstat.hot b{color:#FFA08F}
+/* A coloured number says why on its own tile (HERO.stat's note): a count, never a name. Empty, it takes no room. */
+.hstat small{display:block;font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(244,239,224,.7);margin-top:3px}
+.hstat small:empty{display:none}
+.hstat.hot{border-color:rgba(255,160,143,.45)}.hstat.hot small{color:#FFA08F}
 .ring-legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:12px;font-size:12px;color:rgba(244,239,224,.75)}
 .ring-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px}
 
@@ -244,7 +248,7 @@ main{padding:8px 16px 16px;max-width:680px;margin:0 auto}
 .card .who{font-family:var(--serif);font-size:19px;font-weight:600;line-height:1.22;color:var(--ink-1);display:flex;align-items:center;font-variation-settings:'opsz' 30}
 .card .when{font-variant-numeric:tabular-nums;font-size:14px;font-weight:700;color:var(--gold-6);white-space:nowrap}
 .card .addr{font-size:15px;margin:2px 0 8px;color:var(--ink-2)}
-.card .addr a{color:var(--info);text-decoration:none;font-weight:600}
+.card .addr a{color:var(--forest);text-decoration:none;font-weight:600}
 .card .scope{font-size:14.5px;color:var(--ink-2);margin-bottom:8px;line-height:1.5}
 .badges{display:flex;flex-wrap:wrap;gap:6px}
 .badge{font-size:10.5px;font-weight:700;letter-spacing:.09em;border-radius:var(--r-pill);padding:4px 10px;border:1px solid transparent;text-transform:uppercase;line-height:1.3}
@@ -450,7 +454,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 .cal-ev .body{flex:1;min-width:0}
 .cal-ev .who{font-family:var(--serif);font-size:16.5px;font-weight:600;line-height:1.3}
 .cal-ev .where{font-size:13.5px;color:var(--ink-3);margin-top:2px;overflow:hidden;text-overflow:ellipsis}
-.cal-ev .gcal{color:var(--info);font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap}
+.cal-ev .gcal{color:var(--forest);font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap}
 
 /* ── Offline + toast ─────────────────────────────────────────────────── */
 #offline{display:none;position:sticky;top:0;z-index:25;margin:0 -16px 10px;padding:10px 16px;background:var(--warning-bg);color:color-mix(in srgb,var(--warning) 75%,var(--ink-1));font-size:13.5px;font-weight:600;border-bottom:1px solid color-mix(in srgb,var(--warning) 30%,transparent)}
@@ -492,7 +496,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 .card.fact{scroll-margin-top:calc(84px + env(safe-area-inset-top))} /* a "Source ↓" jump lands below the sticky app bar */
 .factmeta{font-size:13.5px;color:var(--ink-3);margin-top:10px;display:grid;gap:4px}
 .factmeta b{color:var(--ink-1);font-weight:650}
-.factmeta a{color:var(--info);font-weight:600;text-decoration:none}
+.factmeta a{color:var(--forest);font-weight:600;text-decoration:none}
 .srcs{font-size:12.5px}
 .internal-note{font-size:12.5px;color:var(--ink-3);background:var(--paper-2);border-radius:var(--r-sm);padding:8px 10px;margin-top:4px;line-height:1.45}
 .filepick{display:flex;align-items:center;justify-content:center;gap:12px;min-height:64px;border-radius:18px;border:1.5px dashed color-mix(in srgb,var(--forest) 45%,transparent);
@@ -858,10 +862,13 @@ async function inboxIntentPanel() {
     // Mike's words, never the server's raw reason string.
     const r = d.gmailReason || '';
     const unset = r === 'no Gmail credentials configured';
-    const why = unset ? 'Gmail isn’t connected, so Arbo can’t check your inbox.'
+    // In practice mode no Gmail is wired on purpose — said in the practice words, so it never reads as the real inbox being down.
+    const sim = unset && (await LINKS_READY) === 'simulation';
+    const why = sim ? 'Inbox: ' + FEED_WORD.sim + ' — Arbo isn’t reading your Gmail here.'
+      : unset ? 'Gmail isn’t connected, so Arbo can’t check your inbox.'
       : (!r || r === 'inbox watch has not completed a pass') ? 'Arbo hasn’t finished its first inbox check yet.'
       : 'Arbo couldn’t read Gmail on its last check.';
-    wrap.appendChild(el('div', 'feed-state ' + (unset ? 'unset' : 'unread'), why + ' That doesn’t mean no mail came in.'));
+    wrap.appendChild(el('div', 'feed-state ' + (sim ? 'sim' : unset ? 'unset' : 'unread'), why + ' That doesn’t mean no mail came in.'));
     return wrap;
   }
   if (d.pipeline === 'pattern_only') {
@@ -1278,8 +1285,11 @@ async function websiteFormsPanel() {
   if (!d.wired) {
     // §1B: an unwired feed is NAMED. The emailed copy of each form still
     // reaches Gmail — whether Arbo can read Gmail is the Inbox card's job.
-    wrap.appendChild(el('div', 'feed-state unset',
-      'Website forms aren’t connected to Arbo yet. They still arrive in your Gmail inbox.'));
+    // In practice mode it is a gap on purpose, said in the practice words.
+    wrap.appendChild((await LINKS_READY) === 'simulation'
+      ? el('div', 'feed-state sim', 'Website forms: ' + FEED_WORD.sim + '. Real ones still arrive in your Gmail inbox.')
+      : el('div', 'feed-state unset',
+        'Website forms aren’t connected to Arbo yet. They still arrive in your Gmail inbox.'));
     return wrap;
   }
   if (!d.forms.length) {
@@ -1522,7 +1532,10 @@ async function renderToday() {
     const timed = brief.stops.filter((st) => st.timeIso && !Number.isNaN(Date.parse(st.timeIso)));
     const passed = timed.filter((st) => Date.parse(st.timeIso) < nowMs).length;
     if (HERO) {
-      HERO.stat('stops', s.totalStops, (s.emergencies || s.redFlagCount) ? 'hot' : '', plural(s.totalStops, 'stop') + ' today');
+      // A red count says why on its own tile — the strongest reason, as a count (never a name).
+      // Every emergency stop is also a flagged stop, so emergencies go first.
+      const flagNote = s.emergencies ? plural(s.emergencies, 'emergency', 'emergencies') : s.redFlagCount ? s.redFlagCount + ' flagged' : '';
+      HERO.stat('stops', s.totalStops, (s.emergencies || s.redFlagCount) ? 'hot' : '', plural(s.totalStops, 'stop') + ' today', flagNote);
       HERO.ring('stops', s.totalStops ? passed / s.totalStops : 0);
       // Clock time past each stop's slot — nothing records a stop as done (D85).
       // The run is in route order, not clock order: the next stop is the earliest time still ahead.
@@ -4051,6 +4064,7 @@ function buildHero() {
     const s = el('div', 'hstat');
     s.appendChild(el('b', 'num', '–'));
     s.appendChild(el('span', '', label));
+    s.appendChild(el('small')); // HERO.stat's note: why the number is coloured
     stats.appendChild(s);
     return s;
   };
@@ -4083,10 +4097,11 @@ function buildHero() {
   };
   HERO = {
     el: box,
-    stat: function (key, value, cls, fact) {
+    stat: function (key, value, cls, fact, note) {
       const c = cells[key];
       c.querySelector('b').textContent = String(value);
       c.className = 'hstat' + (cls ? ' ' + cls : '');
+      c.querySelector('small').textContent = note || ''; // no note: the line is empty and hidden
       facts[key] = String(value) === '–' ? fact : null; // a real number is on the tile; the subline names only the dashes (§1B)
       say();
     },
@@ -4115,7 +4130,7 @@ function buildSystems() {
   SYS = function (key, level, text) {
     const x = chips[key];
     if (!x) return;
-    x.c.className = 'sys ' + level; // ok | warn | down
+    x.c.className = 'sys ' + level; // ok | cut | warn | down (cut has no rule of its own: the plain grey .sys i dot)
     x.t.textContent = SYS_LABELS[key] + ' · ' + text;
     // Network only takes a chip while it is offline. style, not [hidden]:
     // .sys sets its own display, which beats the hidden attribute.
@@ -4124,7 +4139,9 @@ function buildSystems() {
   SYS('network', navigator.onLine ? 'ok' : 'down', navigator.onLine ? 'online' : 'offline');
   api('/health').then((hl) => {
     const d = hl.dataLinks;
-    SYS('links', d === 'live' ? 'ok' : 'warn', d === 'live' ? 'live' : d === 'cut' ? 'cut on purpose' : d);
+    // Cut and simulation are switches Mike set on purpose: grey, like every other
+    // cut on the screen. Anything else Arbo does not know stays amber.
+    SYS('links', d === 'live' ? 'ok' : d === 'cut' || d === 'simulation' ? 'cut' : 'warn', d === 'live' ? 'live' : d === 'cut' ? 'cut on purpose' : d);
   }).catch(() => SYS('links', 'warn', 'unreadable')); // unknown is amber, never red
   return row;
 }
