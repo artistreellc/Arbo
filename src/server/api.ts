@@ -375,6 +375,8 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
   // TypeScript still narrows the method, and asks gap() only for the word.
   const gap = (has: unknown): string | null =>
     !source.ready() ? 'db_not_configured' : has ? null : extras.dataLinksSim ? 'not_simulated' : 'not_built';
+  // A blind spot in words: the practice data simply lacks it, or no source is connected yet (§1B — never snake_case, never "wired").
+  const unwired = (what: string, tail: string): string => `${what} — ${extras.dataLinksSim ? 'not in the practice data' : 'not connected yet'}. ${tail}`;
   return {
     /** GET /health — config versions + which integrations are wired. Never leaks values. */
     async health(): Promise<ApiResult> {
@@ -1429,13 +1431,13 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
 
       let certProblems: ReturnType<typeof findCertProblems> = [];
       if (!source.activeCrew || !source.certifications) {
-        blindSpots.push('certifications: no source wired');
+        blindSpots.push(unwired('Certifications', 'Arbo cannot check who is current.'));
       } else {
         try {
           const [crew, certs] = await Promise.all([source.activeCrew(), source.certifications()]);
           certProblems = findCertProblems(crew, certs, todayEt);
         } catch {
-          blindSpots.push('certifications: could not read crew or certification records');
+          blindSpots.push('Certifications — could not read the crew or certification records just now. Arbo cannot check who is current.');
         }
       }
 
@@ -1444,7 +1446,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       // has a lesson", which is the opposite of what a dead feed means (§1B).
       let nearMissesWithoutLesson: number | null = null;
       if (!source.recentNearMisses) {
-        blindSpots.push('near_miss: no source wired');
+        blindSpots.push(unwired('Near misses', 'Arbo cannot check whether every incident has a lesson.'));
       } else {
         try {
           const since = new Date(Date.parse(`${todayEt}T00:00:00Z`) - 90 * 86400_000).toISOString().slice(0, 10);
@@ -1452,7 +1454,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
           nearMissesWithoutLesson = (nearMisses as Array<{ hasTrainingItem?: boolean }>)
             .filter((n) => n.hasTrainingItem === false).length;
         } catch {
-          blindSpots.push('near_miss: could not read the incident log');
+          blindSpots.push('Near misses — could not read the incident log just now. Arbo cannot check whether every incident has a lesson.');
         }
       }
 
@@ -1645,7 +1647,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       // null means the read FAILED, which the board renders as UNKNOWN.
       let completions: GateCompletionRow[] | null = null;
       if (!source.gateCompletionsSince) {
-        extraBlindSpots.push('Weekly completions: no source wired.');
+        extraBlindSpots.push(unwired('Weekly completions', 'Arbo cannot tell who finished this week.'));
       } else {
         try {
           completions = await source.gateCompletionsSince(weekStart.toISOString());

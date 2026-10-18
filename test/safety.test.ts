@@ -291,8 +291,8 @@ describe('safety API', () => {
     expect(res.status).toBe(200);
     const b = res.body as { blindSpots: string[]; certProblems: unknown[] };
     expect(b.blindSpots).toHaveLength(2);
-    expect(b.blindSpots.join(' ')).toMatch(/certifications/);
-    expect(b.blindSpots.join(' ')).toMatch(/near_miss/);
+    expect(b.blindSpots.join(' ')).toMatch(/certifications/i);
+    expect(b.blindSpots.join(' ')).toMatch(/near miss/i);
     // The critical part: an empty problem list next to a blind spot must NOT
     // read as all-clear, which is why blindSpots is non-empty here.
     expect(b.certProblems).toEqual([]);
