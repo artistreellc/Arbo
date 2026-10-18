@@ -92,9 +92,10 @@ describe('the Calls screen', () => {
   });
 
   it('the panels sit in cards like Today, and the call items have their own heading', () => {
-    for (const slot of ['studyFull', 'outreachFull', 'sonaCallsSlot', 'txSlot', 'cnSlot', 'ownSlot']) {
+    for (const slot of ['studyFull', 'outreachFull', 'sonaCallsSlot', 'cnSlot', 'ownSlot']) {
       expect(calls, slot).toContain('const ' + slot + " = el('div', 'slot');");
     }
+    expect(calls).toContain("const txSlot = el('div', 'slot texts');"); // QA round 3: '.texts' lines up its two phone lines
     // QA round 2: Arbo's own line is a card like the rest, titled so it never reads as Sona.
     expect(html).not.toContain("'Receptionist calls'");
     const heading = calls.indexOf("ownSlot.appendChild(el('div', 'panel-title', 'Arbo’s own line'))");

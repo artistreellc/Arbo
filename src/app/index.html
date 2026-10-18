@@ -342,12 +342,14 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 .feed-state::before{content:'';position:absolute;left:1px;top:.5em;width:8px;height:8px;border-radius:50%;background:var(--warning);box-sizing:border-box}
 .feed-state.cut::before,.feed-state.sim::before{background:var(--ink-4)}
 .feed-state.unread::before{background:none;border:2px solid var(--warning)}
+.texts .feed-state + .storm-muted{padding-left:18px}
 .loc-strip{display:flex;align-items:center;gap:12px;margin-bottom:12px;font-size:14px;color:var(--ink-2)}
 .loc-strip .badge{flex:none;min-width:92px;text-align:center;white-space:nowrap}
 .loc-toggle{min-height:44px;min-width:64px;border:1px solid var(--border);border-radius:var(--r-pill);background:var(--card);color:var(--ink-3);
   font-size:12.5px;font-weight:700;padding:0 16px;letter-spacing:.06em;display:inline-grid;place-items:center}
 .loc-toggle.on{background:var(--forest);border-color:var(--forest);color:var(--paper)}
 .loc-toggle.on.idle{background:var(--card);color:var(--forest);border-color:var(--forest);opacity:.75}
+.loc-toggle:disabled,.loc-toggle.idle:disabled{opacity:.55}
 .late{background:var(--warning-bg);border:1px solid color-mix(in srgb,var(--warning) 32%,transparent);color:color-mix(in srgb,var(--warning) 70%,var(--ink-1));
   border-radius:var(--r-md);padding:13px 16px;margin-bottom:12px;font-weight:600;font-size:14px;line-height:1.45}
 .late small{display:block;font-weight:500;opacity:.95;margin-top:6px}
@@ -1754,15 +1756,17 @@ async function renderLeads() {
           ready();
           return;
         }
-        // Spam dims the card and leaves on the next ↻ — until then, Undo (the
-        // minute timer holds a screen with a filed card, so it waits for ↻).
+        // Spam dims the card and offers Undo. The minute timer holds Leads for
+        // about 2 minutes after a filing (data-at, read by holdsTyping), then
+        // redraws, so a new lead is never held back for long. ↻ redraws at once.
         // The filed line and its Undo stay at full strength (.lead-filed).
         c.classList.add('dismissed');
         if (qTag) qTag.remove();
         const tag = chip('SPAM', 'info');
         b.appendChild(tag);
         const filed = el('div', 'lead-filed');
-        filed.appendChild(el('div', 'scope', 'Filed as spam — it leaves the inbox when you tap\u00a0↻.')); // ↻ never wraps alone
+        filed.dataset.at = String(Date.now()); // when the hold on the minute timer started
+        filed.appendChild(el('div', 'scope', 'Filed as spam — Undo stays about 2 minutes, or until you tap\u00a0↻.')); // ↻ never wraps alone
         const undoRow = el('div', 'actions');
         const undo = el('button', 'minibtn', 'Undo');
         undo.addEventListener('click', async () => {
@@ -1810,16 +1814,18 @@ function routePlannerPanel(v) {
   ta.style.cssText = 'min-height:110px;resize:vertical;line-height:1.45;margin-bottom:10px';
   v.appendChild(ta);
   const prow = el('div', 'loc-strip');
+  // Two equal halves whatever each box's padding (flex-basis 0 left the select 16px wider).
+  prow.style.cssText = 'display:grid;grid-template-columns:1fr 1fr';
   const daySel = document.createElement('select');
   daySel.id = 'route-day';
   daySel.className = 'input';
-  daySel.style.cssText = 'flex:1 1 0;min-width:0'; // an even split with Plan route
+  daySel.style.cssText = 'min-width:0'; // holds its half of the grid
   // Short labels: at half a phone row "Weekday (after 4)" clipped; the hint above says weekdays start after 4 PM.
   for (const [val, label] of [['saturday', 'Saturday'], ['weekday', 'Weekday']]) {
     const o = document.createElement('option'); o.value = val; o.textContent = label; daySel.appendChild(o);
   }
   const pbtn = el('button', 'actbtn', 'Plan route');
-  pbtn.style.cssText = 'flex:1 1 0;min-width:0;margin-top:0';
+  pbtn.style.cssText = 'min-width:0;width:100%;margin-top:0';
   const pout = el('div');
   pbtn.onclick = async () => {
     pbtn.disabled = true;
@@ -2154,7 +2160,8 @@ async function renderCalls() {
   // The three fill together, so a Quo that is not connected is ONE card here too, as on Today.
   fills.push(fillQuoSlots([studyPanel(60), outreachPanel(true), sonaPanel(20, true)], [studyFull, outreachFull, sonaCallsSlot]));
   // Texts + photos sent to the Arbo number (Mike, 2026-09-24). Receive only.
-  const txSlot = el('div', 'slot');
+  // '.texts': the business-cell line hangs under the Arbo-line row's text (two peer lines).
+  const txSlot = el('div', 'slot texts');
   v.appendChild(txSlot);
   fills.push((async () => {
     let t;
@@ -2216,7 +2223,11 @@ async function renderCalls() {
   v.appendChild(cnSlot);
   fills.push((async () => {
     let n;
-    try { n = await api('/api/relay/call-notes'); } catch (e) { return; }
+    try { n = await api('/api/relay/call-notes'); }
+    catch (e) { // §1B: an unread notes feed keeps its title and says so; a 401 is the backlog read's to send to the key wall
+      if (e.code !== 401) { cnSlot.appendChild(el('div', 'panel-title', 'Notes from calls you answered')); cnSlot.appendChild(feedLine(e, 'Call notes')); }
+      return;
+    }
     if (!n.notes.length) return;
     cnSlot.appendChild(el('div', 'panel-title', 'Notes from calls you answered'));
     for (const note of n.notes.slice(0, 8)) {
@@ -2239,7 +2250,8 @@ async function renderCalls() {
   ownSlot.appendChild(trSlot);
   fills.push((async () => {
     let t;
-    try { t = await api('/api/webhooks/calls'); } catch (e) { return; }
+    try { t = await api('/api/webhooks/calls'); }
+    catch (e) { if (e.code !== 401) trSlot.appendChild(feedLine(e, 'Call transcripts')); return; } // §1B: unread is named, never an absent row
     // R21: cut on purpose is not "not set up" (§1B). The call log below
     // carries this card's one "not zero calls".
     if (t.linkCut) {
@@ -3759,9 +3771,10 @@ async function buildSettings(v, gen) {
     // ON over a check that is down is drawn muted (.idle): chosen, but nothing is reading yet.
     const btn = el('button', 'loc-toggle' + (c.on ? ' on' : '') + (c.on && inboxDown ? ' idle' : ''), c.on ? 'ON' : 'OFF');
     btn.onclick = async () => {
-      btn.disabled = true;
+      // The page rebuilds off screen before it swaps, so the tap shows at once.
+      btn.disabled = true; btn.textContent = 'Saving\u2026';
       try { await api('/api/settings/channels', { method: 'POST', body: { id: c.id, on: !c.on } }); }
-      catch (e) { btn.disabled = false; showSaveFail(cell, e); return; } // refused: the switch stays as it was, and says so
+      catch (e) { btn.disabled = false; btn.textContent = c.on ? 'ON' : 'OFF'; showSaveFail(cell, e); return; } // refused: the switch stays as it was, and says so
       renderSettings();
     };
     row.appendChild(btn);
@@ -3789,10 +3802,13 @@ async function buildSettings(v, gen) {
     // Only Arbo's own phone line (ElevenLabs) offers a caller the nearby slot; while
     // it is cut the ZIP moves the route and prep sheets and nothing else.
     let rsx = null;
-    try { rsx = await api('/api/reception/status'); } catch (e) {} // an unread status is said in the unset line below
+    try { rsx = await api('/api/reception/status'); } catch (e) {} // an unread status is said in the intro just below
     if (gen !== settingsGen) return;
     const lineCut = !!(rsx && rsx.linkCut);
-    v.appendChild(el('div', 'storm-muted', lineCut
+    // Three states, three sentences (§1B): an unread line status never reads as the live offer.
+    v.appendChild(el('div', 'storm-muted', !rsx
+      ? 'Where you\u2019re working today \u2014 sets where your route and estimate prep sheets start. Arbo couldn\u2019t read whether its own phone line is on, so it can\u2019t say whether callers are offered the nearby estimate. Set it each morning; it resets whenever Arbo restarts or is updated.'
+      : lineCut
       ? 'Where you\u2019re working today \u2014 sets where your route and estimate prep sheets start. Arbo\u2019s own phone line is off while Sona answers calls, so no caller is offered the nearby estimate right now. Set it each morning; it resets whenever Arbo restarts or is updated.'
       : 'Where you\u2019re working today \u2014 callers in or near this ZIP get offered an easy weekday estimate, and your route and prep sheets start here. Set it each morning; it resets whenever Arbo restarts or is updated.'));
     const zrow = el('div', 'loc-strip');
@@ -3824,7 +3840,7 @@ async function buildSettings(v, gen) {
     // An unset ZIP is a gap, so it is named as one (.feed-state), not drawn as a help tip.
     v.appendChild(el('div', (rz.workZip || liveZip) ? 'storm-muted' : 'feed-state unset', rz.workZip ? 'Set for today: ' + rz.workZip
       : liveZip ? 'Not set today \u2014 the office phone\u2019s live ZIP (' + liveZip + ') is used while its ping is fresh.'
-      : !rsx ? 'Not set today \u2014 route and prep sheets have no starting ZIP. (Arbo couldn\u2019t read whether its phone line is on.)'
+      : !rsx ? 'Not set today \u2014 route and prep sheets have no starting ZIP.' // the intro above already says the line status went unread
       : lineCut ? 'Not set today \u2014 route and prep sheets have no starting ZIP. Arbo\u2019s phone line is off, so callers aren\u2019t offered anything either way.'
       : 'Not set today \u2014 callers near your work aren\u2019t offered the nearby slot (near-home offers still apply).'));
     v.appendChild(zmsg);
@@ -3836,9 +3852,9 @@ async function buildSettings(v, gen) {
     const lrow = el('div', 'loc-strip');
     const lbtn = el('button', 'loc-toggle' + (loc.enabled ? ' on' : ''), loc.enabled ? 'ON' : 'OFF');
     lbtn.onclick = async () => {
-      lbtn.disabled = true;
+      lbtn.disabled = true; lbtn.textContent = 'Saving\u2026'; // shows at once; the rebuilt page swaps in after
       try { await api('/api/settings/location', { method: 'POST', body: { on: !loc.enabled } }); }
-      catch (e) { lbtn.disabled = false; showSaveFail(lcell, e); return; } // refused: the toggle stays as it was, and says so
+      catch (e) { lbtn.disabled = false; lbtn.textContent = loc.enabled ? 'ON' : 'OFF'; showSaveFail(lcell, e); return; } // refused: the toggle stays as it was, and says so
       renderSettings();
     };
     lrow.appendChild(lbtn);
@@ -3935,6 +3951,11 @@ async function buildSettings(v, gen) {
   // Quo (Sona) has its own intake, so its row is read from /api/quo below.
   v.appendChild(el('div', 'panel-title', 'Webhooks'));
   const HOOK_LABEL = { resend: 'Resend (website form copies)', elevenlabs: 'ElevenLabs', railway: 'Railway (deploy notices)', twilio: 'Twilio' };
+  // Railway and Twilio are gated by a key in their webhook link, not a signing secret, so their unset rows name that variable.
+  const HOOK_UNSET = {
+    railway: ' \u2014 RAILWAY_WEBHOOK_KEY (the key in the webhook link) isn\u2019t set, so Arbo can\u2019t count deploy notices; this is not zero events',
+    twilio: ' \u2014 TWILIO_SMS_WEBHOOK_KEY (the key in the webhook link) isn\u2019t set, so Arbo can\u2019t count incoming texts; this is not zero events',
+  };
   try {
     const wh = await api('/api/webhooks');
     if (gen !== settingsGen) return;
@@ -3950,7 +3971,7 @@ async function buildSettings(v, gen) {
       row.appendChild(chip(s.configured ? 'WIRED' : 'NOT WIRED', s.configured ? 'good' : 'watch'));
       row.appendChild(el('span', '', label + (s.configured
         ? ' \u2014 ' + s.received + ' received' + (s.lastAt ? ', last ' + fmtTime(s.lastAt) : ' since Arbo last restarted')
-        : ' \u2014 no signing secret set on Railway, so Arbo can\u2019t count what it sent; this is not zero events')));
+        : (HOOK_UNSET[name] || ' \u2014 no signing secret set on Railway, so Arbo can\u2019t count what it sent; this is not zero events'))));
       v.appendChild(row);
     }
   } catch (e) {
@@ -4482,8 +4503,12 @@ function factCard(f, isStale) {
   c.appendChild(el('div', 'who', nb(f.title)));
   c.appendChild(el('div', 'scope', nb(f.rule)));
   const meta = el('div', 'factmeta');
+  // No office on file: a city rule points at the city; a state, regional or industry rule
+  // (e.g. ANSI Z133) is no city office's to answer, so it never says 'ask the city'.
   if (f.whoToCall) meta.appendChild(whoLine(f.whoToCall));
-  else if (f.confidence !== 'SOURCED') meta.appendChild(el('div', '', 'No office on file — ask the city which office handles this.'));
+  else if (f.confidence !== 'SOURCED') meta.appendChild(el('div', '', (f.city === 'Virginia' || f.city === 'Regional')
+    ? 'No office on file — confirm it with the body that publishes it before relying on it.'
+    : 'No office on file — ask the city which office handles this.'));
   if (f.form) meta.appendChild(el('div', '', 'Form: ' + f.form.name));
   if (f.fee) meta.appendChild(el('div', '', 'Government-set figure (fee, fine or license tier): ' + f.fee));
   if (f.leadTime) meta.appendChild(el('div', '', 'Lead time: ' + f.leadTime));
@@ -4962,8 +4987,10 @@ function refreshActiveMoreView() {
   }
 }
 // Typed and not yet saved, a transcript held open, or a spam Undo still on offer: a rebuild would wipe it without a word. ↻ still redraws.
+// A spam Undo holds only its first 2 minutes, so a new lead is never kept off Leads for long.
 function holdsTyping(v) {
-  if (v.querySelector('details[open], .lead-filed')) return true;
+  if (v.querySelector('details[open]')) return true;
+  if ([...v.querySelectorAll('.lead-filed')].some((n) => Date.now() - Number(n.dataset.at) < 120000)) return true;
   return [...v.querySelectorAll('input, textarea')].some((n) => n.value && !/^(checkbox|radio|file)$/.test(n.type));
 }
 // The refresh Arbo does on its own: every minute, back on screen, back online.

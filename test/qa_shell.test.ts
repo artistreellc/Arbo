@@ -25,10 +25,11 @@ function pageFn<T>(name: string, deps: Record<string, unknown> = {}): T {
 }
 
 type Field = { value: string; type: string };
-// `held` lists what the view has on screen ('details[open]', '.lead-filed'):
+// `held` lists what the view has on screen ('details[open]'):
 // querySelector finds it only when the page asks for that exact selector.
-const view = (fields: Field[] = [], active = false, held: string[] = []) => ({
-  querySelectorAll: () => fields,
+// `filed` is the spam lines on screen, each stamped with when it was filed (data-at).
+const view = (fields: Field[] = [], active = false, held: string[] = [], filed: Array<{ dataset: { at: string } }> = []) => ({
+  querySelectorAll: (sel: string) => (sel === '.lead-filed' ? filed : fields),
   querySelector: (sel: string) => (sel.split(',').some((s) => held.includes(s.trim())) ? { held: true } : null),
   classList: { contains: (c: string) => c === 'active' && active },
 });
@@ -216,7 +217,10 @@ describe('refresh', () => {
     expect(holdsTyping(view([{ value: '2026-11-01', type: 'date' }]))).toBe(true);
     // Calls: a transcript Mike opened. Leads: a card filed as spam, its Undo still on offer.
     expect(holdsTyping(view([], false, ['details[open]']))).toBe(true);
-    expect(holdsTyping(view([], false, ['.lead-filed']))).toBe(true);
+    // QA round 3: a spam Undo holds Leads for its first 2 minutes only, so a new lead is never kept off for long.
+    expect(holdsTyping(view([], false, [], [{ dataset: { at: String(Date.now()) } }]))).toBe(true);
+    expect(holdsTyping(view([], false, [], [{ dataset: { at: String(Date.now() - 121000) } }]))).toBe(false);
+    expect(holdsTyping(view([], false, [], [{ dataset: { at: String(Date.now() - 121000) } }, { dataset: { at: String(Date.now() - 5000) } }]))).toBe(true);
     // A closed transcript holds nothing.
     expect(holdsTyping(view([], false, ['details']))).toBe(false);
 
@@ -243,7 +247,8 @@ describe('refresh', () => {
     els['view-calls'] = view([], false, ['details[open]']);
     tick();
     expect(ran.slice(3)).toEqual(['today', 'leads']);
-    expect(between('function holdsTyping(', '\n}')).toContain("v.querySelector('details[open], .lead-filed')");
+    expect(between('function holdsTyping(', '\n}')).toContain("v.querySelector('details[open]')");
+    expect(between('function holdsTyping(', '\n}')).toContain("[...v.querySelectorAll('.lead-filed')].some((n) => Date.now() - Number(n.dataset.at) < 120000)");
 
     const timed = between('const TIMED = {', '};');
     for (const r of ['renderToday', 'renderLeads', 'renderCalendar', 'renderBook', 'renderFollowUps', 'renderCalls', 'renderPerformance']) expect(timed).toContain(r);

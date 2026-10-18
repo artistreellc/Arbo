@@ -134,7 +134,7 @@ describe('Leads: the file-it pair, Undo and the chip rows (run, not just read)',
     await s.renderLeads();
     await s.spam().click();
     expect(s.card().has('dismissed')).toBe(true);
-    expect(s.card().text()).toContain('Filed as spam — it leaves the inbox when you tap\u00a0↻.'); // ↻ never wraps alone
+    expect(s.card().text()).toContain('Filed as spam — Undo stays about 2 minutes, or until you tap\u00a0↻.'); // ↻ never wraps alone
     await s.undo().click();
     expect(s.posts.map((p) => p.status)).toEqual(['spam', 'emergency']);
     expect(s.posts[1]!.path).toBe('/api/leads/E1/status');
@@ -399,8 +399,11 @@ describe('Route planner results', () => {
   });
 
   it('the day select and Plan route split the row evenly, and the select wears the shared chevron', () => {
-    expect(planner).toContain("daySel.style.cssText = 'flex:1 1 0;min-width:0';");
-    expect(planner).toContain("pbtn.style.cssText = 'flex:1 1 0;min-width:0;margin-top:0';");
+    // QA round 3: flex-basis 0 left the select 16px wider (its padding), so the row is an equal grid.
+    expect(planner).toContain("prow.style.cssText = 'display:grid;grid-template-columns:1fr 1fr';");
+    expect(planner).toContain("daySel.style.cssText = 'min-width:0';");
+    expect(planner).toContain("pbtn.style.cssText = 'min-width:0;width:100%;margin-top:0';");
+    expect(planner).not.toContain('flex:1 1 0');
     // At half a phone row the long label clipped ("Weekday (after ·"); the hint line carries "after 4 PM".
     expect(planner).toContain("[['saturday', 'Saturday'], ['weekday', 'Weekday']]");
     expect(planner).toContain('Weekdays start after 4 PM.');
