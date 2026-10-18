@@ -158,7 +158,7 @@ export interface DataSource {
   /** The Book (#36): browse every property; open one to its full twin. */
   properties?(): Promise<unknown[]>;
   propertyTwin?(id: string): Promise<unknown | null>;
-  setLeadStatus?(leadId: string, status: 'new' | 'qualified' | 'spam' | 'converted' | 'lost'): Promise<void>;
+  setLeadStatus?(leadId: string, status: 'new' | 'qualified' | 'emergency' | 'spam' | 'converted' | 'lost'): Promise<void>;
   /** §1E Loop-Closer: the silence-detection snapshot. */
   loopSnapshot?(): Promise<LoopSnapshot>;
   /** §6J2.4 leakage line: trailing-window actuals + event logging. */
@@ -709,13 +709,16 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       return { status: 200, body: twin };
     },
 
-    /** POST /api/leads/:id/status — Mike's qualify/spam/converted/lost tap. */
+    /**
+     * POST /api/leads/:id/status — Mike's qualify/spam/converted/lost tap, and
+     * the app's Undo, which puts back what the lead was ('new' or 'emergency').
+     */
     async setLeadStatus(id: string, status: string): Promise<ApiResult> {
       if (!source.ready() || !source.setLeadStatus) return { status: 503, body: { error: gap(source.setLeadStatus) } };
-      if (!id || !['new', 'qualified', 'spam', 'converted', 'lost'].includes(status)) {
+      if (!id || !['new', 'qualified', 'emergency', 'spam', 'converted', 'lost'].includes(status)) {
         return { status: 400, body: { error: 'bad_status' } };
       }
-      await source.setLeadStatus(id, status as 'new' | 'qualified' | 'spam' | 'converted' | 'lost');
+      await source.setLeadStatus(id, status as 'new' | 'qualified' | 'emergency' | 'spam' | 'converted' | 'lost');
       return { status: 200, body: { ok: true } };
     },
 

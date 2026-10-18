@@ -62,7 +62,9 @@ describe('the Calls screen', () => {
   it('R21: the cut lines say cut, ahead of "not set up", and claim no coverage that does not exist', () => {
     expect(calls.match(/if \(t\.linkCut\)/g)).toHaveLength(2);
     expect(calls).toContain('Arbo line (757-821-6983): disconnected while Sona handles calls — this is not zero texts. Nothing was deleted.');
-    expect(calls).toContain('Call transcripts from Arbo’s own line: disconnected while Sona handles calls — this is not zero calls.');
+    // QA round 2: the transcript line drops the honesty tag — the call log in
+    // the same card carries that card's one "not zero calls".
+    expect(calls).toContain('Call transcripts: disconnected while Sona handles calls. Sona’s calls have their own section above.');
     expect(calls.indexOf('if (t.linkCut)')).toBeLessThan(calls.indexOf('!t.wired'));
     expect(html).not.toContain('The in-call records still capture every call');
     // No shouted NOT, no "wire" in the status lines.
@@ -71,7 +73,9 @@ describe('the Calls screen', () => {
   });
 
   it('a call log Arbo could not read never heads itself with a zero', () => {
-    expect(calls).toContain("feedState(e, 'Call log', 'zero calls')");
+    // QA round 2: one feed line inside the own-line card, not a dashed state card.
+    expect(calls).toContain("ownSlot.appendChild(feedLine(e, 'Call log', 'This is not zero calls.'))");
+    expect(calls).not.toContain('feedState(');
     expect(calls).toContain('await LINKS_READY');
     expect(html).not.toContain('No calls logged yet');
     expect(calls).not.toContain('Pull refresh');
@@ -85,12 +89,15 @@ describe('the Calls screen', () => {
   });
 
   it('the panels sit in cards like Today, and the call items have their own heading', () => {
-    for (const slot of ['studyFull', 'outreachFull', 'sonaCallsSlot', 'txSlot', 'cnSlot']) {
+    for (const slot of ['studyFull', 'outreachFull', 'sonaCallsSlot', 'txSlot', 'cnSlot', 'ownSlot']) {
       expect(calls, slot).toContain('const ' + slot + " = el('div', 'slot');");
     }
-    const heading = calls.indexOf("el('div', 'panel-title', 'Receptionist calls')");
-    expect(heading).toBeGreaterThan(calls.indexOf('const cnSlot'));
+    // QA round 2: Arbo's own line is a card like the rest, titled so it never reads as Sona.
+    expect(html).not.toContain("'Receptionist calls'");
+    const heading = calls.indexOf("ownSlot.appendChild(el('div', 'panel-title', 'Arbo’s own line'))");
+    expect(heading).toBeGreaterThan(calls.indexOf('const ownSlot'));
     expect(heading).toBeLessThan(calls.indexOf('const trSlot'));
+    expect(calls).toContain("const trSlot = el('div');\n  ownSlot.appendChild(trSlot);");
     // The transcripts' own title is a sub-heading now, so two titles never stack.
     expect(calls).not.toContain("el('div', 'panel-title', 'Call transcripts");
     expect(calls).toContain("el('div', 'sect', 'Call transcripts (pushed after each call)')");

@@ -63,7 +63,7 @@ describe('business-cell relays', () => {
     srv.close();
     const html = readFileSync(new URL('../src/app/index.html', import.meta.url), 'utf8');
     expect(html).toContain('Photos stay on your phone');
-    expect(html).toContain('nothing relayed from your iPhone since deploy');
+    expect(html).toContain('nothing relayed from your iPhone since Arbo last restarted');
     expect(html).toContain('Notes from calls you answered');
   });
 });
