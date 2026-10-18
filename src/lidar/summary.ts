@@ -90,7 +90,7 @@ export function summarizeTreeMeasurement(m: TreeMeasurement): string {
   const bhFt = (BREAST_HEIGHT_M * M_TO_FT).toFixed(1);
   if (m.dbhCm !== null) {
     parts.push(
-      `Trunk diameter at breast height (${BREAST_HEIGHT_M} m / ${bhFt} ft) about ${m.dbhCm.toFixed(0)} cm ` +
+      `Trunk diameter at breast height (${BREAST_HEIGHT_M} m / ${bhFt} ft) about ${m.dbhCm.toFixed(1)} cm ` +
         `(${(m.dbhCm * CM_TO_IN).toFixed(1)} in), ${conf(m.confidence.dbh)}` +
         (m.dbhFit ? `; ${m.dbhFit.rmseCm.toFixed(1)} cm scatter.` : '.'),
     );
@@ -99,12 +99,13 @@ export function summarizeTreeMeasurement(m: TreeMeasurement): string {
   }
 
   if (m.leanDeg !== null) {
-    parts.push(`Trunk lean about ${m.leanDeg.toFixed(0)}° from vertical, ${conf(m.confidence.lean)}.`);
+    parts.push(`Trunk lean about ${m.leanDeg.toFixed(1)}° from vertical, ${conf(m.confidence.lean)}.`);
   } else {
     parts.push(missing('Trunk lean', m.confidence.lean));
   }
 
-  if (m.warnings.length > 0) parts.push(`Check: ${m.warnings.map((w) => w.replace(/\.$/, '')).join('; ')}.`);
+  // 'Check —', not 'Check:', so the units warning never reads "Check: UNITS NOT CONFIRMED: …".
+  if (m.warnings.length > 0) parts.push(`Check — ${m.warnings.map((w) => w.replace(/\.$/, '')).join('; ')}.`);
   parts.push(SIGN_OFF);
   return parts.join(' ');
 }

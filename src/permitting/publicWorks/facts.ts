@@ -36,7 +36,7 @@ const VIRGINIA_BEACH: Fact[] = [
     sourceUrls: ['https://register.dls.virginia.gov/details.aspx?id=10307', 'https://planning.virginiabeach.gov/environment'],
     confidence: 'SOURCED',
     verifiedOn: R25,
-    notes: 'Other environmental planner lines from the research: 757-385-8615, 757-385-8594. Planning main was also given as 757-385-4211. Named staff contacts live in cities.ts.',
+    notes: 'Other environmental planner lines from the research: 757-385-8615, 757-385-8594. Planning main was also given as 757-385-4211. Named staff contacts are in your permit correspondence.',
   },
   {
     id: 'vb-ppr-tree-removal-form',
@@ -51,7 +51,7 @@ const VIRGINIA_BEACH: Fact[] = [
     sourceUrls: ['https://planning.virginiabeach.gov/land-development', CITIES_TS_REF],
     confidence: 'SOURCED',
     verifiedOn: R25,
-    notes: 'cities.ts calls it the "PPR Tree Removal Form", a.k.a. "Removal of Vegetation in a Resource Protection Area Application Form"; record # format YYYY-DSC-######. Fee and required contents UNCONFIRMED.',
+    notes: 'Your permit correspondence calls it the "PPR Tree Removal Form", a.k.a. "Removal of Vegetation in a Resource Protection Area Application Form"; record # format YYYY-DSC-######. Fee and required contents UNCONFIRMED.',
   },
   {
     id: 'vb-rpa-mitigation',
@@ -208,7 +208,7 @@ const VIRGINIA_BEACH: Fact[] = [
     sourceUrls: ['https://planning.virginiabeach.gov/boards-commissions/historic-preservation-commission'],
     confidence: 'UNCONFIRMED',
     verifiedOn: R25,
-    notes: 'UNCONFIRMED: sources are silent on tree review; absence of a rule in a snippet is not evidence there is none.',
+    notes: 'UNCONFIRMED: sources are silent on tree review; absence of a rule on the city\'s web page is not evidence there is none.',
   },
   {
     id: 'vb-landfill-no-commercial-yard-waste',
@@ -251,7 +251,7 @@ const VIRGINIA_BEACH: Fact[] = [
     sourceUrls: [CITIES_TS_REF, 'https://dwr.virginia.gov'],
     confidence: 'SOURCED',
     verifiedOn: CITIES_TS,
-    notes: 'Learned from a VB case in mined correspondence. DWR is a state agency, so it likely applies in the other cities too — UNCONFIRMED there.',
+    notes: 'Learned from a Virginia Beach job in your permit emails. DWR is a state agency, so it likely applies in the other cities too — UNCONFIRMED there.',
   },
 ];
 
@@ -275,7 +275,7 @@ const NORFOLK: Fact[] = [
     ],
     confidence: 'SOURCED',
     verifiedOn: R25,
-    notes: 'Phone for Environmental Services is in conflict — see nor-cbpa-phone-conflict. Named staff contacts live in cities.ts.',
+    notes: 'Phone for Environmental Services is in conflict — see nor-cbpa-phone-conflict. Named staff contacts are in your permit correspondence.',
   },
   {
     id: 'nor-cbpa-review',
@@ -304,7 +304,7 @@ const NORFOLK: Fact[] = [
     confidence: 'UNCONFIRMED',
     verifiedOn: R25,
     notes:
-      'UNCONFIRMED: the CBPA document snippet gives 757-664-4368 (Environmental Services); cities.ts lists Environmental Services at 757-664-4752, which a research snippet labels Planning. cities.ts also lists the Environmental Service Manager at 757-664-4363 — one digit off 4368, so one may be a transcription slip. Not picked; dial all before use.',
+      'UNCONFIRMED: the city\'s CBPA document gives 757-664-4368 (Environmental Services); your permit correspondence lists Environmental Services at 757-664-4752, which a city web page labels Planning. Your permit correspondence also lists the Environmental Service Manager at 757-664-4363 — one digit off 4368, so one may be a transcription slip. Not picked; dial all before use.',
   },
   {
     id: 'nor-specimen-mitigation',
@@ -388,7 +388,7 @@ const NORFOLK: Fact[] = [
     sourceUrls: ['https://www.norfolk.gov/1090/Architectural-Review-Board', 'https://norfolk.gov/DocumentCenter/View/21150/Historic-Districts-Brochure-COA'],
     confidence: 'UNCONFIRMED',
     verifiedOn: R25,
-    notes: 'UNCONFIRMED: private-tree COA coverage was an inference in the snippet, not a stated rule.',
+    notes: 'UNCONFIRMED: private-tree COA coverage was an inference from the city\'s web page, not a stated rule.',
   },
   {
     id: 'nor-yard-waste',
@@ -639,7 +639,7 @@ const PORTSMOUTH: Fact[] = [
     sourceUrls: ['https://library.municode.com/va/portsmouth/codes/code_of_ordinances?nodeId=PTIICO_CH9.1CHBAPRAROVDI'],
     confidence: 'UNCONFIRMED',
     verifiedOn: R25,
-    notes: 'UNCONFIRMED: the snippet did not confirm the exact wording.',
+    notes: 'UNCONFIRMED: the online city code did not confirm the exact wording.',
   },
   {
     id: 'pts-outside-cbpa',
@@ -761,7 +761,7 @@ const REGIONAL: Fact[] = [
     sourceUrls: ['https://www.spsava.gov/193/Regional-Landfill'],
     confidence: 'SOURCED',
     verifiedOn: R25,
-    notes: 'INTERNAL: the Regional Landfill is physically in Suffolk. Never name that city to a customer (R1, §12 forbidden-strings). Green waste at the landfill face is UNCONFIRMED.',
+    notes: 'The Regional Landfill is physically in Suffolk. Never name that city to a customer. Green waste at the landfill face is UNCONFIRMED.',
   },
   {
     id: 'reg-hr-recovery-center',
@@ -873,7 +873,7 @@ const VIRGINIA: Fact[] = [
     city: 'Virginia',
     topic: 'licensing',
     title: 'DPOR contractor license classes',
-    rule: 'Virginia contractor license class is set by the value of a single project: Class C, B or A, effective July 1, 2025. Thresholds are in the fee line.',
+    rule: 'Virginia contractor license class is set by the value of a single project: Class C, B or A, effective July 1, 2025. The limits for each class are listed below.',
     whoToCall: { office: 'Virginia DPOR, Board for Contractors' },
     fee: 'Class C: over $1,000 and under $30,000 per project · Class B: $30,000 to under $150,000 · Class A: $150,000 and up',
     sourceUrls: [

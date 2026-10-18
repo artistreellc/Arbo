@@ -405,7 +405,7 @@ describe('measureTree (R25 — decision support)', () => {
     expect(m.confidence.dbh.level).toBe('good');
     expect(m.confidence.height.level).toBe('low');
     expect(m.confidence.crown.level).toBe('low');
-    expect(m.warnings).toContain('height exceeds phone LiDAR clean range (~4 m); treat as a minimum');
+    expect(m.warnings).toContain('Height is a minimum: the treetop is beyond what a phone scan reads cleanly (about 4 m / 13 ft).');
     expect(m.crownAxesM!.minor).toBeGreaterThan(5.5);
     expect(Math.abs(m.leanDeg!)).toBeLessThan(1.5);
     expect(m.measuredAt).toBe('2026-09-28T12:00:00.000Z');
@@ -415,7 +415,7 @@ describe('measureTree (R25 — decision support)', () => {
   it('half-arc stem: warns the DBH may be underestimated and drops confidence', () => {
     const m = measureTree(flat(syntheticTree({ arcDeg: 150 })), { upAxis: 'z', units: 'm' });
     expect(m.dbhFit!.arcCoverageDeg).toBeLessThan(180);
-    expect(m.warnings.some((w) => w.startsWith('partial stem arc < 180°'))).toBe(true);
+    expect(m.warnings.some((w) => w.startsWith('Only ') && w.includes('of the trunk was scanned'))).toBe(true);
     expect(m.confidence.dbh.level).toBe('low');
     expect(Math.abs(m.dbhCm! - 40)).toBeLessThanOrEqual(3);
   });

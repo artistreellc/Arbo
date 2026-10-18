@@ -241,7 +241,7 @@ export function measureTree(points: Float32Array, opts: MeasureOptions = {}): Tr
   result.heightM = round2(height);
   if (height > CLEAN_RANGE_M) {
     result.confidence.height = { level: 'low', reason: 'the top is beyond the phone\'s clean range (~4 m); a minimum, not a measurement' };
-    warnings.push('height exceeds phone LiDAR clean range (~4 m); treat as a minimum');
+    warnings.push('Height is a minimum: the treetop is beyond what a phone scan reads cleanly (about 4 m / 13 ft).');
   } else {
     result.confidence.height = { level: 'fair', reason: 'within the phone\'s clean range; phone LiDAR tends to read heights short' };
   }
@@ -277,7 +277,7 @@ function dbhConfidence(fit: Circle, warnings: string[]): MetricConfidence {
   };
   if (fit.arcDeg < 180) {
     c = worse(c, 'low', `only ${Math.round(fit.arcDeg)}° of the trunk seen; the fit may run small`);
-    warnings.push(`partial stem arc < 180° (${Math.round(fit.arcDeg)}°); DBH may be underestimated — scan further around the trunk`);
+    warnings.push(`Only ${Math.round(fit.arcDeg)}° of the trunk was scanned, so the trunk width may read small. Walk all the way round the trunk.`);
   } else if (fit.arcDeg < 270) {
     c = worse(c, 'fair', `${Math.round(fit.arcDeg)}° of the trunk seen; a full walk-around fits better`);
   }

@@ -104,7 +104,7 @@
   --border:rgba(234,241,236,.13); --hairline:rgba(234,241,236,.075);
   --emergency:#F07D72; --warning:#E6B84A; --ok:#63C08F; --info:#7FA8F2;
   --emergency-bg:#2C1714; --warning-bg:#2A2310; --ok-bg:#12281D; --info-bg:#142035;
-  --f-50:#12211B; --f-100:#173026;
+  --f-50:#12211B; --f-100:#173026; --seg-on:#1F3B30;
   --shadow-card:0 1px 0 rgba(255,255,255,.03) inset,0 12px 30px -18px rgba(0,0,0,.7);
   --shadow-pop:0 8px 22px -8px rgba(0,0,0,.7);
   --shadow-float:0 22px 50px -18px rgba(0,0,0,.8);
@@ -118,7 +118,7 @@
   --border:rgba(234,241,236,.13); --hairline:rgba(234,241,236,.075);
   --emergency:#F07D72; --warning:#E6B84A; --ok:#63C08F; --info:#7FA8F2;
   --emergency-bg:#2C1714; --warning-bg:#2A2310; --ok-bg:#12281D; --info-bg:#142035;
-  --f-50:#12211B; --f-100:#173026;
+  --f-50:#12211B; --f-100:#173026; --seg-on:#1F3B30;
   --shadow-card:0 1px 0 rgba(255,255,255,.03) inset,0 12px 30px -18px rgba(0,0,0,.7);
   --shadow-pop:0 8px 22px -8px rgba(0,0,0,.7);
   --shadow-float:0 22px 50px -18px rgba(0,0,0,.8);
@@ -222,6 +222,10 @@ main{padding:8px 16px 16px;max-width:680px;margin:0 auto}
 
 /* ── Chips, ZIP run ──────────────────────────────────────────────────── */
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+/* Permit Desk city picker: an even grid of whole city names (never 3 + 1). Four
+   across only while it has the full width; at 900px+ it shares a row with the job check. */
+.city-pick{display:grid;grid-template-columns:repeat(2,1fr)}.city-pick .loc-toggle{letter-spacing:0;font-size:14.5px}
+@media (min-width:600px) and (max-width:899px){.city-pick{grid-template-columns:repeat(4,1fr)}}
 .chip{background:var(--card);border:1px solid var(--border);border-radius:var(--r-pill);padding:8px 15px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:7px;color:var(--ink-1)}
 .chip b{font-family:var(--serif);font-variant-numeric:tabular-nums;font-size:18px;font-weight:650;color:var(--forest)}
 .chip.alert{border-color:color-mix(in srgb,var(--emergency) 45%,transparent);color:var(--emergency)}
@@ -402,7 +406,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 .verdict.v-below{border-color:color-mix(in srgb,var(--warning) 45%,transparent)}.verdict.v-below .vhead{color:var(--warning)}
 .verdict.v-lose{border-color:color-mix(in srgb,var(--emergency) 45%,transparent)}.verdict.v-lose .vhead{color:var(--emergency)}
 .verdict .drv{font-size:13.5px;color:var(--ink-3);margin-top:8px;line-height:1.5}
-.internal-tag{font-size:10.5px;font-weight:700;letter-spacing:.12em;color:var(--ink-4);text-transform:uppercase;margin-top:12px}
+.internal-tag{font-size:11px;font-weight:700;letter-spacing:.12em;line-height:1.5;color:var(--ink-3);text-transform:uppercase;text-wrap:balance;margin-top:12px}
 
 /* ── Calendar ────────────────────────────────────────────────────────── */
 #gcal-frame{width:100%;height:calc(100vh - 250px);min-height:440px;border:1px solid var(--hairline);border-radius:var(--r-lg);background:var(--card);box-shadow:var(--shadow-card)}
@@ -453,8 +457,9 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 .qrow .q{font-weight:600;font-size:15px;flex:1 1 220px}
 .seg{display:inline-flex;background:var(--paper-2);border-radius:var(--r-pill);padding:3px;gap:2px}
 .seg button{min-height:44px;border:0;background:none;border-radius:var(--r-pill);padding:0 14px;font-size:13.5px;font-weight:700;color:var(--ink-3)}
-.seg button.on{background:var(--card);color:var(--forest);box-shadow:0 1px 3px rgba(20,40,30,.14)}
+.seg button.on{background:var(--seg-on,var(--card));color:var(--forest);box-shadow:0 1px 3px rgba(20,40,30,.14),inset 0 0 0 1px var(--border)}
 .check-item .who{font-size:17px;margin-top:8px}
+.card.fact{scroll-margin-top:calc(84px + env(safe-area-inset-top))} /* a "Source ↓" jump lands below the sticky app bar */
 .factmeta{font-size:13.5px;color:var(--ink-3);margin-top:10px;display:grid;gap:4px}
 .factmeta b{color:var(--ink-1);font-weight:650}
 .factmeta a{color:var(--info);font-weight:600;text-decoration:none}
@@ -3569,7 +3574,7 @@ const PERMIT_STATUS = {
   'PERMIT LIKELY': ['PERMIT LIKELY', 'b-permit-likely'],
   'REVIEW NEEDED': ['REVIEW NEEDED', 'b-review'],
   'NO OVERLAY–VERIFY': ['NO OVERLAY — VERIFY W/ CITY', 'b-verify'],
-  'CALL FIRST': ['CALL FIRST', 'b-flag'],
+  'CALL FIRST': ['CALL FIRST', 'b-emg'], // strongest chip, as EMERGENCY, so the power-line step never looks least urgent (hauling's call-ahead shares it)
   'TICKET REQUIRED': ['TICKET REQUIRED', 'b-warm'],
 };
 const TOPIC_NAMES = {
@@ -3580,6 +3585,9 @@ const TOPIC_NAMES = {
 };
 let PERMIT_CITY = 'Virginia Beach';
 const PERMIT_ANS = { inRpa: 'unknown', nearPowerLines: 'unknown', inRightOfWay: 'unknown', historicDistrict: 'unknown', stumpGrinding: false, haulingDebris: false, burning: false };
+// Phone numbers, dates and code sections ("757-385-6661", "§ 23-50.1") must not
+// split at a hyphen: a word joiner after each digit-hyphen-digit keeps them whole.
+const nb = (s) => String(s).replace(/(\d)-(?=\d)/g, '$1-\u2060');
 
 let PERMIT_GEN = 0;
 async function renderPermits() {
@@ -3589,9 +3597,9 @@ async function renderPermits() {
   const head = el('div', 'viewhead');
   head.appendChild(el('div', 'eyebrow', 'Permit Desk'));
   head.appendChild(el('h1', '', 'Permits & public works'));
-  head.appendChild(el('p', '', 'Every rule carries its source and the date it was checked. Anything a source did not state plainly says UNCONFIRMED — call before it goes to a customer.'));
+  head.appendChild(el('p', '', 'Every rule shows its source and the date it was checked. Anything a source didn’t state plainly is marked UNCONFIRMED — call the office listed on that rule before you tell a customer.'));
   v.appendChild(head);
-  const cities = el('div', 'chips');
+  const cities = el('div', 'chips city-pick');
   for (const c of ['Virginia Beach', 'Norfolk', 'Chesapeake', 'Portsmouth']) {
     const b = el('button', 'loc-toggle' + (PERMIT_CITY === c ? ' on' : ''), c);
     b.addEventListener('click', () => { PERMIT_CITY = c; renderPermits(); });
@@ -3599,16 +3607,42 @@ async function renderPermits() {
   }
   v.appendChild(cities);
 
-  // Job check — the site questions, each Yes / No / Don't know.
+  // Job check — the site questions, each Yes / No / Don't know. An answer re-runs
+  // only the checklist under it: the page, the rules library and the scroll stay
+  // put. A city change is the one thing that rebuilds the whole desk.
   const job = el('div', 'slot');
   job.appendChild(el('div', 'panel-title', 'Job check — ' + PERMIT_CITY));
+  const out = el('div');
+  let ck = 0;
+  const runCheck = () => {
+    const g = ++ck;
+    // The old results stay up, dimmed and at their height, until the new ones land.
+    out.style.minHeight = out.offsetHeight + 'px';
+    out.style.opacity = '.5';
+    out.setAttribute('aria-busy', 'true');
+    api('/api/permits/checklist', { method: 'POST', body: Object.assign({ city: PERMIT_CITY }, PERMIT_ANS) }).then((r) => {
+      if (g !== ck || gen !== PERMIT_GEN) return; // a newer check or render owns the screen
+      out.replaceChildren(...r.items.map(checkCard));
+    }).catch((e) => {
+      if (g !== ck || gen !== PERMIT_GEN) return;
+      if (e.code === 401) showKeywall();
+      // §1B: a failed check REPLACES the old results — they are never left up as current.
+      out.replaceChildren(el('div', 'storm', (e.code ? 'Arbo could not build the checklist right now.' : 'Could not reach Arbo (no signal?).') + ' An empty list here is not an answer — Arbo could not check.'));
+    }).finally(() => {
+      if (g === ck) { out.style.minHeight = ''; out.style.opacity = ''; out.removeAttribute('aria-busy'); }
+    });
+  };
   const tri = (key, q) => {
     const row = el('div', 'qrow');
     row.appendChild(el('span', 'q', q));
     const seg = el('div', 'seg');
     for (const [val, label] of [[true, 'Yes'], [false, 'No'], ['unknown', 'Don’t know']]) {
       const b = el('button', PERMIT_ANS[key] === val ? 'on' : '', label);
-      b.addEventListener('click', () => { PERMIT_ANS[key] = val; renderPermits(); });
+      b.addEventListener('click', () => {
+        PERMIT_ANS[key] = val;
+        for (const x of seg.children) x.classList.toggle('on', x === b);
+        runCheck();
+      });
       seg.appendChild(b);
     }
     row.appendChild(seg);
@@ -3622,7 +3656,7 @@ async function renderPermits() {
     const lab = el('label', 'checkfield');
     const box = document.createElement('input');
     box.type = 'checkbox'; box.className = 'bigcheck'; box.checked = PERMIT_ANS[key];
-    box.addEventListener('change', () => { PERMIT_ANS[key] = box.checked; renderPermits(); });
+    box.addEventListener('change', () => { PERMIT_ANS[key] = box.checked; runCheck(); });
     lab.appendChild(box);
     lab.appendChild(el('span', '', q));
     job.appendChild(lab);
@@ -3630,21 +3664,9 @@ async function renderPermits() {
   flag('stumpGrinding', 'Stump grinding');
   flag('haulingDebris', 'Hauling the debris away');
   flag('burning', 'Burning on site');
-  const out = el('div');
   job.appendChild(out);
   v.appendChild(job);
-  api('/api/permits/checklist', { method: 'POST', body: Object.assign({ city: PERMIT_CITY }, PERMIT_ANS) }).then((r) => {
-    if (gen !== PERMIT_GEN) return; // a newer render owns the screen
-    for (const it of r.items) {
-      const c = el('div', 'card check-item');
-      const st = PERMIT_STATUS[it.status] || [it.status, 'b-pending'];
-      const b = el('div', 'badges'); b.appendChild(badge(st[0], st[1]));
-      c.appendChild(b);
-      c.appendChild(el('div', 'who', it.step));
-      c.appendChild(el('div', 'scope', it.why));
-      out.appendChild(c);
-    }
-  }).catch((e) => out.appendChild(el('div', 'storm', 'Checklist unavailable right now (' + (e.message || 'error') + '). An empty list here is not an answer — Arbo could not check.')));
+  runCheck();
 
   // The facts, by topic.
   let db;
@@ -3666,41 +3688,73 @@ async function renderPermits() {
   }
 }
 
+// One job-check result: the step in the law's words, then who to ring (tap to
+// call) and a jump to the rule it comes from, which carries the source and the
+// date it was checked.
+function checkCard(it) {
+  const c = el('div', 'card check-item');
+  const st = PERMIT_STATUS[it.status] || [it.status, 'b-pending'];
+  const b = el('div', 'badges'); b.appendChild(badge(st[0], st[1]));
+  c.appendChild(b);
+  c.appendChild(el('div', 'who', nb(it.step)));
+  c.appendChild(el('div', 'scope', nb(it.why)));
+  const meta = el('div', 'factmeta');
+  if (it.call) meta.appendChild(whoLine(it.call));
+  if (it.factIds && it.factIds[0]) {
+    const s = el('div', 'srcs');
+    const a = el('a', '', 'Source & date checked ↓');
+    a.href = '#fact-' + it.factIds[0];
+    s.appendChild(a);
+    meta.appendChild(s);
+  }
+  if (meta.firstChild) c.appendChild(meta);
+  return c;
+}
+
+// Office, then the number as a tap-to-call link. The ' · ' sits outside the
+// link, and nb() keeps the number from splitting across two lines.
+function whoLine(w) {
+  const d = el('div');
+  d.appendChild(el('b', '', w.office));
+  if (w.phone) {
+    d.appendChild(document.createTextNode(' · '));
+    const a = el('a', '', nb(w.phone));
+    a.href = 'tel:' + w.phone.replace(/[^0-9+]/g, '');
+    d.appendChild(a);
+  }
+  if (w.email) d.appendChild(document.createTextNode(' · ' + w.email));
+  return d;
+}
+
 function factCard(f, isStale) {
   const c = el('div', 'card fact');
+  c.id = 'fact-' + f.id; // where a job-check result's "Source & date checked ↓" lands
   const b = el('div', 'badges');
   b.appendChild(badge(f.city.toUpperCase(), 'b-src'));
   b.appendChild(badge(f.confidence, f.confidence === 'SOURCED' ? 'b-est' : 'b-flag'));
   if (isStale) b.appendChild(badge('RE-CHECK DUE', 'b-warm'));
   c.appendChild(b);
-  c.appendChild(el('div', 'who', f.title));
-  c.appendChild(el('div', 'scope', f.rule));
+  c.appendChild(el('div', 'who', nb(f.title)));
+  c.appendChild(el('div', 'scope', nb(f.rule)));
   const meta = el('div', 'factmeta');
-  if (f.whoToCall) {
-    const w = el('div');
-    w.appendChild(el('b', '', f.whoToCall.office));
-    if (f.whoToCall.phone) {
-      const a = el('a', '', ' · ' + f.whoToCall.phone);
-      a.href = 'tel:' + f.whoToCall.phone.replace(/[^0-9+]/g, '');
-      w.appendChild(a);
-    }
-    if (f.whoToCall.email) w.appendChild(document.createTextNode(' · ' + f.whoToCall.email));
-    meta.appendChild(w);
-  }
+  if (f.whoToCall) meta.appendChild(whoLine(f.whoToCall));
   if (f.form) meta.appendChild(el('div', '', 'Form: ' + f.form.name));
   if (f.fee) meta.appendChild(el('div', '', 'Government-set figure (fee, fine or license tier): ' + f.fee));
   if (f.leadTime) meta.appendChild(el('div', '', 'Lead time: ' + f.leadTime));
   const src = el('div', 'srcs');
-  src.appendChild(document.createTextNode('Checked ' + f.verifiedOn + ' · '));
+  src.appendChild(document.createTextNode('Checked ' + nb(f.verifiedOn) + ' · '));
   f.sourceUrls.forEach((u, i) => {
     if (i) src.appendChild(document.createTextNode(' · '));
     if (u.indexOf('arbo:') === 0) { src.appendChild(document.createTextNode('Mike’s permit correspondence')); return; }
-    const a = el('a', '', 'source ' + (i + 1));
+    // Named by its site, so a city code page reads differently from a third-party summary.
+    let site = 'source';
+    try { site = new URL(u).hostname.replace(/^www\./, ''); } catch (e) { /* not a URL: keep the plain label */ }
+    const a = el('a', '', site);
     a.href = u; a.target = '_blank'; a.rel = 'noopener';
     src.appendChild(a);
   });
   meta.appendChild(src);
-  if (f.notes) meta.appendChild(el('div', 'internal-note', 'Internal (never read to a customer): ' + f.notes));
+  if (f.notes) meta.appendChild(el('div', 'internal-note', 'Internal (never read to a customer): ' + nb(f.notes.replace(/^INTERNAL:\s*/i, ''))));
   c.appendChild(meta);
   return c;
 }
@@ -3798,6 +3852,9 @@ async function renderAgents() {
 const CONF_BADGE = { good: ['GOOD', 'b-est'], fair: ['FAIR', 'b-warm'], low: ['LOW', 'b-flag'], unreadable: ['UNREADABLE', 'b-pending'] };
 let LIDAR_LAST = null;
 let LIDAR_UP = '';
+// Set when an Up change dropped a result: it was measured on the old axis, so it
+// is cleared, and the status line says why rather than "Nothing measured yet."
+let LIDAR_UP_CHANGED = false;
 
 function renderMeasure() {
   const v = $('view-measure');
@@ -3812,9 +3869,9 @@ function renderMeasure() {
   how.appendChild(el('div', 'panel-title', 'How to scan'));
   for (const line of [
     'iPhone Pro / iPad Pro with LiDAR: Polycam, 3d Scanner App (free), SiteScape or Scaniverse.',
-    'Stand 1–3 m from the trunk and walk all the way round it at chest height. A full circle is what makes the trunk width trustworthy.',
+    'Stand 3–10 ft from the trunk and walk all the way round it at chest height. A full circle is what makes the trunk width trustworthy.',
     'Crop to the one tree, then export a POINT CLOUD (PLY, LAS or XYZ) — not a mesh, not a video.',
-    'Phone LiDAR sees about 4–5 m. Trunk width is its strength; height and crown of a big tree read as a minimum.',
+    'Phone LiDAR reads cleanly to about 13 ft (4 m). Trunk width is its strength; height and crown of a big tree read as a minimum.',
   ]) how.appendChild(el('div', 'storm-muted', line));
   v.appendChild(how);
 
@@ -3827,14 +3884,24 @@ function renderMeasure() {
   lab.appendChild(inp);
   pick.appendChild(lab);
   const seg = el('div', 'seg');
-  for (const [val, label] of [['', 'Up: auto'], ['y', 'Y-up'], ['z', 'Z-up']]) {
+  for (const [val, label] of [['', 'Auto'], ['y', 'Y is up'], ['z', 'Z is up']]) {
     const b = el('button', LIDAR_UP === val ? 'on' : '', label);
-    b.addEventListener('click', () => { LIDAR_UP = val; renderMeasure(); });
+    b.addEventListener('click', () => {
+      if (LIDAR_UP === val) return;
+      LIDAR_UP = val;
+      // The numbers on screen were read on the old axis — drop them, never show them under the new one.
+      if (LIDAR_LAST) LIDAR_UP_CHANGED = true;
+      LIDAR_LAST = null;
+      renderMeasure();
+    });
     seg.appendChild(b);
   }
   const segRow = el('div', 'qrow'); segRow.appendChild(el('span', 'q', 'Which way is up in the file?')); segRow.appendChild(seg);
   pick.appendChild(segRow);
-  const status = el('div', 'storm-muted', 'Nothing measured yet.');
+  pick.appendChild(el('div', 'storm-muted', 'Leave on Auto unless the result looks wrong — iPhone apps usually export Y as up, LAS files Z.'));
+  const status = el('div', 'storm-muted', LIDAR_LAST
+    ? 'Measured ' + LIDAR_LAST.file.points.toLocaleString() + ' points from ' + LIDAR_LAST.file.name + '.'
+    : (LIDAR_UP_CHANGED ? 'Up changed — open the scan file again to measure with it.' : 'Nothing measured yet.'));
   pick.appendChild(status);
   v.appendChild(pick);
   const out = el('div');
@@ -3852,6 +3919,7 @@ function renderMeasure() {
     status.className = 'storm-muted';
     status.textContent = 'Reading ' + f.name + ' (' + (f.size / 1048576).toFixed(1) + ' MB)…';
     out.replaceChildren();
+    const upSent = LIDAR_UP;
     try {
       const res = await fetch('/api/lidar/measure?name=' + encodeURIComponent(f.name) + (LIDAR_UP ? '&up=' + LIDAR_UP : ''), {
         method: 'POST', headers: KEY ? { 'x-arbor-key': KEY } : {}, body: f,
@@ -3860,10 +3928,13 @@ function renderMeasure() {
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
         status.className = 'storm';
-        status.textContent = 'Not measured — ' + (body.detail || body.error || ('server said ' + res.status)) + '. No number is better than a wrong one.';
+        // Every server detail already ends in a full stop; drop it so the line never reads "..".
+        status.textContent = 'Not measured — ' + String(body.detail || body.error || ('server said ' + res.status)).replace(/\.\s*$/, '') + '. No number is better than a wrong one.';
         return;
       }
+      if (LIDAR_UP !== upSent) return; // Up changed while it read: this result is on the old axis, so it is dropped
       LIDAR_LAST = body;
+      LIDAR_UP_CHANGED = false;
       status.textContent = 'Measured ' + body.file.points.toLocaleString() + ' points from ' + body.file.name + '.';
       out.appendChild(measureResult(body));
     } catch (e) {
@@ -3887,20 +3958,26 @@ function measureResult(r) {
     return t;
   };
   const round = (x, d) => Math.round(x * Math.pow(10, d)) / Math.pow(10, d);
-  hud.appendChild(metric(m.dbhCm === null ? null : round(m.dbhCm, 1), ' cm', m.dbhCm === null ? '' : round(m.dbhCm / 2.54, 1) + ' in', 'DBH', m.confidence.dbh));
-  hud.appendChild(metric(m.heightM === null ? null : round(m.heightM, 1), ' m', m.heightM === null ? '' : Math.round(m.heightM * 3.281) + ' ft', 'height', m.confidence.height));
-  hud.appendChild(metric(m.crownSpreadM === null ? null : round(m.crownSpreadM, 1), ' m', m.crownSpreadM === null ? '' : Math.round(m.crownSpreadM * 3.281) + ' ft', 'crown', m.confidence.crown));
+  // Inches and feet lead (how a Virginia crew talks); cm and m ride in the caption.
+  hud.appendChild(metric(m.dbhCm === null ? null : round(m.dbhCm / 2.54, 1), ' in', m.dbhCm === null ? '' : round(m.dbhCm, 1) + ' cm', 'DBH', m.confidence.dbh));
+  hud.appendChild(metric(m.heightM === null ? null : Math.round(m.heightM * 3.281), ' ft', m.heightM === null ? '' : round(m.heightM, 1) + ' m', 'height', m.confidence.height));
+  hud.appendChild(metric(m.crownSpreadM === null ? null : Math.round(m.crownSpreadM * 3.281), ' ft', m.crownSpreadM === null ? '' : round(m.crownSpreadM, 1) + ' m', 'crown', m.confidence.crown));
   hud.appendChild(metric(m.leanDeg === null ? null : round(m.leanDeg, 1), '°', '', 'lean', m.confidence.lean));
+  // Which way Arbo read as up, and why — every number below depends on it.
+  const ua = r.file.upAxis;
+  if (ua) wrap.appendChild(el('div', 'storm-muted', 'Read with ' + ua.axis.toUpperCase() + ' as up — ' + (ua.source === 'override' ? 'you chose this' : 'picked automatically' + (ua.reason ? ': ' + ua.reason : '')) + '.'));
+  // Warnings sit ABOVE the numbers they undercut; measure.ts puts the units warning first (D88).
+  for (const w of m.warnings) wrap.appendChild(el('div', 'late', w));
   wrap.appendChild(hud);
+  // One line per figure. The r.summary paragraph stays in the API for agent and
+  // crew text; here it only repeated these lines, the warnings and the sign-off.
   const card = el('div', 'card');
-  card.appendChild(el('div', 'scope', r.summary));
   for (const k of ['dbh', 'height', 'crown', 'lean']) {
     const c = m.confidence[k];
-    card.appendChild(el('div', 'factmeta', k.toUpperCase() + ' — ' + c.level + ': ' + c.reason));
+    card.appendChild(el('div', 'factmeta', k.toUpperCase() + ' — ' + c.level + ': ' + c.reason
+      + (k === 'dbh' && m.dbhFit ? '; scatter ' + round(m.dbhFit.rmseCm, 1) + ' cm' : '')));
   }
-  if (m.dbhFit) card.appendChild(el('div', 'factmeta', 'Trunk fit: saw ' + Math.round(m.dbhFit.arcCoverageDeg) + '° of the trunk, ' + m.dbhFit.inliers + ' points, scatter ' + round(m.dbhFit.rmseCm, 1) + ' cm.'));
   wrap.appendChild(card);
-  for (const w of m.warnings) wrap.appendChild(el('div', 'late', w));
   for (const n of r.file.notes) wrap.appendChild(el('div', 'storm-muted', n));
   wrap.appendChild(el('div', 'internal-tag', r.signOff));
   return wrap;

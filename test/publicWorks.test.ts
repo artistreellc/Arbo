@@ -252,6 +252,17 @@ describe('jobChecklist — fixed rules', () => {
     }
   });
 
+  it('the power-line CALL FIRST step carries Dominion as `call` (tap-to-call), the same number its step names', () => {
+    for (const city of SERVICE_CITIES) {
+      const power = jobChecklist({ ...base, city, nearPowerLines: true })[0];
+      expect(power?.call).toEqual(factById('va-dominion-10ft')?.whoToCall);
+      expect(power?.call).toMatchObject({ office: 'Dominion Energy', phone: '1-866-366-4357' });
+      expect(power?.step).toContain(power?.call?.phone ?? 'missing');
+    }
+    // Only that step carries one; every other line leaves the call to its fact card.
+    expect(ITEMS.filter((i) => i.call).every((i) => i.status === 'CALL FIRST' && /Dominion Energy/.test(i.step))).toBe(true);
+  });
+
   it('VB right-of-way carries the Oceanfront/Sandbridge closure ban', () => {
     const row = jobChecklist({ ...base, inRightOfWay: true }).find((i) => i.status === 'PERMIT LIKELY');
     expect(row?.why).toMatch(/Oceanfront or Sandbridge from May 1 to Sep 30/);
