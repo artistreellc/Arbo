@@ -189,11 +189,12 @@ main{padding:8px 16px 16px;max-width:680px;margin:0 auto}
 .hero .eyebrow{color:#E9C877}
 .hero h1{font-family:var(--serif);font-weight:560;font-size:31px;line-height:1.08;margin-top:6px;letter-spacing:-.005em;font-variation-settings:'opsz' 90;color:#FBF8EF}
 .hero .sub{color:rgba(244,239,224,.78);font-size:14px;margin-top:6px}
+.hero .sub span{white-space:nowrap}
 .hero-grid{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center}
 .dayring{width:118px;height:118px;flex:none}
 .dayring .trk{stroke:rgba(244,239,224,.14)}
 .dayring .arc{transition:stroke-dashoffset 1.1s var(--ease)}
-.dayring .unk{stroke-dasharray:2 5;stroke:rgba(244,239,224,.45)}
+.dayring .unk{stroke-opacity:.45}
 .hero-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px}
 .hstat{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.10);border-radius:16px;padding:10px 12px}
 .hstat b{display:block;font-family:var(--serif);font-weight:600;font-size:26px;line-height:1;font-variant-numeric:tabular-nums;color:#FBF8EF}
@@ -203,14 +204,15 @@ main{padding:8px 16px 16px;max-width:680px;margin:0 auto}
 .ring-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px}
 
 /* ── Systems (every feed named — §1B) ─────────────────────────────────── */
-.systems{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -16px 14px;padding:2px 16px 4px}
-.systems::-webkit-scrollbar{display:none}
+.systems{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px;padding:2px 0 4px}
 .sys{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;border:1px solid var(--border);background:var(--card);
   border-radius:var(--r-pill);padding:0 14px;min-height:40px;font-size:13px;font-weight:600;color:var(--ink-2)}
 .sys i{width:8px;height:8px;border-radius:50%;background:var(--ink-4);box-shadow:0 0 0 3px color-mix(in srgb,var(--ink-4) 18%,transparent)}
 .sys.ok i{background:var(--ok);box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 18%,transparent)}
 .sys.warn i{background:var(--warning);box-shadow:0 0 0 3px color-mix(in srgb,var(--warning) 20%,transparent)}
 .sys.down i{background:var(--emergency);box-shadow:0 0 0 3px color-mix(in srgb,var(--emergency) 18%,transparent)}
+/* Worst first, by CSS order — no JS re-sort, so chips never jump as they update. */
+.sys.down{order:-2}.sys.warn{order:-1}
 
 /* ── Instrument slots: every Today panel is a card of its own ────────── */
 .slot:empty{display:none}
@@ -378,6 +380,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 .tile{background:var(--card);border:1px solid var(--hairline);border-radius:var(--r-md);padding:13px 13px 11px;box-shadow:var(--shadow-card);position:relative;overflow:hidden}
 .tile b{display:block;font-family:var(--serif);font-variant-numeric:tabular-nums;font-size:28px;font-weight:600;line-height:1;color:var(--ink-1);font-variation-settings:'opsz' 60}
 .tile span{display:block;font-size:10.5px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin-top:7px}
+.tile small{display:block;font-size:10px;color:var(--ink-3);margin-top:3px;line-height:1.2}
 .tile.accent b{color:var(--gold-6)}
 .tile.hot{border-color:color-mix(in srgb,var(--emergency) 35%,transparent)} .tile.hot b{color:var(--emergency)}
 .tile.warn{border-color:color-mix(in srgb,var(--warning) 35%,transparent)} .tile.warn b{color:var(--warning)}
@@ -447,15 +450,15 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
   .view.active{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
   .view > *{grid-column:auto}
   .view .viewhead,.view .hero,.view .systems,.view .sect,.view .zip-run,.view .state,.view .panel-title,.view .storm,.view .storm-muted,.view .feed-state,.view .routebtn,.view .hudbtn,.view .hud,.view .grid-tiles{grid-column:1 / -1}
-  #view-today .hud{grid-template-columns:repeat(7,1fr)}
+  #view-today .hud{grid-template-columns:repeat(6,1fr)}
   #view-today .hud .wide{grid-column:span 2}
-  .hero{padding:30px 32px 24px}.hero h1{font-size:40px}.dayring{width:150px;height:150px}
+  .hero{padding:30px 32px 24px}.hero h1{font-size:40px}.dayring{width:150px;height:150px}.hero::before{top:-75px;right:-73px}
   #loops-panel{grid-column:1 / -1;display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
   #loops-panel .panel-title,#loops-panel .hudbtn{grid-column:1 / -1}
   #loops-panel .card,.card{margin-bottom:0}
   #view-followups > div:first-child{grid-column:1 / -1;display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
   #view-followups > div:first-child .panel-title{grid-column:1 / -1}
-  .slot{margin-bottom:0}
+  .slot{margin-bottom:0;align-self:stretch}
   .view .slot.plain,#talk-btn{grid-column:1 / -1}
   nav{left:50%;right:auto;transform:translateX(-50%);width:560px}
   .grid-tiles{grid-template-columns:repeat(5,1fr)}
@@ -724,23 +727,32 @@ async function stormBanner() {
     if (s.atRisk.length) box.appendChild(el('small', '', s.atRisk.length + ' booked stop(s) fall inside the alert window — consider moving them early.'));
     return box;
   } catch (e) {
-    // A dead weather feed is reported, never treated as clear skies.
-    if (HERO) HERO.stat('alerts', '–', '', 'weather unreadable');
-    sysSet('weather', 'down', 'unreadable');
-    return e.code === 503 ? el('div', 'storm-muted', 'Storm watch: weather feed unavailable right now.') : null;
+    // A dead weather feed is reported, never treated as clear skies. The hero
+    // subline and the Weather chip name it — once, in one word.
+    const k = feedKind(e);
+    if (HERO) HERO.stat('alerts', '–', '', 'weather ' + FEED_TAG[k]);
+    sysSet('weather', k === 'unread' ? 'down' : 'warn', FEED_TAG[k]);
+    return null;
   }
 }
 
 // ---------- Location strip (§21–24: clear ON/OFF, recommend-only late cover) ----------
 async function locationStrip() {
   let s;
-  try { s = await api('/api/location/status'); } catch (e) { return null; }
+  try { s = await api('/api/location/status'); } catch (e) {
+    if (e.code === 401) return null;
+    await LINKS_READY; // whether db_not_configured means "cut" depends on the links
+    // The strip is the only ON/OFF Mike has, so it never just vanishes (§1B).
+    // A failed read cannot say tracking is off — it may still be on.
+    return feedLine(e, 'Location tracking', feedKind(e) === 'unread' ? 'It may still be on.' : 'No check-ins are being recorded.');
+  }
   const wrap = el('div');
   const strip = el('div', 'loc-strip');
   const btn = el('button', 'loc-toggle' + (s.tracking ? ' on' : ''), s.tracking ? 'Tracking ON' : 'Tracking OFF');
   btn.onclick = async () => {
     btn.disabled = true;
-    try { await api('/api/location/tracking', { method: 'POST', body: { on: !s.tracking } }); } catch (e) {}
+    try { await api('/api/location/tracking', { method: 'POST', body: { on: !s.tracking } }); }
+    catch (e) { btn.disabled = false; showSaveFail(wrap, e); return; } // a failed switch says so; the old state stays on screen
     renderToday();
   };
   strip.appendChild(btn);
@@ -767,15 +779,20 @@ async function locationStrip() {
 async function inboxIntentPanel() {
   let d;
   try { d = await api('/api/inbox/intents'); }
-  catch (e) { return e.code === 401 ? null : el('div', 'storm-muted', 'Inbox intents: status unavailable right now.'); }
+  catch (e) { return e.code === 401 ? null : feedLine(e, 'Inbox'); }
   if (d.pipeline === 'not_started') return null;
   const wrap = el('div');
-  const title = el('div', 'panel-title', 'Inbox — surfaced mail');
+  const title = el('div', 'panel-title', 'Inbox');
   wrap.appendChild(title);
 
   if (d.pipeline === 'no_gmail') {
-    wrap.appendChild(el('div', 'storm-muted',
-      'Gmail is not connected — the intent engine cannot look. This is not zero mail. (' + (d.gmailReason || 'no pass yet') + ')'));
+    // Mike's words, never the server's raw reason string.
+    const r = d.gmailReason || '';
+    const unset = r === 'no Gmail credentials configured';
+    const why = unset ? 'Gmail isn’t connected, so Arbo can’t check your inbox.'
+      : (!r || r === 'inbox watch has not completed a pass') ? 'Arbo hasn’t finished its first inbox check yet.'
+      : 'Arbo couldn’t read Gmail on its last check.';
+    wrap.appendChild(el('div', 'feed-state ' + (unset ? 'unset' : 'unread'), why + ' This is not zero mail.'));
     return wrap;
   }
   if (d.pipeline === 'pattern_only') {
@@ -1153,13 +1170,14 @@ async function outreachPanel(full) {
 async function websiteFormsPanel() {
   let d;
   try { d = await api('/api/webhooks/forms'); }
-  catch (e) { return e.code === 401 ? null : el('div', 'storm-muted', 'Website forms: status unavailable right now.'); }
+  catch (e) { return e.code === 401 ? null : feedLine(e, 'Website forms'); }
   const wrap = el('div');
-  wrap.appendChild(el('div', 'panel-title', 'Website forms — direct wire'));
+  wrap.appendChild(el('div', 'panel-title', 'Website forms'));
   if (!d.wired) {
-    // §1B: an unwired wire is NAMED. The Gmail sweep still catches these forms.
-    wrap.appendChild(el('div', 'storm-muted',
-      'Direct wire from Resend NOT connected yet — this is not zero forms. Submissions still reach Gmail and the sweep.'));
+    // §1B: an unwired feed is NAMED. The emailed copy of each form still
+    // reaches Gmail — whether Arbo can read Gmail is the Inbox card's job.
+    wrap.appendChild(el('div', 'feed-state unset',
+      'Website forms aren’t wired into Arbo yet — this is not zero forms. They still arrive in your Gmail inbox.'));
     return wrap;
   }
   if (!d.forms.length) {
@@ -1191,7 +1209,7 @@ async function websiteFormsPanel() {
 async function receptionStrip() {
   let s;
   try { s = await api('/api/reception/status'); }
-  catch (e) { return e.code === 401 ? null : el('div', 'storm-muted', 'Reception: status unavailable right now.'); }
+  catch (e) { return e.code === 401 ? null : el('div', 'feed-state ' + feedKind(e), 'Reception: status unavailable right now.'); }
   const wrap = el('div');
   // R21: Arbo's own line is cut on purpose while Sona handles calls — a
   // named state, not an alarm, and Talk to Arbo goes away with it.
@@ -1230,10 +1248,26 @@ async function renderToday() {
   const stormSlot = el('div', 'slot plain');
   v.appendChild(stormSlot);
   stormBanner().then((b) => { if (b) stormSlot.appendChild(b); });
+  // The day's run, then the instruments, sit right under a storm alert — their
+  // place on screen is chosen here, before any fetch, not left to whichever
+  // fetch returns early. display:contents keeps every child in the desktop grid.
+  const day = el('div');
+  day.style.display = 'contents';
+  v.appendChild(day);
+  const instr = el('div');
+  instr.style.display = 'contents';
+  v.appendChild(instr);
+  // Yard check needs no data, so it renders before the brief fetch: with the
+  // links cut the brief returns early, and this is its only way in.
+  const yardBtn = el('button', 'hudbtn');
+  yardBtn.appendChild(icon('i-numbers'));
+  yardBtn.appendChild(el('span', '', 'Yard check — run a number'));
+  yardBtn.addEventListener('click', openYard);
+  instr.appendChild(yardBtn);
   const locSlot = el('div', 'slot plain');
   v.appendChild(locSlot);
   locationStrip().then((b) => { if (b) locSlot.appendChild(b); });
-  const recSlot = el('div', 'slot plain');
+  const recSlot = el('div', 'slot');
   v.appendChild(recSlot);
   receptionStrip().then((b) => { if (b) recSlot.appendChild(b); });
   // Talk to Arbo lives ABOVE the brief fetch on purpose: the first version
@@ -1273,12 +1307,17 @@ async function renderToday() {
     brief = await api('/api/brief?from=' + start.toISOString() + '&to=' + end.toISOString());
   } catch (e) {
     if (e.code === 401) return showKeywall();
-    const why = e.code === 503 ? 'cut' : 'unreadable';
-    if (HERO) { HERO.ring('stops', null); HERO.legend('stops', why); HERO.stat('stops', '–', '', 'schedule ' + (e.code === 503 ? 'link cut' : 'unreadable')); }
-    sysSet('schedule', e.code === 503 ? 'warn' : 'down', why);
-    v.appendChild(state('No schedule yet', e.code === 503
-      ? 'Database not connected — the day’s route shows up the moment it is.'
-      : 'Could not load the brief. Pull refresh to retry.'));
+    await LINKS_READY; // whether db_not_configured means "cut" depends on the links
+    const k = feedKind(e);
+    const why = FEED_TAG[k];
+    if (HERO) { HERO.ring('stops', null); HERO.legend('stops', why); HERO.stat('stops', '–', '', 'schedule ' + why); }
+    sysSet('schedule', k === 'unread' ? 'down' : 'warn', why);
+    // An unreadable schedule is never an empty day (§1B). Mike's real
+    // calendar is one tap away.
+    day.appendChild(feedState(e, 'Schedule', 'an empty day'));
+    const calBtn = el('button', 'hudbtn', 'Open the Calendar tab');
+    calBtn.addEventListener('click', () => { switchTab('cal'); renderCalendar(); });
+    day.appendChild(calBtn);
     return;
   }
   const s = brief.summary;
@@ -1288,11 +1327,13 @@ async function renderToday() {
     if (HERO) {
       HERO.stat('stops', s.totalStops, s.emergencies ? 'hot' : '', s.totalStops + ' stop' + (s.totalStops === 1 ? '' : 's') + ' today');
       HERO.ring('stops', s.totalStops ? passed / s.totalStops : 0);
-      HERO.legend('stops', passed + '/' + s.totalStops);
+      // Clock time past each stop's slot — nothing records a stop as done (D85).
+      HERO.legend('stops', passed + ' of ' + s.totalStops + ' past');
     }
     sysSet('schedule', 'ok', s.totalStops + ' stops');
   }
-  // §9 HUD: the day as instruments — one glance, biggest number wins.
+  // §9 HUD: the day as instruments — one glance, biggest number wins. Stops
+  // and open loops are the hero's; the tiles carry what the hero does not.
   const hud = el('div', 'hud');
   const tile = (n, label, cls) => {
     const t = el('div', 'tile' + (cls ? ' ' + cls : ''));
@@ -1300,33 +1341,31 @@ async function renderToday() {
     t.appendChild(el('span', '', label));
     return t;
   };
-  hud.appendChild(tile(s.totalStops, 'stops', 'accent'));
   hud.appendChild(tile(s.jobs || 0, 'jobs'));
   hud.appendChild(tile(s.estimates || 0, 'estimates'));
-  const loopTile = tile('–', 'open loops');
   const dueTile = tile('–', 'coming due');
   const agentTile = tile('–', 'agent runs');
   const owedTile = tile('–', 'overdue');
-  hud.appendChild(loopTile);
+  const billTile = tile('–', 'to bill');
   hud.appendChild(dueTile);
   hud.appendChild(agentTile);
   hud.appendChild(owedTile);
+  hud.appendChild(billTile);
   if (s.redFlagCount) hud.appendChild(tile(s.redFlagCount, 'red flags', 'hot wide'));
   if (s.emergencies) hud.appendChild(tile(s.emergencies, 'emergencies', 'hot wide'));
-  v.appendChild(hud);
-  const yardBtn = el('button', 'hudbtn', '⚙ Yard check — run a number');
-  yardBtn.addEventListener('click', openYard);
-  v.appendChild(yardBtn);
+  instr.prepend(hud); // tiles, then the Yard check, then the loops
   const loopsPanel = el('div');
   loopsPanel.id = 'loops-panel';
-  v.appendChild(loopsPanel);
+  instr.appendChild(loopsPanel);
   const setTile = (t, n, cls) => {
     t.querySelector('b').textContent = String(n);
     if (cls) t.classList.add(cls);
   };
-  // Each instrument fills independently; a dead feed shows '–', never a fake 0.
+  // A tile whose feed failed keeps its '–' and says why in one small line.
+  const tileWhy = (t, why) => { if (t.querySelector('small')) return; t.appendChild(el('small', '', why)); };
+  // Each instrument fills independently; a dead feed shows '–' and why, never a fake 0.
+  // The loops feed fills its panel only — heroLoops names it when it is dead.
   api('/api/queue').then((q) => {
-    setTile(loopTile, q.open.length, q.open.some(o => o.severity === 'urgent') ? 'hot' : (q.open.length ? 'warn' : 'ok-t'));
     if (q.open.length) {
       loopsPanel.appendChild(el('div', 'panel-title', 'Open loops — silence is never success'));
       for (const o of q.open.slice(0, 3)) loopsPanel.appendChild(loopCard(o));
@@ -1340,28 +1379,39 @@ async function renderToday() {
   api('/api/properties').then((p) => {
     // A dead forecast feed stays '\u2013' \u2014 null is not zero (\u00a71B honesty).
     if (Array.isArray(p.comingDue)) setTile(dueTile, p.comingDue.length, p.comingDue.length ? 'warn' : 'ok-t');
-  }).catch(() => {});
+    else tileWhy(dueTile, 'forecast unreadable');
+  }).catch((e) => { if (e.code !== 401) tileWhy(dueTile, FEED_TAG[feedKind(e)]); });
   api('/api/agents/runs?limit=5').then((r) => {
     setTile(agentTile, r.runs.length, r.runs.some(x => x.status === 'error') ? 'warn' : 'ok-t');
-  }).catch(() => {});
+  }).catch((e) => { if (e.code !== 401) tileWhy(agentTile, FEED_TAG[feedKind(e)]); });
   api('/api/money').then((m) => {
-    // Unbilled work counts as money out the door just as much as unpaid ones.
-    const n = m.collections.length + m.drafts.length;
-    setTile(owedTile, n, n ? (m.collections.length ? 'hot' : 'warn') : 'ok-t');
-  }).catch(() => {});
+    // Overdue is past-due invoices, the legal gate's held ones included —
+    // still owed, just never nudged. Unbilled work is its own tile, and an
+    // invoice Arbo cannot date is named, never counted as either.
+    const over = m.collections.length + (m.suppressed || []).length;
+    const unk = (m.unknown || []).length;
+    setTile(owedTile, over, over ? 'hot' : (unk ? 'warn' : 'ok-t'));
+    if (unk) owedTile.appendChild(el('small', '', '+' + unk + ' can’t tell'));
+    const bill = m.drafts.length + (m.blocked || []).length;
+    setTile(billTile, bill, bill ? 'warn' : 'ok-t');
+  }).catch((e) => {
+    if (e.code === 401) return;
+    tileWhy(owedTile, FEED_TAG[feedKind(e)]);
+    tileWhy(billTile, FEED_TAG[feedKind(e)]);
+  });
 
   if (s.zipRun && s.zipRun.length) {
     const zr = el('div', 'zip-run');
     zr.appendChild(document.createTextNode('ZIP run:'));
     s.zipRun.forEach(z => zr.appendChild(el('span', '', z)));
-    v.appendChild(zr);
+    day.appendChild(zr);
   }
 
   if (!brief.stops.length) {
-    v.appendChild(state('Nothing on the books today', 'New bookings land here automatically.'));
+    day.appendChild(state('Nothing on the books today', 'New bookings land here automatically.'));
     return;
   }
-  v.appendChild(el('div', 'panel-title', "Today's run"));
+  day.appendChild(el('div', 'panel-title', 'Today’s run'));
   // §9 route view: the whole day, one tap, in the maps app you already use.
   {
     const addrs = brief.stops.map(s => s.address + ', ' + s.city + ', VA').filter(Boolean);
@@ -1372,7 +1422,7 @@ async function renderToday() {
       r.href = 'https://www.google.com/maps/dir/?api=1&destination=' + dest + (wps ? '&waypoints=' + wps : '');
       r.target = '_blank';
       r.rel = 'noopener';
-      v.appendChild(r);
+      day.appendChild(r);
     }
   }
   for (const stop of brief.stops) {
@@ -1397,7 +1447,7 @@ async function renderToday() {
       else b.appendChild(badge(t, 'b-src'));
     });
     c.appendChild(b);
-    v.appendChild(c);
+    day.appendChild(c);
   }
 }
 
@@ -3662,13 +3712,15 @@ function dayRing() {
   svg.appendChild(t);
   return {
     svg: svg,
-    // value: 0..1 fills the arc; null = feed unreadable → dashed full ring.
+    // value: 0..1 fills the arc; null = feed unreadable → a full ring of dots.
     set: function (key, value) {
       const a = arcs[key];
       if (!a) return;
       if (value === null) {
+        // Zero-length dashes with round caps draw round dots in the ring's own
+        // colour; the gap divides the circle evenly, so there is no seam.
         a.el.setAttribute('class', 'arc unk');
-        a.el.setAttribute('stroke-dasharray', '2 5');
+        a.el.setAttribute('stroke-dasharray', '0 ' + (a.len / Math.round(a.len / 11)));
         a.el.setAttribute('stroke-dashoffset', '0');
         return;
       }
@@ -3733,7 +3785,14 @@ function buildHero() {
     if (facts.stops !== undefined) parts.push(facts.stops);
     if (facts.loops !== undefined) parts.push(facts.loops);
     if (facts.alerts !== undefined) parts.push(facts.alerts);
-    sub.textContent = parts.length ? parts.join(' · ') : 'Reading the day…';
+    if (!parts.length) { sub.textContent = 'Reading the day…'; return; }
+    // One unbreakable span per fact, the dot riding at the front of the next,
+    // so a wrapped line never ends on a dangling '·'.
+    sub.replaceChildren();
+    parts.forEach((p, i) => {
+      if (i) sub.appendChild(document.createTextNode(' '));
+      sub.appendChild(el('span', '', (i ? '· ' : '') + p));
+    });
   };
   HERO = {
     el: box,
@@ -3774,7 +3833,7 @@ function buildSystems() {
   SYS('network', navigator.onLine ? 'ok' : 'down', navigator.onLine ? 'online' : 'offline');
   api('/health').then((hl) => {
     const d = hl.dataLinks;
-    SYS('links', d === 'live' ? 'ok' : 'warn', d === 'live' ? 'live' : d === 'cut' ? 'cut (by design, §3)' : d);
+    SYS('links', d === 'live' ? 'ok' : 'warn', d === 'live' ? 'live' : d === 'cut' ? 'cut on purpose' : d);
   }).catch(() => SYS('links', 'down', 'unreadable'));
   return row;
 }
@@ -3792,11 +3851,14 @@ function heroLoops() {
       HERO.legend('loops', String(n) + ' open');
     }
     sysSet('loops', urgent ? 'down' : n ? 'warn' : 'ok', n + ' open');
-  }).catch((e) => {
-    const why = e.code === 503 ? 'cut' : 'unreadable';
+  }).catch((e) => LINKS_READY.then(() => {
+    // The server says which gap it is — cut, not simulated, not set up, or
+    // unreadable — and the hero, legend and chip all use that one word.
+    const k = feedKind(e);
+    const why = FEED_TAG[k];
     if (HERO) { HERO.ring('loops', null); HERO.legend('loops', why); HERO.stat('loops', '–', '', 'loops ' + why); }
-    sysSet('loops', e.code === 503 ? 'warn' : 'down', why);
-  });
+    sysSet('loops', k === 'unread' ? 'down' : 'warn', why);
+  }));
 }
 
 // ---------- More: every surface within two taps (§9) ----------

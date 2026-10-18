@@ -199,7 +199,8 @@ describe('app surfaces (source pins — §1B named states, links-cut placement)'
     expect(panel).toBeGreaterThan(-1);
     expect(panel).toBeLessThan(brief);
     expect(html).toContain('this is not zero forms');
-    expect(html).toContain('Website forms — direct wire');
+    // QA round: the card is titled in Mike's words — "direct wire" was build jargon.
+    expect(html).toContain("'panel-title', 'Website forms')");
   });
 
   it('settings shows the links (read-only) and webhook wires with honest states', () => {

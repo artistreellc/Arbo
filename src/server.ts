@@ -219,6 +219,7 @@ export function createLiveSource(): DataSource {
         zip: r.zip ?? undefined,
         isFirstTimer: r.isFirstTimer ?? undefined,
         scope: r.scope ?? undefined,
+        nearPowerLines: r.nearPowerLines ?? undefined,
       }));
     },
     async newLeads(limit): Promise<ApiLeadInput[]> {
