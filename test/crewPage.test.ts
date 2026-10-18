@@ -62,7 +62,11 @@ describe('the crew door (§8C.1) — one app, two doors', () => {
   it('only ever calls crew endpoints — never an admin one', () => {
     const calls = [...html.matchAll(/api\('([^']+)'/g)].map((m) => m[1]!);
     expect(calls.length).toBeGreaterThan(0);
-    for (const c of calls) {
+    // Deliberately updated (QA round 2): the one exception is GET /health, the
+    // public status read (data links live or cut) that words a failed read the
+    // way the office app does. It is not an admin route and carries no data.
+    expect(calls.filter((c) => !c.startsWith('/api/crew/'))).toEqual(['/health']);
+    for (const c of calls.filter((x) => x !== '/health')) {
       expect(c, `crew page called a non-crew endpoint: ${c}`).toMatch(/^\/api\/crew\//);
     }
     for (const forbidden of ['/api/leads', '/api/properties', '/api/estimating', '/api/queue', '/api/followups', '/api/calendar']) {
@@ -137,7 +141,8 @@ describe('crew near-miss filing (§6V) — blameless and always reachable', () =
     // Deliberately updated (QA, 2026-10-18): the old line promised "No names",
     // but every report is filed under the crew code. The copy now promises
     // only what is true; whether near misses go anonymous is Mike's call.
-    expect(html).toContain('Nobody gets blamed or written up');
+    // QA round 2: the intro was shortened to one sentence per idea.
+    expect(html).toContain('nobody gets blamed or written up');
     expect(html).not.toContain('No names');
     expect(html).not.toMatch(/who was at fault|whose fault|who caused/i);
   });
@@ -211,7 +216,10 @@ describe('reference library on the crew door (§6U)', () => {
   });
 
   it('a library it could not read is NEVER drawn as an empty one (§1B)', () => {
-    expect(html).toContain('Library unavailable');
+    // QA round 2: the reason is the crew door's one wording for a failed read (crewWhy).
+    expect(html).toContain("'Library: ' + crewWhy(e)");
+    expect(html).toContain('cut on purpose');
+    expect(html).toContain('not part of the practice data');
     expect(html).toContain('That is NOT "nothing on file"');
   });
 

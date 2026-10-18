@@ -4260,12 +4260,13 @@ window.addEventListener('scroll', () => { $('appbar').classList.toggle('scrolled
 // Output words stay the law's: PERMIT LIKELY / REVIEW NEEDED / NO OVERLAY — VERIFY,
 // plus CALL FIRST and TICKET REQUIRED. Never "clear". An unanswered question
 // goes in as 'unknown' and comes back REVIEW NEEDED, naming what is unknown.
+// [label, tone] — the tones are the one shared table (chip / TONE).
 const PERMIT_STATUS = {
-  'PERMIT LIKELY': ['PERMIT LIKELY', 'b-permit-likely'],
-  'REVIEW NEEDED': ['REVIEW NEEDED', 'b-review'],
-  'NO OVERLAY–VERIFY': ['NO OVERLAY — VERIFY W/ CITY', 'b-verify'],
-  'CALL FIRST': ['CALL FIRST', 'b-emg'], // strongest chip, as EMERGENCY, so the power-line step never looks least urgent (hauling's call-ahead shares it)
-  'TICKET REQUIRED': ['TICKET REQUIRED', 'b-warm'],
+  'PERMIT LIKELY': ['PERMIT LIKELY', 'watch'],
+  'REVIEW NEEDED': ['REVIEW NEEDED', 'watch'],
+  'NO OVERLAY–VERIFY': ['NO OVERLAY — VERIFY W/ CITY', 'info'],
+  'CALL FIRST': ['CALL FIRST', 'alarm'], // the strongest chip, as EMERGENCY — but only the power-line step (it.safety) wears it; checkCard turns hauling's call-ahead amber
+  'TICKET REQUIRED': ['TICKET REQUIRED', 'stop'],
 };
 const TOPIC_NAMES = {
   private_tree_cbpa: 'Bay buffer (CBPA / RPA)', street_tree_row: 'Street & city trees', row_work_mot: 'Working in the street',
@@ -4276,8 +4277,9 @@ const TOPIC_NAMES = {
 let PERMIT_CITY = 'Virginia Beach';
 const PERMIT_ANS = { inRpa: 'unknown', nearPowerLines: 'unknown', inRightOfWay: 'unknown', historicDistrict: 'unknown', stumpGrinding: false, haulingDebris: false, burning: false };
 // Phone numbers, dates and code sections ("757-385-6661", "§ 23-50.1") must not
-// split at a hyphen: a word joiner after each digit-hyphen-digit keeps them whole.
-const nb = (s) => String(s).replace(/(\d)-(?=\d)/g, '$1-\u2060');
+// split at a hyphen: a word joiner after each digit-hyphen-digit keeps them whole,
+// and a no-break space keeps "§" on the same line as its section number.
+const nb = (s) => String(s).replace(/(\d)-(?=\d)/g, '$1-\u2060').replace(/§\s+/g, '§\u00a0');
 
 let PERMIT_GEN = 0;
 async function renderPermits() {
@@ -4287,7 +4289,7 @@ async function renderPermits() {
   const head = el('div', 'viewhead');
   head.appendChild(el('div', 'eyebrow', 'Permit Desk'));
   head.appendChild(el('h1', '', 'Permits & public works'));
-  head.appendChild(el('p', '', 'Every rule shows its source and the date it was checked. Anything a source didn’t state plainly is marked UNCONFIRMED — call the office listed on that rule before you tell a customer.'));
+  head.appendChild(el('p', '', 'Every rule shows its source and the date it was checked. Anything a source didn’t state plainly is marked UNCONFIRMED — check it with the city before you tell a customer (the office to call is on the rule where we have one).'));
   v.appendChild(head);
   const cities = el('div', 'chips city-pick');
   for (const c of ['Virginia Beach', 'Norfolk', 'Chesapeake', 'Portsmouth']) {
@@ -4317,7 +4319,7 @@ async function renderPermits() {
       if (g !== ck || gen !== PERMIT_GEN) return;
       if (e.code === 401) showKeywall();
       // §1B: a failed check REPLACES the old results — they are never left up as current.
-      out.replaceChildren(el('div', 'storm', (e.code ? 'Arbo could not build the checklist right now.' : 'Could not reach Arbo (no signal?).') + ' An empty list here is not an answer — Arbo could not check.'));
+      out.replaceChildren(el('div', 'feed-state unread', (e.code ? 'Arbo could not build the checklist right now.' : 'Could not reach Arbo (no signal?).') + ' An empty list here is not an answer — Arbo could not check.'));
     }).finally(() => {
       if (g === ck) { out.style.minHeight = ''; out.style.opacity = ''; out.removeAttribute('aria-busy'); }
     });
@@ -4363,7 +4365,7 @@ async function renderPermits() {
   try { db = await api('/api/permits/db?city=' + encodeURIComponent(PERMIT_CITY)); } catch (e) {
     if (gen !== PERMIT_GEN) return;
     if (e.code === 401) return showKeywall();
-    v.appendChild(state('Permit base unavailable', 'Arbo could not read its permit base right now. That is not the same as “no rules”.'));
+    v.appendChild(state('Permit base — ' + FEED_WORD[feedKind(e)], 'Arbo could not read its permit base right now. That is not the same as “no rules”.'));
     return;
   }
   if (gen !== PERMIT_GEN) return;
@@ -4383,8 +4385,10 @@ async function renderPermits() {
 // date it was checked.
 function checkCard(it) {
   const c = el('div', 'card check-item');
-  const st = PERMIT_STATUS[it.status] || [it.status, 'b-pending'];
-  const b = el('div', 'badges'); b.appendChild(badge(st[0], st[1]));
+  const st = PERMIT_STATUS[it.status] || [it.status, 'watch'];
+  // CALL FIRST is the alarm chip only on the life-safety step (power lines);
+  // hauling's call-ahead shares the words, not the colour.
+  const b = el('div', 'badges'); b.appendChild(chip(st[0], it.status === 'CALL FIRST' && !it.safety ? 'watch' : st[1]));
   c.appendChild(b);
   c.appendChild(el('div', 'who', nb(it.step)));
   c.appendChild(el('div', 'scope', nb(it.why)));
@@ -4394,6 +4398,27 @@ function checkCard(it) {
     const s = el('div', 'srcs');
     const a = el('a', '', 'Source & date checked ↓');
     a.href = '#fact-' + it.factIds[0];
+    // Scroll in place: a #fact-… hash would outlive a reload, and the start-up
+    // router only knows view names, so the reload would land on Today.
+    a.addEventListener('click', (ev) => {
+      const t = document.getElementById('fact-' + it.factIds[0]);
+      if (!t) return;
+      ev.preventDefault();
+      t.scrollIntoView({ behavior: 'smooth' });
+      // The rule sits far below the job check: one link back to the result that was tapped.
+      const old = t.querySelector('.back-to-check');
+      if (old) old.remove();
+      const back = el('div', 'srcs back-to-check');
+      const up = el('a', '', '↑ Back to the job check');
+      up.href = '#';
+      up.addEventListener('click', (e2) => {
+        e2.preventDefault();
+        if (c.isConnected) c.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        else window.scrollTo({ top: 0, behavior: 'smooth' }); // a newer check replaced that card
+      });
+      back.appendChild(up);
+      t.querySelector('.factmeta').appendChild(back);
+    });
     s.appendChild(a);
     meta.appendChild(s);
   }
@@ -4416,30 +4441,41 @@ function whoLine(w) {
   return d;
 }
 
+// A source whose web address would put the wrong name on screen gets a plain one.
+const KNOWN_HOSTS = { 'tcimag.tcia.org': 'TCI Magazine (trade press)' };
+
 function factCard(f, isStale) {
   const c = el('div', 'card fact');
   c.id = 'fact-' + f.id; // where a job-check result's "Source & date checked ↓" lands
   const b = el('div', 'badges');
-  b.appendChild(badge(f.city.toUpperCase(), 'b-src'));
-  b.appendChild(badge(f.confidence, f.confidence === 'SOURCED' ? 'b-est' : 'b-flag'));
-  if (isStale) b.appendChild(badge('RE-CHECK DUE', 'b-warm'));
+  b.appendChild(chip(f.city.toUpperCase(), 'info'));
+  b.appendChild(chip(f.confidence, f.confidence === 'SOURCED' ? 'good' : 'watch'));
+  if (isStale) b.appendChild(chip('RE-CHECK DUE', 'watch'));
   c.appendChild(b);
   c.appendChild(el('div', 'who', nb(f.title)));
   c.appendChild(el('div', 'scope', nb(f.rule)));
   const meta = el('div', 'factmeta');
   if (f.whoToCall) meta.appendChild(whoLine(f.whoToCall));
+  else if (f.confidence !== 'SOURCED') meta.appendChild(el('div', '', 'No office on file — ask the city which office handles this.'));
   if (f.form) meta.appendChild(el('div', '', 'Form: ' + f.form.name));
   if (f.fee) meta.appendChild(el('div', '', 'Government-set figure (fee, fine or license tier): ' + f.fee));
   if (f.leadTime) meta.appendChild(el('div', '', 'Lead time: ' + f.leadTime));
   const src = el('div', 'srcs');
-  src.appendChild(document.createTextNode('Checked ' + nb(f.verifiedOn) + ' · '));
+  src.appendChild(document.createTextNode('Checked ' + nb(fmtWhen(f.verifiedOn)) + ' · '));
+  // Named by its site, so a city code page reads differently from a third-party
+  // summary; two pages on one site are numbered so they never look like one link.
+  const siteOf = (u) => { try { const h = new URL(u).hostname.replace(/^www\./, ''); return KNOWN_HOSTS[h] || h; } catch (e) { return 'source'; } };
+  const labels = f.sourceUrls.map((u) => (u.indexOf('arbo:') === 0 ? 'your permit correspondence' : siteOf(u)));
+  const total = {};
+  for (const l of labels) total[l] = (total[l] || 0) + 1;
+  const nth = {};
   f.sourceUrls.forEach((u, i) => {
     if (i) src.appendChild(document.createTextNode(' · '));
-    if (u.indexOf('arbo:') === 0) { src.appendChild(document.createTextNode('Mike’s permit correspondence')); return; }
-    // Named by its site, so a city code page reads differently from a third-party summary.
-    let site = 'source';
-    try { site = new URL(u).hostname.replace(/^www\./, ''); } catch (e) { /* not a URL: keep the plain label */ }
-    const a = el('a', '', site);
+    const l = labels[i];
+    let text = l;
+    if (total[l] > 1) { nth[l] = (nth[l] || 0) + 1; text = l + ' (' + nth[l] + ')'; }
+    if (u.indexOf('arbo:') === 0) { src.appendChild(document.createTextNode(text)); return; }
+    const a = el('a', '', text);
     a.href = u; a.target = '_blank'; a.rel = 'noopener';
     src.appendChild(a);
   });
@@ -4543,12 +4579,20 @@ async function renderAgents() {
 // A LiDAR app captures and exports the point cloud; Arbo measures it. The
 // file is read in memory on the server and never stored. Every number comes
 // with its confidence; a number that could not be measured says why.
-const CONF_BADGE = { good: ['GOOD', 'b-est'], fair: ['FAIR', 'b-warm'], low: ['LOW', 'b-flag'], unreadable: ['UNREADABLE', 'b-pending'] };
+// [label, tone]: LOW is a confidence level, not a hazard, so it is amber like FAIR;
+// UNREADABLE is the same word and colour as on Agents.
+const CONF_BADGE = { good: ['GOOD', 'good'], fair: ['FAIR', 'watch'], low: ['LOW', 'watch'], unreadable: ['UNREADABLE', 'watch'] };
 let LIDAR_LAST = null;
 let LIDAR_UP = '';
 // Set when an Up change dropped a result: it was measured on the old axis, so it
 // is dropped, and the status line says why rather than "Nothing measured yet."
 let LIDAR_UP_CHANGED = false;
+
+// Which way Arbo read as up, in plain words, for the status line. The engine's
+// own reason rides on the line's hover title.
+function upWords(ua) {
+  return !ua ? '' : ' Read ' + ua.axis.toUpperCase() + ' as up — ' + (ua.source === 'override' ? 'you chose this.' : ua.source === 'data' ? 'the ground in the scan lies flat that way.' : 'the usual way for this file type.');
+}
 
 function renderMeasure() {
   const v = $('view-measure');
@@ -4592,10 +4636,12 @@ function renderMeasure() {
   }
   const segRow = el('div', 'qrow'); segRow.appendChild(el('span', 'q', 'Which way is up in the file?')); segRow.appendChild(seg);
   pick.appendChild(segRow);
-  pick.appendChild(el('div', 'storm-muted', 'Leave on Auto unless the result looks wrong — iPhone apps usually export Y as up, LAS files Z.'));
-  const status = el('div', 'storm-muted', LIDAR_LAST
-    ? 'Measured ' + LIDAR_LAST.file.points.toLocaleString() + ' points from ' + LIDAR_LAST.file.name + '.'
+  pick.appendChild(el('div', 'storm-muted', 'Leave on Auto unless height reads far too small or the trunk width looks wrong — iPhone apps usually export Y as up, LAS files Z.'));
+  // The status is a fact about this scan, not a tip, so it does not wear the tip style.
+  const status = el('div', 'factmeta', LIDAR_LAST
+    ? 'Measured ' + LIDAR_LAST.file.points.toLocaleString() + ' points from ' + LIDAR_LAST.file.name + '.' + upWords(LIDAR_LAST.file.upAxis)
     : (LIDAR_UP_CHANGED ? 'Up changed — open the scan file again to measure with it.' : 'Nothing measured yet.'));
+  if (LIDAR_LAST && LIDAR_LAST.file.upAxis) status.title = LIDAR_LAST.file.upAxis.reason || '';
   pick.appendChild(status);
   v.appendChild(pick);
   const out = el('div');
@@ -4610,7 +4656,8 @@ function renderMeasure() {
       status.textContent = 'That file is over 60 MB. Crop the scan to just the tree in the scanning app, export again, and open that.';
       return;
     }
-    status.className = 'storm-muted';
+    status.className = 'factmeta';
+    status.title = '';
     status.textContent = 'Reading ' + f.name + ' (' + (f.size / 1048576).toFixed(1) + ' MB)…';
     out.replaceChildren();
     const upSent = LIDAR_UP;
@@ -4629,7 +4676,8 @@ function renderMeasure() {
       if (LIDAR_UP !== upSent) return; // Up changed while it read: this result is on the old axis, so it is dropped
       LIDAR_LAST = body;
       LIDAR_UP_CHANGED = false;
-      status.textContent = 'Measured ' + body.file.points.toLocaleString() + ' points from ' + body.file.name + '.';
+      status.textContent = 'Measured ' + body.file.points.toLocaleString() + ' points from ' + body.file.name + '.' + upWords(body.file.upAxis);
+      status.title = (body.file.upAxis && body.file.upAxis.reason) || '';
       out.appendChild(measureResult(body));
     } catch (e) {
       status.className = 'storm';
@@ -4646,8 +4694,8 @@ function measureResult(r) {
     const t = el('div', 'tile');
     t.appendChild(el('b', '', value === null ? '–' : value + unit));
     t.appendChild(el('span', '', label + (value !== null && alt ? ' · ' + alt : '')));
-    const cb = CONF_BADGE[conf.level] || [conf.level, 'b-pending'];
-    const b = badge(cb[0], cb[1]); b.title = conf.reason;
+    const cb = CONF_BADGE[conf.level] || [conf.level, 'watch'];
+    const b = chip(cb[0], cb[1]); b.title = conf.reason;
     t.appendChild(b);
     return t;
   };
@@ -4657,11 +4705,12 @@ function measureResult(r) {
   hud.appendChild(metric(m.heightM === null ? null : Math.round(m.heightM * 3.281), ' ft', m.heightM === null ? '' : round(m.heightM, 1) + ' m', 'height', m.confidence.height));
   hud.appendChild(metric(m.crownSpreadM === null ? null : Math.round(m.crownSpreadM * 3.281), ' ft', m.crownSpreadM === null ? '' : round(m.crownSpreadM, 1) + ' m', 'crown', m.confidence.crown));
   hud.appendChild(metric(m.leanDeg === null ? null : round(m.leanDeg, 1), '°', '', 'lean', m.confidence.lean));
-  // Which way Arbo read as up, and why — every number below depends on it.
+  // Which way Arbo read as up is on the status line (upWords). Every number
+  // below depends on it, so an axis the scan could not confirm is a warning.
   const ua = r.file.upAxis;
-  if (ua) wrap.appendChild(el('div', 'storm-muted', 'Read with ' + ua.axis.toUpperCase() + ' as up — ' + (ua.source === 'override' ? 'you chose this' : 'picked automatically' + (ua.reason ? ': ' + ua.reason : '')) + '.'));
   // Warnings sit ABOVE the numbers they undercut; measure.ts puts the units warning first (D88).
   for (const w of m.warnings) wrap.appendChild(el('div', 'late', w));
+  if (ua && ua.source === 'format' && /no clear ground layer/.test(ua.reason || '')) wrap.appendChild(el('div', 'late', 'Which way is up was not confirmed by the scan (read ' + ua.axis.toUpperCase() + ' as up). Every number depends on it — if height reads far too small, switch Up and open the file again.'));
   wrap.appendChild(hud);
   // One line per figure. The r.summary paragraph stays in the API for agent and
   // crew text; here it only repeated these lines, the warnings and the sign-off.
@@ -4669,7 +4718,7 @@ function measureResult(r) {
   for (const k of ['dbh', 'height', 'crown', 'lean']) {
     const c = m.confidence[k];
     card.appendChild(el('div', 'factmeta', k.toUpperCase() + ' — ' + c.level + ': ' + c.reason
-      + (k === 'dbh' && m.dbhFit ? '; scatter ' + round(m.dbhFit.rmseCm, 1) + ' cm' : '')));
+      + (k === 'dbh' && m.dbhFit ? '; scatter ' + round(m.dbhFit.rmseCm / 2.54, 2) + ' in (' + round(m.dbhFit.rmseCm, 1) + ' cm)' : '')));
   }
   wrap.appendChild(card);
   for (const n of r.file.notes) wrap.appendChild(el('div', 'storm-muted', n));

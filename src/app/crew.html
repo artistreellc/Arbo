@@ -111,6 +111,8 @@ main{padding:16px;max-width:640px;margin:0 auto}
 .ackrow label{display:flex;align-items:center;gap:12px;min-height:52px;width:100%;font-size:15px;font-weight:700;cursor:pointer}
 .ackrow input{width:28px;height:28px;margin:0;accent-color:var(--forest);flex:none}
 .gate-status{font-size:13px;color:var(--muted);margin-top:8px;min-height:20px}
+/* A failed sign-off carries a stop-work order: it reads as one, not as helper text. */
+.gate-status.err{color:#FFD9A0;font-size:14px;font-weight:700;line-height:1.4;border-left:3px solid var(--warning);padding-left:10px}
 #gobtn{width:100%;min-height:60px;margin-top:14px;border:0;border-radius:var(--r-md);
   background:var(--surface-alt);color:var(--muted);border:1.5px solid var(--border);
   font-size:19px;font-weight:900;letter-spacing:.14em;cursor:not-allowed}
@@ -187,7 +189,7 @@ main.door-locked #gate-slot,main.door-locked #quiz,main.door-locked #work,main.d
   background:var(--go);color:#fff;font-size:16px;font-weight:800;cursor:pointer}
 /* The door key is masked, so the crew-code field's monospace buys nothing here. */
 #whoami #doorkey{font-family:inherit}
-#whoami button.keyshow{width:auto;min-height:44px;background:none;color:var(--canopy);font-weight:700;padding:0 4px;margin:-4px 0 6px}
+#whoami button.keyshow{width:auto;min-height:44px;background:none;color:var(--canopy);font-weight:700;padding:0;margin:-4px 0 6px 0}
 .signed{display:flex;align-items:center;justify-content:space-between;gap:10px;
   font-size:13px;color:var(--muted);margin-bottom:14px}
 #whoami .signed button{width:auto;flex:none;min-height:48px;border:1px solid var(--border);
@@ -199,7 +201,7 @@ main.door-locked #gate-slot,main.door-locked #quiz,main.door-locked #work,main.d
    the paragraph that keeps someone out of a bad cut is the one that matters. */
 #library{margin-top:28px}
 #lib-card{border:1px solid var(--border);border-radius:var(--r-lg);padding:16px;background:var(--surface);box-shadow:var(--shadow-card)}
-#lib-card .why{color:var(--muted);font-size:14px;line-height:1.5;margin-bottom:12px}
+#lib-card .why{color:var(--muted);font-size:14px;line-height:1.5;margin-bottom:12px;text-wrap:pretty}
 #lib-q{width:100%;min-height:56px;border:1px solid var(--border);border-radius:var(--r-md);
   background:var(--surface-alt);color:var(--ink);font-size:17px;padding:0 14px;font-family:inherit}
 #lib-go{width:100%;min-height:56px;margin-top:12px;border:0;border-radius:var(--r-md);
@@ -227,7 +229,7 @@ main.door-locked #gate-slot,main.door-locked #quiz,main.door-locked #work,main.d
    takes effort is a report that never happens. */
 #nearmiss{margin-top:28px}
 #nm-card{border:1px solid var(--border);border-radius:var(--r-lg);padding:16px;background:var(--surface);box-shadow:var(--shadow-card)}
-#nm-card .why{color:var(--muted);font-size:14px;line-height:1.5;margin-bottom:12px}
+#nm-card .why{color:var(--muted);font-size:14px;line-height:1.5;margin-bottom:12px;text-wrap:pretty}
 #nm-desc{width:100%;min-height:88px;border:1px solid var(--border);border-radius:var(--r-md);
   background:var(--surface-alt);color:var(--ink);font-size:17px;padding:12px;font-family:inherit;resize:none}
 #nm-go{width:100%;min-height:56px;margin-top:12px;border:0;border-radius:var(--r-md);
@@ -284,6 +286,20 @@ async function api(path, opts) {
   if (!res.ok) throw Object.assign(new Error(body.error || 'error'), { code: res.status });
   return body;
 }
+// Why a crew read failed, in the crew's words. This page has no shared script,
+// so it mirrors the office app's feed states (index.html feedKind), kept this
+// small: a cut on purpose, not in the practice data, not set up, no answer.
+// GET /health is public and says whether the data links are live.
+let LINKS = null;
+const LINKS_READY = api('/health').then((h) => { LINKS = h.dataLinks || 'unknown'; }).catch(() => null);
+function crewWhy(e) {
+  const m = e && e.code === 503 ? e.message : '';
+  if (m === 'not_simulated') return 'not part of the practice data';
+  // A named link held cut (link_cut) is a cut on purpose too, the same as feedKind.
+  if (m === 'link_cut' || (m === 'db_not_configured' && LINKS !== 'live')) return 'the office data link is cut on purpose';
+  if (m === 'db_not_configured' || m === 'not_built') return 'not set up on the server yet';
+  return 'the office didn’t answer';
+}
 function fmtTime(iso) {
   if (!iso) return '';
   return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -301,12 +317,17 @@ const GATE = {
   // shows it instead of its own countdown until the crew acts again, so an
   // answer is never wiped before anyone can read it.
   serverMsg: '',
+  // True when serverMsg is a failure (a stop-work order), so it is styled as one.
+  serverErr: false,
 };
 // The server names what is missing in codes; the crew reads them in words.
 const GATE_NEED = { scroll: 'scroll to the bottom', checkbox: 'tick the box', read_time: 'read for longer' };
 
 function renderGate(brief) {
+  document.querySelector('main').classList.remove('door-locked'); // the door answered: show the panels
   GATE.content = brief;
+  // The server's read floor (10–15 s by length), so the countdown is its number, not a guess.
+  GATE.requiredSeconds = brief.requiredSeconds || 10;
   const slot = $('gate-slot');
   slot.replaceChildren();
   const box = el('div', 'locked');
@@ -327,7 +348,7 @@ function renderGate(brief) {
   const row = el('div', 'ackrow');
   const cb = document.createElement('input');
   cb.type = 'checkbox'; cb.id = 'ackbox';
-  cb.addEventListener('change', () => { GATE.checked = cb.checked; GATE.serverMsg = ''; refreshGate(); });
+  cb.addEventListener('change', () => { GATE.checked = cb.checked; GATE.serverMsg = ''; GATE.serverErr = false; refreshGate(); });
   // The box sits INSIDE its label, so the whole row is one gloved-thumb target.
   const lab = el('label', '', 'I read this briefing and understand it.');
   lab.prepend(cb);
@@ -362,7 +383,10 @@ function refreshGate() {
   const left = required - secondsOnScreen();
   if (left > 0) need.push('read for ' + left + 's more');
   const status = $('gate-status');
-  if (status) status.textContent = GATE.serverMsg || (need.length ? 'Still needed: ' + need.join(' · ') : 'Ready — press GO.');
+  if (status) {
+    status.textContent = GATE.serverMsg || (need.length ? 'Still needed: ' + need.join(' · ') : 'Ready — press GO.');
+    status.classList.toggle('err', Boolean(GATE.serverMsg && GATE.serverErr));
+  }
   const go = $('gobtn');
   if (go) {
     const ready = need.length === 0;
@@ -375,6 +399,7 @@ async function submitGate() {
   const go = $('gobtn');
   go.disabled = true;
   GATE.serverMsg = '';
+  GATE.serverErr = false;
   try {
     const res = await api('/api/crew/briefing/ack', {
       method: 'POST',
@@ -388,8 +413,11 @@ async function submitGate() {
     });
     if (!res.unlocked) {
       // The server is the authority — if it says not yet, the day stays locked.
-      GATE.requiredSeconds = res.requiredSeconds || 10;
-      GATE.serverMsg = 'Still needed: ' + (res.missing || []).map((m) => GATE_NEED[m] || 'ask the office').join(' · ');
+      GATE.requiredSeconds = res.requiredSeconds || GATE.requiredSeconds || 10;
+      // Read time is left to the live countdown, which says how many seconds
+      // are left and clears itself; a fixed "read for longer" would freeze on screen.
+      const other = (res.missing || []).filter((m) => m !== 'read_time');
+      GATE.serverMsg = other.length ? 'Still needed: ' + other.map((m) => GATE_NEED[m] || 'ask the office').join(' · ') : '';
       refreshGate();
       return;
     }
@@ -401,15 +429,15 @@ async function submitGate() {
     renderQuiz();
     renderWork();
   } catch (e) {
+    await LINKS_READY; // 'cut on purpose' vs 'not set up' needs /health's answer
     go.disabled = false;
     // Name the real reason instead of a generic retry (§1B: never bluff). The
     // day stays locked, so the words say so — same order as the briefing card.
+    GATE.serverErr = true;
     GATE.serverMsg = e.code === 400
       ? 'That sign-off was rejected — check your crew code with the office.'
       : e.code === 503
-        ? (e.message === 'not_simulated'
-          ? 'Your sign-off could not be recorded (not part of the practice data).'
-          : 'Your sign-off could not be recorded (the office system is not connected).')
+        ? 'Your sign-off could not be recorded (' + crewWhy(e) + ').'
           + ' Your work orders stay locked — do not start work; call the office to log your briefing.'
         : 'Could not record that — try once more.';
     refreshGate();
@@ -738,9 +766,8 @@ async function libSearch(q, out, btn) {
   } catch (e) {
     // §1B: a library Arbo could not read is not an empty library. Say which
     // one this is, so nobody concludes there is no guidance on file.
-    out.appendChild(el('div', 'lib-warn', e.code === 503
-      ? 'Library unavailable right now. That is NOT "nothing on file" — ask the office.'
-      : 'Could not search the library. That is NOT "nothing on file" — ask the office.'));
+    await LINKS_READY;
+    out.appendChild(el('div', 'lib-warn', 'Library: ' + crewWhy(e) + '. That is NOT "nothing on file" — ask the office.'));
     btn.disabled = false;
     return;
   }
@@ -838,9 +865,9 @@ function renderNearMiss() {
   // safety record needs a reporter) and becomes a DRAFT lesson a person vets
   // (D61). Whether near misses should be anonymous is Mike's call.
   card.appendChild(el('div', 'why',
-    'Something almost went wrong? Say it here. Nobody gets blamed or written up for it. '
-    + 'It is filed under your crew code so the office can follow up, and the office turns it '
-    + 'into a lesson so the next crew does not meet it. Leave other people’s names out.'));
+    'Something almost went wrong? Say it here — nobody gets blamed or written up. '
+    + 'It’s filed under your crew code, and the office turns it into a lesson for the next crew. '
+    + 'Leave other people’s names out.'));
   const ta = el('textarea');
   ta.id = 'nm-desc';
   ta.placeholder = 'What almost happened?';
@@ -883,14 +910,11 @@ function renderNearMiss() {
       // Never swallow it: a report the crew THINKS they filed is worse than
       // one they know failed.
       // Words, never the server's code: e.message is a slug for Mike's logs.
+      await LINKS_READY;
       out.className = 'err';
-      out.textContent = (e.code === 503
-        ? (e.message === 'not_simulated'
-          ? 'Did not save — near misses are not part of the practice data.'
-          : 'Did not save — the office system is not connected.')
-        : e.code === 400
-          ? 'Did not save — the office did not recognise your crew code.'
-          : 'Did not save — no answer from the office.') + ' Tell the office directly.';
+      out.textContent = (e.code === 400
+        ? 'Did not save — the office did not recognise your crew code.'
+        : 'Did not save — ' + crewWhy(e) + '.') + ' Tell the office directly.';
     } finally {
       btn.disabled = false;
     }
@@ -987,22 +1011,29 @@ if ('serviceWorker' in navigator) {
 
 $('dateline').textContent = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
 if (renderWhoAmI()) {
+  // No door key on this phone: the crew routes will almost surely answer 401, so
+  // the panels stay hidden until the briefing answers, instead of painting and
+  // then vanishing under the key card. renderGate and the catch show them again.
+  if (!KEY) document.querySelector('main').classList.add('door-locked');
   renderWork();
   renderLibrary();
   renderNearMiss();
-  api('/api/crew/briefing').then(renderGate).catch((e) => {
+  api('/api/crew/briefing').then(renderGate).catch(async (e) => {
     if (e.code === 401) return renderDoorKey(e.message === 'crew_key_not_set');
+    document.querySelector('main').classList.remove('door-locked'); // the door answered: show the panels
     if (e.code === 404) {
       $('gate-slot').appendChild(el('div', 'state', 'No briefing published for today yet — check with the office.'));
       return;
     }
     // §1B: a briefing Arbo could not read is not "no briefing", and the order
     // it carries is stop-work, so it wears the warning box, not the empty one.
+    await LINKS_READY; // 'cut on purpose' vs 'not set up' needs /health's answer
+    const why = crewWhy(e);
     const s = el('div', 'state err');
     s.appendChild(el('b', '', 'Briefing didn\u2019t come through'));
-    s.appendChild(document.createTextNode((e.code === 503
-      ? (e.message === 'not_simulated' ? 'Not part of the practice data.' : 'The office system isn\u2019t connected.')
-      : 'The office didn\u2019t answer.') + ' Do not start work \u2014 call the office.'));
+    s.appendChild(document.createTextNode(why.charAt(0).toUpperCase() + why.slice(1) + '.'));
+    // The order is its own line, so "Do not start work" never splits after "Do".
+    s.appendChild(el('b', 'order', 'Do not start work \u2014 call the office.'));
     $('gate-slot').appendChild(s);
   });
 }

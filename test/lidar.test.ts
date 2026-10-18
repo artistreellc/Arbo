@@ -44,6 +44,7 @@
 // a 40 cm trunk, a 6 m crown at 5–9 m and a ground plane. No real scan, no
 // customer data (§3).
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { parsePointCloud, type ParsedCloud, type ParseResult } from '../src/lidar/parse.js';
 import { measureTree } from '../src/lidar/measure.js';
 import { summarizeTreeMeasurement, SIGN_OFF } from '../src/lidar/summary.js';
@@ -405,11 +406,14 @@ describe('measureTree (R25 — decision support)', () => {
     expect(m.confidence.dbh.level).toBe('good');
     expect(m.confidence.height.level).toBe('low');
     expect(m.confidence.crown.level).toBe('low');
-    expect(m.warnings).toContain('Height is a minimum: the treetop is beyond what a phone scan reads cleanly (about 4 m / 13 ft).');
+    // QA round 2: one form, feet first.
+    expect(m.warnings).toContain('Height is a minimum: the treetop is beyond what a phone scan reads cleanly, about 13 ft (4 m).');
+    expect(m.confidence.height.reason).toContain('clean range, about 13 ft (4 m)');
+    expect(m.confidence.lean.reason).toContain('at about 1.5 ft and 6.5 ft; lowest 6.5 ft of trunk only');
     expect(m.crownAxesM!.minor).toBeGreaterThan(5.5);
     expect(Math.abs(m.leanDeg!)).toBeLessThan(1.5);
     expect(m.measuredAt).toBe('2026-09-28T12:00:00.000Z');
-    expect(m.warnings.join(' ')).not.toMatch(/UNITS NOT CONFIRMED/);
+    expect(m.warnings.join(' ')).not.toMatch(/Units not confirmed/i);
   });
 
   it('half-arc stem: warns the DBH may be underestimated and drops confidence', () => {
@@ -442,8 +446,17 @@ describe('measureTree (R25 — decision support)', () => {
 
   it('unknown units: warns loudly (first) and still computes', () => {
     const m = measureTree(flat(TREE), { upAxis: 'z' });
-    expect(m.warnings[0]).toMatch(/^UNITS NOT CONFIRMED/);
+    // QA round 2: sentence case, and it says how the file was READ, not that the shown figures are metres.
+    expect(m.warnings[0]).toMatch(/^Units not confirmed: the file does not say it is in metres\. Arbo read it as metres;/);
     expect(m.dbhCm).not.toBeNull();
+  });
+
+  it('every distance a person reads is feet first — no "~4 m" or "4 m / 13 ft" left (QA round 2)', () => {
+    const src = readFileSync(new URL('../src/lidar/measure.ts', import.meta.url), 'utf8');
+    expect(src).not.toContain('~4 m');
+    expect(src).not.toContain('4 m / 13 ft');
+    expect(src).not.toContain('lowest 2 m of trunk');
+    expect(src).not.toContain('UNITS NOT CONFIRMED');
   });
 });
 

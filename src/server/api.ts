@@ -56,7 +56,7 @@ import { buildDueProperties, buildGrowthOutreach, type GrowthTarget } from '../o
 import { findOpenLoops, type LoopSnapshot } from '../ops/loopCloser.js';
 import { quoteCheck, deriveLeakagePct, type QuoteCheckInput } from '../ops/estimating.js';
 import { buildCrewPayload, sequenceRoute, type WorkOrderSource } from '../crew/workOrder.js';
-import { evaluateGate, buildAcknowledgment, type BriefingContent } from '../crew/briefingGate.js';
+import { evaluateGate, buildAcknowledgment, requiredReadSeconds, type BriefingContent } from '../crew/briefingGate.js';
 import { etToday, etDayWindow, etWeekStart } from '../lib/etDay.js';
 import {
   buildInvoiceDrafts, buildCollectionQueue, derivedStatus, daysOverdue, lateFeeOwed,
@@ -913,7 +913,9 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       if (!source.ready() || !source.todaysBriefing) return { status: 503, body: { error: gap(source.todaysBriefing) } };
       const brief = await source.todaysBriefing();
       if (!brief) return { status: 404, body: { error: 'no_briefing_published' } };
-      return { status: 200, body: brief };
+      // The read time the gate will hold the crew to, so the page counts down
+      // the server's number instead of guessing one (10–15 s by length).
+      return { status: 200, body: { ...brief, requiredSeconds: requiredReadSeconds(brief.body) } };
     },
 
     /**
@@ -928,6 +930,9 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       const startedAtIso = String(body.startedAtIso ?? '');
       const completedAtIso = String(body.completedAtIso ?? '');
       if (!crewMemberId || !content?.id || !content?.body || !state) return { status: 400, body: { error: 'bad_request' } };
+      // A mistyped crew code is a 400 (check your crew code), not a 500: the
+      // time_entry.crew_member_id column is a uuid, the same as every crew route.
+      if (!UUID_RE.test(crewMemberId)) return { status: 400, body: { error: 'bad_crew_id' } };
       const startedMs = Date.parse(startedAtIso);
       const completedMs = Date.parse(completedAtIso);
       if (Number.isNaN(startedMs) || Number.isNaN(completedMs)) {
@@ -953,13 +958,21 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
         return { status: 200, body: { unlocked: false, missing: verdict.missing, requiredSeconds: verdict.requiredSeconds } };
       }
       const ack = buildAcknowledgment({ content, state: gateState, crewMemberId, startedAtIso, completedAtIso });
-      const saved = await source.recordBriefingAck({
-        crewMemberId: ack.crewMemberId,
-        itemIds: ack.itemIds,
-        startedAtIso: ack.startedAtIso,
-        completedAtIso: ack.completedAtIso,
-        payableMinutes: ack.payableMinutes,
-      });
+      let saved;
+      try {
+        saved = await source.recordBriefingAck({
+          crewMemberId: ack.crewMemberId,
+          itemIds: ack.itemIds,
+          startedAtIso: ack.startedAtIso,
+          completedAtIso: ack.completedAtIso,
+          payableMinutes: ack.payableMinutes,
+        });
+      } catch (err) {
+        // A code shaped like a UUID that matches nobody trips the crew foreign
+        // key. Name it, so the crew hears "check your crew code", not "try again".
+        if ((err as { code?: string }).code === '23503') return { status: 400, body: { error: 'unknown_crew' } };
+        throw err;
+      }
       if (source.emit) await source.emit('briefing.acknowledged', { crewMemberId, trainingEventId: saved.trainingEventId });
       return { status: 200, body: { unlocked: true, payableMinutes: ack.payableMinutes, ...saved } };
     },
