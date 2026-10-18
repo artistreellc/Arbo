@@ -360,6 +360,13 @@ function formatHistory(h: ApiLeadInput['history']): string | null {
 }
 
 export function createApi(source: DataSource, extras: ApiExtras = {}) {
+  // §1B: three different reasons a feed cannot be read — never one error for all.
+  // 'db_not_configured' = the master or named link is cut, or there is no DB;
+  // 'not_simulated' = the practice source has no such feed; 'not_built' = the
+  // live source does not wire it yet. Each guard keeps its own condition, so
+  // TypeScript still narrows the method, and asks gap() only for the word.
+  const gap = (has: unknown): string | null =>
+    !source.ready() ? 'db_not_configured' : has ? null : extras.dataLinksSim ? 'not_simulated' : 'not_built';
   return {
     /** GET /health — config versions + which integrations are wired. Never leaks values. */
     async health(): Promise<ApiResult> {
@@ -437,7 +444,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * approves every send) and what's legally suppressed, with reasons.
      */
     async followUps(): Promise<ApiResult> {
-      if (!source.ready() || !source.followUpInputs) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.followUpInputs) return { status: 503, body: { error: gap(source.followUpInputs) } };
       const { legal } = loadAllConfig();
       const { estimates, jobs } = await source.followUpInputs();
       const now = new Date();
@@ -485,7 +492,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * next_due_forecast back to the twin (the Phase-1 column, filled at last).
      */
     async forecast(now = new Date()): Promise<ApiResult> {
-      if (!source.ready() || !source.growthTargets) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.growthTargets) return { status: 503, body: { error: gap(source.growthTargets) } };
       const due = buildDueProperties(await source.growthTargets(), now);
       if (source.saveTreeForecast) {
         for (const p of due) {
@@ -512,7 +519,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
 
     /** POST /api/estimates/:id/outcome — Mike's won/lost/no-show tap (§5A #14). */
     async setOutcome(estimateId: string, outcome: string): Promise<ApiResult> {
-      if (!source.ready() || !source.recordOutcome) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.recordOutcome) return { status: 503, body: { error: gap(source.recordOutcome) } };
       if (!estimateId || !OUTCOMES.has(outcome)) return { status: 400, body: { error: 'bad_outcome' } };
       await source.recordOutcome(estimateId, outcome as 'pending' | 'won' | 'lost' | 'no_show');
       return { status: 200, body: { ok: true } };
@@ -570,7 +577,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * only. Refusals carry a named reason — never a silent drop.
      */
     async locationPing(body: { lat?: unknown; lng?: unknown; accuracyM?: unknown }, now = new Date()): Promise<ApiResult> {
-      if (!source.ready() || !source.recordPing || !source.getTracking) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.recordPing || !source.getTracking) return { status: 503, body: { error: gap(source.recordPing && source.getTracking) } };
       const lat = Number(body.lat);
       const lng = Number(body.lng);
       if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
@@ -585,7 +592,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
 
     /** POST /api/location/tracking — the §24 master switch, clear ON/OFF. */
     async locationTracking(on: unknown): Promise<ApiResult> {
-      if (!source.ready() || !source.setTracking) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.setTracking) return { status: 503, body: { error: gap(source.setTracking) } };
       if (typeof on !== 'boolean') return { status: 400, body: { error: 'bad_toggle' } };
       await source.setTracking(on);
       return { status: 200, body: { tracking: on } };
@@ -597,7 +604,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * sends.
      */
     async locationStatus(now = new Date()): Promise<ApiResult> {
-      if (!source.ready() || !source.getTracking || !source.pingsSince) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.getTracking || !source.pingsSince) return { status: 503, body: { error: gap(source.getTracking && source.pingsSince) } };
       const tracking = await source.getTracking();
       const pings = tracking ? await source.pingsSince(new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString()) : [];
       const latest = pings.length > 0 ? pings[pings.length - 1]! : null;
@@ -627,7 +634,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * the follow-up engine anchors on the REAL visit, not the slot.
      */
     async locationDay(fromIso: string, toIso: string): Promise<ApiResult> {
-      if (!source.ready() || !source.pingsSince || !source.geoStops) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.pingsSince || !source.geoStops) return { status: 503, body: { error: gap(source.pingsSince && source.geoStops) } };
       if (!fromIso || !toIso || Number.isNaN(Date.parse(fromIso)) || Number.isNaN(Date.parse(toIso))) {
         return { status: 400, body: { error: 'bad_window' } };
       }
@@ -652,7 +659,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
 
     /** GET /api/review/backlog — §29: the logged conversations awaiting review. */
     async reviewBacklog(limit = 20, unreviewedOnly = true): Promise<ApiResult> {
-      if (!source.ready() || !source.conversations) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.conversations) return { status: 503, body: { error: gap(source.conversations) } };
       return { status: 200, body: { conversations: await source.conversations(limit, unreviewedOnly) } };
     },
 
@@ -661,7 +668,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * read merged on so the money list and the property list are one surface.
      */
     async properties(now = new Date()): Promise<ApiResult> {
-      if (!source.ready() || !source.properties) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.properties) return { status: 503, body: { error: gap(source.properties) } };
       const list = await source.properties();
       let due: ReturnType<typeof buildDueProperties> = [];
       let forecastUnavailable = false;
@@ -684,7 +691,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
 
     /** GET /api/properties/:id — one property's full twin. */
     async propertyTwin(id: string): Promise<ApiResult> {
-      if (!source.ready() || !source.propertyTwin) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.propertyTwin) return { status: 503, body: { error: gap(source.propertyTwin) } };
       if (!id) return { status: 400, body: { error: 'bad_id' } };
       const twin = await source.propertyTwin(id);
       if (!twin) return { status: 404, body: { error: 'not_found' } };
@@ -693,7 +700,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
 
     /** POST /api/leads/:id/status — Mike's qualify/spam/converted/lost tap. */
     async setLeadStatus(id: string, status: string): Promise<ApiResult> {
-      if (!source.ready() || !source.setLeadStatus) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.setLeadStatus) return { status: 503, body: { error: gap(source.setLeadStatus) } };
       if (!id || !['new', 'qualified', 'spam', 'converted', 'lost'].includes(status)) {
         return { status: 400, body: { error: 'bad_status' } };
       }
@@ -703,7 +710,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
 
     /** POST /api/review/:id/reviewed — Mike (or the chat analyst on his behalf) closes one out. */
     async markReviewed(id: string): Promise<ApiResult> {
-      if (!source.ready() || !source.markReviewed) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.markReviewed) return { status: 503, body: { error: gap(source.markReviewed) } };
       if (!id) return { status: 400, body: { error: 'bad_id' } };
       await source.markReviewed(id);
       return { status: 200, body: { ok: true } };
@@ -715,7 +722,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * a decision Mike still owes someone.
      */
     async queue(): Promise<ApiResult> {
-      if (!source.ready() || !source.loopSnapshot) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.loopSnapshot) return { status: 503, body: { error: gap(source.loopSnapshot) } };
       const snapshot = await source.loopSnapshot();
       const open = findOpenLoops(snapshot);
       // Read-only by design: a GET must be idempotent. needs_decision events
@@ -765,7 +772,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
 
     /** POST /api/leakage — log one §6J2.4 leakage event (repair or damage). */
     async logLeakage(body: Record<string, unknown>): Promise<ApiResult> {
-      if (!source.ready() || !source.logLeakage) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.logLeakage) return { status: 503, body: { error: gap(source.logLeakage) } };
       const kind = String(body.kind ?? '');
       const cost = Number(body.cost);
       if (!['equipment_repair', 'property_damage'].includes(kind)) return { status: 400, body: { error: 'bad_kind' } };
@@ -788,7 +795,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * Arbo never creates a calendar of its own and never writes to his.
      */
     async calendar(fromIso: string, toIso: string): Promise<ApiResult> {
-      if (!source.ready() || !source.calendarEvents) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.calendarEvents) return { status: 503, body: { error: gap(source.calendarEvents) } };
       if (!fromIso || !toIso || Number.isNaN(Date.parse(fromIso)) || Number.isNaN(Date.parse(toIso))) {
         return { status: 400, body: { error: 'bad_window' } };
       }
@@ -810,7 +817,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * remembering to filter it (§8C.1).
      */
     async crewWorkOrders(dateIso: string, briefingId: string | null = null): Promise<ApiResult> {
-      if (!source.ready() || !source.crewJobs) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.crewJobs) return { status: 503, body: { error: gap(source.crewJobs) } };
       // The crew's day is the HAMPTON ROADS day, not the server's UTC day —
       // a 9pm-ET open must not hand them tomorrow's sheet.
       const day = dateIso && /^\d{4}-\d{2}-\d{2}$/.test(dateIso) ? dateIso : etToday();
@@ -884,7 +891,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * office hasn't published one — the crew is told, never given a blank.
      */
     async crewBriefing(): Promise<ApiResult> {
-      if (!source.ready() || !source.todaysBriefing) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.todaysBriefing) return { status: 503, body: { error: gap(source.todaysBriefing) } };
       const brief = await source.todaysBriefing();
       if (!brief) return { status: 404, body: { error: 'no_briefing_published' } };
       return { status: 200, body: brief };
@@ -895,7 +902,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * the day stays locked; a passing gate ALWAYS writes payable time (§4.6).
      */
     async ackBriefing(body: Record<string, unknown>): Promise<ApiResult> {
-      if (!source.ready() || !source.recordBriefingAck) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.recordBriefingAck) return { status: 503, body: { error: gap(source.recordBriefingAck) } };
       const crewMemberId = String(body.crewMemberId ?? '');
       const content = body.content as BriefingContent | undefined;
       const state = body.state as { scrolledToBottom?: boolean; checkboxTicked?: boolean; secondsOnScreen?: number } | undefined;
@@ -953,7 +960,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * like a clearance.
      */
     async permitBoard(): Promise<ApiResult> {
-      if (!source.ready() || !source.permitTracks) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.permitTracks) return { status: 503, body: { error: gap(source.permitTracks) } };
       const board = buildPermitBoard(await source.permitTracks(), etToday());
       assertBoardNeverClear(board);
       return { status: 200, body: board };
@@ -973,7 +980,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * and the response names the reason.
      */
     async permitPacket(permitId: string): Promise<ApiResult> {
-      if (!source.ready() || !source.packetSource) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.packetSource) return { status: 503, body: { error: gap(source.packetSource) } };
       if (!UUID_RE.test(permitId)) return { status: 400, body: { error: 'bad_permit_id' } };
       const src = await source.packetSource(permitId);
       if (!src) return { status: 404, body: { error: 'no_such_permit' } };
@@ -1036,7 +1043,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      */
     async movePermit(body: Record<string, unknown>): Promise<ApiResult> {
       if (!source.ready() || !source.movePermitStatus || !source.permitState) {
-        return { status: 503, body: { error: 'db_not_configured' } };
+        return { status: 503, body: { error: gap(source.movePermitStatus && source.permitState) } };
       }
       // The gate and the evidence bar must agree about which states open the
       // door. Run on the real path, not only in a test.
@@ -1094,7 +1101,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
 
     /** GET /api/fleet/units — the fleet with what each unit still owes (§6E). */
     async fleetUnits(): Promise<ApiResult> {
-      if (!source.ready() || !source.units) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.units) return { status: 503, body: { error: gap(source.units) } };
       const units = (await source.units()) as Array<{ status: string }>;
       return {
         status: 200,
@@ -1112,7 +1119,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      */
     async reportBreakdown(body: Record<string, unknown>): Promise<ApiResult> {
       if (!source.ready() || !source.recordBreakdown || !source.unitParts) {
-        return { status: 503, body: { error: 'db_not_configured' } };
+        return { status: 503, body: { error: gap(source.recordBreakdown && source.unitParts) } };
       }
       const unitId = String(body.unitId ?? '');
       const description = String(body.description ?? '').trim();
@@ -1160,7 +1167,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * ONLY close with a photo of the serviced part. Never a checkbox.
      */
     async closeMaintenance(taskId: string, body: Record<string, unknown>): Promise<ApiResult> {
-      if (!source.ready() || !source.closeMaintenanceTask) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.closeMaintenanceTask) return { status: 503, body: { error: gap(source.closeMaintenanceTask) } };
       const proofPhotoFile = String(body.proofPhotoFile ?? '').trim();
       if (!taskId) return { status: 400, body: { error: 'bad_id' } };
       if (!proofPhotoFile) return { status: 400, body: { error: 'photo_proof_required' } };
@@ -1179,7 +1186,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      */
     async money(): Promise<ApiResult> {
       if (!source.ready() || !source.billableJobs || !source.openInvoices) {
-        return { status: 503, body: { error: 'db_not_configured' } };
+        return { status: 503, body: { error: gap(source.billableJobs && source.openInvoices) } };
       }
       const nowIso = new Date().toISOString();
       const { legal } = loadAllConfig();
@@ -1234,7 +1241,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      */
     async createInvoice(body: Record<string, unknown>): Promise<ApiResult> {
       if (!source.ready() || !source.billableJobs || !source.createInvoice) {
-        return { status: 503, body: { error: 'db_not_configured' } };
+        return { status: 503, body: { error: gap(source.billableJobs && source.createInvoice) } };
       }
       const jobId = String(body.jobId ?? '');
       if (!jobId) return { status: 400, body: { error: 'bad_request' } };
@@ -1305,7 +1312,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * there is no path here an agent can reach, and 'paid' is a human fact.
      */
     async setInvoiceStatus(invoiceId: string, body: Record<string, unknown>): Promise<ApiResult> {
-      if (!source.ready() || !source.setInvoiceStatus) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.setInvoiceStatus) return { status: 503, body: { error: gap(source.setInvoiceStatus) } };
       const status = String(body.status ?? '');
       if (!invoiceId) return { status: 400, body: { error: 'bad_id' } };
       if (!['sent', 'paid', 'void'].includes(status)) return { status: 400, body: { error: 'bad_status' } };
@@ -1324,7 +1331,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * possible fields and there is no parameter anywhere that records fault.
      */
     async reportNearMiss(body: Record<string, unknown>): Promise<ApiResult> {
-      if (!source.ready() || !source.fileNearMiss) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.fileNearMiss) return { status: 503, body: { error: gap(source.fileNearMiss) } };
       // ONE reading of the ET day: computing it twice can straddle midnight
       // and reject a report as "in the future" against a day that just turned.
       const todayEt = etToday();
@@ -1458,7 +1465,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * on, because untested is a gap and not a pass (§1B).
      */
     async crewQuiz(crewMemberId: string, context: string): Promise<ApiResult> {
-      if (!source.ready() || !source.trainingPool) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.trainingPool) return { status: 503, body: { error: gap(source.trainingPool) } };
       if (!UUID_RE.test(crewMemberId)) return { status: 400, body: { error: 'bad_crew_id' } };
       const ctx = ['clock_in_gate', 'clock_out_gate', 'friday_questionnaire', 'micro_lesson'].includes(context)
         ? (context as GateContext) : null;
@@ -1503,7 +1510,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * without the pay.
      */
     async completeQuiz(body: Record<string, unknown>): Promise<ApiResult> {
-      if (!source.ready() || !source.recordGate) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.recordGate) return { status: 503, body: { error: gap(source.recordGate) } };
       const crewMemberId = String(body.crewMemberId ?? '');
       if (!UUID_RE.test(crewMemberId)) return { status: 400, body: { error: 'bad_crew_id' } };
       const itemIds = Array.isArray(body.itemIds) ? (body.itemIds as unknown[]).map(String) : [];
@@ -1604,7 +1611,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * gap in OUR record, never a pass.
      */
     async trainingBoard(): Promise<ApiResult> {
-      if (!source.ready() || !source.crewProfiles) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.crewProfiles) return { status: 503, body: { error: gap(source.crewProfiles) } };
       const crew = await source.crewProfiles();
 
       // The pool defines what "untested" can even mean. Without it, untested
@@ -1646,7 +1653,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
 
     /** GET /api/training/drafts — §4.7 vetting queue. */
     async trainingDrafts(): Promise<ApiResult> {
-      if (!source.ready() || !source.pendingDrafts) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.pendingDrafts) return { status: 503, body: { error: gap(source.pendingDrafts) } };
       const drafts = await source.pendingDrafts();
       return { status: 200, body: { drafts, count: drafts.length } };
     },
@@ -1657,7 +1664,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * gets a reason rather than a 500, and no automated caller exists.
      */
     async publishLesson(itemId: string, body: Record<string, unknown>): Promise<ApiResult> {
-      if (!source.ready() || !source.publishLesson) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.publishLesson) return { status: 503, body: { error: gap(source.publishLesson) } };
       if (!UUID_RE.test(itemId)) return { status: 400, body: { error: 'bad_id' } };
       const vettedBy = String(body.vettedBy ?? '').trim();
       if (!vettedBy) {
@@ -1682,7 +1689,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * rather than confirming the site was fine (Arbo cannot know that).
      */
     async recordArrival(jobId: string, body: Record<string, unknown>): Promise<ApiResult> {
-      if (!source.ready() || !source.recordSiteCondition) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.recordSiteCondition) return { status: 503, body: { error: gap(source.recordSiteCondition) } };
       if (!UUID_RE.test(jobId)) return { status: 400, body: { error: 'bad_job_id' } };
       const record: SiteConditionRecord = {
         jobId,
@@ -1709,7 +1716,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * never approves one.
      */
     async addChangeOrder(jobId: string, body: Record<string, unknown>): Promise<ApiResult> {
-      if (!source.ready() || !source.createChangeOrder) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.createChangeOrder) return { status: 503, body: { error: gap(source.createChangeOrder) } };
       if (!UUID_RE.test(jobId)) return { status: 400, body: { error: 'bad_job_id' } };
       const rawAmount = body.amount;
       let drafted;
@@ -1744,7 +1751,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
     },
 
     async crewChangeOrder(body: Record<string, unknown>): Promise<ApiResult> {
-      if (!source.ready() || !source.createChangeOrder) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.createChangeOrder) return { status: 503, body: { error: gap(source.createChangeOrder) } };
       const jobId = String(body.jobId ?? '');
       if (!UUID_RE.test(jobId)) return { status: 400, body: { error: 'bad_job_id' } };
       let drafted;
@@ -1771,7 +1778,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
 
     /** POST /api/change-orders/:id/approve — Mike approves. Only Mike. */
     async approveChangeOrder(id: string): Promise<ApiResult> {
-      if (!source.ready() || !source.approveChangeOrder) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.approveChangeOrder) return { status: 503, body: { error: gap(source.approveChangeOrder) } };
       if (!UUID_RE.test(id)) return { status: 400, body: { error: 'bad_id' } };
       const ok = await source.approveChangeOrder(id);
       // Already invoiced or gone: never report a fresh approval that did not happen.
@@ -1786,7 +1793,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * measured at all. Thin samples are listed and NOT judged.
      */
     async performance(days = 365): Promise<ApiResult> {
-      if (!source.ready() || !source.areaJobFacts) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.areaJobFacts) return { status: 503, body: { error: gap(source.areaJobFacts) } };
       const window = Number.isFinite(days) && days > 0 ? Math.min(Math.floor(days), 1095) : 365;
       const since = new Date(Date.now() - window * 86400_000).toISOString();
 
@@ -1817,7 +1824,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * warning rather than reading as universally safe.
      */
     async crewReference(text: string, crewMemberId: string): Promise<ApiResult> {
-      if (!source.ready() || !source.referenceEntries) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.referenceEntries) return { status: 503, body: { error: gap(source.referenceEntries) } };
 
       // skillKnown is false whenever the level could NOT be resolved — a bad
       // crew code, a member with no level on file, or a failed read all land
@@ -1850,7 +1857,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * on an entry whose limits nobody wrote down.
      */
     async referenceDrafts(): Promise<ApiResult> {
-      if (!source.ready() || !source.draftReferenceEntries) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.draftReferenceEntries) return { status: 503, body: { error: gap(source.draftReferenceEntries) } };
       const rows = await source.draftReferenceEntries();
       const drafts = rows.map((d) => {
         const { refs, dropped } = sanitiseRefs(d.standardRefs);
@@ -1870,7 +1877,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * crew phone is through a named human (§4.7).
      */
     async createReferenceEntry(body: Record<string, unknown>): Promise<ApiResult> {
-      if (!source.ready() || !source.createReferenceEntry) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.createReferenceEntry) return { status: 503, body: { error: gap(source.createReferenceEntry) } };
       const techniqueName = String(body.techniqueName ?? '').trim();
       const howTo = String(body.howTo ?? '').trim();
       if (!techniqueName || !howTo) {
@@ -1915,7 +1922,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * complete enough to publish is the vetter's judgement, not Arbo's.
      */
     async publishReferenceEntry(id: string, body: Record<string, unknown>): Promise<ApiResult> {
-      if (!source.ready() || !source.publishReferenceEntry) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.publishReferenceEntry) return { status: 503, body: { error: gap(source.publishReferenceEntry) } };
       if (!UUID_RE.test(id)) return { status: 400, body: { error: 'bad_id' } };
       const vettedBy = String(body.vettedBy ?? '').trim();
       if (!vettedBy) {
@@ -1939,7 +1946,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * each one's cards. Admin only; the crew door has no roster.
      */
     async roster(): Promise<ApiResult> {
-      if (!source.ready() || !source.fullRoster) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.fullRoster) return { status: 503, body: { error: gap(source.fullRoster) } };
       const people = await source.fullRoster();
       // Cert counts, never a verdict — findCertProblems owns the verdict, and
       // this screen must not grow a second, softer opinion about the same rows.
@@ -1968,7 +1975,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
 
     /** POST /api/roster — add a person. */
     async createCrewMember(body: Record<string, unknown>): Promise<ApiResult> {
-      if (!source.ready() || !source.createCrewMember) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.createCrewMember) return { status: 503, body: { error: gap(source.createCrewMember) } };
       const name = String(body.name ?? '').trim();
       if (!name) return { status: 400, body: { error: 'name_required' } };
       const role = String(body.role ?? '').trim().toLowerCase() || 'groundie';
@@ -1995,7 +2002,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
 
     /** POST /api/roster/:id/deactivate — off the roster, records intact. */
     async deactivateCrewMember(id: string): Promise<ApiResult> {
-      if (!source.ready() || !source.deactivateCrewMember) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.deactivateCrewMember) return { status: 503, body: { error: gap(source.deactivateCrewMember) } };
       if (!UUID_RE.test(id)) return { status: 400, body: { error: 'bad_id' } };
       const ok = await source.deactivateCrewMember(id);
       if (!ok) return { status: 409, body: { error: 'not_active' } };
@@ -2009,7 +2016,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * it would just mean the card goes unrecorded, which is worse.
      */
     async recordCertification(crewMemberId: string, body: Record<string, unknown>): Promise<ApiResult> {
-      if (!source.ready() || !source.recordCertification) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.recordCertification) return { status: 503, body: { error: gap(source.recordCertification) } };
       if (!UUID_RE.test(crewMemberId)) return { status: 400, body: { error: 'bad_id' } };
       const type = String(body.type ?? '').trim().toLowerCase();
       const ALLOWED = ['first_aid', 'cpr', 'aerial_rescue', 'tree_rescue', 'cdl', 'other'];
@@ -2049,7 +2056,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * one this unit has.
      */
     async createEquipmentUnit(body: Record<string, unknown>): Promise<ApiResult> {
-      if (!source.ready() || !source.createEquipmentUnit) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.createEquipmentUnit) return { status: 503, body: { error: gap(source.createEquipmentUnit) } };
       const name = String(body.name ?? '').trim();
       const kind = String(body.kind ?? '').trim();
       const vinOrSerial = String(body.vinOrSerial ?? '').trim();
@@ -2097,7 +2104,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
 
     /** POST /api/fleet/units/:id/retire — off the board, history kept. */
     async retireEquipmentUnit(id: string): Promise<ApiResult> {
-      if (!source.ready() || !source.retireEquipmentUnit) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.retireEquipmentUnit) return { status: 503, body: { error: gap(source.retireEquipmentUnit) } };
       if (!UUID_RE.test(id)) return { status: 400, body: { error: 'bad_id' } };
       // Count the open work BEFORE retiring: listUnits excludes retired units,
       // so those tasks are about to leave the board. Vanishing silently is the
@@ -2127,7 +2134,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * which is why recording them matters.
      */
     async addEquipmentPart(unitId: string, body: Record<string, unknown>): Promise<ApiResult> {
-      if (!source.ready() || !source.addEquipmentPart) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.addEquipmentPart) return { status: 503, body: { error: gap(source.addEquipmentPart) } };
       if (!UUID_RE.test(unitId)) return { status: 400, body: { error: 'bad_id' } };
       const partNumber = String(body.partNumber ?? '').trim();
       if (!partNumber) return { status: 400, body: { error: 'part_number_required' } };
@@ -2158,7 +2165,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * just mean the spend goes unrecorded.
      */
     async createCampaign(body: Record<string, unknown>): Promise<ApiResult> {
-      if (!source.ready() || !source.createCampaign) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.createCampaign) return { status: 503, body: { error: gap(source.createCampaign) } };
       const type = String(body.type ?? '').trim().toLowerCase();
       const ALLOWED = ['flyer', 'ads', 'seasonal', 'neighbor_around_job'];
       if (!ALLOWED.includes(type)) return { status: 400, body: { error: 'bad_campaign_type', allowed: ALLOWED } };
@@ -2209,7 +2216,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
 
     /** GET /api/agents/runs — §8A.6g audit visibility: what the agents did. */
     async agentRuns(limit = 20): Promise<ApiResult> {
-      if (!source.ready() || !source.agentRuns) return { status: 503, body: { error: 'db_not_configured' } };
+      if (!source.ready() || !source.agentRuns) return { status: 503, body: { error: gap(source.agentRuns) } };
       return { status: 200, body: { runs: await source.agentRuns(limit) } };
     },
   };

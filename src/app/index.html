@@ -313,6 +313,11 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 .storm small{display:block;font-weight:500;opacity:.9;margin-top:4px}
 .storm-muted{color:var(--ink-3);font-size:13.5px;line-height:1.55;margin-bottom:12px;padding-left:16px;position:relative}
 .storm-muted::before{content:'';position:absolute;left:2px;top:.62em;width:6px;height:6px;border-radius:50%;background:var(--ink-4)}
+/* A feed Arbo could not read (§1B) — its own row, never styled like a help tip. */
+.feed-state{color:var(--ink-2);font-size:13.5px;font-weight:600;line-height:1.55;margin-bottom:12px;padding-left:18px;position:relative}
+.feed-state::before{content:'';position:absolute;left:1px;top:.5em;width:8px;height:8px;border-radius:50%;background:var(--warning)}
+.feed-state.cut::before,.feed-state.sim::before{background:var(--ink-4)}
+.feed-state.unread::before{background:var(--emergency)}
 .loc-strip{display:flex;align-items:center;gap:12px;margin-bottom:12px;font-size:14px;color:var(--ink-2)}
 .loc-toggle{min-height:44px;min-width:64px;border:1px solid var(--border);border-radius:var(--r-pill);background:var(--card);color:var(--ink-3);
   font-size:12.5px;font-weight:700;padding:0 16px;letter-spacing:.06em;display:inline-grid;place-items:center}
@@ -428,7 +433,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
   main{max-width:1120px;padding:12px 32px 24px}
   .view.active{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
   .view > *{grid-column:auto}
-  .view .viewhead,.view .hero,.view .systems,.view .sect,.view .zip-run,.view .state,.view .panel-title,.view .storm,.view .storm-muted,.view .routebtn,.view .hudbtn,.view .hud,.view .grid-tiles{grid-column:1 / -1}
+  .view .viewhead,.view .hero,.view .systems,.view .sect,.view .zip-run,.view .state,.view .panel-title,.view .storm,.view .storm-muted,.view .feed-state,.view .routebtn,.view .hudbtn,.view .hud,.view .grid-tiles{grid-column:1 / -1}
   #view-today .hud{grid-template-columns:repeat(7,1fr)}
   #view-today .hud .wide{grid-column:span 2}
   .hero{padding:30px 32px 24px}.hero h1{font-size:40px}.dayring{width:150px;height:150px}
@@ -616,6 +621,35 @@ function state(title, msg) {
   box.appendChild(document.createTextNode(msg));
   return box;
 }
+
+// ---------- Feed state: ONE wording for a read that failed (§1B) ----------
+// "We couldn't read it" is never "there's nothing there". Never word a failed read as 'empty', 'none' or 'no X yet'.
+let LINKS = null; // GET /health dataLinks: 'live' | 'cut' | 'simulation' | 'unknown'; null until it answers
+const LINKS_READY = api('/health').then((h) => { LINKS = h.dataLinks || 'unknown'; document.documentElement.dataset.links = LINKS; return LINKS; }).catch(() => null);
+function feedKind(e) { // 'cut' | 'sim' | 'unset' | 'unread'
+  if (!e || !e.code) return 'unread'; // no signal / fetch failed
+  if (e.code === 503) {
+    if (e.message === 'not_simulated') return 'sim';
+    if (e.message === 'db_not_configured') return LINKS === 'live' ? 'unset' : 'cut';
+    if (e.message === 'link_cut') return 'cut';
+    if (e.message === 'not_built' || /_(not_configured|not_wired|not_started|missing)$/.test(e.message)) return 'unset';
+  }
+  return 'unread';
+}
+const FEED_WORD = { cut: 'cut on purpose', sim: 'not in the practice data', unset: 'not set up yet', unread: 'couldn’t read it' };
+const FEED_TAG = { cut: 'cut', sim: 'not simulated', unset: 'not set up', unread: 'unreadable' }; // chips, tiles, ring legend
+const FEED_SAYS = { cut: 'This data link is cut on purpose.', sim: 'Not part of the practice data — nothing was read.', unset: 'Not set up on the server yet.', unread: 'Arbo couldn’t read it just now.' };
+const RETRY = 'Tap ↻ at the top to try again.';
+function feedSays(e) { return FEED_SAYS[feedKind(e)]; }
+function feedLine(e, what, tail) { const k = feedKind(e); return el('div', 'feed-state ' + k, what + ': ' + FEED_WORD[k] + '.' + (k === 'unread' ? ' ' + RETRY : '') + (tail ? ' ' + tail : '')); }
+function feedState(e, what, notWhat, retry) { const k = feedKind(e); return state(what + ' — ' + FEED_WORD[k], FEED_SAYS[k] + (k === 'unread' ? ' ' + (retry || RETRY) : '') + ' This is not ' + (notWhat || 'an empty list') + '.'); }
+function saveFailText(e) {
+  if (e && e.code === 401) { showKeywall(); return 'Not saved — Arbo needs the key again.'; }
+  const k = feedKind(e);
+  const why = !e || !e.code ? 'Arbo couldn’t reach the server' : { cut: 'this data link is cut on purpose', sim: 'this is not part of the practice data', unset: 'this is not set up on the server yet', unread: 'the server did not accept it' }[k];
+  return 'Not saved — ' + why + '. Nothing was written.';
+}
+function showSaveFail(box, e) { const n = box.querySelector(':scope > .save-err') || box.appendChild(el('div', 'errline save-err')); n.textContent = saveFailText(e); return n; }
 
 function fmtTime(iso) {
   if (!iso) return '';

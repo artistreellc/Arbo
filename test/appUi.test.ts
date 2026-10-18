@@ -322,4 +322,24 @@ describe('ARBOR app shell', () => {
     expect(html).toContain('#F7F5F0'); // near-black base
     expect(html).toMatch(/min-height:\s*(48|56)px/);
   });
+
+  it('one feed-state vocabulary words every failed read and save (§1B)', () => {
+    // Every panel words a dead feed through these, so a cut link, a gap in the
+    // practice data, an unwired feed and a failed read never read the same.
+    expect(html).toContain('function feedKind(');
+    for (const word of ['cut on purpose', 'not in the practice data', 'not set up yet', 'couldn’t read it']) {
+      expect(html, `FEED_WORD lost "${word}"`).toContain(word);
+    }
+    for (const helper of ['function feedSays(', 'function feedLine(', 'function feedState(', 'function saveFailText(', 'function showSaveFail(']) {
+      expect(html).toContain(helper);
+    }
+    // The server's three gap words are each read, not lumped into one.
+    expect(html).toContain("e.message === 'not_simulated'");
+    expect(html).toContain("e.message === 'db_not_configured'");
+    // One /health read at boot decides whether db_not_configured means cut.
+    expect(html).toContain("const LINKS_READY = api('/health')");
+    // A dead feed has its own row style, distinct from a help tip.
+    expect(html).toContain('.feed-state{');
+    expect(html).toContain('.view .feed-state,');
+  });
 });
