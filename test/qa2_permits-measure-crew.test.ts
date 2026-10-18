@@ -195,14 +195,25 @@ describe('Permits — rule cards read like a person wrote them', () => {
   it('an UNCONFIRMED rule with no office says so; a SOURCED one without an office stays quiet', () => {
     const card = factCardOf(buildDeps());
     const NO_OFFICE = 'No office on file — ask the city which office handles this.';
+    // QA round 3: a state, regional or industry rule is no city's to answer.
+    const NO_OFFICE_WIDE = 'No office on file — confirm it with the body that publishes it before relying on it.';
     const lines = (f: Fact) => card(f, false).querySelector('.factmeta')!.kids.map((k) => k.text);
+    const notCity = (f: Fact) => f.city === 'Virginia' || f.city === 'Regional';
     const bare = FACTS.filter((f) => !f.whoToCall);
     expect(bare.some((f) => f.confidence === 'UNCONFIRMED')).toBe(true);
     for (const f of bare) {
-      if (f.confidence === 'SOURCED') expect(lines(f), f.id).not.toContain(NO_OFFICE);
-      else expect(lines(f), f.id).toContain(NO_OFFICE);
+      if (f.confidence === 'SOURCED') {
+        expect(lines(f), f.id).not.toContain(NO_OFFICE);
+        expect(lines(f), f.id).not.toContain(NO_OFFICE_WIDE);
+      } else if (notCity(f)) {
+        expect(lines(f), f.id).toContain(NO_OFFICE_WIDE);
+        expect(lines(f), f.id).not.toContain(NO_OFFICE);
+      } else expect(lines(f), f.id).toContain(NO_OFFICE);
     }
-    for (const f of FACTS.filter((x) => x.whoToCall)) expect(lines(f), f.id).not.toContain(NO_OFFICE);
+    for (const f of FACTS.filter((x) => x.whoToCall)) {
+      expect(lines(f), f.id).not.toContain(NO_OFFICE);
+      expect(lines(f), f.id).not.toContain(NO_OFFICE_WIDE);
+    }
   });
 
   it('"Source & date checked ↓" scrolls in place — the hash never changes — and the rule gets one way back', () => {

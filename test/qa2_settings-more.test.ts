@@ -148,7 +148,8 @@ describe('Settings in the shared vocabulary (ST0, ST4)', () => {
     const chips = all(v).filter((n) => n.tone).map((n) => n.textContent + ':' + n.tone);
     expect(chips).toEqual(['OPEN:good', 'CUT:info', 'WIRED:good', 'NOT WIRED:watch', 'CUT:info', 'FAILED:stop']);
     expect(texts(v)).toContain('Resend (website form copies) — 2 received since Arbo last restarted');
-    expect(texts(v)).toContain('Railway (deploy notices) — no signing secret set on Railway, so Arbo can’t count what it sent; this is not zero events');
+    // QA round 3: Railway is gated by a key in its webhook link, so its row names that variable (and Railway once).
+    expect(texts(v)).toContain('Railway (deploy notices) — RAILWAY_WEBHOOK_KEY (the key in the webhook link) isn’t set, so Arbo can’t count deploy notices; this is not zero events');
     expect(texts(v)).toContain('Quo (Sona calls & texts) — Quo registration failed (timeout).');
   });
 
@@ -247,7 +248,9 @@ describe('the work ZIP and Live location (ST3)', () => {
 
   it('an unreadable phone-line status is said, not guessed', async () => {
     const { v } = await build({ '/api/reception/status': { fail: { code: 502 } } });
-    expect(withText(v, 'Not set today')!.textContent).toBe('Not set today — route and prep sheets have no starting ZIP. (Arbo couldn’t read whether its phone line is on.)');
+    // QA round 3: the intro says it (so it never promises the caller offer), and the unset line does not repeat it.
+    expect(withText(v, 'Where you’re working today')!.textContent).toContain('Arbo couldn’t read whether its own phone line is on');
+    expect(withText(v, 'Not set today')!.textContent).toBe('Not set today — route and prep sheets have no starting ZIP.');
   });
 
   it('a set ZIP or a fresh office-phone ping is plain help text, not a gap', async () => {

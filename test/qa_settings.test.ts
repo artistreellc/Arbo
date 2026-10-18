@@ -80,8 +80,9 @@ describe('Settings screen (QA round)', () => {
     }
     // No tap swallows its failure and redraws over it.
     expect(settings).not.toMatch(/catch \(e\) \{\}\s*renderSettings\(\)/);
-    expect(settings).toContain('catch (e) { btn.disabled = false; showSaveFail(cell, e); return; }');
-    expect(settings).toContain('catch (e) { lbtn.disabled = false; showSaveFail(lcell, e); return; }');
+    // QA round 3: a refused tap also puts the switch's own label back (it read 'Saving…').
+    expect(settings).toContain("catch (e) { btn.disabled = false; btn.textContent = c.on ? 'ON' : 'OFF'; showSaveFail(cell, e); return; }");
+    expect(settings).toContain("catch (e) { lbtn.disabled = false; lbtn.textContent = loc.enabled ? 'ON' : 'OFF'; showSaveFail(lcell, e); return; }");
     expect(settings).toContain('use a 5-digit Hampton Roads ZIP starting with 23.');
     expect(settings).toContain("e.message === 'bad_zip'");
     expect(settings).toContain('Your entry is still in the box.');

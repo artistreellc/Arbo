@@ -103,8 +103,8 @@ describe('Leads screen (source pins)', () => {
 
   it('a failed save is shown on the card, spam can be undone, and only spam dims the card', () => {
     expect(leads).toContain('showSaveFail(c, e)');
-    // QA round 2: the minute timer holds a filed card, so the copy names the one thing that clears it.
-    expect(leads).toContain('Filed as spam — it leaves the inbox when you tap\\u00a0↻.');
+    // QA round 3: the minute timer holds a filed card for about 2 minutes, and the copy says so.
+    expect(leads).toContain('Filed as spam — Undo stays about 2 minutes, or until you tap\\u00a0↻.');
     expect(leads).toContain("'Undo'");
     expect(leads).toContain("chip('QUALIFIED', 'good')");
     expect(leads.match(/classList\.add\('dismissed'\)/g)).toHaveLength(1);
