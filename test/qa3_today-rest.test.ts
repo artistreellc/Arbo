@@ -155,19 +155,21 @@ describe('#25: a red stops count says why on its own tile', () => {
   });
 });
 
+const Cap = (x: string): string => x.charAt(0).toUpperCase() + x.slice(1);
+
 describe('#26: in practice mode the Inbox and Website forms cards name the practice data', () => {
   const inbox = (reason: string, links: string | null) => pageFn<() => Promise<FakeEl>>('inboxIntentPanel', {
-    el, FEED_WORD, LINKS_READY: Promise.resolve(links),
+    el, FEED_WORD, Cap, LINKS_READY: Promise.resolve(links),
     api: async () => ({ pipeline: 'no_gmail', gmailReason: reason }),
   })();
   const forms = (links: string | null) => pageFn<() => Promise<FakeEl>>('websiteFormsPanel', {
-    el, FEED_WORD, LINKS_READY: Promise.resolve(links), api: async () => ({ wired: false, forms: [] }),
+    el, FEED_WORD, Cap, LINKS_READY: Promise.resolve(links), api: async () => ({ wired: false, forms: [] }),
   })();
 
   it('Inbox: practice mode is the grey sim row in the practice words; cut and live keep their wording', async () => {
     const sim = await inbox('no Gmail credentials configured', 'simulation');
     expect(sim.children.map((c) => c.className)).toEqual(['panel-title', 'feed-state sim']);
-    expect(sim.children[1]!.textContent).toBe('Inbox: not in the practice data — Arbo isn’t reading your Gmail here. That doesn’t mean no mail came in.');
+    expect(sim.children[1]!.textContent).toBe('Not in the practice data — Arbo isn’t reading your Gmail here. That doesn’t mean no mail came in.');
     expect(sim.textContent).not.toContain('isn’t connected');
     for (const links of ['cut', 'live', null]) {
       const off = await inbox('no Gmail credentials configured', links);
@@ -185,7 +187,7 @@ describe('#26: in practice mode the Inbox and Website forms cards name the pract
   it('Website forms: practice mode is the grey sim row; cut keeps the not-connected line', async () => {
     const sim = await forms('simulation');
     expect(sim.children.map((c) => c.className)).toEqual(['panel-title', 'feed-state sim']);
-    expect(sim.children[1]!.textContent).toBe('Website forms: not in the practice data. Real ones still arrive in your Gmail inbox.');
+    expect(sim.children[1]!.textContent).toBe('Not in the practice data. Real ones still arrive in your Gmail inbox.');
     for (const links of ['cut', 'live', null]) {
       const off = await forms(links);
       expect(off.children.map((c) => c.className)).toEqual(['panel-title', 'feed-state unset']);

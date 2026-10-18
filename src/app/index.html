@@ -691,6 +691,8 @@ function feedKind(e) { // 'cut' | 'sim' | 'unset' | 'unread'
   return 'unread';
 }
 const FEED_WORD = { cut: 'cut on purpose', sim: 'not in the practice data', unset: 'not set up yet', unread: 'couldn’t read it' };
+// The same words at the start of a sentence.
+const Cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const FEED_TAG = { cut: 'cut', sim: 'not simulated', unset: 'not set up', unread: 'unreadable' }; // chips, tiles, ring legend
 const FEED_SAYS = { cut: 'Nothing was deleted — it stays off until you reconnect it.', sim: 'Nothing was read.', unset: 'Arbo has nothing to read until it is connected.', unread: 'The read failed just now.' }; // a card body: adds to the FEED_WORD headline, never repeats it
 const RETRY = 'Tap ↻ at the top to try again.';
@@ -870,7 +872,7 @@ async function inboxIntentPanel() {
     const unset = r === 'no Gmail credentials configured';
     // In practice mode no Gmail is wired on purpose — said in the practice words, so it never reads as the real inbox being down.
     const sim = unset && (await LINKS_READY) === 'simulation';
-    const why = sim ? 'Inbox: ' + FEED_WORD.sim + ' — Arbo isn’t reading your Gmail here.'
+    const why = sim ? Cap(FEED_WORD.sim) + ' — Arbo isn’t reading your Gmail here.'
       : unset ? 'Gmail isn’t connected, so Arbo can’t check your inbox.'
       : (!r || r === 'inbox watch has not completed a pass') ? 'Arbo hasn’t finished its first inbox check yet.'
       : 'Arbo couldn’t read Gmail on its last check.';
@@ -1081,12 +1083,16 @@ async function studyPanel(limit) {
 // Quo isn't connected, ONE titled card says it once. Otherwise each panel fills
 // its own slot, and a read that throws empties only its own ('.slot:empty').
 function fillQuoSlots(reads, slots) {
-  return Promise.allSettled(reads).then((rs) => {
+  // LINKS_READY too: in practice mode the gap is "not in the practice data",
+  // not a real outage — the same words Inbox and Website forms use there.
+  return Promise.all([Promise.allSettled(reads), LINKS_READY]).then(([rs, links]) => {
     const bs = rs.map((r) => (r.status === 'fulfilled' ? r.value : null));
     if (bs.every((b) => b && b.dataset.quoOff)) {
       const q = el('div');
       q.appendChild(el('div', 'panel-title', 'Quo'));
-      q.appendChild(el('div', 'feed-state unset', 'Quo isn’t connected to Arbo yet — Arbo can’t read your customer threads, can’t text anyone, and Sona’s calls aren’t reaching Arbo. That doesn’t mean there are no customer threads or Sona calls.'));
+      q.appendChild(links === 'simulation'
+        ? el('div', 'feed-state sim', Cap(FEED_WORD.sim) + ' — no customer threads, texts or Sona calls show here; the real ones stay in Quo.')
+        : el('div', 'feed-state unset', 'Quo isn’t connected to Arbo yet — Arbo can’t read your customer threads, can’t text anyone, and Sona’s calls aren’t reaching Arbo. That doesn’t mean there are no customer threads or Sona calls.'));
       slots[0].appendChild(q);
       return;
     }
@@ -1293,7 +1299,7 @@ async function websiteFormsPanel() {
     // reaches Gmail — whether Arbo can read Gmail is the Inbox card's job.
     // In practice mode it is a gap on purpose, said in the practice words.
     wrap.appendChild((await LINKS_READY) === 'simulation'
-      ? el('div', 'feed-state sim', 'Website forms: ' + FEED_WORD.sim + '. Real ones still arrive in your Gmail inbox.')
+      ? el('div', 'feed-state sim', Cap(FEED_WORD.sim) + '. Real ones still arrive in your Gmail inbox.')
       : el('div', 'feed-state unset',
         'Website forms aren’t connected to Arbo yet. They still arrive in your Gmail inbox.'));
     return wrap;
@@ -2260,7 +2266,7 @@ async function renderCalls() {
     // carries this card's one "not zero calls".
     if (t.linkCut) {
       trSlot.appendChild(el('div', 'feed-state cut',
-        'Call transcripts: disconnected while Sona handles calls. Sona’s calls are in the Quo card above.'));
+        'Call transcripts: disconnected while Sona handles calls. Sona answers on the Quo line — its status is in the Quo card above.'));
       return;
     }
     if (!t.wired) {

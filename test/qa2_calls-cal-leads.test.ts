@@ -248,7 +248,7 @@ describe('Calls: one own-line card, and a redraw that holds its height (run, not
     const renderCalls = pageFn<() => Promise<void>>('renderCalls', {
       $: () => v, el, api, chip, plural, fmtWhen, fmtTime: fmtWhen,
       studyPanel: () => study.promise, outreachPanel: async () => null, sonaPanel: async () => null,
-      fillQuoSlots: pageFn('fillQuoSlots', { el }),
+      fillQuoSlots: pageFn('fillQuoSlots', { el, LINKS_READY: Promise.resolve('live') }),
       showKeywall: keywall, LINKS_READY: Promise.resolve('simulation'),
       state: (t: string, m: string) => el('div', 'state', t + ' ' + m),
       feedLine: (_e: unknown, what: string, tail?: string) => el('div', 'feed-state sim', what + ': not in the practice data.' + (tail ? ' ' + tail : '')),
@@ -266,7 +266,7 @@ describe('Calls: one own-line card, and a redraw that holds its height (run, not
     const own = s.ownSlot();
     expect(own.has('slot')).toBe(true);
     expect(own.children.map((n) => n.className)).toEqual(['panel-title', '', 'feed-state sim']);
-    expect(own.children[1]!.text()).toBe('Call transcripts: disconnected while Sona handles calls. Sona’s calls are in the Quo card above.');
+    expect(own.children[1]!.text()).toBe('Call transcripts: disconnected while Sona handles calls. Sona answers on the Quo line — its status is in the Quo card above.');
     expect(own.children[2]!.text()).toBe('Call log: not in the practice data. This is not zero calls.');
     expect(own.text().match(/not zero/g)).toHaveLength(1);
     // Every section of the screen is a card; nothing floats loose on the page.

@@ -52,7 +52,8 @@ const panel = (title: string, quoOff: boolean): FakeEl => {
   if (quoOff) w.dataset.quoOff = '1';
   return w;
 };
-const fillQuoSlots = pageFn<(reads: Promise<FakeEl | null>[], slots: FakeEl[]) => Promise<void>>('fillQuoSlots', { el });
+const fillQuoSlots = pageFn<(reads: Promise<FakeEl | null>[], slots: FakeEl[]) => Promise<void>>('fillQuoSlots', { el, LINKS_READY: Promise.resolve('live') });
+const fillQuoSlotsSim = pageFn<(reads: Promise<FakeEl | null>[], slots: FakeEl[]) => Promise<void>>('fillQuoSlots', { el, LINKS_READY: Promise.resolve('simulation'), Cap: (s: string) => s.charAt(0).toUpperCase() + s.slice(1), FEED_WORD: { sim: 'not in the practice data' } });
 const slots = () => [el('div', 'slot'), el('div', 'slot'), el('div', 'slot')];
 const titles = (s: FakeEl[]) => s.map((x) => x.children.map((c) => c.children[0]?.textContent ?? ''));
 
@@ -86,6 +87,17 @@ describe('items 1–3: the folded Quo card keeps its title on one line and names
     // The other two slots stay empty, so '.slot:empty' hides them.
     expect(s[1]!.children).toHaveLength(0);
     expect(s[2]!.children).toHaveLength(0);
+  });
+});
+
+describe('practice mode: the folded Quo card uses the practice-data words, like Inbox and Website forms', () => {
+  it('simulation → grey "not in the practice data", never the real-outage sentence', async () => {
+    const s = slots();
+    await fillQuoSlotsSim([Promise.resolve(panel('Where each customer stands', true)), Promise.resolve(panel('Text outreach', true)), Promise.resolve(panel('Sona calls (Quo)', true))], s);
+    const card = s[0]!.children[0]!;
+    expect(card.children.map((c) => c.className)).toEqual(['panel-title', 'feed-state sim']);
+    expect(card.children[1]!.textContent).toBe('Not in the practice data — no customer threads, texts or Sona calls show here; the real ones stay in Quo.');
+    expect(card.children[1]!.textContent).not.toContain('isn’t connected');
   });
 });
 
