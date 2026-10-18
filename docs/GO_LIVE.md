@@ -13,8 +13,9 @@ Nothing on this list is flipped by a build; each is Mike's call (§3, R19).
 
 The crew door key is the Railway variable **`CREW_ACCESS_KEY`** — pick any
 long phrase, set it on Railway, give it to the crew. It opens the crew
-routes only; it can never open Mike's side. Until it is set, the crew door
-opens with Mike's key only.
+routes only; it can never open Mike's side. Until it is set, a crew phone
+shows "the crew door key isn't set up yet — ask Mike" and asks for nothing
+(a phone already holding a working key keeps working).
 
 ## 2. What to field-test (links still cut — nothing live is touched)
 

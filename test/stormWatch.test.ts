@@ -177,6 +177,21 @@ describe('NWS alerts provider', () => {
     expect([...alerts[0]!.cities].sort()).toEqual(['Chesapeake', 'Norfolk', 'Portsmouth', 'Virginia Beach']);
   });
 
+  it('a zone-coded alert on the county query goes to the cities its own area list names (shape seen live 2026-10-18)', async () => {
+    const fetchFn: FetchFn = async (url) => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ features: url.includes('?zone=') ? [
+        { properties: { id: 'cfw-1', event: 'Coastal Flood Watch', areaDesc: 'Chesapeake; Suffolk; Norfolk; Portsmouth', geocode: { UGC: ['VAZ097', 'VAZ529', 'VAZ530', 'VAZ531'] } } },
+        { properties: { id: 'hsa-1', event: 'High Surf Advisory', areaDesc: 'Eastern Currituck; Virginia Beach', geocode: { UGC: ['NCZ102', 'VAZ098'] } } },
+      ] : [] }),
+    });
+    const alerts = await createNwsAlertsProvider(fetchFn).activeAlerts();
+    const by = Object.fromEntries(alerts.map((a) => [a.id, [...a.cities].sort()]));
+    expect(by['cfw-1']).toEqual(['Chesapeake', 'Norfolk', 'Portsmouth']);
+    expect(by['hsa-1']).toEqual(['Virginia Beach']);
+  });
+
   it('a failed county query fails the whole read — half a feed never reads as no storm', async () => {
     const fetchFn: FetchFn = async (url) =>
       url.includes('?zone=')

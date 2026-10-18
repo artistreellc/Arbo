@@ -110,6 +110,7 @@ interface NwsFeature {
     onset?: string;
     ends?: string;
     expires?: string;
+    areaDesc?: string;
     geocode?: { UGC?: string[] };
   };
 }
@@ -160,10 +161,15 @@ export function createNwsAlertsProvider(fetchFn: FetchFn): AlertsProvider {
       for (const f of await read(`zone=${counties.map(([, ugc]) => ugc).join(',')}`, 'the four counties')) {
         const tagged = f.properties?.geocode?.UGC ?? [];
         const hit = counties.filter(([, ugc]) => tagged.includes(ugc)).map(([city]) => city);
-        // NWS returned it for these four counties but it names none of them:
-        // we cannot tell which city, so it counts for all four — a false
-        // nudge beats a crew sent into a warning (same bias as below).
-        add(f, hit.length > 0 ? hit : counties.map(([city]) => city));
+        // Forecast-zone alerts (VAZ…) come back here too, naming no county
+        // code. Checked live 2026-10-18: a Coastal Flood Watch for
+        // "Chesapeake; Suffolk; Norfolk; Portsmouth" — so read the cities from
+        // the alert's own area list before falling back to all four.
+        const area = (f.properties?.areaDesc ?? '').toLowerCase();
+        const named = counties.filter(([city]) => area.includes(city.toLowerCase())).map(([city]) => city);
+        // Names none of them either: we cannot tell which city, so it counts
+        // for all four — a false nudge beats a crew sent into a warning.
+        add(f, hit.length > 0 ? hit : named.length > 0 ? named : counties.map(([city]) => city));
       }
       return [...byId.values()];
     },

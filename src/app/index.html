@@ -4266,7 +4266,7 @@ const CONF_BADGE = { good: ['GOOD', 'b-est'], fair: ['FAIR', 'b-warm'], low: ['L
 let LIDAR_LAST = null;
 let LIDAR_UP = '';
 // Set when an Up change dropped a result: it was measured on the old axis, so it
-// is cleared, and the status line says why rather than "Nothing measured yet."
+// is dropped, and the status line says why rather than "Nothing measured yet."
 let LIDAR_UP_CHANGED = false;
 
 function renderMeasure() {

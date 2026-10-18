@@ -129,7 +129,8 @@ export const env = {
   appAccessKey: get('APP_ACCESS_KEY'),
   /**
    * R25: the CREW door's own key. Opens /api/crew/* ONLY — never Mike's
-   * routes. Unset = the crew door is Mike's key only, and the page says so.
+   * routes. Unset = the crew door answers 401 'crew_key_not_set' and the
+   * page says the key isn't set up yet (Mike's own key still opens it).
    */
   crewAccessKey: get('CREW_ACCESS_KEY'),
   twilio: {
