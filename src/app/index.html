@@ -384,7 +384,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 .tile.hot::after{background:var(--emergency);opacity:.7}.tile.warn::after{background:var(--gold-5);opacity:.7}
 .hud .wide{grid-column:1 / -1}
 .panel-title{display:flex;align-items:center;gap:10px;font-family:var(--serif);font-size:18.5px;font-weight:600;color:var(--ink-1);margin:22px 2px 12px;font-variation-settings:'opsz' 36;letter-spacing:-.003em}
-.panel-title::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,color-mix(in srgb,var(--gold-5) 45%,transparent),transparent)}
+.panel-title::after{content:'';flex:1;min-width:24px;height:1px;background:linear-gradient(90deg,color-mix(in srgb,var(--gold-5) 45%,transparent),transparent)}
 .loop-card{box-shadow:inset 3px 0 0 var(--gold-5),var(--shadow-card)}
 .loop-card.urgent{box-shadow:inset 3px 0 0 var(--emergency),var(--shadow-card)}
 .loop-kind{font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
@@ -474,6 +474,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
   background:var(--f-50);color:var(--forest);font-weight:700;font-size:16px;cursor:pointer;margin-bottom:8px}
 .filepick input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
 #view-measure .hud{grid-template-columns:repeat(2,1fr)}
+#view-perf .hud{grid-template-columns:repeat(2,1fr)}
 #view-measure .tile .badge{display:inline-block;margin-top:8px}
 .learnbar{display:flex;height:10px;border-radius:99px;background:var(--paper-2);overflow:hidden;margin:10px 0 6px}
 .learnbar i{display:block;height:100%}.learnbar .p{background:var(--ok)}.learnbar .b{background:var(--emergency)}.learnbar .u{background:var(--ink-4);opacity:.35}
@@ -1975,7 +1976,7 @@ async function renderSafety(slot) {
     if (e.code === 401) return;
     slot.appendChild(el('div', 'panel-title', 'Safety'));
     slot.appendChild(state('Safety board unavailable', e.code === 503
-      ? 'Database not connected — Arbo cannot check credentials or near misses.'
+      ? feedSays(e) + ' Arbo cannot check credentials or near misses.'
       : 'Could not read the safety board. This is not a claim that everyone is current.'));
     return;
   }
@@ -2050,13 +2051,14 @@ const CERT_TYPES = [
 ];
 const CREW_ROLES = ['climber', 'foreman', 'groundie', 'driver'];
 
-function renderRoster(slot) {
+async function renderRoster(slot) {
   slot.replaceChildren();
   slot.appendChild(el('div', 'panel-title', 'Crew roster'));
   const listSlot = el('div');
   slot.appendChild(listSlot);
-  slot.appendChild(rosterComposer(listSlot));
-  renderRosterList(listSlot);
+  // No form over a feed Arbo could not read, the same as the fleet: nothing
+  // typed into it could be saved, and offering it implies the link is open.
+  if (await renderRosterList(listSlot)) slot.appendChild(rosterComposer(listSlot));
 }
 
 async function renderRosterList(slot) {
@@ -2065,11 +2067,11 @@ async function renderRosterList(slot) {
   try {
     r = await api('/api/roster');
   } catch (e) {
-    if (e.code === 401) return;
+    if (e.code === 401) return false;
     slot.appendChild(state('Roster unavailable', e.code === 503
-      ? 'Database not connected — Arbo cannot tell you who is on the crew.'
+      ? feedSays(e) + ' Arbo cannot tell you who is on the crew.'
       : 'Could not read the roster. This is not a claim that nobody is on it.'));
-    return;
+    return false;
   }
   if (!r.certsKnown) {
     // §1B: unread cards are UNKNOWN, and a zero would read as "he has none".
@@ -2082,7 +2084,7 @@ async function renderRosterList(slot) {
   if (!r.people.length) {
     slot.appendChild(state('Nobody on the roster yet',
       'Add your crew below. Until somebody is on here the safety board has nothing to check and no one can sign into the crew door.'));
-    return;
+    return true;
   }
   for (const p of r.people) {
     const c = el('div', 'card' + (p.active ? '' : ' loop-card'));
@@ -2123,6 +2125,8 @@ async function renderRosterList(slot) {
     }
     slot.appendChild(c);
   }
+  // Tells renderRoster the feed was readable, so the composer may render.
+  return true;
 }
 
 function certAdder(person, listSlot) {
@@ -2223,7 +2227,7 @@ async function renderTrainingBoard(slot) {
     if (e.code === 401) return;
     slot.appendChild(el('div', 'panel-title', 'Crew training'));
     slot.appendChild(state('Training board unavailable', e.code === 503
-      ? 'Database not connected — Arbo cannot show who is weak on what.'
+      ? feedSays(e) + ' Arbo cannot show who is weak on what.'
       : 'Could not read the training board. This is not a claim that everyone is current.'));
     return;
   }
@@ -2276,9 +2280,9 @@ async function renderTrainingBoard(slot) {
 
 // ---------- Performance (§6D/§6N.3: which areas actually pay) ----------
 const VERDICT_LABEL = {
-  above: ['ABOVE FLEET RATE', 'b-cool'],
-  at: ['AT FLEET RATE', 'b-src'],
-  below: ['BELOW FLEET RATE', 'b-warm'],
+  above: ['ABOVE AVERAGE', 'b-cool'],
+  at: ['AT AVERAGE', 'b-src'],
+  below: ['BELOW AVERAGE', 'b-warm'],
   not_enough_data: ['NOT ENOUGH DATA', 'b-pending'],
 };
 function mixLine(mix) {
@@ -2293,7 +2297,7 @@ async function renderPerformance() {
   } catch (e) {
     if (e.code === 401) return showKeywall();
     v.appendChild(state('Performance unavailable', e.code === 503
-      ? 'Database not connected — Arbo cannot rate any area.'
+      ? feedSays(e) + ' Arbo cannot rate any area.'
       : 'Could not read the numbers. This is not a claim that everything is fine.'));
     return;
   }
@@ -2307,11 +2311,18 @@ async function renderPerformance() {
     t.appendChild(el('span', '', label));
     return t;
   };
-  hud.appendChild(tile(p.fleetRatePerCrewHour === null ? '\u2013' : '$' + p.fleetRatePerCrewHour,
-    'fleet $/crew-hr', 'accent wide'));
+  hud.appendChild(tile(p.fleetRatePerCrewHour === null ? '\u2013' : dollars(p.fleetRatePerCrewHour),
+    'company avg per crew-hour', 'accent wide'));
   hud.appendChild(tile(p.areas.filter((a) => a.verdict !== 'not_enough_data').length, 'areas rated'));
-  hud.appendChild(tile(p.withheld.length, 'unrated', p.withheld.length ? 'warn' : ''));
+  // Unrated is unmeasured, not underperforming, so it gets no warning colour.
+  hud.appendChild(tile(p.withheld.length, 'unrated'));
   v.appendChild(hud);
+  // What the benchmark covers. A number with no window reads as all-time.
+  const counted = p.areas.reduce((s, a) => s + a.jobs, 0);
+  v.appendChild(el('div', 'zip-run', 'Paid, completed jobs \u00b7 '
+    + (p.windowDays === 365 ? 'last 12 months' : 'last ' + p.windowDays + ' days')
+    + ' \u00b7 ' + counted + ' job' + (counted === 1 ? '' : 's')
+    + (p.checkedAtIso ? ' \u00b7 checked ' + fmtTime(p.checkedAtIso) : '')));
 
   // §1B: what the numbers cannot see comes BEFORE the numbers.
   for (const b of p.blindSpots) {
@@ -2325,14 +2336,15 @@ async function renderPerformance() {
   const unjudged = p.areas.filter((a) => a.verdict === 'not_enough_data');
 
   if (judged.length) {
-    v.appendChild(el('div', 'panel-title', 'Rated on revenue per crew-hour \u2014 not per job'));
+    v.appendChild(el('div', 'panel-title', 'Rated areas \u2014 ' + judged.length));
+    v.appendChild(el('div', 'zip-run', 'Ranked by revenue per crew-hour, not per job, so big removals don\u2019t skew it.'));
     for (const a of judged) v.appendChild(areaCard(a));
   }
 
   // Unrated areas are shown SEPARATELY, never as the bottom of a ranking.
   if (unjudged.length) {
     v.appendChild(el('div', 'panel-title', 'Not enough work yet to rate \u2014 ' + unjudged.length));
-    v.appendChild(el('div', 'zip-run', 'These are unmeasured, not underperforming. Do not read them as either.'));
+    v.appendChild(el('div', 'zip-run', 'These are unmeasured, not underperforming \u2014 too few jobs to call them good or bad yet.'));
     for (const a of unjudged) v.appendChild(areaCard(a));
   }
 
@@ -2367,8 +2379,14 @@ function renderCampaignList(slot, p) {
   for (const c of p.campaigns) {
     const card = el('div', 'card');
     const top = el('div', 'toprow');
-    top.appendChild(el('div', 'who', c.type.replace(/_/g, ' ')));
-    top.appendChild(el('div', 'when', c.costPerBookedJob === null ? '\u2013' : '$' + c.costPerBookedJob + '/job'));
+    top.appendChild(el('div', 'who', (CAMPAIGN_TYPES.find(([k]) => k === c.type) || [])[1] || c.type.replace(/_/g, ' ')));
+    // A figure is gold; anything that is not a figure is plain ink. UNKNOWN is
+    // for an untracked campaign only, as the form promises; a tracked zero is known.
+    const figure = c.costPerBookedJob !== null;
+    const val = el('div', 'when', figure ? dollars(c.costPerBookedJob) + ' per booked job'
+      : c.bookedJobs === null ? 'Unknown' : c.cost === null ? 'Cost unknown' : '0 booked');
+    if (!figure) val.style.color = 'var(--ink-3)';
+    top.appendChild(val);
     card.appendChild(top);
     card.appendChild(el('div', 'scope', c.line));
     slot.appendChild(card);
@@ -2397,7 +2415,16 @@ function campaignComposer(listSlot) {
   c.appendChild(el('div', 'loop-kind', 'Register a campaign'));
   c.appendChild(el('div', 'scope',
     'Without a tracking number Arbo cannot tell whether it worked — and it will say UNKNOWN rather than report it as zero.'));
-  const row = el('div', 'field');
+  // One labelled field per control: a placeholder vanishes once Mike types,
+  // and a bare date box does not say which date it wants.
+  const field = (label, n) => {
+    const row = el('div', 'field');
+    row.appendChild(el('label', '', label));
+    n.setAttribute('aria-label', label);
+    row.appendChild(n);
+    c.appendChild(row);
+    return n;
+  };
   const type = document.createElement('select');
   for (const [v2, label] of CAMPAIGN_TYPES) {
     const o = document.createElement('option');
@@ -2405,14 +2432,16 @@ function campaignComposer(listSlot) {
     o.textContent = label;
     type.appendChild(o);
   }
-  row.appendChild(type);
-  const mk = (ph) => { const n = document.createElement('input'); n.type = 'text'; n.placeholder = ph; row.appendChild(n); return n; };
-  const cost = mk('What it cost');
-  const track = mk('Tracking number (optional)');
+  field('Type', type);
+  const text = () => { const n = document.createElement('input'); n.type = 'text'; return n; };
+  // Still a text box, so a typo reaches the server's bad_cost answer; the
+  // number keyboard is only what opens on the phone.
+  const cost = field('What it cost ($)', text());
+  cost.inputMode = 'decimal';
+  const track = field('Tracking number (optional)', text());
   const sent = document.createElement('input');
   sent.type = 'date';
-  row.appendChild(sent);
-  c.appendChild(row);
+  field('Date it went out', sent);
   const btn = el('button', 'actbtn', 'Register it');
   const out = el('div', 'errline', '');
   btn.addEventListener('click', async () => {
@@ -2449,11 +2478,18 @@ function campaignComposer(listSlot) {
 }
 
 function areaCard(a) {
-  const c = el('div', 'card' + (a.verdict === 'below' ? ' emergency' : ''));
+  // A below-average hourly rate is a business signal, not an emergency: the
+  // gold BELOW chip carries it, like every other b-warm state.
+  const c = el('div', 'card');
   const top = el('div', 'toprow');
   top.appendChild(el('div', 'who', a.areaKey));
-  top.appendChild(el('div', 'when',
-    a.normalizedRatePerCrewHour === null ? '\u2013' : '$' + a.normalizedRatePerCrewHour + '/crew-hr'));
+  // An unrated area's rate is not a headline: plain ink, with its sample size,
+  // so the biggest number on the screen is never the one not to read.
+  const unjudged = a.verdict === 'not_enough_data';
+  const rate = el('div', 'when', a.normalizedRatePerCrewHour === null ? '\u2013'
+    : dollars(a.normalizedRatePerCrewHour) + '/crew-hr' + (unjudged ? ' \u00b7 ' + a.jobs + '-job sample' : ''));
+  if (unjudged) rate.style.cssText = 'color:var(--ink-3);font-weight:500';
+  top.appendChild(rate);
   c.appendChild(top);
   c.appendChild(el('div', 'scope', a.line));
   const b = el('div', 'badges');
@@ -2477,7 +2513,7 @@ async function renderVetting(slot) {
     if (e.code === 401) return;
     slot.appendChild(el('div', 'panel-title', 'Safety lessons'));
     slot.appendChild(state('Draft queue unavailable', e.code === 503
-      ? 'Database not connected — Arbo cannot show what is waiting to be vetted.'
+      ? feedSays(e) + ' Arbo cannot show what is waiting to be vetted.'
       : 'Could not read the draft queue. This is not a claim that nothing is waiting.'));
     return;
   }
@@ -2533,15 +2569,15 @@ async function renderVetting(slot) {
 // ---------- Reference library (§6U): write it here, sign it off here ----------
 // The crew door READS this library. Nothing reaches a crew phone from here
 // without a name attached (§4.7), and Arbo never writes an entry itself.
-function renderLibraryDesk(slot) {
+async function renderLibraryDesk(slot) {
   slot.replaceChildren();
   slot.appendChild(el('div', 'panel-title', 'Reference library'));
   // Queue and composer are separate slots on purpose: refreshing the queue
   // after a save must not wipe the confirmation the composer just printed.
   const queueSlot = el('div');
   slot.appendChild(queueSlot);
-  slot.appendChild(libraryComposer(queueSlot));
-  renderLibraryQueue(queueSlot);
+  // No form over a feed Arbo could not read, the same as the fleet.
+  if (await renderLibraryQueue(queueSlot)) slot.appendChild(libraryComposer(queueSlot));
 }
 
 async function renderLibraryQueue(slot) {
@@ -2550,12 +2586,12 @@ async function renderLibraryQueue(slot) {
   try {
     d = await api('/api/reference/drafts');
   } catch (e) {
-    if (e.code === 401) return;
+    if (e.code === 401) return false;
     // §1B: a queue Arbo could not read is not an empty queue.
     slot.appendChild(state('Library queue unavailable', e.code === 503
-      ? 'Database not connected — Arbo cannot show what is waiting to be vetted.'
+      ? feedSays(e) + ' Arbo cannot show what is waiting to be vetted.'
       : 'Could not read the library drafts. This is not a claim that nothing is waiting.'));
-    return;
+    return false;
   }
 
   for (const draft of (d.drafts || [])) {
@@ -2603,6 +2639,8 @@ async function renderLibraryQueue(slot) {
     c.appendChild(err);
     slot.appendChild(c);
   }
+  // Tells renderLibraryDesk the feed was readable, so the composer may render.
+  return true;
 }
 
 function libraryComposer(queueSlot) {
@@ -2685,6 +2723,8 @@ const STAGE_LABEL = {
 function money(n) {
   return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+// Whole dollars for rates on the Numbers screen; money() above keeps cents for invoices.
+function dollars(n) { return '$' + Math.round(n).toLocaleString('en-US'); }
 async function renderMoney(slot) {
   slot.replaceChildren();
   let m;
@@ -2695,7 +2735,7 @@ async function renderMoney(slot) {
     // §1B: a ledger Arbo could not read is NOT a ledger with nothing owed.
     slot.appendChild(el('div', 'panel-title', 'Money'));
     slot.appendChild(state('Ledger unavailable', e.code === 503
-      ? 'Database not connected — Arbo cannot tell you what is owed.'
+      ? feedSays(e) + ' Arbo cannot tell you what is owed.'
       : 'Could not read the invoices. This is not a claim that everything is paid.'));
     return;
   }
@@ -2740,7 +2780,7 @@ async function renderMoney(slot) {
           btn.textContent = 'Drafted';
           btn.className = 'actbtn done';
           renderMoney(slot);
-        } catch { btn.disabled = false; }
+        } catch (e) { btn.disabled = false; showSaveFail(c, e); }
       });
       c.appendChild(btn);
       slot.appendChild(c);
@@ -2789,7 +2829,7 @@ function paidButton(invoiceId, slot) {
       btn.textContent = 'Recorded';
       btn.className = 'actbtn done';
       renderMoney(slot);
-    } catch { btn.disabled = false; }
+    } catch (e) { btn.disabled = false; showSaveFail(btn.parentNode, e); }
   });
   return btn;
 }
@@ -2824,7 +2864,7 @@ async function renderFleetList(slot) {
     // §1B: a dead feed is named, never drawn as a confident "all trucks up".
     slot.appendChild(el('div', 'panel-title', 'Fleet'));
     slot.appendChild(state('Fleet status unknown', e.code === 503
-      ? 'Database not connected — Arbo cannot tell you which units are down.'
+      ? feedSays(e) + ' Arbo cannot tell you which units are down.'
       : 'Could not read the fleet. This is not a claim that everything runs.'));
     return false;
   }
@@ -3041,27 +3081,31 @@ const FU_LABEL = {
   seasonal_outreach: ['SEASONAL', 'b-src'],
   growth_outreach: ['COMING DUE', 'b-repeat'],
 };
+// A newer render owns the screen. Refresh, the online event and the breakdown
+// sheet can all start one while another is still reading.
+let FU_GEN = 0;
 async function renderFollowUps() {
+  const gen = ++FU_GEN;
   const v = $('view-followups');
   v.replaceChildren();
-  let q;
-  try {
-    q = await api('/api/followups');
-  } catch (e) {
-    if (e.code === 401) return showKeywall();
-    v.appendChild(state('No follow-up queue yet', e.code === 503
-      ? 'Database not connected — the queue builds itself the moment it is.'
-      : 'Could not load follow-ups. Pull refresh to retry.'));
-    return;
-  }
+  // Every panel reads its own feed and names its own failure, so they are all
+  // built BEFORE the follow-ups read. One missing feed must never blank the
+  // whole Queue — the safety board still leads it (§1B).
   // §1E open loops lead the Queue: the things the day silently dropped.
   const loopsSlot = el('div');
   v.appendChild(loopsSlot);
   api('/api/queue').then((qq) => {
-    if (!qq.open.length) return;
+    if (!qq.open.length) {
+      loopsSlot.appendChild(el('div', 'storm-muted', 'No open loops' + (qq.checkedAtIso ? ' as of ' + fmtTime(qq.checkedAtIso) : '') + '.'));
+      return;
+    }
     loopsSlot.appendChild(el('div', 'panel-title', 'Open loops — silence is never success'));
     for (const o of qq.open) loopsSlot.appendChild(loopCard(o));
-  }).catch(() => {});
+  }).catch((e) => {
+    if (e.code === 401) return;
+    loopsSlot.appendChild(el('div', 'panel-title', 'Open loops'));
+    loopsSlot.appendChild(feedState(e, 'Open loops', 'a sign that nothing is open'));
+  });
   // §6V safety leads the Queue: a lapsed rescue card outranks an unpaid bill.
   const safetySlot = el('div');
   v.appendChild(safetySlot);
@@ -3097,8 +3141,26 @@ async function renderFollowUps() {
   const note = el('div', 'zip-run');
   note.appendChild(document.createTextNode('Arbo recommends — nothing sends without you.'));
   v.appendChild(note);
+  // Only the recommended sends wait on this read; a failure darkens only them.
+  let q;
+  try {
+    q = await api('/api/followups');
+  } catch (e) {
+    if (gen !== FU_GEN) return;
+    if (e.code === 401) return showKeywall();
+    v.appendChild(feedState(e, 'Follow-ups', 'an empty queue'));
+    return;
+  }
+  if (gen !== FU_GEN) return;
+  // The server drops storm and coming-due nudges it could not check, and says
+  // so. 'Queue clear' must never be drawn over a feed Arbo could not read.
+  const unread = [];
+  if (q.seasonalUnavailable) unread.push('storm nudges (weather feed unreadable)');
+  if (q.growthUnavailable) unread.push('coming-due nudges (property records unreadable)');
+  if (unread.length) v.appendChild(el('div', 'feed-state unread', 'Arbo could not check ' + unread.join(' or ') + '. This is not a claim that none are due.'));
   if (!q.due.length) {
-    v.appendChild(state('Queue clear', 'Estimate follow-ups, review asks, and no-show saves land here when due.'));
+    v.appendChild(state(unread.length ? 'Nothing due from what Arbo could read' : 'Queue clear',
+      'Estimate follow-ups, review asks, and no-show saves land here when due.'));
   }
   for (const a of q.due) {
     const c = el('div', 'card' + (a.type === 'no_show_saver' ? ' emergency' : ''));
@@ -3124,7 +3186,9 @@ async function renderFollowUps() {
           await api('/api/followups/' + kind + '/' + a.targetId + '/sent', { method: 'POST', body: {} });
           btn.textContent = 'Recorded';
           btn.className = 'actbtn done';
-        } catch { btn.disabled = false; }
+          const err = c.querySelector(':scope > .save-err');
+          if (err) err.remove();
+        } catch (e) { btn.disabled = false; showSaveFail(c, e); }
       });
       c.appendChild(btn);
     }

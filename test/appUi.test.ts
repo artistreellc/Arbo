@@ -161,7 +161,8 @@ describe('ARBOR app shell', () => {
 
   it('the performance screen shows the benchmark and the blind spots FIRST (§1B/§6N.3)', () => {
     expect(html).toContain('/api/performance');
-    expect(html).toContain('fleet $/crew-hr');
+    // 'Company average', not 'fleet rate': on this app 'fleet' means the trucks.
+    expect(html).toContain('company avg per crew-hour');
     // Rated on crew-hours, and the screen says so — per-job rewards job mix.
     expect(html).toContain('not per job');
     expect(html).toContain('BLIND SPOT');
