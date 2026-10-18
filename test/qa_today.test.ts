@@ -71,7 +71,10 @@ describe('Today: the tiles (T-hud, T-money)', () => {
     expect(today).toContain('m.collections.length + (m.suppressed || []).length');
     expect(today).not.toContain('m.collections.length + m.drafts.length');
     expect(today).toContain("tile('–', 'to bill')");
-    expect(today).toContain('m.drafts.length + (m.blocked || []).length');
+    // To bill counts drafts; a job with no agreed figure is named beside it and keeps the tile amber.
+    expect(today).toContain('setTile(billTile, m.drafts.length, (m.drafts.length || nb) ? \'warn\' : \'ok-t\');');
+    expect(today).toContain("billTile.appendChild(el('small', '', '+' + nb + ' no agreed figure'))");
+    expect(today).not.toContain('m.drafts.length + (m.blocked || []).length');
     expect(today).toContain(' can’t tell');
   });
 
@@ -85,20 +88,23 @@ describe('Today: the tiles (T-hud, T-money)', () => {
     expect(html).toContain('#view-today .hud{grid-template-columns:repeat(6,1fr)}');
   });
 
-  it('the stops legend counts clock time past, not finished stops', () => {
-    expect(today).toContain("passed + ' of ' + s.totalStops + ' past'");
+  it('the stops legend names the next stop by the clock, not finished stops', () => {
+    expect(today).toContain("'next ' + fmtWhen(next.timeIso)");
+    expect(today).toContain("'all times passed'");
+    expect(today).not.toContain("passed + ' of ' + s.totalStops + ' past'");
   });
 });
 
 describe('Today: hero, ring and chips (T-ring, T-weather-sub, T-systems, T-desktop)', () => {
-  it('an unreadable ring is evenly spaced dots in its own colour', () => {
-    expect(html).toContain('.dayring .unk{stroke-opacity:.45}');
+  it('an unreadable ring is evenly spaced neutral dots, never the data colour', () => {
+    expect(html).toContain('.dayring .unk{stroke:rgba(244,239,224,.45)}');
     expect(html).not.toContain('stroke-dasharray:2 5');
     expect(html).toContain("'stroke-dasharray', '0 ' + (a.len / Math.round(a.len / 11))");
   });
 
   it('the hero subline never strands a separator at a line end', () => {
-    expect(html).toContain('.hero .sub span{white-space:nowrap}');
+    expect(html).toContain('.hero .sub span{display:block;white-space:nowrap}');
+    expect(html).not.toContain("(i ? '· ' : '') + p");
     expect(html).not.toContain("parts.join(' · ')");
   });
 
@@ -131,12 +137,12 @@ describe('Today: plain words and one dead-feed style (T-copy, T-adopt, T-locatio
     expect(html).not.toContain('the intent engine cannot look');
     expect(inbox).toContain('Gmail isn’t connected, so Arbo can’t check your inbox.');
     expect(inbox).toContain("feedLine(e, 'Inbox')");
-    expect(inbox).toContain('This is not zero mail.');
+    expect(inbox).toContain('That doesn’t mean no mail came in.');
   });
 
   it('the forms card drops the jargon and no longer claims a sweep catches forms', () => {
     const forms = between('async function websiteFormsPanel()', '// ---------- Reception strip');
-    expect(forms).toContain('Website forms aren’t wired into Arbo yet — this is not zero forms.');
+    expect(forms).toContain('Website forms aren’t connected to Arbo yet. They still arrive in your Gmail inbox.');
     expect(html).not.toContain('Direct wire from Resend NOT connected');
     expect(forms).not.toContain('the sweep');
     expect(forms).toContain("feedLine(e, 'Website forms')");

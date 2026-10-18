@@ -194,7 +194,7 @@ export class QuoIntake {
   private registration: { state: 'not_configured' | 'pending' | 'ok' | 'failed'; detail: string } = {
     state: 'not_configured',
     // Owner words: this shows on Today and Calls. The variable name stays in the boot log.
-    detail: 'Quo isn’t connected to Arbo yet — Sona’s calls are not reaching Arbo. This is not zero calls.',
+    detail: 'Quo isn’t connected to Arbo yet — Sona’s calls are not reaching Arbo. That doesn’t mean no calls came in.',
   };
 
   constructor(deps: QuoIntakeDeps) {

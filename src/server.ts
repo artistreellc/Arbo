@@ -1675,7 +1675,7 @@ async function wireQuo(intake: QuoIntake, outreach: OutreachEngine | null): Prom
   if (!env.quoApiKey) return null;
   const domain = process.env.RAILWAY_PUBLIC_DOMAIN;
   if (!domain) {
-    intake.setRegistration('failed', 'Arbo has no public web address to give Quo — Sona’s calls cannot reach Arbo. This is not zero calls.');
+    intake.setRegistration('failed', 'Arbo has no public web address to give Quo — Sona’s calls cannot reach Arbo. That doesn’t mean no calls came in.');
     console.error('[quo] NOT wired — no public URL');
     return null;
   }
@@ -1706,7 +1706,7 @@ async function wireQuo(intake: QuoIntake, outreach: OutreachEngine | null): Prom
     return first ? { api, phoneNumberId: first.id, numbers } : null;
   } catch (err) {
     const why = err instanceof Error ? err.message : 'error';
-    intake.setRegistration('failed', `Quo registration failed (${why}) — Sona calls are NOT reaching Arbo. This is not zero calls.`);
+    intake.setRegistration('failed', `Quo registration failed (${why}) — Sona calls are NOT reaching Arbo. That doesn’t mean no calls came in.`);
     console.error('[quo] registration FAILED:', why);
     return null;
   }
