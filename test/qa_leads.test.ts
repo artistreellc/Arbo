@@ -103,22 +103,26 @@ describe('Leads screen (source pins)', () => {
 
   it('a failed save is shown on the card, spam can be undone, and only spam dims the card', () => {
     expect(leads).toContain('showSaveFail(c, e)');
-    expect(leads).toContain('Filed as spam — it leaves the inbox on the next refresh.');
+    // QA round 2: the minute timer holds a filed card, so the copy names the one thing that clears it.
+    expect(leads).toContain('Filed as spam — it leaves the inbox when you tap\\u00a0↻.');
     expect(leads).toContain("'Undo'");
-    expect(leads).toContain("badge('QUALIFIED', 'b-est')");
+    expect(leads).toContain("chip('QUALIFIED', 'good')");
     expect(leads.match(/classList\.add\('dismissed'\)/g)).toHaveLength(1);
     // The filed line, its Undo, and any save error stay readable on a dimmed card.
     expect(leads).toContain("el('div', 'lead-filed')");
     expect(css).toContain('.card.dismissed > :not(.lead-filed):not(.save-err){opacity:.42}');
   });
 
-  it('the HOT/WARM chip rides right after EMERGENCY, ahead of the long permit chip', () => {
-    const emg = leads.indexOf("badge('EMERGENCY', 'b-emg')");
-    const pri = leads.indexOf('badge(lead.quality.priority.toUpperCase()');
-    const permit = leads.indexOf('permitBadge(lead)');
+  it('triage leads line 1 (EMERGENCY, else HOT/WARM/COOL), and the permit chip has a line of its own', () => {
+    // QA round 2: EMERGENCY already outranks HOT, so the two never sit side by side.
+    const emg = leads.indexOf("if (lead.isEmergency) b.appendChild(chip('EMERGENCY', 'alarm'));");
+    const pri = leads.indexOf("else b.appendChild(chip(lead.quality.priority.toUpperCase(), { hot: 'stop', warm: 'watch', cool: 'info' }[lead.quality.priority]));");
+    const permit = leads.indexOf('const pb = permitBadge(lead);');
     expect(emg).toBeGreaterThan(-1);
     expect(pri).toBeGreaterThan(emg);
-    expect(pri).toBeLessThan(permit);
+    expect(permit).toBeGreaterThan(leads.indexOf('c.appendChild(b);'));
+    expect(leads).toContain("if (pb) { const pr = el('div', 'badges'); pr.style.marginTop = '6px'; pr.appendChild(pb); c.appendChild(pr); }");
+    expect(leads).not.toContain('b.appendChild(pb)');
   });
 
   it('an unreadable permit or history read gets a feed line, and no new permit badge word', () => {
@@ -132,7 +136,8 @@ describe('Leads screen (source pins)', () => {
 
   it('the lead buttons are styled as icon + word pills', () => {
     const bad = css.indexOf('.minibtn.bad{');
-    const mark = css.indexOf('.minibtn.mark{display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:1}');
+    // QA round 2: lighter pills (ink text, hairline border, the tone on the icon) so Call back stays the one heavy control.
+    const mark = css.indexOf('.minibtn.mark{display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:1;min-height:44px;font-size:13.5px;color:var(--ink-2);border-color:var(--hairline)}');
     expect(mark).toBeGreaterThan(bad);
     expect(mark).toBeLessThan(css.indexOf('.card.dismissed >'));
   });
@@ -151,11 +156,23 @@ describe('Calendar + route planner (source pins)', () => {
 
   it('the fallback line names possible causes, never one as fact', () => {
     expect(cal).not.toContain('signed out of Google on this device');
-    expect(cal).toContain('Calendar not showing? Google may need you signed in on this phone, or the connection dropped');
+    expect(cal).toContain('Calendar not showing? Google may need you signed in on this device, or the connection dropped');
   });
 
-  it('the embed background follows the theme, not the old near-black', () => {
-    expect(cal).toContain("getPropertyValue('--card')");
+  it('the embed sends no bgcolor (Google has no dark mode)', () => {
+    // The URL the page actually builds, phone width and desk width — the
+    // comment that says why may name the word; the request never carries it.
+    const src = /^function gcalEmbedUrl\(\) \{[\s\S]*?^\}$/m.exec(html);
+    const id = /^const GCAL_ID = '([^']+)';$/m.exec(html);
+    expect(src).not.toBeNull();
+    expect(id).not.toBeNull();
+    for (const innerWidth of [390, 1280]) {
+      const url = new Function('window', 'GCAL_ID', `${src![0]}\nreturn gcalEmbedUrl();`)({ innerWidth }, id![1]) as string;
+      expect(url.startsWith('https://calendar.google.com/calendar/embed?')).toBe(true);
+      expect(new URL(url).searchParams.has('bgcolor')).toBe(false);
+      expect(url).toContain('src=artistreeofvirginia%40gmail.com');
+    }
+    expect(cal).not.toContain("getPropertyValue('--card')");
     expect(html).not.toContain('#0B0D10');
   });
 
@@ -245,7 +262,7 @@ describe('Book + estimate prep (source pins)', () => {
   });
 
   it('dropdowns and the prep card title match the rest of the form', () => {
-    expect(css.indexOf('.field select,#yard select{-webkit-appearance:none;appearance:none;'))
+    expect(css.indexOf('.field select,#yard select,select.input{-webkit-appearance:none;appearance:none;'))
       .toBeGreaterThan(css.indexOf('.field textarea{'));
     expect(css).toContain('.slot > div > .panel-title:first-child,.slot > .panel-title:first-child,.card > .panel-title:first-child{margin-top:0}');
   });

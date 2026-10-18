@@ -363,7 +363,8 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 .minibtn:disabled{opacity:.5;box-shadow:none;background:var(--paper)}
 .minibtn.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,transparent)}
 .minibtn.bad{color:var(--emergency);border-color:color-mix(in srgb,var(--emergency) 35%,transparent)}
-.minibtn.mark{display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:1}.minibtn.mark .ico{width:18px;height:18px}
+.minibtn.mark{display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:1;min-height:44px;font-size:13.5px;color:var(--ink-2);border-color:var(--hairline)}.minibtn.mark .ico{width:18px;height:18px}
+.minibtn.mark.ok .ico{color:var(--ok)}.minibtn.mark.bad .ico{color:var(--emergency)}
 .card.dismissed > :not(.lead-filed):not(.save-err){opacity:.42}
 .lead-filed{margin-top:10px}
 .hudbtn{display:flex;align-items:center;justify-content:center;gap:10px;min-height:52px;border-radius:16px;background:var(--card);
@@ -416,7 +417,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
   font-size:16.5px;padding:12px 14px;display:block;font-variant-numeric:tabular-nums;transition:border-color .18s var(--ease),box-shadow .18s var(--ease)}
 .field input:focus,.field select:focus,.field textarea:focus,#yard input:focus,#yard select:focus,#bd input[type=text]:focus,.input:focus{border-color:var(--forest);outline:none;box-shadow:var(--ring)}
 .field textarea{min-height:84px;resize:vertical;line-height:1.45}
-.field select,#yard select{-webkit-appearance:none;appearance:none;padding-right:44px;background-image:linear-gradient(45deg,transparent 50%,var(--forest) 50%),linear-gradient(135deg,var(--forest) 50%,transparent 50%);background-position:calc(100% - 22px) 50%,calc(100% - 16px) 50%;background-size:6px 6px,6px 6px;background-repeat:no-repeat}
+.field select,#yard select,select.input{-webkit-appearance:none;appearance:none;padding-right:44px;background-image:linear-gradient(45deg,transparent 50%,var(--forest) 50%),linear-gradient(135deg,var(--forest) 50%,transparent 50%);background-position:calc(100% - 22px) 50%,calc(100% - 16px) 50%;background-size:6px 6px,6px 6px;background-repeat:no-repeat}
 .checkfield{display:flex;align-items:center;gap:12px;min-height:56px;margin-bottom:4px;cursor:pointer}
 .checkfield span{font-size:16px;font-weight:600;color:var(--ink-1);text-transform:none;letter-spacing:0}
 #bd #bd-out{padding-bottom:96px}
@@ -754,14 +755,16 @@ function mapsLink(address, city) {
 
 function badge(text, cls) { return el('span', 'badge ' + cls, text); }
 
+// The permit screen as a tone: anything that needs a look is amber; a
+// no-overlay result is context (the city still has the last word).
 function permitBadge(lead) {
   if (lead.permit) {
     const s = lead.permit.screenStatus;
-    if (s === 'PERMIT_LIKELY') return badge('PERMIT LIKELY', 'b-permit-likely');
-    if (s === 'REVIEW_NEEDED') return badge('PERMIT: REVIEW NEEDED', 'b-review');
-    return badge('NO OVERLAY — VERIFY W/ CITY', 'b-verify');
+    if (s === 'PERMIT_LIKELY') return chip('PERMIT LIKELY', 'watch');
+    if (s === 'REVIEW_NEEDED') return chip('PERMIT: REVIEW NEEDED', 'watch');
+    return chip('NO OVERLAY — VERIFY W/ CITY', 'info');
   }
-  if (lead.screenPending) return badge('PERMIT SCREEN PENDING', 'b-pending');
+  if (lead.screenPending) return chip('PERMIT SCREEN PENDING', 'watch');
   return null;
 }
 
@@ -1650,25 +1653,27 @@ async function renderLeads() {
     if (lead.needsCallback) c.appendChild(el('div', 'cb-label', 'Call back needed'));
     const top = el('div', 'toprow');
     top.appendChild(el('div', 'who', lead.name || 'Unknown caller'));
-    top.appendChild(el('div', 'when', new Date(lead.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })));
+    top.appendChild(el('div', 'when', fmtWhen(lead.createdAt)));
     c.appendChild(top);
     if (lead.city) c.appendChild(el('div', 'addr', lead.city + (lead.zip ? ' · ' + lead.zip : '')));
     if (lead.history) c.appendChild(el('div', 'scope', '' + lead.history));
     // §1B: a past-work read that failed is named — a missing line is not "no history".
     else if (lead.historyUnreadable) c.appendChild(feedLine(null, 'Past work'));
     if (lead.details) c.appendChild(el('div', 'scope', lead.details));
+    // Line 1 is triage + who they are; EMERGENCY already outranks HOT, so an
+    // emergency lead carries no second red-ish chip beside it.
     const b = el('div', 'badges');
-    if (lead.isEmergency) b.appendChild(badge('EMERGENCY', 'b-emg'));
-    // Triage leads the row, so HOT/WARM never wraps onto a line by itself.
-    b.appendChild(badge(lead.quality.priority.toUpperCase(), 'b-' + lead.quality.priority));
-    const pb = permitBadge(lead);
-    if (pb) b.appendChild(pb);
-    if (lead.isFirstTimer === true) b.appendChild(badge('FIRST-TIMER', 'b-first'));
-    if (lead.isFirstTimer === false) b.appendChild(badge('REPEAT', 'b-repeat'));
+    if (lead.isEmergency) b.appendChild(chip('EMERGENCY', 'alarm'));
+    else b.appendChild(chip(lead.quality.priority.toUpperCase(), { hot: 'stop', warm: 'watch', cool: 'info' }[lead.quality.priority]));
+    if (lead.isFirstTimer === true) b.appendChild(chip('FIRST-TIMER', 'info'));
+    if (lead.isFirstTimer === false) b.appendChild(chip('REPEAT', 'info'));
     // A good lead says so; filing it as spam swaps this tag for SPAM until Undo.
     let qTag = null;
-    if (lead.status === 'qualified') { qTag = badge('QUALIFIED', 'b-est'); b.appendChild(qTag); }
+    if (lead.status === 'qualified') { qTag = chip('QUALIFIED', 'good'); b.appendChild(qTag); }
     c.appendChild(b);
+    // Line 2 is the permit state, on its own row at any width.
+    const pb = permitBadge(lead);
+    if (pb) { const pr = el('div', 'badges'); pr.style.marginTop = '6px'; pr.appendChild(pb); c.appendChild(pr); }
     // §1B: a permit read that FAILED is not "screen pending". It is named in the
     // feed-state words under the badges — never as a permit badge (wording is Mike's, X6).
     if (lead.permitUnreadable) c.appendChild(feedLine(null, 'Permit screen'));
@@ -1685,7 +1690,18 @@ async function renderLeads() {
     // Said in words, never a bare glyph: a one-tap SPAM on a lead must say what
     // it does (R23 — a "Spam Likely" caller can be a customer), and it can be undone.
     const btns = [];
+    const was = lead.status; // what Undo puts back: 'new', 'emergency' or 'qualified'
     const clearErr = () => { const n = c.querySelector(':scope > .save-err'); if (n) n.remove(); };
+    // A good lead keeps its half of the pair, done and disabled, so the row
+    // never becomes one lone Spam button stretched across the card.
+    const goodDone = (btn) => {
+      btn.dataset.done = '1';
+      btn.title = 'Marked as a good lead';
+      btn.setAttribute('aria-label', btn.title);
+      btn.disabled = true; btn.replaceChildren(icon('i-check'), el('span', '', 'Good lead ✓'));
+    };
+    // Every button back on, except a Good lead that is already done.
+    const ready = () => { for (const x of btns) x.disabled = x.dataset.done === '1'; };
     const mark = (iconId, word, aria, cls, status) => {
       const btn = el('button', 'minibtn mark ' + cls);
       btn.appendChild(icon(iconId));
@@ -1698,34 +1714,35 @@ async function renderLeads() {
           await api('/api/leads/' + lead.id + '/status', { method: 'POST', body: { status } });
         } catch (e) {
           // A tap that did not save says so on the card — never a silent re-enable.
-          for (const x of btns) x.disabled = false;
+          ready();
           showSaveFail(c, e);
           return;
         }
         clearErr();
         if (status === 'qualified') {
           // A good lead stays in the inbox at full strength (listLeads keeps it).
-          qTag = badge('QUALIFIED', 'b-est');
+          qTag = chip('QUALIFIED', 'good');
           b.appendChild(qTag);
-          btn.remove();
-          for (const x of btns) x.disabled = false;
+          goodDone(btn);
+          ready();
           return;
         }
-        // Spam dims the card and leaves on the next refresh — until then, Undo.
+        // Spam dims the card and leaves on the next ↻ — until then, Undo (the
+        // minute timer holds a screen with a filed card, so it waits for ↻).
         // The filed line and its Undo stay at full strength (.lead-filed).
         c.classList.add('dismissed');
         if (qTag) qTag.remove();
-        const tag = badge('SPAM', 'b-repeat');
+        const tag = chip('SPAM', 'info');
         b.appendChild(tag);
         const filed = el('div', 'lead-filed');
-        filed.appendChild(el('div', 'scope', 'Filed as spam — it leaves the inbox on the next refresh.'));
+        filed.appendChild(el('div', 'scope', 'Filed as spam — it leaves the inbox when you tap\u00a0↻.')); // ↻ never wraps alone
         const undoRow = el('div', 'actions');
         const undo = el('button', 'minibtn', 'Undo');
         undo.addEventListener('click', async () => {
           undo.disabled = true;
           try {
-            // Back to what it was filed as: a good lead stays a good lead.
-            await api('/api/leads/' + lead.id + '/status', { method: 'POST', body: { status: qTag ? 'qualified' : 'new' } });
+            // Back to what it was: a good lead stays a good lead, an emergency stays an emergency.
+            await api('/api/leads/' + lead.id + '/status', { method: 'POST', body: { status: qTag ? 'qualified' : was } });
           } catch (e2) {
             undo.disabled = false;
             showSaveFail(c, e2);
@@ -1735,7 +1752,7 @@ async function renderLeads() {
           c.classList.remove('dismissed');
           tag.remove();
           if (qTag) b.appendChild(qTag);
-          for (const x of btns) x.disabled = false;
+          ready();
           filed.replaceWith(row);
         });
         undoRow.appendChild(undo);
@@ -1745,7 +1762,9 @@ async function renderLeads() {
       btns.push(btn);
       return btn;
     };
-    if (lead.status !== 'qualified') row.appendChild(mark('i-check', 'Good lead', 'Mark as a good lead', 'ok', 'qualified'));
+    const good = mark('i-check', 'Good lead', 'Mark as a good lead', 'ok', 'qualified');
+    if (lead.status === 'qualified') goodDone(good);
+    row.appendChild(good);
     row.appendChild(mark('i-close', 'Spam', 'File as spam or wrong number', 'bad', 'spam'));
     c.appendChild(row);
     v.appendChild(c);
@@ -1767,12 +1786,13 @@ function routePlannerPanel(v) {
   const daySel = document.createElement('select');
   daySel.id = 'route-day';
   daySel.className = 'input';
-  daySel.style.cssText = 'flex:1;width:auto';
-  for (const [val, label] of [['saturday', 'Saturday'], ['weekday', 'Weekday (after 4)']]) {
+  daySel.style.cssText = 'flex:1 1 0;min-width:0'; // an even split with Plan route
+  // Short labels: at half a phone row "Weekday (after 4)" clipped; the hint above says weekdays start after 4 PM.
+  for (const [val, label] of [['saturday', 'Saturday'], ['weekday', 'Weekday']]) {
     const o = document.createElement('option'); o.value = val; o.textContent = label; daySel.appendChild(o);
   }
   const pbtn = el('button', 'actbtn', 'Plan route');
-  pbtn.style.cssText = 'flex:1;margin-top:0';
+  pbtn.style.cssText = 'flex:1 1 0;min-width:0;margin-top:0';
   const pout = el('div');
   pbtn.onclick = async () => {
     pbtn.disabled = true;
@@ -1797,14 +1817,21 @@ function routePlannerPanel(v) {
     let plan;
     try { plan = await api('/api/route/plan', { method: 'POST', body: { stops, day: daySel.value } }); }
     catch (e) { pout.appendChild(el('div', 'storm', 'Could not plan the route \u2014 nothing was changed.')); pbtn.disabled = false; return; }
-    pout.appendChild(el('div', 'storm-muted', (plan.mode === 'live_traffic' ? 'Live traffic \u00b7 ' : '\u2139 ZIP estimates \u00b7 ') + plan.note));
-    // A plan warning is amber; the red callout stays for a plan that failed.
-    for (const w of plan.warnings) pout.appendChild(el('div', 'late', '\u26a0 ' + w));
-    // The server plans in 24-hour HH:MM; the screen reads a 12-hour clock.
+    // The server plans in 24-hour HH:MM; the screen reads a 12-hour clock — its warnings too.
     const t12 = (s) => { if (!/^\d{1,2}:\d{2}$/.test(s)) return s; const [h, m] = s.split(':').map(Number); return ((h + 11) % 12 + 1) + ':' + String(m).padStart(2, '0') + (h < 12 ? ' AM' : ' PM'); };
+    // Live traffic is a plain note. ZIP estimates name why there is no traffic
+    // read: a Maps call that failed, or no Maps key set up on the server.
+    pout.appendChild(plan.mode === 'live_traffic'
+      ? el('div', 'storm-muted', 'Live traffic \u00b7 ' + plan.note)
+      : el('div', 'feed-state ' + (/Maps call failed/.test(plan.note) ? 'unread' : 'unset'), 'ZIP estimates \u00b7 ' + plan.note));
+    // A plan warning is amber; the red callout stays for a plan that failed.
+    for (const w of plan.warnings) pout.appendChild(el('div', 'late', '\u26a0 ' + w.replace(/\b\d{1,2}:\d{2}\b/g, t12)));
+    // One row per visit: its start time in the chip column, then the stop.
+    // "(until 6:50 PM)" is one unbreakable piece, so a time never splits from its PM.
     for (const vt of plan.visits) {
       const row = el('div', 'loc-strip');
-      row.appendChild(el('span', '', vt.order + '. ' + t12(vt.startTime) + '\u2013' + t12(vt.endTime) + ' \u2014 ' + vt.label));
+      row.appendChild(chip(t12(vt.startTime), 'info'));
+      row.appendChild(el('span', '', vt.order + '. ' + vt.label + ' (until\u00a0' + t12(vt.endTime).replace(' ', '\u00a0') + ')'));
       pout.appendChild(row);
     }
     pbtn.disabled = false;
@@ -1824,9 +1851,7 @@ function gcalEmbedUrl() {
     src: GCAL_ID,
     ctz: 'America/New_York',
     mode: window.innerWidth >= 900 ? 'WEEK' : 'AGENDA',
-    // Google paints this behind its own toolbar — the theme's card colour, read
-    // at load (a mid-visit Day/Night switch recolours it on the next load).
-    bgcolor: getComputedStyle(document.documentElement).getPropertyValue('--card').trim() || '#FFFFFF',
+    // no bgcolor: Google’s embed has no dark mode; its default white matches its own grid in Day and Night.
     showTitle: '0',
     showNav: '1',
     showDate: '1',
@@ -1843,6 +1868,9 @@ function renderCalendar() {
   v.replaceChildren();
   const head = el('div', 'cal-src', '\u25CF Google Calendar \u2014 Art-is-Tree');
   v.appendChild(head);
+  // In practice mode every other screen is fake; this frame is still Mike's
+  // real calendar, and the screen says so once (later calls stop at the frame check).
+  LINKS_READY.then((l) => { if (l === 'simulation' && head.isConnected) head.after(el('div', 'feed-state sim', 'Live Google Calendar \u2014 not simulated. These are your real appointments, not practice data.')); });
   // The open-in-Google action lives ABOVE the frame: if the embed can't render
   // (signed out, offline, or blocked), the way through is already on screen.
   const openTop = el('a', 'cal-open', 'Open in Google Calendar \u2197');
@@ -1861,8 +1889,8 @@ function renderCalendar() {
   v.appendChild(frame);
   // §1B: Arbo cannot see inside Google's frame, so the line names the likely
   // causes and never states one as fact.
-  v.appendChild(el('div', 'cal-src',
-    'Calendar not showing? Google may need you signed in on this phone, or the connection dropped \u2014 tap Open in Google Calendar above.'));
+  v.appendChild(el('div', 'storm-muted',
+    'Calendar not showing? Google may need you signed in on this device, or the connection dropped \u2014 tap Open in Google Calendar above.'));
   // R16 (Mike): the planner belongs with the calendar — plan the run, then
   // put it on the real Google Calendar with the button above.
   routePlannerPanel(v);
@@ -2076,23 +2104,25 @@ $('twin-close').addEventListener('click', () => $('twin').classList.remove('show
 // ---------- Calls (§29 review loop: every conversation, your verdict) ----------
 async function renderCalls() {
   const v = $('view-calls');
+  v.style.minHeight = v.offsetHeight + 'px'; // a timed redraw must not collapse the page and throw the scroll to the top
+  const fills = []; // every slot's fill; the height is let go once they have all landed
   v.replaceChildren();
   // R24 customer notes — every customer thread, read-only.
   const studyFull = el('div', 'slot');
   v.appendChild(studyFull);
-  studyPanel(60).then((b) => { if (b) studyFull.appendChild(b); });
+  fills.push(studyPanel(60).then((b) => { if (b) studyFull.appendChild(b); }));
   // R22 text outreach — the full list: who is ready, who was texted.
   const outreachFull = el('div', 'slot');
   v.appendChild(outreachFull);
-  outreachPanel(true).then((b) => { if (b) outreachFull.appendChild(b); });
+  fills.push(outreachPanel(true).then((b) => { if (b) outreachFull.appendChild(b); }));
   // Sona via Quo — every call, with transcripts.
   const sonaCallsSlot = el('div', 'slot');
   v.appendChild(sonaCallsSlot);
-  sonaPanel(20, true).then((b) => { if (b) sonaCallsSlot.appendChild(b); });
+  fills.push(sonaPanel(20, true).then((b) => { if (b) sonaCallsSlot.appendChild(b); }));
   // Texts + photos sent to the Arbo number (Mike, 2026-09-24). Receive only.
   const txSlot = el('div', 'slot');
   v.appendChild(txSlot);
-  (async () => {
+  fills.push((async () => {
     let t;
     try { t = await api('/api/webhooks/texts'); }
     catch (e) {
@@ -2112,7 +2142,7 @@ async function renderCalls() {
     }
     if (!t.texts.some((m) => m.line === 'business')) {
       txSlot.appendChild(el('div', 'storm-muted',
-        'Business cell: nothing relayed from your iPhone since deploy. If the Shortcut is set up, text yourself to test it.'));
+        'Business cell: nothing relayed from your iPhone since Arbo last restarted. If the Shortcut is set up, text yourself to test it.'));
     }
     if (!t.texts.length) return;
     for (const m of t.texts.slice(0, 15)) {
@@ -2122,7 +2152,7 @@ async function renderCalls() {
       top.appendChild(el('div', 'when', fmtTime(m.at)));
       c.appendChild(top);
       const lb = el('div', 'badges');
-      lb.appendChild(badge(m.line === 'business' ? 'BUSINESS CELL' : m.line === 'quo' ? 'QUO LINE' : 'ARBO LINE', 'b-src'));
+      lb.appendChild(chip(m.line === 'business' ? 'BUSINESS CELL' : m.line === 'quo' ? 'QUO LINE' : 'ARBO LINE', 'info'));
       c.appendChild(lb);
       if (m.body) c.appendChild(el('div', 'scope', m.body));
       if (m.line === 'business') c.appendChild(el('div', 'storm-muted', 'Photos stay on your phone — iOS relays words only.'));
@@ -2145,12 +2175,12 @@ async function renderCalls() {
       }
       txSlot.appendChild(c);
     }
-  })();
+  })());
   // Notes from calls Mike ANSWERED — iPhone records + transcribes, the
   // Share-sheet Shortcut relays them here. Arbo cannot hear his cell.
   const cnSlot = el('div', 'slot');
   v.appendChild(cnSlot);
-  (async () => {
+  fills.push((async () => {
     let n;
     try { n = await api('/api/relay/call-notes'); } catch (e) { return; }
     if (!n.notes.length) return;
@@ -2164,24 +2194,27 @@ async function renderCalls() {
       c.appendChild(el('div', 'scope', note.text.length > 600 ? note.text.slice(0, 600) + '…' : note.text));
       cnSlot.appendChild(c);
     }
-  })();
-  // Arbo's own receptionist line: its transcripts, then its call log.
-  v.appendChild(el('div', 'panel-title', 'Receptionist calls'));
+  })());
+  // Arbo's own receptionist line, one card: its title, the transcript status
+  // line, the transcripts, then the call log.
+  const ownSlot = el('div', 'slot');
+  v.appendChild(ownSlot);
+  ownSlot.appendChild(el('div', 'panel-title', 'Arbo’s own line'));
   // R19: post-call transcripts pushed by ElevenLabs, when that link is up.
-  const trSlot = el('div', 'slot plain');
-  v.appendChild(trSlot);
-  (async () => {
+  const trSlot = el('div');
+  ownSlot.appendChild(trSlot);
+  fills.push((async () => {
     let t;
     try { t = await api('/api/webhooks/calls'); } catch (e) { return; }
-    // R21: cut on purpose is not "not set up", and neither one is zero calls (§1B).
+    // R21: cut on purpose is not "not set up" (§1B). The call log below
+    // carries this card's one "not zero calls".
     if (t.linkCut) {
       trSlot.appendChild(el('div', 'feed-state cut',
-        'Call transcripts from Arbo’s own line: disconnected while Sona handles calls — this is not zero calls. Sona’s calls have their own section above.'));
+        'Call transcripts: disconnected while Sona handles calls. Sona’s calls have their own section above.'));
       return;
     }
     if (!t.wired) {
-      trSlot.appendChild(el('div', 'feed-state unset',
-        'Call transcripts from Arbo’s own line: not set up yet — this is not zero calls.'));
+      trSlot.appendChild(el('div', 'feed-state unset', 'Call transcripts: not set up yet.'));
       return;
     }
     if (!t.transcripts.length) return;
@@ -2190,7 +2223,7 @@ async function renderCalls() {
       const c = el('div', 'card');
       const top = el('div', 'toprow');
       top.appendChild(el('div', 'who', (tr.collected && tr.collected.caller_name) ? String(tr.collected.caller_name) : 'Caller'));
-      top.appendChild(el('div', 'when', fmtTime(tr.at) + ' · ' + tr.turns + ' turns'));
+      top.appendChild(el('div', 'when', fmtTime(tr.at) + ' · ' + plural(tr.turns, 'turn')));
       c.appendChild(top);
       if (tr.summary) c.appendChild(el('div', 'scope', tr.summary));
       const bits = [];
@@ -2202,32 +2235,37 @@ async function renderCalls() {
       if (bits.length) c.appendChild(el('div', 'addr', bits.join(' · ')));
       trSlot.appendChild(c);
     }
-  })();
+  })());
+  // The held height goes once every slot has landed, on every way out below.
+  const release = () => Promise.allSettled(fills).then(() => { v.style.minHeight = ''; });
   let data;
   try {
     data = await api('/api/review/backlog?all=1&limit=20');
   } catch (e) {
-    if (e.code === 401) return showKeywall();
+    if (e.code === 401) { release(); return showKeywall(); }
     await LINKS_READY; // 'cut' vs 'not set up' needs /health's answer
-    v.appendChild(feedState(e, 'Call log', 'zero calls'));
+    // One line in the card, never a big dashed box: the log is one feed of this line.
+    ownSlot.appendChild(feedLine(e, 'Call log', 'This is not zero calls.'));
+    release();
     return;
   }
   if (!data.conversations.length) {
-    v.appendChild(state('No calls yet', 'Every receptionist conversation lands here for your review.'));
+    ownSlot.appendChild(state('No calls yet', 'Every receptionist conversation lands here for your review.'));
+    release();
     return;
   }
   for (const conv of data.conversations) {
     const flags = [...new Set((conv.turns || []).flatMap(t => t.flags || []))];
     const c = el('div', 'card' + (flags.includes('emergency') ? ' emergency' : ''));
     const top = el('div', 'toprow');
-    top.appendChild(el('div', 'who', new Date(conv.started_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })));
-    top.appendChild(el('div', 'when', (conv.turns || []).length + ' turns'));
+    top.appendChild(el('div', 'who', fmtWhen(conv.started_at) || 'Call'));
+    top.appendChild(el('div', 'when', plural((conv.turns || []).length, 'turn')));
     c.appendChild(top);
     const b = el('div', 'badges');
-    if (flags.includes('emergency')) b.appendChild(badge('EMERGENCY', 'b-emg'));
-    if (flags.some(f => f.startsWith('guard_blocked'))) b.appendChild(badge('GUARD BLOCKED A REPLY', 'b-review'));
-    b.appendChild(badge(conv.channel.toUpperCase(), 'b-src'));
-    if (conv.reviewed) b.appendChild(badge('REVIEWED', 'b-cool'));
+    if (flags.includes('emergency')) b.appendChild(chip('EMERGENCY', 'alarm'));
+    if (flags.some(f => f.startsWith('guard_blocked'))) b.appendChild(chip('GUARD BLOCKED A REPLY', 'stop'));
+    b.appendChild(chip(conv.channel.toUpperCase(), 'info'));
+    if (conv.reviewed) b.appendChild(chip('REVIEWED', 'good'));
     c.appendChild(b);
     for (const turn of (conv.turns || []).slice(0, 6)) {
       c.appendChild(el('div', 'scope', '' + turn.caller));
@@ -2247,8 +2285,9 @@ async function renderCalls() {
       });
       c.appendChild(btn);
     }
-    v.appendChild(c);
+    ownSlot.appendChild(c);
   }
+  release();
 }
 
 // ---------- Safety (§6V/§4: credentials and near misses) ----------

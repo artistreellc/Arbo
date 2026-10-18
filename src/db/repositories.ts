@@ -1074,8 +1074,8 @@ export async function getPropertyTwin(propertyId: string): Promise<PropertyTwinR
   };
 }
 
-/** Mike's tap on a lead: qualified / spam / converted / lost (DB CHECK validates). */
-export async function updateLeadStatus(leadId: string, status: 'new' | 'qualified' | 'spam' | 'converted' | 'lost'): Promise<void> {
+/** Mike's tap on a lead: qualified / spam / converted / lost, or Undo back to new / emergency (DB CHECK validates). */
+export async function updateLeadStatus(leadId: string, status: 'new' | 'qualified' | 'emergency' | 'spam' | 'converted' | 'lost'): Promise<void> {
   const db = getDb();
   const res = await db.from('lead').update({ status, updated_at: new Date().toISOString() }).eq('id', leadId);
   if (res.error) throw res.error;

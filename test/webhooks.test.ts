@@ -212,8 +212,9 @@ describe('app surfaces (source pins — §1B named states, links-cut placement)'
     expect(html).toContain('never from a button in the app');
   });
 
-  it('the calls tab names the transcript wire when it is down', () => {
-    expect(html).toContain('this is not zero calls');
+  it('the calls tab names a call log it could not read — never as zero calls', () => {
+    // QA round 2: the card's one honesty tag rides the call-log line; the transcript line no longer repeats it.
+    expect(html).toContain("feedLine(e, 'Call log', 'This is not zero calls.')");
   });
 });
 
