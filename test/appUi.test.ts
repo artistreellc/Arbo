@@ -274,14 +274,14 @@ describe('ARBOR app shell', () => {
   it('the settings screen exists, is honest about persistence, and fails safe', () => {
     expect(html).toContain('id="settings-btn"');
     expect(html).toContain('/api/settings/channels');
-    expect(html).toContain('reset to the coded defaults on a redeploy');
+    expect(html).toContain('go back to the standard set whenever Arbo restarts or is updated');
     expect(html).toContain('Could not load the channel switches. Nothing was changed.');
   });
 
   it("today's work ZIP is settable, and honest about its in-memory life (R15)", () => {
     expect(html).toContain('/api/settings/route');
-    expect(html).toContain("Today's work ZIP");
-    expect(html).toContain('set it each morning; resets on redeploy');
+    expect(html).toContain('Today\\u2019s work ZIP');
+    expect(html).toContain('Set it each morning; it resets whenever Arbo restarts or is updated');
     expect(html).toContain('Work-ZIP setting unavailable right now. Nothing was changed.');
   });
 
