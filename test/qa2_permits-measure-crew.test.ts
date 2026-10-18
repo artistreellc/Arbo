@@ -385,7 +385,8 @@ describe('Crew door — the gate counts down the server’s number and styles a 
   });
 
   it('every place that clears serverMsg clears serverErr too', () => {
-    expect(crew).toContain("GATE.checked = cb.checked; GATE.serverMsg = ''; GATE.serverErr = false; refreshGate();");
+    // QA round 3: the tick clears the GO hold too (test/qa3_crew-sim.test.ts).
+    expect(crew).toContain("GATE.checked = cb.checked; GATE.serverMsg = ''; GATE.serverErr = false; GATE.serverHold = false; refreshGate();");
     expect(crew).toMatch(/go\.disabled = true;\s*GATE\.serverMsg = '';\s*GATE\.serverErr = false;/);
     expect(crew).toContain('serverErr: false,');
   });
