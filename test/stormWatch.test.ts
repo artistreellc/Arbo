@@ -46,6 +46,7 @@ import {
   flagStopsAtRisk,
   isWorkStopping,
   CITY_POINTS,
+  CITY_COUNTY_UGC,
   type StormAlert,
   type FetchFn,
 } from '../src/ops/stormWatch.js';
@@ -113,7 +114,10 @@ describe('NWS alerts provider', () => {
       return { ok: true, status: 200, json: async () => ({ features: [feature('shared-1')] }) };
     };
     const alerts = await createNwsAlertsProvider(fetchFn).activeAlerts();
-    expect(urls).toHaveLength(4);
+    // Four point queries plus the one county query (updated deliberately when
+    // the county query was added — it used to be exactly four).
+    expect(urls.filter((u) => u.includes('?point='))).toHaveLength(4);
+    expect(urls.filter((u) => u.includes('?zone='))).toHaveLength(1);
     for (const city of Object.keys(CITY_POINTS)) expect(city.length).toBeGreaterThan(0);
     expect(alerts).toHaveLength(1);
     expect(alerts[0]!.cities).toHaveLength(4); // covers every city point
@@ -125,6 +129,75 @@ describe('NWS alerts provider', () => {
     await expect(createNwsAlertsProvider(bad).activeAlerts()).rejects.toThrow(/HTTP 503/);
     const malformed: FetchFn = async () => ({ ok: true, status: 200, json: async () => ({ nope: true }) });
     await expect(createNwsAlertsProvider(malformed).activeAlerts()).rejects.toThrow(/malformed/);
+  });
+
+  it('asks by POINT for each city — NWS returns any alert whose polygon or zone holds that point', async () => {
+    // Documents the query shape: ?point=lat,lng per city, never forecast-zone
+    // (VAZ…) codes, which can miss county-issued warnings.
+    const urls: string[] = [];
+    const fetchFn: FetchFn = async (url) => {
+      urls.push(url);
+      return { ok: true, status: 200, json: async () => ({ features: [] }) };
+    };
+    await createNwsAlertsProvider(fetchFn).activeAlerts();
+    for (const p of Object.values(CITY_POINTS)) {
+      expect(urls).toContain(`https://api.weather.gov/alerts/active?point=${p.lat},${p.lng}`);
+    }
+    expect(urls.join(' ')).not.toMatch(/VAZ\d/);
+  });
+
+  it('also asks by COUNTY, so a warning polygon over part of a city is not missed (§1B)', async () => {
+    // A Tornado Warning drawn over Pungo touches Virginia Beach county but not
+    // the Oceanfront point: the point queries see nothing, the county query
+    // sees it, and Virginia Beach does not read as no storm.
+    const urls: string[] = [];
+    const fetchFn: FetchFn = async (url) => {
+      urls.push(url);
+      const features = url.includes('?zone=')
+        ? [{ properties: { id: 'tor-1', event: 'Tornado Warning', severity: 'Extreme', geocode: { UGC: ['VAC810', 'NCC053'] } } }]
+        : [];
+      return { ok: true, status: 200, json: async () => ({ features }) };
+    };
+    const alerts = await createNwsAlertsProvider(fetchFn).activeAlerts();
+    expect(urls).toContain('https://api.weather.gov/alerts/active?zone=VAC810,VAC710,VAC550,VAC740');
+    expect(CITY_COUNTY_UGC).toEqual({ 'Virginia Beach': 'VAC810', Norfolk: 'VAC710', Chesapeake: 'VAC550', Portsmouth: 'VAC740' });
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]!.cities).toEqual(['Virginia Beach']);
+    const flagged = flagStopsAtRisk(alerts, [{ id: 's1', city: 'Virginia Beach', timeIso: null }, { id: 's2', city: 'Norfolk', timeIso: null }], NOW);
+    expect(flagged.map((f) => f.stopId)).toEqual(['s1']);
+  });
+
+  it('a county-query alert that names none of the four counties counts for all four', async () => {
+    const fetchFn: FetchFn = async (url) => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ features: url.includes('?zone=') ? [{ properties: { id: 'svr-1', event: 'Severe Thunderstorm Warning' } }] : [] }),
+    });
+    const alerts = await createNwsAlertsProvider(fetchFn).activeAlerts();
+    expect([...alerts[0]!.cities].sort()).toEqual(['Chesapeake', 'Norfolk', 'Portsmouth', 'Virginia Beach']);
+  });
+
+  it('a failed county query fails the whole read — half a feed never reads as no storm', async () => {
+    const fetchFn: FetchFn = async (url) =>
+      url.includes('?zone=')
+        ? { ok: false, status: 503, json: async () => ({}) }
+        : { ok: true, status: 200, json: async () => ({ features: [] }) };
+    await expect(createNwsAlertsProvider(fetchFn).activeAlerts()).rejects.toThrow(/four counties: HTTP 503/);
+  });
+
+  it('every request carries a User-Agent NWS can trace back, with no invented email', async () => {
+    const agents: string[] = [];
+    const fetchFn: FetchFn = async (_url, init) => {
+      agents.push(init?.headers?.['user-agent'] ?? '');
+      return { ok: true, status: 200, json: async () => ({ features: [] }) };
+    };
+    await createNwsAlertsProvider(fetchFn).activeAlerts();
+    expect(agents).toHaveLength(5);
+    for (const ua of agents) {
+      expect(ua).toContain('Art-is-Tree LLC');
+      expect(ua).toContain('https://arbor-server-production.up.railway.app');
+      expect(ua).not.toContain('@');
+    }
   });
 });
 

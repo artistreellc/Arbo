@@ -106,6 +106,22 @@ describe('near miss → lesson (§6V/§4.7) — Arbo drafts, a human publishes',
     const r = redactObviousPii('reach me at 757-408-1124');
     expect(r.removed).toContain('phone');
   });
+
+  it('strips a card number however it was written, and says so (§4.3)', () => {
+    // Public test numbers only.
+    for (const raw of ['4111 1111 1111 1111', '4111-1111-1111-1111', '4111111111111111', '3782 822463 10005']) {
+      const r = redactObviousPii(`homeowner read out ${raw} to the crew`);
+      expect(r.text).toBe('homeowner read out [card number removed] to the crew');
+      expect(r.removed).toEqual(['card number']);
+    }
+  });
+
+  it('the card shape leaves phones, ZIPs and dates to their own rules', () => {
+    expect(redactObviousPii('call 7575550142 at 23451').text).toBe('call [phone removed] at 23451');
+    expect(redactObviousPii('ZIP 23451 7575550142').text).toBe('ZIP 23451 [phone removed]');
+    expect(redactObviousPii('on 2026-08-01, 23451-1234').text).toBe('on 2026-08-01, 23451-1234');
+    expect(redactObviousPii('call 757-408-1124').removed).toEqual(['phone']);
+  });
 });
 
 const item = (id: string, topic: string, difficulty = 1, over: Partial<TrainingItemRef> = {}): TrainingItemRef => ({

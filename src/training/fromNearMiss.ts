@@ -50,10 +50,10 @@
 //     (training_item_vetted_before_publish) is the floor; this is the ceiling.
 //     Arbo drafts, a named human vets, only then does a crew read it.
 //   §4.3 — the generated item must not carry contact PII. Obvious identifiers
-//     (phone, email, street address) are stripped mechanically. NAMES are not
-//     machine-detectable with any honesty, so they are not silently "handled":
-//     the draft is flagged so the human vetter is told to check, and the
-//     publish gate is what stops a name reaching the crew.
+//     (phone, card number, email, street address) are stripped mechanically.
+//     NAMES are not machine-detectable with any honesty, so they are not
+//     silently "handled": the draft is flagged so the human vetter is told to
+//     check, and the publish gate is what stops a name reaching the crew.
 
 import type { HazardCategory } from '../safety/nearMiss.js';
 
@@ -170,6 +170,11 @@ const SCAFFOLD: Record<HazardCategory, {
 /** Obvious contact identifiers. Names are NOT in here — see the header. */
 const PII_PATTERNS: Array<{ re: RegExp; token: string }> = [
   { re: /\b(\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/g, token: '[phone removed]' },
+  // 13–19 digits, single spaces/dashes allowed, first digit 2–6 (the card
+  // networks) — the same shape as ops/inboxWatch.ts PII_SHAPES. After the
+  // phone so a ZIP beside a phone stays a phone; before the address so the
+  // address cannot eat a card's last group.
+  { re: /\b[2-6](?:[ -]?\d){12,18}\b/g, token: '[card number removed]' },
   { re: /\b[\w.+-]+@[\w-]+\.[\w.]{2,}\b/g, token: '[email removed]' },
   { re: /\b\d{1,6}\s+[A-Za-z][A-Za-z.'-]*(?:\s+[A-Za-z][A-Za-z.'-]*)*\s+(?:ave|avenue|st|street|rd|road|dr|drive|ln|lane|ct|court|blvd|way|cir|circle|pl|place|ter|trl|pkwy|hwy)\b\.?/gi, token: '[address removed]' },
 ];

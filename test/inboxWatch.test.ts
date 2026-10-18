@@ -353,6 +353,42 @@ describe('inbox watch — §4.3, structurally', () => {
     }
   });
 
+  it('a card number read out on a call is scrubbed however it is written — and the assertion knows it too', () => {
+    // Public test numbers only (§4.3 fixtures are synthetic).
+    for (const raw of [
+      'card 4111 1111 1111 1111 exp soon',
+      'card 4111-1111-1111-1111',
+      'card 4111111111111111',
+      'amex 3782 822463 10005',
+      'card 4 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1',
+    ]) {
+      expect(redact(raw)).toContain('[redacted-card-number]');
+      expect(redact(raw)).not.toMatch(/\d/);
+      expect(() => unavailablePass('2026-08-03T12:00:00Z', raw)).not.toThrow();
+    }
+    const bad = { ...unavailablePass('2026-08-03T12:00:00Z', 'x'), reason: 'card 4111 1111 1111 1111' };
+    expect(() => assertNoPii(bad)).toThrow(/card number/i);
+  });
+
+  it('the card shape does not swallow phones, ZIPs, timestamps or message ids', () => {
+    expect(redact('call 757-555-0142')).toBe('call [redacted-phone]');
+    expect(redact('call 7575550142 or 1-757-555-0142')).not.toContain('card');
+    expect(redact('Virginia Beach VA 23451-1234')).toBe('Virginia Beach VA 23451-1234');
+    // A ZIP typed beside a phone is still a phone — the phone shape runs first.
+    expect(redact('ZIP 23451 757-555-0142')).toBe('ZIP 23451 [redacted-phone]');
+    expect(redact('at 1760812345678 ms')).toBe('at 1760812345678 ms');
+    // A Gmail id with no letter in it is normal data — the guard must survive it.
+    const r = { ...unavailablePass('2026-08-03T12:00:00Z', 'x'), unparsedKnownSenderIds: ['1890123456789012'] };
+    expect(() => assertNoPii(r)).not.toThrow();
+  });
+
+  it('a card number typed into the urgency field is scrubbed and the pass survives', async () => {
+    const lead = { ...WEBSITE_LEAD, body: FORMSUBMIT_HTML.replace('Emergency', 'Emergency, card 4111 1111 1111 1111') };
+    const r = await watchInbox(readerOf({ ok: true, messages: [lead], unreadable: [] }), new SeenMessages(), AT);
+    expect(r.leads).toHaveLength(1);
+    expect(r.leads[0]!.urgency).toBe('Emergency, card [redacted-card-number]');
+  });
+
   it('the log line carries counts and ids only', async () => {
     const r = await watchInbox(
       readerOf({ ok: true, messages: [WEBSITE_LEAD], unreadable: [] }),

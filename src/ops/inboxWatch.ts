@@ -294,6 +294,16 @@ const PII_SHAPES: { re: RegExp; as: string; name: string }[] = [
   // trip it: a phone needs 3 digits, a separator, 3 digits, a separator, 4.
   { re: /\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b/, as: '[redacted-phone]', name: 'phone number' },
   { re: /\(\d{3}\)\s*\d{3}/, as: '[redacted-phone]', name: 'phone number' },
+  // A caller can read a card number out loud. 13–19 digits, single spaces or
+  // dashes allowed between them (4111 1111 1111 1111, 3782 822463 10005).
+  // The first digit must be 2–6 — Mastercard, Amex, Visa, Discover all start
+  // there — because epoch-millisecond times (13 digits) start with 1, and so
+  // do Gmail message ids today (16 hex chars; now and then one has no letter
+  // in it). A guard that throws on a message id loses the lead it was
+  // reporting, since that id is already marked seen. After the phone shapes
+  // on purpose, so a ZIP typed beside a phone is still a phone; before the
+  // address shape so "...1111 Main St" cannot eat the card's last group.
+  { re: /\b[2-6](?:[ -]?\d){12,18}\b/, as: '[redacted-card-number]', name: 'card number' },
   {
     re: /\d+\s+\w+\s+(st|street|ave|avenue|rd|road|ln|lane|dr|drive|blvd|ct|court|way)\b/,
     as: '[redacted-address]',
@@ -338,10 +348,10 @@ export class SeenMessages {
  * STRUCTURAL §4.3 GUARD, on the real path — not only in a test.
  *
  * Serialises the result and refuses to hand back anything that looks like a
- * phone number, an email address, or a street address. The point is not that
- * today's code leaks; it is that tomorrow's edit cannot. The same reasoning
- * as `assertNeverClear` — the promise lives in the code, not in a comment
- * asking future-me to be careful.
+ * phone number, an email address, a card number, or a street address. The
+ * point is not that today's code leaks; it is that tomorrow's edit cannot.
+ * The same reasoning as `assertNeverClear` — the promise lives in the code,
+ * not in a comment asking future-me to be careful.
  */
 export function assertNoPii(result: InboxWatchResult): void {
   const json = JSON.stringify(result);
