@@ -29,7 +29,7 @@ describe('Agents desk', () => {
     expect(agents).toContain('Run only looks — it never changes anything.');
     expect(agents).not.toContain('not wired in this run');
     expect(agents).not.toContain('hourly sweep');
-    expect(agents).toContain("el('div', 'feed-state unset', 'AI summaries are off — the server has no AI key yet. Each desk shows a plain count.')");
+    expect(agents).toContain("el('div', 'feed-state unset', 'AI off — plain counts only, no AI key yet.')");
     expect(agents).not.toContain('ANTHROPIC_API_KEY');
   });
 
@@ -40,8 +40,9 @@ describe('Agents desk', () => {
   });
 
   it('a kept result says when it ran, and warns only once it is stale', () => {
-    expect(agents).toContain("'Ran ' + fmtWhen(AGENT_RUN.ranAt) + (stale ? ' — over 15 minutes old. Run again for a current read.' : '.')");
-    expect(agents).toContain("stale ? 'feed-state unset' : 'storm-muted'");
+    // QA round 3: a fresh time rides on the help line; a stale one is its own warning line.
+    expect(agents).toContain("if (stale) v.appendChild(el('div', 'feed-state unset', 'Ran ' + fmtWhen(ranAt) + ' — over 15 minutes old. Run again for a current read.'));");
+    expect(agents).toContain("(ranAt && !stale ? 'Ran ' + fmtWhen(ranAt) + '. ' : '')");
     expect(agents).not.toContain('not live');
   });
 

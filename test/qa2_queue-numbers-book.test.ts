@@ -306,7 +306,8 @@ describe('Q4 — one-way actions look different and ask twice', () => {
   it('take off the roster and retire this unit use it, in the danger style', () => {
     const r = roster();
     expect(r).toContain("const off = el('button', 'actbtn danger', 'Take off the roster');");
-    expect(r).toContain("armTwice(off, 'Tap again to take ' + p.name + ' off the roster — they lose crew-door access', async () => {");
+    // QA round 3: no crew route checks the roster, so the armed line never promises the door closes.
+    expect(r).toContain("armTwice(off, 'Tap again to take ' + p.name + ' off the roster — the safety and training boards stop counting them. Their crew code still opens the crew door.', async () => {");
     const f = fleet();
     expect(f).toContain("const off = el('button', 'actbtn danger', 'Retire this unit');");
     expect(f).toContain("armTwice(off, 'Tap again to retire ' + u.name, async () => {");

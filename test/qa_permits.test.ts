@@ -184,7 +184,8 @@ describe('LiDAR summary text (agent and crew copy)', () => {
   const s = summarizeTreeMeasurement(m);
 
   it('rounds trunk width and lean to one decimal, the same as the tiles', () => {
-    expect(s).toContain('about 45.6 cm');
+    // QA round 3: inches first, centimetres in brackets — the tiles' order.
+    expect(s).toContain('about 18.0 in (45.6 cm)');
     expect(s).toContain('Trunk lean about 2.5°');
   });
 

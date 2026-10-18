@@ -501,6 +501,10 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 #view-measure .hud{grid-template-columns:repeat(2,1fr)}
 #view-perf .hud{grid-template-columns:repeat(2,1fr)}
 #view-measure .tile .badge{display:inline-block;margin-top:8px}
+/* The scan status is a fact about this scan, set apart from the grey tip above it (only the pick slot's own line; per-figure lines sit in a .card). */
+#view-measure .slot > .factmeta{color:var(--ink-1);font-weight:600;border-top:1px solid var(--hairline);padding-top:10px}
+/* Learn: the line under the run buttons keeps its distance from them. */
+#view-learn .actions + .storm-muted{margin-top:12px}
 .learnbar{display:flex;height:10px;border-radius:99px;background:var(--paper-2);overflow:hidden;margin:10px 0 6px}
 .learnbar i{display:block;height:100%}.learnbar .p{background:var(--ok)}.learnbar .b{background:var(--emergency)}.learnbar .m{background:var(--warning)}.learnbar .u{background:var(--ink-4);opacity:.35}
 .learn-row .who{font-size:17px}
@@ -2464,9 +2468,10 @@ async function renderRosterList(slot) {
     c.appendChild(certAdder(p, slot));
     if (p.active) {
       // One-way and no undo in the app: quiet danger style, and it asks twice.
+      // It says only what it does: no crew route checks the roster, so the code still opens the crew door.
       const off = el('button', 'actbtn danger', 'Take off the roster');
       const err = el('div', 'errline', '');
-      armTwice(off, 'Tap again to take ' + p.name + ' off the roster — they lose crew-door access', async () => {
+      armTwice(off, 'Tap again to take ' + p.name + ' off the roster — the safety and training boards stop counting them. Their crew code still opens the crew door.', async () => {
         off.disabled = true;
         try {
           await api('/api/roster/' + p.id + '/deactivate', { method: 'POST', body: {} });
@@ -4498,6 +4503,15 @@ const INPUT_STATE = { read: ['READ', 'good'], cut: [FEED_TAG.cut.toUpperCase(), 
 const REPORT_STATUS = { ok: ['OK', 'good'], degraded: ['MISSING INPUTS', 'watch'], blocked: ['BLOCKED', 'stop'] };
 // Brief numbering (#2, §4.8, R7…) stays in the data and off the screen.
 const noRefs = (s) => s.replace(/^#\d+\s*/, '').replace(/\s*\((?:R\d+|§)[^)]*\)/g, '');
+// A proposal opens the screen where Mike acts on it: [button, tab]. A kind with no screen stays plain text.
+const PROPOSAL_GO = {
+  call_review: ['Open Calls →', 'calls'],
+  route_fix: ['Open the Calendar →', 'cal'], weather_hold_review: ['Open the Calendar →', 'cal'],
+  decide_open_loops: ['Open the Queue →', 'followups'], fix_credentials: ['Open the Queue →', 'followups'],
+  lesson_draft: ['Open the Queue →', 'followups'], vet_reference: ['Open the Queue →', 'followups'],
+  collections_review: ['Open the Queue →', 'followups'], parts_review: ['Open the Queue →', 'followups'],
+  area_review: ['Open Numbers →', 'perf'],
+};
 let AGENT_RUN = null;
 
 let AGENT_GEN = 0;
@@ -4520,15 +4534,15 @@ async function renderAgents() {
   if (gen !== AGENT_GEN) return;
   const runBtn = el('button', 'actbtn wide-btn', AGENT_RUN ? 'Run all eight again' : 'Run all eight now');
   v.appendChild(runBtn);
-  // A result kept from an earlier visit says when it is from; past 15 minutes that is a warning.
-  if (AGENT_RUN && AGENT_RUN.ranAt) {
-    const stale = Date.now() - Date.parse(AGENT_RUN.ranAt) > 15 * 60 * 1000;
-    v.appendChild(el('div', stale ? 'feed-state unset' : 'storm-muted', 'Ran ' + fmtWhen(AGENT_RUN.ranAt) + (stale ? ' — over 15 minutes old. Run again for a current read.' : '.')));
-  }
-  v.appendChild(el('div', 'storm-muted', 'Run only looks — it never changes anything. Booking, collections, safety, permits and the morning briefing run on the hourly check once their data is connected.'));
+  // When it ran rides on the help line; past 15 minutes it is a warning line of its own.
+  // Whether the hourly check is on is said on each NOT RUN row, not here.
+  const ranAt = AGENT_RUN && AGENT_RUN.ranAt;
+  const stale = !!ranAt && Date.now() - Date.parse(ranAt) > 15 * 60 * 1000;
+  if (stale) v.appendChild(el('div', 'feed-state unset', 'Ran ' + fmtWhen(ranAt) + ' — over 15 minutes old. Run again for a current read.'));
+  v.appendChild(el('div', 'storm-muted', (ranAt && !stale ? 'Ran ' + fmtWhen(ranAt) + '. ' : '') + 'Run only looks — it never changes anything.'));
   v.appendChild(roster.brain === 'online'
     ? el('div', 'storm-muted', 'Brain: Opus online — each desk gets a plain-English read.')
-    : el('div', 'feed-state unset', 'AI summaries are off — the server has no AI key yet. Each desk shows a plain count.'));
+    : el('div', 'feed-state unset', 'AI off — plain counts only, no AI key yet.'));
   runBtn.addEventListener('click', async () => {
     runBtn.disabled = true; runBtn.textContent = 'Running the eight desks…';
     try { AGENT_RUN = await api('/api/agents/sections/run', { method: 'POST' }); }
@@ -4579,7 +4593,18 @@ async function renderAgents() {
       }
       c.appendChild(ins);
       for (const f of r.findings) c.appendChild(el('div', f.severity === 'act' ? 'storm' : f.severity === 'watch' ? 'late' : 'storm-muted', noRefs(f.text)));
-      for (const p of r.proposals) c.appendChild(el('div', 'due-note', 'Proposal for you: ' + noRefs(p.text)));
+      for (const p of r.proposals) {
+        const note = el('div', 'due-note', 'Proposal for you: ' + noRefs(p.text));
+        const go = PROPOSAL_GO[p.kind];
+        if (go) {
+          const row = el('div', 'actions');
+          const b = el('button', 'minibtn', go[0]);
+          b.addEventListener('click', () => switchTab(go[1]));
+          row.appendChild(b);
+          note.appendChild(row);
+        }
+        c.appendChild(note);
+      }
       if (r.error) c.appendChild(el('div', 'storm', 'Blocked: ' + r.error));
     } else {
       c.appendChild(el('div', 'scope', 'Reads: ' + a.reads.join(' · ')));
@@ -4709,12 +4734,14 @@ function measureResult(r) {
   const m = r.measurement;
   const wrap = el('div');
   const hud = el('div', 'hud');
+  // The engine's code word ('stem_not_found: …') stays in the API for agents and tests; the screen shows only the words.
+  const why = (s) => String(s || '').replace(/^[a-z_]+: /, '');
   const metric = (value, unit, alt, label, conf) => {
     const t = el('div', 'tile');
     t.appendChild(el('b', '', value === null ? '–' : value + unit));
     t.appendChild(el('span', '', label + (value !== null && alt ? ' · ' + alt : '')));
     const cb = CONF_BADGE[conf.level] || [conf.level, 'watch'];
-    const b = chip(cb[0], cb[1]); b.title = conf.reason;
+    const b = chip(cb[0], cb[1]); b.title = why(conf.reason);
     t.appendChild(b);
     return t;
   };
@@ -4736,7 +4763,7 @@ function measureResult(r) {
   const card = el('div', 'card');
   for (const k of ['dbh', 'height', 'crown', 'lean']) {
     const c = m.confidence[k];
-    card.appendChild(el('div', 'factmeta', k.toUpperCase() + ' — ' + c.level + ': ' + c.reason
+    card.appendChild(el('div', 'factmeta', k.toUpperCase() + ' — ' + c.level + ': ' + why(c.reason)
       + (k === 'dbh' && m.dbhFit ? '; scatter ' + round(m.dbhFit.rmseCm / 2.54, 2) + ' in (' + round(m.dbhFit.rmseCm, 1) + ' cm)' : '')));
   }
   wrap.appendChild(card);
@@ -4801,7 +4828,8 @@ async function renderLearn() {
 
   const runs = el('div', 'actions');
   const b1 = el('button', 'actbtn', 'Run the rule check');
-  const b2 = el('button', 'actbtn alt', st.opusAvailable ? 'Run with Opus (' + cat.total + ' model calls)' : 'Opus practice is off — no AI key on the server');
+  // Both labels stay short so the two buttons share one row on a phone; the cost and why Opus is off go in the lines below.
+  const b2 = el('button', 'actbtn alt', 'Run with Opus');
   b2.disabled = !st.opusAvailable || st.status === 'running';
   b1.disabled = st.status === 'running';
   const go = async (brain) => {
@@ -4813,7 +4841,9 @@ async function renderLearn() {
   b2.addEventListener('click', () => go('opus'));
   runs.appendChild(b1); runs.appendChild(b2);
   v.appendChild(runs);
-  v.appendChild(el('div', 'storm-muted', 'Rule check: tests the fixed safety rules in a few seconds. Opus: answers every scenario the way it would on a real call.'));
+  v.appendChild(el('div', 'storm-muted', 'Rule check: tests the fixed safety rules in a few seconds. Opus: answers all ' + plural(cat.total, 'scenario') + ' the way it would on a real call — one model call each.'));
+  // No key is a gap that is not set up, so it is named in the feed words' look, as on Agents — never only a greyed button.
+  if (!st.opusAvailable) v.appendChild(el('div', 'feed-state unset', 'Opus practice is off — no AI key on the server yet.'));
   if (st.status === 'running') {
     v.appendChild(el('div', 'late', 'Running with ' + (BRAIN_LABEL[st.brain] || st.brain) + ' since ' + fmtWhen(st.startedAt) + '…'));
     clearTimeout(LEARN_POLL);
