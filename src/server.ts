@@ -1542,6 +1542,8 @@ export function createArborRequestHandler() {
       if (req.method === 'GET' && url.pathname === '/api/webhooks/texts') {
         return send(200, {
           wired: Boolean(env.twilioSmsWebhookKey),
+          // R21: the key can be set while the link is cut — cut wins, and is its own state.
+          linkCut: !vendorLinked('twilio'),
           texts: webhooks.texts(),
           note: 'Texts and photos sent to the Arbo number. Receive only — Arbo never replies. NOT WIRED is not zero texts.',
         });
@@ -1549,6 +1551,7 @@ export function createArborRequestHandler() {
       if (req.method === 'GET' && url.pathname === '/api/webhooks/calls') {
         return send(200, {
           wired: Boolean(env.elevenlabs.postCallSecret),
+          linkCut: !vendorLinked('elevenlabs'),
           transcripts: webhooks.callTranscripts(),
           note: 'Post-call transcripts pushed by ElevenLabs. NOT WIRED means the webhook secret is absent — that is not zero calls.',
         });
@@ -1663,7 +1666,7 @@ async function wireQuo(intake: QuoIntake, outreach: OutreachEngine | null): Prom
   if (!env.quoApiKey) return null;
   const domain = process.env.RAILWAY_PUBLIC_DOMAIN;
   if (!domain) {
-    intake.setRegistration('failed', 'No public URL (RAILWAY_PUBLIC_DOMAIN) to give Quo — Sona calls cannot reach Arbo.');
+    intake.setRegistration('failed', 'Arbo has no public web address to give Quo — Sona’s calls cannot reach Arbo. This is not zero calls.');
     console.error('[quo] NOT wired — no public URL');
     return null;
   }

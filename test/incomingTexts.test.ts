@@ -74,6 +74,34 @@ describe('Twilio text HTTP surface', () => {
     srv.close();
   });
 
+  it('R21: a set key does not hide the cut — /api/webhooks/texts and /calls say linkCut until the link is live', async () => {
+    const saved = { ...process.env };
+    try {
+      // env is read at import, so the key needs a fresh module graph.
+      vi.resetModules();
+      process.env.TWILIO_SMS_WEBHOOK_KEY = 'tw-key';
+      delete process.env.ARBO_LINK_TWILIO;
+      delete process.env.ARBO_LINK_ELEVENLABS;
+      const { createArborRequestHandler: fresh } = await import('../src/server.js');
+      const srv = createServer(fresh());
+      await new Promise<void>((r) => srv.listen(0, r));
+      const base = `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
+      const t = (await (await fetch(`${base}/api/webhooks/texts`)).json()) as { wired: boolean; linkCut: boolean };
+      expect(t.wired).toBe(true);
+      expect(t.linkCut).toBe(true);
+      const c = (await (await fetch(`${base}/api/webhooks/calls`)).json()) as { linkCut: boolean };
+      expect(c.linkCut).toBe(true);
+      // Read at call time: reconnecting is the one variable, no restart.
+      process.env.ARBO_LINK_TWILIO = 'live';
+      const live = (await (await fetch(`${base}/api/webhooks/texts`)).json()) as { linkCut: boolean };
+      expect(live.linkCut).toBe(false);
+      srv.close();
+    } finally {
+      process.env = { ...saved };
+      vi.resetModules();
+    }
+  });
+
   it('an accepted text is answered with an EMPTY TwiML response — no reply is ever sent', () => {
     const src = readFileSync(new URL('../src/server.ts', import.meta.url), 'utf8');
     expect(src).toContain('<Response></Response>');
