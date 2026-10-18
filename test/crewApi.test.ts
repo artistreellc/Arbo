@@ -42,6 +42,7 @@
 */
 import { describe, it, expect } from 'vitest';
 import { createApi, type DataSource, type CrewJobSource } from '../src/server/api.js';
+import { createSimSource } from '../src/dev/simSource.js';
 
 const job = (over: Partial<CrewJobSource> = {}): CrewJobSource => ({
   jobId: 'j1', scheduledFor: '2026-08-05T13:00:00Z', address: '123 Oak St',
@@ -177,6 +178,38 @@ describe('crew work orders (§6F) — the API cannot leak admin data', () => {
     });
     const body = (await api.crewWorkOrders('2026-08-05')).body as { workOrders: unknown[] };
     expect(body.workOrders).toHaveLength(0);
+  });
+
+  // §1B on the crew phone: "could not read the contract list" and "every job
+  // is held back" are different days. The page reads a FLAG for the first,
+  // never the sentence written for Mike.
+  it('flags an unreadable contract list so the page cannot draw it as an empty day', async () => {
+    const api = createApi({
+      ready: () => true,
+      stopsBetween: async () => [],
+      newLeads: async () => [],
+      crewJobs: async () => [job({ jobId: 'x' })],
+      jobsWithFiledContract: async () => { throw new Error('contract table unreadable'); },
+    });
+    const body = (await api.crewWorkOrders('2026-08-05')).body as { workOrders: unknown[]; contractLookupFailed: boolean };
+    expect(body.contractLookupFailed).toBe(true);
+    expect(body.workOrders).toHaveLength(0);
+  });
+
+  it('a readable list with jobs held back is NOT flagged as unreadable', async () => {
+    const api = createApi(crewSource([job({ jobId: 'nocontract' })], undefined, 'none'));
+    const body = (await api.crewWorkOrders('2026-08-05')).body as { contractLookupFailed: boolean; notWorkOrders: number };
+    expect(body.contractLookupFailed).toBe(false);
+    expect(body.notWorkOrders).toBe(1);
+  });
+
+  it('the practice data has no contract list, so its crew day is flagged unreadable', async () => {
+    const res = await createApi(createSimSource(), { dataLinksSim: true }).crewWorkOrders('');
+    expect(res.status).toBe(200);
+    const body = res.body as { workOrders: unknown[]; contractLookupFailed: boolean; notWorkOrders: number };
+    expect(body.contractLookupFailed).toBe(true);
+    expect(body.workOrders).toEqual([]);
+    expect(body.notWorkOrders).toBeGreaterThan(0);
   });
 });
 

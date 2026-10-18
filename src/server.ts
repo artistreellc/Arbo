@@ -880,7 +880,10 @@ export function createArborRequestHandler() {
         return res.end('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
       }
       if (url.pathname.startsWith('/api/') && !apiAuthorized()) {
-        return send(401, { error: 'unauthorized' });
+        // D89: with no CREW_ACCESS_KEY there is no crew key to ask for. Say so
+        // by name, so the crew page does not send the office looking for one
+        // (and a crew phone does not end up holding Mike's key instead).
+        return send(401, { error: url.pathname.startsWith('/api/crew/') && env.appAccessKey && !env.crewAccessKey ? 'crew_key_not_set' : 'unauthorized' });
       }
       if (req.method === 'GET' && url.pathname === '/api/brief') {
         return send(...unpack(await api.brief(url.searchParams.get('from') ?? '', url.searchParams.get('to') ?? '')));

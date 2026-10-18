@@ -878,6 +878,9 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
           // to be able to tell "there is little on today" from "the app is
           // holding rows back", and Mike has to see the count either way.
           notWorkOrders: split.notWorkOrders.length,
+          // A flag, so the crew page can tell "unreadable" from "held back"
+          // without parsing a sentence written for Mike.
+          contractLookupFailed: lookupFailed,
           boundaryNote: lookupFailed
             ? 'Could not read the contract file, so NOTHING is dispatched as a work order. This is not an empty day — it is an unreadable one.'
             : split.note,

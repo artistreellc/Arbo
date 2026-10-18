@@ -110,6 +110,13 @@ describe('the crew door (§8C.1) — one app, two doors', () => {
   it('renders all server text via textContent (XSS-safe by construction)', () => {
     expect(html).not.toMatch(/innerHTML/);
   });
+
+  it('never says "clear" or "cleared" anywhere on the crew door', () => {
+    // On a crew phone "cleared" reads as permission to cut. Held-back and
+    // unreadable days say "not confirmed", "on hold" or "do not start".
+    expect(html).not.toMatch(/\bclear(ed)?\b/i);
+    expect(loadCrewHtml()).not.toMatch(/\bclear(ed)?\b/i);
+  });
 });
 
 describe('crew near-miss filing (§6V) — blameless and always reachable', () => {
@@ -127,7 +134,11 @@ describe('crew near-miss filing (§6V) — blameless and always reachable', () =
   });
 
   it('promises no blame in the copy, and asks for no name', () => {
-    expect(html).toContain('No names, no blame, no write-up');
+    // Deliberately updated (QA, 2026-10-18): the old line promised "No names",
+    // but every report is filed under the crew code. The copy now promises
+    // only what is true; whether near misses go anonymous is Mike's call.
+    expect(html).toContain('Nobody gets blamed or written up');
+    expect(html).not.toContain('No names');
     expect(html).not.toMatch(/who was at fault|whose fault|who caused/i);
   });
 
