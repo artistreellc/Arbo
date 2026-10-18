@@ -182,9 +182,25 @@ describe('the harness', () => {
     const brain: Brain = async () => 'That usually runs about $850.';
     const report = await runSimulation(brain, few, { brainName: 'bad', now: () => new Date('2026-09-28T12:00:00Z') });
     expect(report).toMatchObject({ brain: 'bad', total: 3, passed: 0, failed: 3, unhandled: 0, passRate: 0 });
-    expect(report.bySection.front_desk).toEqual({ total: 2, passed: 0, failed: 2, unhandled: 0 });
+    expect(report.bySection.front_desk).toEqual({ total: 2, passed: 0, failed: 2, unhandled: 0, broke: 2, missed: 0 });
     expect(report.byRule.never_price!.violations).toBe(3);
     expect(report.failures).toHaveLength(3);
+  });
+
+  it('a scenario that only missed a behaviour counts as missed, never as a rule break', async () => {
+    const onlyMissed = probe([], { id: 'probe-missed', mustDo: ['empathize'] });
+    const broke = probe([], { id: 'probe-broke', mustDo: ['empathize'] });
+    const cannot = probe([], { id: 'probe-unhandled', mustDo: ['empathize'] });
+    const answers: Record<string, string> = {
+      'probe-missed': 'Thanks for calling.',
+      'probe-broke': 'That usually runs about $850.',
+      'probe-unhandled': `${UNHANDLED} no handler`,
+    };
+    const brain: Brain = async (sc) => answers[sc.id]!;
+    const report = await runSimulation(brain, [onlyMissed, broke, cannot]);
+    expect(report.bySection.front_desk).toEqual({ total: 3, passed: 0, failed: 3, unhandled: 1, broke: 1, missed: 1 });
+    // Every failure is exactly one of the three.
+    for (const t of Object.values(report.bySection)) expect(t.broke + t.missed + t.unhandled).toBe(t.failed);
   });
 
   it('names a brain that throws instead of swallowing it', async () => {

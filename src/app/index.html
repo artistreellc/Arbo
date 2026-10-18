@@ -485,12 +485,12 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 #view-perf .hud{grid-template-columns:repeat(2,1fr)}
 #view-measure .tile .badge{display:inline-block;margin-top:8px}
 .learnbar{display:flex;height:10px;border-radius:99px;background:var(--paper-2);overflow:hidden;margin:10px 0 6px}
-.learnbar i{display:block;height:100%}.learnbar .p{background:var(--ok)}.learnbar .b{background:var(--emergency)}.learnbar .u{background:var(--ink-4);opacity:.35}
+.learnbar i{display:block;height:100%}.learnbar .p{background:var(--ok)}.learnbar .b{background:var(--emergency)}.learnbar .m{background:var(--warning)}.learnbar .u{background:var(--ink-4);opacity:.35}
 .learn-row .who{font-size:17px}
 .agent-top{display:flex;gap:12px;align-items:flex-start;margin-bottom:10px}
 .agent-ic{display:inline-grid;place-items:center;width:44px;height:44px;border-radius:14px;background:var(--f-100);color:var(--forest);flex:none}
 .agent-say{margin-top:10px;font-size:15px;color:var(--ink-1)}
-.agent-inputs{display:grid;grid-template-columns:auto 1fr;gap:6px 8px;align-items:baseline;margin:10px 0;font-size:13.5px;color:var(--ink-2)}
+.agent-inputs{display:grid;grid-template-columns:minmax(124px,auto) 1fr;gap:6px 8px;align-items:baseline;margin:10px 0;font-size:13.5px;color:var(--ink-2)}
 .agent-in{display:contents}
 .agent-in .badge{justify-self:start}
 .agent-law{margin-top:10px}
@@ -499,6 +499,10 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 .agent-law summary::after{content:'';flex:none;width:8px;height:8px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);margin-right:4px;transition:transform .2s}
 .agent-law[open] summary::after{transform:rotate(-135deg)}
 .agent-law.card{padding-top:6px;padding-bottom:6px}
+.agent-law.card summary .who{flex:1;font-size:17px}.agent-law.card summary .n{flex:none;font-size:13px;font-weight:600;color:var(--ink-3)}
+.lesson-kind{display:flex;justify-content:space-between;gap:10px}.lesson-kind .n{white-space:nowrap;font-weight:600}
+.actbtn.alt{background:var(--card);color:var(--ink-1);border:1px solid var(--border);box-shadow:none}
+#view-agents .wide-btn + .feed-state{margin-top:14px}
 .bigcheck{width:26px;height:26px;flex:none;accent-color:var(--forest)}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
@@ -4172,8 +4176,9 @@ function factCard(f, isStale) {
 // Each desk reads, finds and PROPOSES. None sends, spends, edits a calendar
 // or changes its own rules. An input it could not read is named with why.
 const AGENT_ICONS = { 'front-desk': 'i-calls', dispatcher: 'i-route', 'chief-of-staff': 'i-today', 'permit-desk': 'i-permit', arborist: 'i-tree', 'crew-chief': 'i-shield', 'yard-boss': 'i-flag', analyst: 'i-numbers' };
-const INPUT_STATE = { read: ['READ', 'b-est'], cut: ['LINK CUT', 'b-pending'], notrun: ['NOT RUN', 'b-pending'], unreadable: ['UNREADABLE', 'b-flag'] };
-const REPORT_STATUS = { ok: ['OK', 'b-est'], degraded: ['MISSING INPUTS', 'b-warm'], blocked: ['BLOCKED', 'b-emg'] };
+// [chip, tone] in the shared feed words: a gap on purpose is grey info; a read that failed is amber.
+const INPUT_STATE = { read: ['READ', 'good'], cut: [FEED_TAG.cut.toUpperCase(), 'info'], sim: [FEED_TAG.sim.toUpperCase(), 'info'], notrun: ['NOT RUN', 'info'], notbuilt: ['NOT BUILT', 'info'], unreadable: [FEED_TAG.unread.toUpperCase(), 'watch'] };
+const REPORT_STATUS = { ok: ['OK', 'good'], degraded: ['MISSING INPUTS', 'watch'], blocked: ['BLOCKED', 'stop'] };
 // Brief numbering (#2, §4.8, R7…) stays in the data and off the screen.
 const noRefs = (s) => s.replace(/^#\d+\s*/, '').replace(/\s*\((?:R\d+|§)[^)]*\)/g, '');
 let AGENT_RUN = null;
@@ -4192,16 +4197,21 @@ async function renderAgents() {
   try { roster = await api('/api/agents/sections'); } catch (e) {
     if (gen !== AGENT_GEN) return;
     if (e.code === 401) return showKeywall();
-    v.appendChild(state('Agent roster unavailable', 'Arbo could not read its agent roster right now.'));
+    v.appendChild(feedState(e, 'The agent roster', 'an empty roster'));
     return;
   }
   if (gen !== AGENT_GEN) return;
   const runBtn = el('button', 'actbtn wide-btn', AGENT_RUN ? 'Run all eight again' : 'Run all eight now');
   v.appendChild(runBtn);
-  // A result kept from an earlier visit says when it is from.
-  if (AGENT_RUN && AGENT_RUN.ranAt) v.appendChild(el('div', 'storm-muted', 'Last run ' + fmtTime(AGENT_RUN.ranAt) + ' — these results are as of then, not live.' + (Date.now() - Date.parse(AGENT_RUN.ranAt) > 15 * 60 * 1000 ? ' Over 15 minutes old — run again for a current read.' : '')));
-  v.appendChild(el('div', 'storm-muted', 'Run only looks — it never changes anything. Booking, collections, safety, permits and the morning briefing are not started from here; they run on Arbo\u2019s hourly check once their data is connected. Weather alerts are read straight from the weather service.'));
-  v.appendChild(el('div', 'storm-muted', roster.brain === 'online' ? 'Brain: Opus online — each desk gets a plain-English read.' : 'AI summaries are off (set ANTHROPIC_API_KEY on the server) — each desk shows a plain count instead.'));
+  // A result kept from an earlier visit says when it is from; past 15 minutes that is a warning.
+  if (AGENT_RUN && AGENT_RUN.ranAt) {
+    const stale = Date.now() - Date.parse(AGENT_RUN.ranAt) > 15 * 60 * 1000;
+    v.appendChild(el('div', stale ? 'feed-state unset' : 'storm-muted', 'Ran ' + fmtWhen(AGENT_RUN.ranAt) + (stale ? ' — over 15 minutes old. Run again for a current read.' : '.')));
+  }
+  v.appendChild(el('div', 'storm-muted', 'Run only looks — it never changes anything. Booking, collections, safety, permits and the morning briefing run on the hourly check once their data is connected.'));
+  v.appendChild(roster.brain === 'online'
+    ? el('div', 'storm-muted', 'Brain: Opus online — each desk gets a plain-English read.')
+    : el('div', 'feed-state unset', 'AI summaries are off — the server has no AI key yet. Each desk shows a plain count.'));
   runBtn.addEventListener('click', async () => {
     runBtn.disabled = true; runBtn.textContent = 'Running the eight desks…';
     try { AGENT_RUN = await api('/api/agents/sections/run', { method: 'POST' }); }
@@ -4214,6 +4224,8 @@ async function renderAgents() {
   if (AGENT_RUN && AGENT_RUN.reports) {
     for (const r of AGENT_RUN.reports) reports[r.agentId] = r;
     for (const s of AGENT_RUN.summaries || []) summaries[s.agentId] = s;
+    // The cut is said once here, not on every row (the switches live in Settings).
+    if (AGENT_RUN.reports.some((r) => r.inputs.some((i) => i.state === 'cut'))) v.appendChild(el('div', 'feed-state cut', 'Data links are cut on purpose until each one is checked — rows marked CUT were not read.'));
   }
   for (const a of roster.agents) {
     const c = el('div', 'card agent');
@@ -4222,28 +4234,35 @@ async function renderAgents() {
     top.appendChild(ic);
     const t = el('div');
     t.appendChild(el('div', 'who', a.name));
-    t.appendChild(el('div', 'loop-kind', a.section + ' · ' + a.roles.map(noRefs).join(' · ')));
+    // One unbreakable span per part, and the dot travels with the part after
+    // it, so a wrapped line never ends on '·'.
+    const sub = el('div', 'loop-kind');
+    [a.section].concat(a.roles.map(noRefs)).forEach((part, n) => {
+      if (n) sub.appendChild(document.createTextNode(' ·\u00a0'));
+      const p = el('span', '', part); p.style.whiteSpace = 'nowrap'; sub.appendChild(p);
+    });
+    t.appendChild(sub);
     top.appendChild(t);
     c.appendChild(top);
     const r = reports[a.id];
     if (r) {
       const b = el('div', 'badges');
-      const st = REPORT_STATUS[r.status] || [r.status, 'b-pending'];
-      b.appendChild(badge(st[0], st[1]));
+      const st = REPORT_STATUS[r.status] || [r.status, 'watch'];
+      b.appendChild(chip(st[0], st[1]));
       c.appendChild(b);
       const s = summaries[a.id];
-      if (s) c.appendChild(el('div', 'scope agent-say', s.text));
+      if (s) c.appendChild(el('div', 'scope agent-say', noRefs(s.text)));
       const ins = el('div', 'agent-inputs');
       for (const i of r.inputs) {
         const row = el('div', 'agent-in');
-        const is = INPUT_STATE[i.state] || [i.state, 'b-pending'];
-        row.appendChild(badge(is[0], is[1]));
+        const is = INPUT_STATE[i.state] || [i.state, 'watch'];
+        row.appendChild(chip(is[0], is[1]));
         row.appendChild(el('span', '', i.name + (i.state === 'read' ? '' : ' — ' + i.detail)));
         ins.appendChild(row);
       }
       c.appendChild(ins);
-      for (const f of r.findings) c.appendChild(el('div', f.severity === 'act' ? 'storm' : f.severity === 'watch' ? 'late' : 'storm-muted', f.text));
-      for (const p of r.proposals) c.appendChild(el('div', 'due-note', 'Proposal for you: ' + p.text));
+      for (const f of r.findings) c.appendChild(el('div', f.severity === 'act' ? 'storm' : f.severity === 'watch' ? 'late' : 'storm-muted', noRefs(f.text)));
+      for (const p of r.proposals) c.appendChild(el('div', 'due-note', 'Proposal for you: ' + noRefs(p.text)));
       if (r.error) c.appendChild(el('div', 'storm', 'Blocked: ' + r.error));
     } else {
       c.appendChild(el('div', 'scope', 'Reads: ' + a.reads.join(' · ')));
@@ -4402,17 +4421,17 @@ function measureResult(r) {
 // or rejects, and an approved lesson is an instruction for the next revision.
 const SECTION_NAMES = { front_desk: 'Front Desk', dispatcher: 'Dispatcher', chief_of_staff: 'Chief of Staff', permit_desk: 'Permit Desk', arborist: 'Arborist', crew_chief: 'Crew Chief', yard_boss: 'Yard Boss', analyst: 'Analyst' };
 const BRAIN_LABEL = { scripted: 'rule check', opus: 'Opus' };
-// A lesson's key ('behaviour:stay_clear', 'must_not:argue', a rule id) in
-// words. The stored keys stay as they are — lesson ids depend on them.
+// A lesson's key ('behaviour:stay_clear', 'must_not:argue', a rule id) as its
+// KIND only — the card text below says the lesson in words, so the raw key
+// never reaches the eyebrow. The stored keys stay — lesson ids depend on them.
 function lessonLabel(k) {
   const i = k.indexOf(':');
   const kind = i < 0 ? '' : k.slice(0, i);
   const rest = i < 0 ? k : k.slice(i + 1);
-  const words = rest.replace(/_/g, ' ');
-  if (kind === 'unhandled') return (SECTION_NAMES[rest] || words) + ' · can’t answer yet';
-  if (kind === 'behaviour') return 'Missed: ' + words;
-  if (kind === 'must_not') return 'Did what it shouldn’t: ' + words;
-  return 'Broke a rule: ' + words;
+  if (kind === 'unhandled') return (SECTION_NAMES[rest] || rest.replace(/_/g, ' ')) + ' · can’t answer yet';
+  if (kind === 'behaviour') return 'Missed something';
+  if (kind === 'must_not') return 'Did what it shouldn’t';
+  return 'Broke a rule';
 }
 // Rule breaks before missed behaviours, then most scenarios — the harness's
 // order, applied here too so a book saved before it still reads that way.
@@ -4433,25 +4452,26 @@ async function renderLearn() {
   try { [cat, st] = await Promise.all([api('/api/sim/catalog'), api('/api/sim/state')]); } catch (e) {
     if (gen !== LEARN_GEN) return;
     if (e.code === 401) return showKeywall();
-    v.appendChild(state('Training ground unavailable', 'Arbo could not read its scenario catalog right now.'));
+    v.appendChild(feedState(e, 'The training ground', 'an empty catalog'));
     return;
   }
   if (gen !== LEARN_GEN) return;
   const r = st.report;
   const hud = el('div', 'hud');
-  const tile = (n, label, cls) => { const t = el('div', 'tile' + (cls ? ' ' + cls : '')); t.appendChild(el('b', '', String(n))); t.appendChild(el('span', '', label)); return t; };
+  const tile = (n, label, cls, small) => { const t = el('div', 'tile' + (cls ? ' ' + cls : '')); t.appendChild(el('b', '', String(n))); t.appendChild(el('span', '', label)); if (small) t.appendChild(small); return t; };
   hud.appendChild(tile(cat.total, 'scenarios', 'accent'));
   const ruleIds = Object.keys(cat.rules);
   // Checked = the run actually judged it (handled without a break, or broke it) — not merely listed.
   const exercised = r ? ruleIds.filter((k) => r.byRule[k] && r.byRule[k].passed + r.byRule[k].violations > 0).length : 0;
   hud.appendChild(r ? tile(exercised + '/' + ruleIds.length, 'rules checked') : tile(ruleIds.length, 'rules on file'));
-  hud.appendChild(r ? tile(Math.round(r.passRate * 100) + '%', 'passed · ' + (BRAIN_LABEL[st.brain] || 'last run') + (r.unhandled ? ' · ' + r.unhandled + ' unanswered' : ''), r.passRate >= 0.9 ? 'ok-t' : 'warn') : tile('–', 'no run yet'));
+  // The label stays one word; what it could not answer is the tile's small line, and the brain is named in the line below.
+  hud.appendChild(r ? tile(Math.round(r.passRate * 100) + '%', 'passed', r.passRate >= 0.9 ? 'ok-t' : 'warn', r.unhandled > 0 ? el('small', '', r.unhandled + ' can’t answer yet') : null) : tile('–', 'no run yet'));
   v.appendChild(hud);
-  if (r) v.appendChild(el('div', 'storm-muted', 'Last ' + (st.brain === 'opus' ? 'Opus run' : 'rule check') + ': ' + fmtTime(r.ranAt) + '. Clears when the app is redeployed.'));
+  if (r) v.appendChild(el('div', 'storm-muted', 'Last ' + (st.brain === 'opus' ? 'Opus run' : 'rule check') + ': ' + fmtWhen(r.ranAt) + '. Clears when the app is redeployed.'));
 
   const runs = el('div', 'actions');
   const b1 = el('button', 'actbtn', 'Run the rule check');
-  const b2 = el('button', 'minibtn', st.opusAvailable ? 'Run with Opus (' + cat.total + ' model calls)' : 'Opus practice is off — no AI key on the server');
+  const b2 = el('button', 'actbtn alt', st.opusAvailable ? 'Run with Opus (' + cat.total + ' model calls)' : 'Opus practice is off — no AI key on the server');
   b2.disabled = !st.opusAvailable || st.status === 'running';
   b1.disabled = st.status === 'running';
   const go = async (brain) => {
@@ -4465,11 +4485,11 @@ async function renderLearn() {
   v.appendChild(runs);
   v.appendChild(el('div', 'storm-muted', 'Rule check: tests the fixed safety rules in a few seconds. Opus: answers every scenario the way it would on a real call.'));
   if (st.status === 'running') {
-    v.appendChild(el('div', 'late', 'Running with ' + (BRAIN_LABEL[st.brain] || st.brain) + ' since ' + fmtTime(st.startedAt) + '…'));
+    v.appendChild(el('div', 'late', 'Running with ' + (BRAIN_LABEL[st.brain] || st.brain) + ' since ' + fmtWhen(st.startedAt) + '…'));
     clearTimeout(LEARN_POLL);
     LEARN_POLL = setTimeout(() => { if ($('view-learn').classList.contains('active')) renderLearn(); }, 5000);
   }
-  if (st.status === 'failed') v.appendChild(el('div', 'storm', 'The last run failed (' + st.error + '). No result is shown rather than a partial one.'));
+  if (st.status === 'failed') v.appendChild(el('div', 'storm', 'The last run failed before it finished. No result is shown rather than a partial one.'));
 
   if (r) {
     v.appendChild(el('div', 'panel-title', 'By desk'));
@@ -4477,13 +4497,14 @@ async function renderLearn() {
       const row = el('div', 'card learn-row');
       row.appendChild(el('div', 'who', SECTION_NAMES[sec] || sec));
       const bar = el('div', 'learnbar');
-      // Segments run in the caption's order: passed, broke a rule, can't answer.
+      // Segments run in the caption's order: passed, broke a rule, missed something, can’t answer.
       const pass = el('i', 'p'); pass.style.width = (s.total ? (s.passed / s.total) * 100 : 0) + '%';
-      const brk = el('i', 'b'); brk.style.width = (s.total ? ((s.failed - s.unhandled) / s.total) * 100 : 0) + '%';
+      const brk = el('i', 'b'); brk.style.width = (s.total ? (s.broke / s.total) * 100 : 0) + '%';
+      const mis = el('i', 'm'); mis.style.width = (s.total ? (s.missed / s.total) * 100 : 0) + '%';
       const un = el('i', 'u'); un.style.width = (s.total ? (s.unhandled / s.total) * 100 : 0) + '%';
-      bar.appendChild(pass); bar.appendChild(brk); bar.appendChild(un);
+      bar.appendChild(pass); bar.appendChild(brk); bar.appendChild(mis); bar.appendChild(un);
       row.appendChild(bar);
-      row.appendChild(el('div', 'factmeta', s.passed + ' passed · ' + (s.failed - s.unhandled) + ' broke a rule · ' + s.unhandled + ' can’t answer yet'));
+      row.appendChild(el('div', 'factmeta', s.passed + ' passed · ' + s.broke + ' broke a rule · ' + s.missed + ' missed something · ' + s.unhandled + ' can’t answer yet'));
       v.appendChild(row);
     }
   }
@@ -4494,26 +4515,38 @@ async function renderLearn() {
     .sort((a, b) => lessonTier(a) - lessonTier(b) || b.scenarioIds.length - a.scenarioIds.length);
   v.appendChild(el('div', 'panel-title', 'Lessons waiting for you'));
   if (st.lessons.where === 'memory') v.appendChild(el('div', 'storm-muted', 'No storage disk — lessons are held in memory and clear on the next deploy.'));
-  if (!lessons.length) v.appendChild(el('div', 'storm-muted', r ? 'Nothing waiting — every lesson from the last run has your answer.' + (r.unhandled ? ' The ' + r.unhandled + ' it couldn’t answer are counted under By desk.' : '') : 'Run a check to see what the brain gets wrong.'));
+  if (!lessons.length) v.appendChild(el('div', 'storm-muted', r ? 'Nothing waiting — every lesson from the last run has your answer.' + (r.unhandled ? ' The ' + plural(r.unhandled, 'scenario') + ' it couldn’t answer ' + (r.unhandled === 1 ? 'is' : 'are') + ' counted under By desk.' : '') : 'Run a check to see what the brain gets wrong.'));
   for (const l of lessons.slice(0, 25)) {
     const c = el('div', 'card loop-card');
-    c.appendChild(el('div', 'loop-kind', lessonLabel(l.rule) + ' · ' + l.scenarioIds.length + ' scenario' + (l.scenarioIds.length === 1 ? '' : 's')));
+    // The kind and the count sit apart on one row, so the count never wraps alone.
+    const k = el('div', 'loop-kind lesson-kind');
+    k.appendChild(el('span', '', lessonLabel(l.rule)));
+    k.appendChild(el('span', 'n', plural(l.scenarioIds.length, 'scenario')));
+    c.appendChild(k);
     c.appendChild(el('div', 'scope', l.proposedLesson));
-    if (l.evidence) c.appendChild(el('div', 'internal-note', 'What the check found: ' + l.evidence));
+    // Words the brain said are quoted, so they never read as the app's own statement.
+    if (l.evidence) c.appendChild(el('div', 'internal-note', l.evidenceSaid ? 'It said: “' + l.evidence + '”' : 'What the check found: ' + l.evidence));
+    const titles = l.scenarioIds.map((id) => (cat.scenarios.find((s) => s.id === id) || {}).title).filter(Boolean);
+    if (titles.length) {
+      const dd = el('details', 'agent-law');
+      dd.appendChild(el('summary', '', 'Which situations'));
+      for (const t of titles) dd.appendChild(el('div', 'factmeta', t));
+      c.appendChild(dd);
+    }
     const act = el('div', 'actions');
     for (const [d, label, cls] of [['approved', 'Approve', 'ok'], ['rejected', 'Reject', 'bad']]) {
       const b = el('button', 'minibtn ' + cls, label);
       b.addEventListener('click', async () => {
         b.disabled = true;
         try { await api('/api/sim/lessons/decide', { method: 'POST', body: { id: l.id, decision: d } }); renderLearn(); }
-        catch (e) { b.disabled = false; b.textContent = 'Not saved — try again'; }
+        catch (e) { b.disabled = false; showSaveFail(c, e); }
       });
       act.appendChild(b);
     }
     c.appendChild(act);
     v.appendChild(c);
   }
-  if (lessons.length > 25) v.appendChild(el('div', 'storm-muted', 'Showing 25 of ' + lessons.length + ' — answer these and the other ' + (lessons.length - 25) + ' move up.'));
+  if (lessons.length > 25) v.appendChild(el('div', 'storm-muted', 'Showing 25 of ' + lessons.length + ' — answer these and the other ' + (lessons.length - 25) + (lessons.length === 26 ? ' moves up.' : ' move up.')));
   const approved = (st.lessons.lessons || []).filter(l => l.status === 'approved' && !l.rule.startsWith('unhandled:'));
   if (approved.length) {
     v.appendChild(el('div', 'panel-title', 'Approved — for the next prompt revision'));
@@ -4525,7 +4558,10 @@ async function renderLearn() {
   for (const s of cat.scenarios) (bySec[s.section] = bySec[s.section] || []).push(s);
   for (const [sec, list] of Object.entries(bySec)) {
     const d = el('details', 'agent-law card');
-    d.appendChild(el('summary', '', (SECTION_NAMES[sec] || sec) + ' — ' + list.length));
+    const sum = el('summary');
+    sum.appendChild(el('span', 'who', SECTION_NAMES[sec] || sec));
+    sum.appendChild(el('span', 'n', plural(list.length, 'problem')));
+    d.appendChild(sum);
     for (const s of list) d.appendChild(el('div', 'factmeta', '• ' + s.title + ' (' + s.persona + ', level ' + s.difficulty + ')'));
     v.appendChild(d);
   }
