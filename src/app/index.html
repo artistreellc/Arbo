@@ -323,6 +323,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 .feed-state.cut::before,.feed-state.sim::before{background:var(--ink-4)}
 .feed-state.unread::before{background:var(--emergency)}
 .loc-strip{display:flex;align-items:center;gap:12px;margin-bottom:12px;font-size:14px;color:var(--ink-2)}
+.loc-strip .badge{flex:none;min-width:92px;text-align:center;white-space:nowrap}
 .loc-toggle{min-height:44px;min-width:64px;border:1px solid var(--border);border-radius:var(--r-pill);background:var(--card);color:var(--ink-3);
   font-size:12.5px;font-weight:700;padding:0 16px;letter-spacing:.06em;display:inline-grid;place-items:center}
 .loc-toggle.on{background:var(--forest);border-color:var(--forest);color:#fff}
@@ -3143,77 +3144,136 @@ $('keygo').addEventListener('click', async () => {
 $('keyinput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('keygo').click(); });
 
 // ---------- Settings (cycle 34): every lead channel gets its own switch ----------
+let settingsGen = 0;
 async function renderSettings() {
+  const gen = ++settingsGen; // a newer render owns the screen; a stale one stops appending
   const v = $('view-settings');
   v.replaceChildren();
+  // Appearance reads no feed, so it is drawn even when the switches cannot load.
+  const appearance = () => {
+    v.appendChild(el('div', 'panel-title', 'Appearance'));
+    const seg = el('div', 'chips');
+    const cur = themePref();
+    for (const [val, label] of [['auto', 'Auto'], ['light', 'Day'], ['dark', 'Night']]) {
+      const b = el('button', 'loc-toggle' + (cur === val ? ' on' : ''), label);
+      // Re-marked in place: a full redraw would empty the page and jump it to the top.
+      b.addEventListener('click', () => { setTheme(val); for (const x of seg.children) x.classList.toggle('on', x === b); });
+      seg.appendChild(b);
+    }
+    v.appendChild(seg);
+  };
   v.appendChild(el('div', 'panel-title', 'Lead channel switches'));
   let s;
   try { s = await api('/api/settings/channels'); }
   catch (e) {
+    if (gen !== settingsGen) return;
     if (e.code === 401) return showKeywall();
     // A dead settings feed is NAMED — and nothing was changed (§1B).
     v.appendChild(state('Settings unavailable', 'Could not load the channel switches. Nothing was changed.'));
+    appearance();
     return;
   }
+  if (gen !== settingsGen) return;
+  // R12: these switches steer the inbox check, so its own state comes FIRST.
+  // An ON switch over a check that cannot run must not read as leads coming in.
+  try {
+    const ix = await api('/api/inbox/intents');
+    if (gen !== settingsGen) return;
+    const r = ix.pipeline === 'no_gmail' ? (ix.gmailReason || '') : '';
+    if (r === 'no Gmail credentials configured') {
+      v.appendChild(el('div', 'feed-state unset', 'Inbox check isn\u2019t running \u2014 Gmail isn\u2019t connected. These switches take effect once it is.'));
+    } else if (r && r !== 'inbox watch has not completed a pass') { // a first pass still under way is not a dead feed
+      v.appendChild(el('div', 'feed-state unread', 'Inbox check couldn\u2019t read Gmail on its last pass. These switches take effect once it can.'));
+    }
+  } catch (e) {
+    if (gen !== settingsGen) return;
+    if (e.code !== 401) v.appendChild(feedLine(e, 'Inbox check'));
+  }
   // The honesty line: these are runtime switches until the data links carry a durable home.
-  v.appendChild(el('div', 'storm-muted', 'Switches apply to the inbox check immediately. They reset to the coded defaults on a redeploy \u2014 a durable home comes with the data links.'));
+  v.appendChild(el('div', 'storm-muted', 'Switches apply to the inbox check right away. They go back to the standard set whenever Arbo restarts or is updated.'));
   for (const c of s.channels) {
+    const cell = el('div'); // the switch row, plus its one error line if a save fails
     const row = el('div', 'loc-strip');
     const btn = el('button', 'loc-toggle' + (c.on ? ' on' : ''), c.on ? 'ON' : 'OFF');
     btn.onclick = async () => {
       btn.disabled = true;
-      try { await api('/api/settings/channels', { method: 'POST', body: { id: c.id, on: !c.on } }); } catch (e) {}
+      try { await api('/api/settings/channels', { method: 'POST', body: { id: c.id, on: !c.on } }); }
+      catch (e) { btn.disabled = false; showSaveFail(cell, e); return; } // refused: the switch stays as it was, and says so
       renderSettings();
     };
     row.appendChild(btn);
     row.appendChild(el('span', '', c.label));
-    v.appendChild(row);
+    cell.appendChild(row);
+    v.appendChild(cell);
   }
 
   // R15: today's work ZIP — powers the "easy to fit you in this week" offer.
-  v.appendChild(el('div', 'panel-title', "Today's work ZIP"));
+  v.appendChild(el('div', 'panel-title', 'Today\u2019s work ZIP'));
   let rz = null;
   try { rz = await api('/api/settings/route'); } catch (e) {}
+  if (gen !== settingsGen) return;
   if (!rz) {
     v.appendChild(el('div', 'storm-muted', 'Work-ZIP setting unavailable right now. Nothing was changed.'));
   } else {
-    v.appendChild(el('div', 'storm-muted', 'Where Mike is working today \u2014 callers in or near this ZIP get offered an easy weekday estimate. In-memory: set it each morning; resets on redeploy.'));
+    v.appendChild(el('div', 'storm-muted', 'Where you\u2019re working today \u2014 callers in or near this ZIP get offered an easy weekday estimate. Set it each morning; it resets whenever Arbo restarts or is updated.'));
     const zrow = el('div', 'loc-strip');
     const zin = document.createElement('input');
-    zin.id = 'workzip-input'; zin.inputMode = 'numeric'; zin.maxLength = 5; zin.placeholder = '23452';
+    zin.id = 'workzip-input'; zin.inputMode = 'numeric'; zin.maxLength = 5; zin.placeholder = '5-digit ZIP';
+    zin.setAttribute('aria-label', 'Today\u2019s work ZIP');
     zin.value = rz.workZip || '';
-    zin.style.cssText = 'min-height:48px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:inherit;padding:0 12px;width:110px;font-size:16px';
-    const zbtn = el('button', 'loc-toggle on', 'Save');
+    zin.className = 'input'; zin.style.cssText = 'width:120px;flex:none';
+    const zbtn = el('button', 'actbtn', 'Save');
+    zbtn.style.marginTop = '0'; // level with the 52px box beside it
+    const zmsg = el('div', 'errline');
+    zmsg.hidden = true; // no empty gap under the ZIP until there is something to say
     zbtn.onclick = async () => {
+      const z = zin.value.trim();
+      if (z && !/^23\d{3}$/.test(z)) { zmsg.hidden = false; zmsg.textContent = 'Not saved \u2014 use a 5-digit Hampton Roads ZIP starting with 23.'; return; }
       zbtn.disabled = true;
-      try { await api('/api/settings/route', { method: 'POST', body: { workZip: zin.value.trim() || null } }); } catch (e) {}
+      try { await api('/api/settings/route', { method: 'POST', body: { workZip: z || null } }); }
+      catch (e) { // refused: what was typed stays in the box, and the line says nothing was saved
+        zbtn.disabled = false; zmsg.hidden = false;
+        zmsg.textContent = e.message === 'bad_zip' ? 'Not saved \u2014 that ZIP was refused. Your entry is still in the box.' : saveFailText(e);
+        return;
+      }
       renderSettings();
     };
     zrow.appendChild(zin); zrow.appendChild(zbtn);
     v.appendChild(zrow);
+    // §1B: unset is said in words. A fresh office-phone ping is used ahead of the typed ZIP (routeAnchors).
+    const liveZip = rz.location && rz.location.zip;
+    v.appendChild(el('div', 'storm-muted', rz.workZip ? 'Set for today: ' + rz.workZip
+      : liveZip ? 'Not set today \u2014 the office phone\u2019s live ZIP (' + liveZip + ') is used while its ping is fresh.'
+      : 'Not set today \u2014 no caller gets the nearby-estimate offer.'));
+    v.appendChild(zmsg);
 
     // R15/R16: the live office-phone location — one honest toggle.
     v.appendChild(el('div', 'panel-title', 'Live location (office phone)'));
     const loc = rz.location || { enabled: false, zip: null, ageMinutes: null };
+    const lcell = el('div'); // the toggle row, plus its one error line if a save fails
     const lrow = el('div', 'loc-strip');
     const lbtn = el('button', 'loc-toggle' + (loc.enabled ? ' on' : ''), loc.enabled ? 'ON' : 'OFF');
     lbtn.onclick = async () => {
       lbtn.disabled = true;
-      try { await api('/api/settings/location', { method: 'POST', body: { on: !loc.enabled } }); } catch (e) {}
+      try { await api('/api/settings/location', { method: 'POST', body: { on: !loc.enabled } }); }
+      catch (e) { lbtn.disabled = false; showSaveFail(lcell, e); return; } // refused: the toggle stays as it was, and says so
       renderSettings();
     };
     lrow.appendChild(lbtn);
     lrow.appendChild(el('span', '', loc.enabled
-      ? (loc.zip ? 'Live \u2014 last ping ' + loc.ageMinutes + ' min ago' : 'ON \u2014 no fresh ping yet (phone posts 8am\u20138pm, Mon\u2013Sat)')
+      ? (loc.zip ? 'Live \u2014 last ping ' + loc.ageMinutes + ' min ago' : 'No fresh ping (the phone reports 8am\u20138pm, Mon\u2013Sat)')
       : 'OFF \u2014 no location is received or kept'));
-    v.appendChild(lrow);
+    lcell.appendChild(lrow);
+    v.appendChild(lcell);
   }
 
   // Reconnect Google (Mike, 2026-09-28). Arbo swaps the code for the token
   // ON ITS SERVER and keeps it there \u2014 this card never shows a token.
-  v.appendChild(el('div', 'panel-title', 'Google (Gmail, calendar holds, Drive lead logs)'));
+  v.appendChild(el('div', 'panel-title', 'Google'));
+  v.appendChild(el('div', 'storm-muted', 'Gmail, calendar holds and Drive lead logs.'));
   try {
     const gs = await api('/api/google/connect');
+    if (gen !== settingsGen) return;
     const t = gs.token || {};
     v.appendChild(el('div', t.stored ? 'storm-muted' : 'storm', t.stored
       ? (t.where === 'disk' ? 'Connected \u2014 saved on Arbo\u2019s storage disk ' + (t.savedAt ? fmtTime(t.savedAt) : '') + '. Survives redeploys.' : 'Connected \u2014 but held in memory only (no storage disk). It will need reconnecting after the next restart.')
@@ -3223,11 +3283,11 @@ async function renderSettings() {
     open.href = gs.consentUrl; open.target = '_blank'; open.rel = 'noopener';
     v.appendChild(open);
     const box = el('textarea');
-    box.style.cssText = 'width:100%;box-sizing:border-box;margin:10px 0;padding:10px;border-radius:10px;border:1px solid var(--hairline);font:inherit;background:var(--surface);color:inherit';
+    box.className = 'input'; box.style.cssText = 'margin:10px 0;resize:vertical';
     box.placeholder = 'Paste the http://localhost/?\u2026code=\u2026 address here';
     box.rows = 3;
     v.appendChild(box);
-    const go = el('button', 'loc-toggle', 'Connect');
+    const go = el('button', 'actbtn', 'Connect');
     const out = el('div', 'storm-muted');
     go.onclick = async () => {
       go.disabled = true; out.textContent = 'Connecting\u2026';
@@ -3235,59 +3295,98 @@ async function renderSettings() {
         const r = await api('/api/google/connect', { method: 'POST', body: { pasted: box.value } });
         box.value = '';
         out.textContent = r.where === 'disk' ? 'Connected. Gmail, calendar holds and Drive read are back \u2014 saved on the storage disk.' : 'Connected for now \u2014 but there is no storage disk, so it lasts only until the next restart.';
-      } catch (e) { out.textContent = 'Not connected \u2014 ' + (e.message === 'code_expired_or_used' ? 'that code expired or was already used. Tap Open Google again and paste the new address right away.' : e.message === 'no_code' ? 'that paste has no Google code in it. Copy the whole address.' : e.message); }
+      } catch (e) { out.textContent = 'Not connected \u2014 ' + (e.message === 'code_expired_or_used' ? 'that code expired or was already used. Tap Open Google again and paste the new address right away.' : e.message === 'no_code' ? 'that paste has no Google code in it. Copy the whole address.' : 'Arbo could not finish it. Tap Open Google and try again.'); }
       go.disabled = false;
     };
     v.appendChild(go);
     v.appendChild(out);
   } catch (e) {
-    v.appendChild(el('div', 'storm-muted', 'Google reconnect: unavailable right now (' + (e.message || 'error') + '). Nothing was changed.'));
+    if (gen !== settingsGen) return;
+    if (feedKind(e) === 'unset') { // on this route only the missing Google sign-in answers 503
+      // Not set up is its own state (§1B): not an outage, and not a disconnect.
+      const row = el('div', 'loc-strip');
+      row.appendChild(badge('NOT SET UP', 'b-src'));
+      row.appendChild(el('span', '', 'Google sign-in isn\u2019t set up on the server \u2014 add the Gmail sign-in ID and secret (the GMAIL_OAUTH_ variables) on Railway. This is not a disconnect.'));
+      v.appendChild(row);
+    } else if (e.code === 401) {
+      // The switches above just read with this same key, so this 401 is the
+      // route's own lock (no APP_ACCESS_KEY on the server), not a stale key.
+      v.appendChild(el('div', 'feed-state unset', 'Google: locked on the server \u2014 reconnecting needs APP_ACCESS_KEY set on Railway.'));
+    } else {
+      v.appendChild(feedLine(e, 'Google status'));
+    }
   }
 
   // R19: the data links, one by one. Read-only here on purpose \u2014 a link
   // opens by setting its variable on Railway AFTER its verification passes,
   // never from a button in the app.
   v.appendChild(el('div', 'panel-title', 'Data links'));
+  const LINK_LABEL = { contacts: 'Customers & contacts', properties: 'Properties & trees', leads: 'Leads', estimates: 'Estimates', jobs: 'Jobs & invoices', permits: 'Permits', photos: 'Photos', calls: 'Call & text logs', location: 'Saved location history', crew: 'Crew & certifications', equipment: 'Equipment', safety: 'Safety records', ops: 'Ops records' };
   try {
     const dl = await api('/api/links');
-    v.appendChild(el('div', 'storm-muted', dl.master === 'live'
-      ? 'Master switch LIVE. A CUT link is a closed door, not empty data \u2014 each opens after its verification (R19).'
-      : 'Master switch CUT \u2014 every link is closed whatever its own setting. A closed door is not empty data.'));
+    if (gen !== settingsGen) return;
+    // Three states, three sentences: simulation is never worded as cut or live.
+    v.appendChild(el('div', 'storm-muted', dl.master === 'sim'
+      ? 'SIMULATION \u2014 every screen is showing fake SIM- records. No real database is connected; the real links below stay CUT.'
+      : dl.master === 'live'
+        ? 'Master switch LIVE. A CUT link is a closed door, not empty data \u2014 each opens after its verification (R19).'
+        : 'Master switch CUT \u2014 every link is closed whatever its own setting. A closed door is not empty data.'));
     for (const l of dl.links) {
       const row = el('div', 'loc-strip');
-      const pill = el('span', 'loc-toggle' + (l.state === 'open' ? ' on' : ''), l.state === 'open' ? 'OPEN' : 'CUT');
-      row.appendChild(pill);
+      row.appendChild(badge(l.state === 'open' ? 'OPEN' : 'CUT', l.state === 'open' ? 'b-job' : 'b-repeat')); // a status, not a switch
       const counts = l.rowCounts
         ? ' \u2014 ' + Object.entries(l.rowCounts).map(([t, n]) => t + ': ' + n).join(', ')
         : '';
-      row.appendChild(el('span', '', l.link + counts));
+      row.appendChild(el('span', '', (LINK_LABEL[l.link] || l.link) + counts));
       v.appendChild(row);
     }
   } catch (e) {
-    v.appendChild(el('div', 'storm-muted', 'Link status unavailable right now.'));
+    if (gen !== settingsGen) return;
+    if (e.code !== 401) v.appendChild(feedLine(e, 'Data links'));
   }
 
   // R19: the webhook wires \u2014 every source that can push to Arbo, named.
+  // Quo (Sona) has its own intake, so its row is read from /api/quo below.
   v.appendChild(el('div', 'panel-title', 'Webhooks'));
+  const HOOK_LABEL = { resend: 'Resend (website form copies)', elevenlabs: 'ElevenLabs', railway: 'Railway', twilio: 'Twilio' };
   try {
     const wh = await api('/api/webhooks');
+    if (gen !== settingsGen) return;
     for (const [name, s] of Object.entries(wh.sources)) {
       const row = el('div', 'loc-strip');
+      const label = HOOK_LABEL[name] || name;
       if ((wh.cut || []).indexOf(name) !== -1) {
-        row.appendChild(el('span', 'loc-toggle', 'CUT'));
-        row.appendChild(el('span', '', name + ' \u2014 disconnected while Sona handles calls (R21)'));
+        row.appendChild(badge('CUT', 'b-repeat'));
+        row.appendChild(el('span', '', label + ' \u2014 disconnected while Sona handles calls'));
         v.appendChild(row);
         continue;
       }
-      row.appendChild(el('span', 'loc-toggle' + (s.configured ? ' on' : ''), s.configured ? 'WIRED' : 'NOT WIRED'));
-      row.appendChild(el('span', '', name + (s.configured
+      row.appendChild(badge(s.configured ? 'WIRED' : 'NOT WIRED', s.configured ? 'b-job' : 'b-src'));
+      row.appendChild(el('span', '', label + (s.configured
         ? ' \u2014 ' + s.received + ' received' + (s.lastAt ? ', last ' + fmtTime(s.lastAt) : ' since deploy')
-        : ' \u2014 no secret on the server; this is not zero events')));
+        : ' \u2014 no signing secret set on Railway, so Arbo can\u2019t count what it sent; this is not zero events')));
       v.appendChild(row);
     }
   } catch (e) {
-    v.appendChild(el('div', 'storm-muted', 'Webhook status unavailable right now.'));
+    if (gen !== settingsGen) return;
+    if (e.code !== 401) v.appendChild(feedLine(e, 'Webhooks'));
   }
+  // Its own read, so a dead /api/webhooks never hides the Quo row (or the reverse).
+  try {
+    const q = (await api('/api/quo')).status;
+    if (gen !== settingsGen) return;
+    const reg = q.registration || {};
+    const ok = reg.state === 'ok';
+    const row = el('div', 'loc-strip');
+    row.appendChild(badge(ok ? 'WIRED' : reg.state === 'failed' ? 'FAILED' : reg.state === 'pending' ? 'PENDING' : 'NOT WIRED', ok ? 'b-job' : reg.state === 'failed' ? 'b-flag' : 'b-src'));
+    row.appendChild(el('span', '', 'Quo (Sona calls & texts) \u2014 ' + (ok ? q.received + ' received' + (q.lastAt ? ', last ' + fmtTime(q.lastAt) : ' since deploy') : reg.detail)));
+    v.appendChild(row);
+  } catch (e) {
+    if (gen !== settingsGen) return;
+    if (e.code !== 401) v.appendChild(feedLine(e, 'Quo (Sona)'));
+  }
+
+  appearance();
 }
 
 // ---------- Heartwood shell (R25) ----------
