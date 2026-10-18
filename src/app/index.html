@@ -339,6 +339,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
   background:linear-gradient(180deg,#245F4D,#1B4D3E);color:#fff;font-size:15px;font-weight:700;text-decoration:none;box-shadow:var(--shadow-pop);border:0;padding:0 18px}
 .minibtn{min-height:48px;min-width:56px;border:1px solid var(--border);border-radius:var(--r-pill);background:var(--card);color:var(--ink-1);font-size:14px;font-weight:700;padding:0 16px}
 .minibtn:hover{background:var(--paper)}
+.minibtn:disabled{opacity:.5;box-shadow:none;background:var(--paper)}
 .minibtn.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,transparent)}
 .minibtn.bad{color:var(--emergency);border-color:color-mix(in srgb,var(--emergency) 35%,transparent)}
 .card.dismissed{opacity:.42}
@@ -448,7 +449,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
   .grid-tiles{grid-template-columns:repeat(5,1fr)}
   .sheet{max-width:780px;left:50%;transform:translateX(-50%);border-left:1px solid var(--hairline);border-right:1px solid var(--hairline)}
 }
-.wide-btn{width:100%}
+.wide-btn{width:100%}.wide-btn + .storm-muted{margin-top:14px}
 .qrow{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;padding:10px 0;border-bottom:1px solid var(--hairline)}
 .qrow .q{font-weight:600;font-size:15px;flex:1 1 220px}
 .seg{display:inline-flex;background:var(--paper-2);border-radius:var(--r-pill);padding:3px;gap:2px}
@@ -465,17 +466,21 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 .filepick input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
 #view-measure .hud{grid-template-columns:repeat(2,1fr)}
 #view-measure .tile .badge{display:inline-block;margin-top:8px}
-.learnbar{display:flex;height:10px;border-radius:99px;background:color-mix(in srgb,var(--emergency) 22%,var(--paper-2));overflow:hidden;margin:10px 0 6px}
-.learnbar i{display:block;height:100%}.learnbar .p{background:var(--ok)}.learnbar .u{background:var(--ink-4);opacity:.45}
+.learnbar{display:flex;height:10px;border-radius:99px;background:var(--paper-2);overflow:hidden;margin:10px 0 6px}
+.learnbar i{display:block;height:100%}.learnbar .p{background:var(--ok)}.learnbar .b{background:var(--emergency)}.learnbar .u{background:var(--ink-4);opacity:.35}
 .learn-row .who{font-size:17px}
-.agent-top{display:flex;gap:12px;align-items:center;margin-bottom:10px}
+.agent-top{display:flex;gap:12px;align-items:flex-start;margin-bottom:10px}
 .agent-ic{display:inline-grid;place-items:center;width:44px;height:44px;border-radius:14px;background:var(--f-100);color:var(--forest);flex:none}
 .agent-say{margin-top:10px;font-size:15px;color:var(--ink-1)}
-.agent-inputs{display:grid;gap:6px;margin:10px 0}
-.agent-in{display:flex;gap:8px;align-items:baseline;font-size:13.5px;color:var(--ink-2)}
-.agent-in .badge{flex:none}
+.agent-inputs{display:grid;grid-template-columns:auto 1fr;gap:6px 8px;align-items:baseline;margin:10px 0;font-size:13.5px;color:var(--ink-2)}
+.agent-in{display:contents}
+.agent-in .badge{justify-self:start}
 .agent-law{margin-top:10px}
-.agent-law summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--forest);min-height:44px;display:flex;align-items:center}
+.agent-law summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--forest);min-height:44px;display:flex;align-items:center;justify-content:space-between;gap:12px;list-style:none}
+.agent-law summary::-webkit-details-marker{display:none}
+.agent-law summary::after{content:'';flex:none;width:8px;height:8px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);margin-right:4px;transition:transform .2s}
+.agent-law[open] summary::after{transform:rotate(-135deg)}
+.agent-law.card{padding-top:6px;padding-bottom:6px}
 .bigcheck{width:26px;height:26px;flex:none;accent-color:var(--forest)}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
@@ -3709,8 +3714,10 @@ function factCard(f, isStale) {
 // Each desk reads, finds and PROPOSES. None sends, spends, edits a calendar
 // or changes its own rules. An input it could not read is named with why.
 const AGENT_ICONS = { 'front-desk': 'i-calls', dispatcher: 'i-route', 'chief-of-staff': 'i-today', 'permit-desk': 'i-permit', arborist: 'i-tree', 'crew-chief': 'i-shield', 'yard-boss': 'i-flag', analyst: 'i-numbers' };
-const INPUT_STATE = { read: ['READ', 'b-est'], cut: ['LINK CUT', 'b-pending'], unreadable: ['UNREADABLE', 'b-flag'] };
-const REPORT_STATUS = { ok: ['OK', 'b-est'], degraded: ['DEGRADED', 'b-warm'], blocked: ['BLOCKED', 'b-emg'] };
+const INPUT_STATE = { read: ['READ', 'b-est'], cut: ['LINK CUT', 'b-pending'], notrun: ['NOT RUN', 'b-pending'], unreadable: ['UNREADABLE', 'b-flag'] };
+const REPORT_STATUS = { ok: ['OK', 'b-est'], degraded: ['MISSING INPUTS', 'b-warm'], blocked: ['BLOCKED', 'b-emg'] };
+// Brief numbering (#2, §4.8, R7…) stays in the data and off the screen.
+const noRefs = (s) => s.replace(/^#\d+\s*/, '').replace(/\s*\((?:R\d+|§)[^)]*\)/g, '');
 let AGENT_RUN = null;
 
 let AGENT_GEN = 0;
@@ -3733,8 +3740,10 @@ async function renderAgents() {
   if (gen !== AGENT_GEN) return;
   const runBtn = el('button', 'actbtn wide-btn', AGENT_RUN ? 'Run all eight again' : 'Run all eight now');
   v.appendChild(runBtn);
-  v.appendChild(el('div', 'storm-muted', 'A run here only reads. The six scheduled agents (weather, booking, collections, safety, permitting, briefing) run on the hourly sweep and show here as \u201cnot wired in this run\u201d.'));
-  v.appendChild(el('div', 'storm-muted', 'Brain: ' + (roster.brain === 'online' ? 'Opus online — each desk gets a plain-English read.' : 'offline (no model key on the server) — summaries are deterministic and say so.')));
+  // A result kept from an earlier visit says when it is from.
+  if (AGENT_RUN && AGENT_RUN.ranAt) v.appendChild(el('div', 'storm-muted', 'Last run ' + fmtTime(AGENT_RUN.ranAt) + ' — these results are as of then, not live.' + (Date.now() - Date.parse(AGENT_RUN.ranAt) > 15 * 60 * 1000 ? ' Over 15 minutes old — run again for a current read.' : '')));
+  v.appendChild(el('div', 'storm-muted', 'Run only looks — it never changes anything. Booking, collections, safety, permits and the morning briefing are not started from here; they run on Arbo\u2019s hourly check once their data is connected. Weather alerts are read straight from the weather service.'));
+  v.appendChild(el('div', 'storm-muted', roster.brain === 'online' ? 'Brain: Opus online — each desk gets a plain-English read.' : 'AI summaries are off (set ANTHROPIC_API_KEY on the server) — each desk shows a plain count instead.'));
   runBtn.addEventListener('click', async () => {
     runBtn.disabled = true; runBtn.textContent = 'Running the eight desks…';
     try { AGENT_RUN = await api('/api/agents/sections/run', { method: 'POST' }); }
@@ -3755,7 +3764,7 @@ async function renderAgents() {
     top.appendChild(ic);
     const t = el('div');
     t.appendChild(el('div', 'who', a.name));
-    t.appendChild(el('div', 'loop-kind', a.section + ' · ' + a.roles.join(' · ')));
+    t.appendChild(el('div', 'loop-kind', a.section + ' · ' + a.roles.map(noRefs).join(' · ')));
     top.appendChild(t);
     c.appendChild(top);
     const r = reports[a.id];
@@ -3784,7 +3793,7 @@ async function renderAgents() {
     const law = el('details', 'agent-law');
     law.appendChild(el('summary', '', 'What it may and may not do'));
     law.appendChild(el('div', 'factmeta', 'May: ' + a.can.map(x => x.replace(':', ' ').replace(/_/g, ' ')).join(' · ')));
-    law.appendChild(el('div', 'factmeta', 'Never: ' + a.cannot.join(' · ')));
+    law.appendChild(el('div', 'factmeta', 'Never: ' + a.cannot.map(noRefs).join(' · ')));
     c.appendChild(law);
     v.appendChild(c);
   }
@@ -3911,6 +3920,22 @@ function measureResult(r) {
 // failure becomes a lesson PROPOSAL. Nothing retrains itself — Mike approves
 // or rejects, and an approved lesson is an instruction for the next revision.
 const SECTION_NAMES = { front_desk: 'Front Desk', dispatcher: 'Dispatcher', chief_of_staff: 'Chief of Staff', permit_desk: 'Permit Desk', arborist: 'Arborist', crew_chief: 'Crew Chief', yard_boss: 'Yard Boss', analyst: 'Analyst' };
+const BRAIN_LABEL = { scripted: 'rule check', opus: 'Opus' };
+// A lesson's key ('behaviour:stay_clear', 'must_not:argue', a rule id) in
+// words. The stored keys stay as they are — lesson ids depend on them.
+function lessonLabel(k) {
+  const i = k.indexOf(':');
+  const kind = i < 0 ? '' : k.slice(0, i);
+  const rest = i < 0 ? k : k.slice(i + 1);
+  const words = rest.replace(/_/g, ' ');
+  if (kind === 'unhandled') return (SECTION_NAMES[rest] || words) + ' · can’t answer yet';
+  if (kind === 'behaviour') return 'Missed: ' + words;
+  if (kind === 'must_not') return 'Did what it shouldn’t: ' + words;
+  return 'Broke a rule: ' + words;
+}
+// Rule breaks before missed behaviours, then most scenarios — the harness's
+// order, applied here too so a book saved before it still reads that way.
+const lessonTier = (l) => (l.rule.startsWith('behaviour:') ? 1 : 0);
 let LEARN_POLL = null;
 
 let LEARN_GEN = 0;
@@ -3931,17 +3956,21 @@ async function renderLearn() {
     return;
   }
   if (gen !== LEARN_GEN) return;
+  const r = st.report;
   const hud = el('div', 'hud');
   const tile = (n, label, cls) => { const t = el('div', 'tile' + (cls ? ' ' + cls : '')); t.appendChild(el('b', '', String(n))); t.appendChild(el('span', '', label)); return t; };
   hud.appendChild(tile(cat.total, 'scenarios', 'accent'));
-  hud.appendChild(tile(Object.keys(cat.rules).length, 'rules tested'));
-  const r = st.report;
-  hud.appendChild(r ? tile(Math.round(r.passRate * 100) + '%', 'passed · ' + st.brain, r.passRate >= 0.9 ? 'ok-t' : 'warn') : tile('–', 'no run yet'));
+  const ruleIds = Object.keys(cat.rules);
+  // Checked = the run actually judged it (handled without a break, or broke it) — not merely listed.
+  const exercised = r ? ruleIds.filter((k) => r.byRule[k] && r.byRule[k].passed + r.byRule[k].violations > 0).length : 0;
+  hud.appendChild(r ? tile(exercised + '/' + ruleIds.length, 'rules checked') : tile(ruleIds.length, 'rules on file'));
+  hud.appendChild(r ? tile(Math.round(r.passRate * 100) + '%', 'passed · ' + (BRAIN_LABEL[st.brain] || 'last run') + (r.unhandled ? ' · ' + r.unhandled + ' unanswered' : ''), r.passRate >= 0.9 ? 'ok-t' : 'warn') : tile('–', 'no run yet'));
   v.appendChild(hud);
+  if (r) v.appendChild(el('div', 'storm-muted', 'Last ' + (st.brain === 'opus' ? 'Opus run' : 'rule check') + ': ' + fmtTime(r.ranAt) + '. Clears when the app is redeployed.'));
 
   const runs = el('div', 'actions');
   const b1 = el('button', 'actbtn', 'Run the rule check');
-  const b2 = el('button', 'minibtn', st.opusAvailable ? 'Run with Opus (' + cat.total + ' model calls)' : 'Opus run needs a model key on the server');
+  const b2 = el('button', 'minibtn', st.opusAvailable ? 'Run with Opus (' + cat.total + ' model calls)' : 'Opus practice is off — no AI key on the server');
   b2.disabled = !st.opusAvailable || st.status === 'running';
   b1.disabled = st.status === 'running';
   const go = async (brain) => {
@@ -3953,9 +3982,9 @@ async function renderLearn() {
   b2.addEventListener('click', () => go('opus'));
   runs.appendChild(b1); runs.appendChild(b2);
   v.appendChild(runs);
-  v.appendChild(el('div', 'storm-muted', 'Rule check = the code guards alone, no network, a few seconds. Opus = the full brain answering every scenario the way it would on a real call.'));
+  v.appendChild(el('div', 'storm-muted', 'Rule check: tests the fixed safety rules in a few seconds. Opus: answers every scenario the way it would on a real call.'));
   if (st.status === 'running') {
-    v.appendChild(el('div', 'late', 'Running with ' + st.brain + ' since ' + fmtTime(st.startedAt) + '…'));
+    v.appendChild(el('div', 'late', 'Running with ' + (BRAIN_LABEL[st.brain] || st.brain) + ' since ' + fmtTime(st.startedAt) + '…'));
     clearTimeout(LEARN_POLL);
     LEARN_POLL = setTimeout(() => { if ($('view-learn').classList.contains('active')) renderLearn(); }, 5000);
   }
@@ -3967,24 +3996,29 @@ async function renderLearn() {
       const row = el('div', 'card learn-row');
       row.appendChild(el('div', 'who', SECTION_NAMES[sec] || sec));
       const bar = el('div', 'learnbar');
+      // Segments run in the caption's order: passed, broke a rule, can't answer.
       const pass = el('i', 'p'); pass.style.width = (s.total ? (s.passed / s.total) * 100 : 0) + '%';
+      const brk = el('i', 'b'); brk.style.width = (s.total ? ((s.failed - s.unhandled) / s.total) * 100 : 0) + '%';
       const un = el('i', 'u'); un.style.width = (s.total ? (s.unhandled / s.total) * 100 : 0) + '%';
-      bar.appendChild(pass); bar.appendChild(un);
+      bar.appendChild(pass); bar.appendChild(brk); bar.appendChild(un);
       row.appendChild(bar);
-      row.appendChild(el('div', 'factmeta', s.passed + ' passed · ' + (s.failed - s.unhandled) + ' broke a rule · ' + s.unhandled + ' this brain cannot answer yet'));
+      row.appendChild(el('div', 'factmeta', s.passed + ' passed · ' + (s.failed - s.unhandled) + ' broke a rule · ' + s.unhandled + ' can’t answer yet'));
       v.appendChild(row);
     }
   }
 
-  const lessons = (st.lessons.lessons || []).filter(l => l.status === 'proposed');
+  // A desk with no handler is not a lesson — nothing to approve (an older
+  // book may still hold one). By desk above names those as "can't answer yet".
+  const lessons = (st.lessons.lessons || []).filter(l => l.status === 'proposed' && !l.rule.startsWith('unhandled:'))
+    .sort((a, b) => lessonTier(a) - lessonTier(b) || b.scenarioIds.length - a.scenarioIds.length);
   v.appendChild(el('div', 'panel-title', 'Lessons waiting for you'));
   if (st.lessons.where === 'memory') v.appendChild(el('div', 'storm-muted', 'No storage disk — lessons are held in memory and clear on the next deploy.'));
-  if (!lessons.length) v.appendChild(el('div', 'storm-muted', r ? 'Nothing waiting — every proposal from the last run has your answer.' : 'Run a check to see what the brain gets wrong.'));
+  if (!lessons.length) v.appendChild(el('div', 'storm-muted', r ? 'Nothing waiting — every lesson from the last run has your answer.' + (r.unhandled ? ' The ' + r.unhandled + ' it couldn’t answer are counted under By desk.' : '') : 'Run a check to see what the brain gets wrong.'));
   for (const l of lessons.slice(0, 25)) {
     const c = el('div', 'card loop-card');
-    c.appendChild(el('div', 'loop-kind', l.rule.replace(/_/g, ' ') + ' · ' + l.scenarioIds.length + ' scenario' + (l.scenarioIds.length === 1 ? '' : 's')));
+    c.appendChild(el('div', 'loop-kind', lessonLabel(l.rule) + ' · ' + l.scenarioIds.length + ' scenario' + (l.scenarioIds.length === 1 ? '' : 's')));
     c.appendChild(el('div', 'scope', l.proposedLesson));
-    if (l.evidence) c.appendChild(el('div', 'internal-note', 'What it said: ' + l.evidence));
+    if (l.evidence) c.appendChild(el('div', 'internal-note', 'What the check found: ' + l.evidence));
     const act = el('div', 'actions');
     for (const [d, label, cls] of [['approved', 'Approve', 'ok'], ['rejected', 'Reject', 'bad']]) {
       const b = el('button', 'minibtn ' + cls, label);
@@ -3998,7 +4032,8 @@ async function renderLearn() {
     c.appendChild(act);
     v.appendChild(c);
   }
-  const approved = (st.lessons.lessons || []).filter(l => l.status === 'approved');
+  if (lessons.length > 25) v.appendChild(el('div', 'storm-muted', 'Showing 25 of ' + lessons.length + ' — answer these and the other ' + (lessons.length - 25) + ' move up.'));
+  const approved = (st.lessons.lessons || []).filter(l => l.status === 'approved' && !l.rule.startsWith('unhandled:'));
   if (approved.length) {
     v.appendChild(el('div', 'panel-title', 'Approved — for the next prompt revision'));
     for (const l of approved) v.appendChild(el('div', 'due-note', l.proposedLesson));
