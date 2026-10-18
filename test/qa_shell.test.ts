@@ -58,7 +58,7 @@ describe('More', () => {
       return sprite.slice(at, sprite.indexOf('</symbol>', at));
     };
     expect(sym('i-more').match(/<rect /g)).toHaveLength(4);
-    expect(sym('i-crew')).toContain('M4.5 15.5a7 7 0 0 1 14 0');
+    expect(sym('i-crew')).toContain('M4.5 15v-2.5a7.5 7.5 0 0 1 15 0V15'); // QA round 2: the taller dome
     expect(sym('i-crew')).not.toContain('M10.5 9.5V6.75h3v2.75'); // the bell's knob
     expect(sym('i-plus')).toContain('M12 5.5v13'); // kept for a real "add"
   });
@@ -68,7 +68,8 @@ describe('More', () => {
     expect(more).toContain('if (!s.linkCut) return;');
     expect(more).toContain('talk.disabled = true;');
     expect(more).toContain('Off while Sona answers calls');
-    expect(html).toMatch(/\.gtile:disabled\{opacity:/);
+    // QA round 2: only the icon and title fade — the small reason stays full ink.
+    expect(html).toContain('.gtile:disabled .ico,.gtile:disabled b{opacity:.5}');
   });
 });
 

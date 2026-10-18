@@ -62,10 +62,11 @@
     </g>
   </symbol>
   <symbol id="i-crew" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-    <!-- A hard hat: crown ridges on the dome, the brim running out to one side. -->
-    <path d="M4.5 15.5a7 7 0 0 1 14 0"/>
-    <path d="M9.75 9v3.5M13.25 9v3.5"/>
-    <path d="M3 15.5h18.25a.75.75 0 0 1 0 1.5H3.75A.75.75 0 0 1 3 16.25z"/>
+    <!-- A hard hat: a tall dome with two crown ridges on a full-width brim,
+         filling the same height as the icons beside it (about y 5 to 17.25). -->
+    <path d="M4.5 15v-2.5a7.5 7.5 0 0 1 15 0V15"/>
+    <path d="M10 5.6V10M14 5.6V10"/>
+    <path d="M2.75 15h18.5a1 1 0 0 1 1 1v.25a1 1 0 0 1-1 1H2.75a1 1 0 0 1-1-1V16a1 1 0 0 1 1-1z"/>
   </symbol>
   <symbol id="i-agents" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
     <circle cx="12" cy="12" r="2.75"/>
