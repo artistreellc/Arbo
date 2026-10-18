@@ -174,7 +174,10 @@ export async function runSimulation(
 
 export interface LessonProposal {
   id: string;
-  /** A rule id, `must_not:<behaviour>`, `behaviour:<behaviour>` or `unhandled:<section>`. */
+  /**
+   * A rule id, `must_not:<behaviour>` or `behaviour:<behaviour>`. (Older books
+   * on disk may still hold `unhandled:<section>`; no run proposes one now.)
+   */
   rule: string;
   scenarioIds: string[];
   /** Plain English, for Mike. */
@@ -204,13 +207,22 @@ const LESSON_HINT: Partial<Record<RuleId, string>> = {
 const describeRule = (rule: string): string =>
   (RULES as Record<string, string>)[rule] ?? rule;
 
+/** Shown text only: ruling and section tags like "(R14 business fact)" or "(§3, R3)" mean nothing on Mike's phone. */
+const plain = (s: string): string => s.replace(/\s*\((?:R\d+|§|brief §)[^)]*\)/g, '');
+const lc = (s: string): string => s.charAt(0).toLowerCase() + s.slice(1);
+
+/** Rule breaks (tier 0) outrank a missed behaviour (tier 1), however few scenarios they hit. */
+const lessonTier = (rule: string): number => (rule.startsWith('behaviour:') ? 1 : 0);
+
 /**
- * Turn a report into lesson proposals, most-failed first. Pure: reads the
- * report, returns data. Never auto-applied — every proposal is 'proposed'.
+ * Turn a report into lesson proposals: rule breaks first, then most-failed.
+ * Pure: reads the report, returns data. Never auto-applied — every proposal
+ * is 'proposed'. Each lesson is said once; the app shows how many scenarios
+ * it came from, and `scenarioIds` keeps which.
  */
 export function lessonsFrom(report: SimReport): LessonProposal[] {
-  const groups = new Map<string, { rule: string; ids: string[]; evidence?: string; text: (n: number, ids: string) => string }>();
-  const push = (key: string, rule: string, id: string, evidence: string | undefined, text: (n: number, ids: string) => string): void => {
+  const groups = new Map<string, { rule: string; ids: string[]; evidence?: string; text: string }>();
+  const push = (key: string, rule: string, id: string, evidence: string | undefined, text: string): void => {
     const g = groups.get(key) ?? { rule, ids: [], evidence, text };
     if (!g.ids.includes(id)) g.ids.push(id);
     g.evidence ??= evidence;
@@ -218,25 +230,21 @@ export function lessonsFrom(report: SimReport): LessonProposal[] {
   };
 
   for (const f of report.failures) {
-    if (f.unhandled) {
-      push(`unhandled:${f.section}`, `unhandled:${f.section}`, f.scenarioId, undefined, (n, ids) =>
-        `The brain had no handler for ${n} ${f.section} sim(s) (${ids}). Proposed: Mike decides whether these go to the Opus brain or get a deterministic handler.`);
-      continue;
-    }
+    // A desk with no handler is not a lesson: there is nothing to approve or
+    // reject (those desks are the Opus brain's, D90). The report's bySection
+    // still names every one as "can't answer yet" (§1B).
+    if (f.unhandled) continue;
     for (const v of f.violations) {
       if (v.rule.startsWith('must_not:')) {
         const b = v.rule.slice('must_not:'.length) as Behaviour;
-        push(v.rule, v.rule, f.scenarioId, v.evidence, (n, ids) =>
-          `Never do this: ${BEHAVIOURS[b] ?? b}. It happened in ${n} sim(s) (${ids}).`);
+        push(v.rule, v.rule, f.scenarioId, v.evidence, `Never do this: ${plain(BEHAVIOURS[b] ?? b)}.`);
       } else {
         const hint = LESSON_HINT[v.rule as RuleId];
-        push(v.rule, v.rule, f.scenarioId, v.evidence, (n, ids) =>
-          `Rule broken in ${n} sim(s) (${ids}): ${describeRule(v.rule)}${hint ? ` Proposed lesson: ${hint}` : ''}`);
+        push(v.rule, v.rule, f.scenarioId, v.evidence, `${plain(describeRule(v.rule))}${hint ? ` Proposed lesson: ${plain(hint)}` : ''}`);
       }
     }
     for (const b of f.missing) {
-      push(`behaviour:${b}`, `behaviour:${b}`, f.scenarioId, undefined, (n, ids) =>
-        `In ${n} sim(s) (${ids}) the answer did not show: ${BEHAVIOURS[b]}. Proposed lesson: in these situations, ${BEHAVIOURS[b].charAt(0).toLowerCase()}${BEHAVIOURS[b].slice(1)}.`);
+      push(`behaviour:${b}`, `behaviour:${b}`, f.scenarioId, undefined, `In these situations, ${lc(plain(BEHAVIOURS[b]))}.`);
     }
   }
 
@@ -245,11 +253,13 @@ export function lessonsFrom(report: SimReport): LessonProposal[] {
       id: `lesson-${key.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`,
       rule: g.rule,
       scenarioIds: g.ids,
-      proposedLesson: g.text(g.ids.length, g.ids.join(', ')),
+      proposedLesson: g.text,
       status: 'proposed' as const,
       ...(g.evidence ? { evidence: g.evidence } : {}),
     }))
-    .sort((a, b) => b.scenarioIds.length - a.scenarioIds.length || a.id.localeCompare(b.id));
+    .sort((a, b) => lessonTier(a.rule) - lessonTier(b.rule)
+      || b.scenarioIds.length - a.scenarioIds.length
+      || a.id.localeCompare(b.id));
 }
 
 // ───────────────────────────── THE SCRIPTED BRAIN ───────────────────────────

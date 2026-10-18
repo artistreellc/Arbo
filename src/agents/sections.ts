@@ -18,9 +18,12 @@
 // inspectMessage, and nothing here imports it); never edits a calendar event;
 // never rewrites its own rules or code. Every run is recorded (agent_run).
 //
-// §1B, the spine: every input is tri-state. 'cut' = its data link is closed
-// (named, with the switch that opens it). 'unreadable' = we tried and could
-// not. 'read' = a real answer. A cut or unreadable input is never a zero.
+// §1B, the spine: every input has one of four states. 'cut' = its data link
+// is closed (named, with the switch that opens it). 'notrun' = deliberately
+// not read here — an agent left to the hourly sweep, a reader not built, or a
+// feed the practice data does not carry. 'unreadable' = we tried and could
+// not. 'read' = a real answer. Only 'read' is an answer; the other three are
+// never a zero.
 //
 // Failure rule, one line: an input read that fails is 'unreadable' and the
 // section is 'degraded'; a WRAPPED existing agent that throws has broken its
@@ -79,7 +82,7 @@ export interface SectionAgentDef {
 const LAW: readonly string[] = [
   'call another agent — agents share state and events, nothing else',
   'spend money or commit the company to anything',
-  'send anything to anyone (the one send in Arbo is the R22 Quo text, which no section agent calls)',
+  'send anything to anyone (the only send in Arbo is the compliance-checked Quo text, which no section agent calls)',
   'edit a calendar event',
   'rewrite its own rules, prompts or code',
   'import or store leads or live business records (R4, §3)',
@@ -194,7 +197,7 @@ export function isSectionId(id: string): id is SectionId {
 
 // ─── Report shape ───────────────────────────────────────────────────────────
 
-export type InputState = 'read' | 'cut' | 'unreadable';
+export type InputState = 'read' | 'cut' | 'notrun' | 'unreadable';
 
 export interface InputReport { name: string; state: InputState; detail: string }
 export interface Finding { severity: 'info' | 'watch' | 'act'; text: string; ref?: string }
@@ -277,7 +280,8 @@ export function liveSectionDeps(api: Api, alerts: AlertsProvider, now = new Date
  * with the links open: the six scheduled agents are left out — each records
  * an agent_run row and raises bus events, and the owner briefing writes tree
  * forecasts — so they run on the hourly sweep only, and here each is named
- * "not wired in this run". The section run itself is not recorded.
+ * "not wired in this run" (state 'notrun'; the Dispatcher reads the weather
+ * feed itself instead). The section run itself is not recorded.
  */
 export function onDemandSectionDeps(api: Api, alerts: AlertsProvider, now = new Date()): SectionDeps {
   const live = liveSectionDeps(api, alerts, now);
@@ -297,7 +301,7 @@ export function onDemandSectionDeps(api: Api, alerts: AlertsProvider, now = new 
 // ─── Input machinery ────────────────────────────────────────────────────────
 
 interface Read {
-  state: 'read' | 'unreadable';
+  state: 'read' | 'notrun' | 'unreadable';
   detail: string;
   findings?: Finding[];
   proposals?: Proposal[];
@@ -321,18 +325,25 @@ function errText(err: unknown): string {
   return redact(raw).slice(0, 200);
 }
 
-const notWired = (what: string): Read => ({ state: 'unreadable', detail: `not wired in this run: ${what}` });
+/** The same, with a network failure said in plain words instead of a raw exception. */
+function plainErr(err: unknown): string {
+  if (err instanceof TypeError && /fetch failed/i.test(err.message)) return "the service didn't answer";
+  return errText(err);
+}
+
+// Not read on purpose — never 'unreadable', which means we tried and could not.
+const notWired = (what: string): Read => ({ state: 'notrun', detail: `not wired in this run: ${what}` });
 const propose = (kind: string, text: string): Proposal => ({ kind, text, needsMike: true });
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 async function readInput(spec: InputSpec, d: SectionDeps): Promise<InputReport & { got?: Read }> {
   if (spec.links.length > 0) {
     if (!d.hasDb()) {
-      return { name: spec.name, state: 'cut', detail: `data link cut — ARBO_DATA_LINKS is not "live" (§3); needs ${spec.links.join(', ')}` };
+      return { name: spec.name, state: 'cut', detail: `data link cut on purpose (ARBO_DATA_LINKS); needs ${spec.links.join(', ')}` };
     }
     const closed = spec.links.filter((l) => !d.linkOpen(l));
     if (closed.length > 0) {
-      return { name: spec.name, state: 'cut', detail: `data link cut: ${closed.map((l) => `${l} (${linkEnvVar(l)})`).join(', ')} — R19` };
+      return { name: spec.name, state: 'cut', detail: `data link cut: ${closed.map((l) => `${l} (${linkEnvVar(l)})`).join(', ')}` };
     }
   }
   try {
@@ -344,11 +355,16 @@ async function readInput(spec: InputSpec, d: SectionDeps): Promise<InputReport &
       return { name: spec.name, state: 'cut', detail: errText(err) };
     }
     if (spec.wraps) throw new WrappedAgentThrew(`wrapped agent '${spec.wraps}' threw — ${errText(err)}`);
-    return { name: spec.name, state: 'unreadable', detail: `feed unreadable: ${spec.name} — ${errText(err)}` };
+    // The screen already prints the input's name before its detail.
+    return { name: spec.name, state: 'unreadable', detail: `feed unreadable — ${plainErr(err)}` };
   }
 }
 
-/** One app read handler. A non-200 is 'unreadable' with the status named. */
+/**
+ * One app read handler. A non-200 is 'unreadable' with the status named —
+ * except the practice data's own gap word (not_simulated): that feed is not
+ * in the simulation at all, so nothing was tried and nothing failed.
+ */
 async function viaApi<T>(
   what: string,
   call: (() => Promise<ApiResult>) | undefined,
@@ -358,33 +374,49 @@ async function viaApi<T>(
   const r = await call();
   if (r.status !== 200) {
     const code = (r.body as { error?: unknown } | null)?.error;
-    return { state: 'unreadable', detail: `feed unreadable: ${what} answered ${r.status}${typeof code === 'string' ? ` ${code}` : ''}` };
+    if (r.status === 503 && code === 'not_simulated') return { state: 'notrun', detail: 'not in the practice data' };
+    return { state: 'unreadable', detail: `feed unreadable — answered ${r.status}${typeof code === 'string' ? ` ${code}` : ''}` };
   }
   return onBody(r.body as T);
 }
 
 // ─── The inputs, per section ────────────────────────────────────────────────
 
+/** The Dispatcher's weather read — one shape whether the agent or the feed answered. */
+function dispatcherWeather(active: number, stopping: number): Read {
+  return {
+    state: 'read',
+    detail: `${plural(active, 'active alert', 'active alerts')}, ${stopping} work-stopping`,
+    findings: stopping > 0
+      ? [{ severity: 'act', text: `${plural(stopping, 'work-stopping weather alert is', 'work-stopping weather alerts are')} active over the service area.` }]
+      : [{ severity: 'info', text: `${plural(active, 'active NWS alert', 'active NWS alerts')}; none work-stopping.` }],
+    proposals: stopping > 0
+      ? [propose('weather_hold_review', 'Review outdoor work against the active alerts. Mike moves any event — Arbo never edits the calendar.')]
+      : [],
+  };
+}
+
 const weatherFromAgent: InputSpec = {
   name: IN.weather, links: [], wraps: 'weatherAgent',
   async read(d) {
-    if (!d.weather) return notWired('weather agent');
+    if (!d.weather) {
+      // On demand the weather agent is left out (it raises bus events), so
+      // read the same NWS feed read-only, as the Crew Chief does. Caught
+      // here: this input wraps an agent, and a throw would BLOCK the desk.
+      if (!d.alerts) return notWired('weather agent');
+      try {
+        const active = await d.alerts.activeAlerts();
+        return dispatcherWeather(active.length, active.filter(isWorkStopping).length);
+      } catch (err) {
+        return { state: 'unreadable', detail: `feed unreadable — ${plainErr(err)}` };
+      }
+    }
     const r = await d.weather();
     const wrapped = { agent: 'weather', status: r.status, summary: `feed=${r.feed} active=${r.activeAlerts} work_stopping=${r.workStopping} newly_raised=${r.newlyRaised}` };
     if (r.status !== 'ok' || r.feed !== 'ok') {
       return { state: 'unreadable', detail: 'feed unreadable: NWS alerts did not answer — not "no storm"', wrapped };
     }
-    const stopping = r.workStopping;
-    return {
-      state: 'read', wrapped,
-      detail: `${plural(r.activeAlerts, 'active alert', 'active alerts')}, ${stopping} work-stopping`,
-      findings: stopping > 0
-        ? [{ severity: 'act', text: `${plural(stopping, 'work-stopping weather alert is', 'work-stopping weather alerts are')} active over the service area.` }]
-        : [{ severity: 'info', text: `${plural(r.activeAlerts, 'active NWS alert', 'active NWS alerts')}; none work-stopping.` }],
-      proposals: stopping > 0
-        ? [propose('weather_hold_review', 'Review outdoor work against the active alerts. Mike moves any event — Arbo never edits the calendar.')]
-        : [],
-    };
+    return { ...dispatcherWeather(r.activeAlerts, r.workStopping), wrapped };
   },
 };
 
@@ -546,7 +578,7 @@ const INPUTS: Record<SectionId, InputSpec[]> = {
     {
       // #8 Vision & Labeling has no photo reader in the code yet. Said, not hidden.
       name: IN.photos, links: ['photos'],
-      read: async () => notWired('no photo reader is built yet (#8 Vision & Labeling)'),
+      read: async () => notWired('no photo reader is built yet'),
     },
   ],
 
@@ -626,13 +658,13 @@ const INPUTS: Record<SectionId, InputSpec[]> = {
       read: (d) => viaApi<AreaReport & { campaignsKnown: boolean }>(IN.performance, d.api?.performance && (() => d.api!.performance!(365)), (b) => {
         const below = b.areas.filter((a) => a.verdict === 'below').length;
         const findings: Finding[] = [];
-        if (below > 0) findings.push({ severity: 'watch', text: `${plural(below, 'area rates', 'areas rate')} below the fleet benchmark per crew-hour.` });
+        if (below > 0) findings.push({ severity: 'watch', text: `${plural(below, 'area rates', 'areas rate')} below the company average per crew-hour.` });
         if (b.withheld.length > 0) findings.push({ severity: 'info', text: `${plural(b.withheld.length, 'area is', 'areas are')} held back for thin data — visible, not judged.` });
         if (!b.campaignsKnown) findings.push({ severity: 'watch', text: 'Campaign performance could not be read — unknown, not "no campaigns".' });
         for (const s of b.blindSpots) findings.push({ severity: 'watch', text: `Performance blind spot: ${s}` });
         return {
           state: 'read', detail: `${plural(b.areas.length, 'area', 'areas')} rated over 365 days`, findings,
-          proposals: below > 0 ? [propose('area_review', `Look at the ${plural(below, 'area', 'areas')} rating below benchmark before spending on them.`)] : [],
+          proposals: below > 0 ? [propose('area_review', `Look at the ${plural(below, 'area', 'areas')} rating below the company average before spending on them.`)] : [],
         };
       }),
     },

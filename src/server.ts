@@ -1331,7 +1331,13 @@ export function createArborRequestHandler() {
         return send(200, { agents: SECTION_AGENTS, brain: sectionBrain.online ? 'online' : 'offline' });
       }
       if (req.method === 'POST' && url.pathname === '/api/agents/sections/run') {
-        const reports = await runAllSections(onDemandSectionDeps(api, alertsProvider));
+        // SIMULATION: `api` runs on the in-memory practice source and never
+        // opens a database, so its read handlers are the desks' inputs —
+        // never "link cut". The writing agents stay out either way; cut and
+        // live keep the real gates. The hourly scheduler is untouched.
+        const base = onDemandSectionDeps(api, alertsProvider);
+        const deps = dataLinksSim() ? { ...base, hasDb: () => true, linkOpen: () => true } : base;
+        const reports = await runAllSections(deps);
         const summaries = await Promise.all(reports.map((r) => sectionBrain.summarize(r)));
         return send(200, { ranAt: new Date().toISOString(), reports, summaries });
       }

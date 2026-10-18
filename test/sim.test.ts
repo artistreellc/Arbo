@@ -242,4 +242,30 @@ describe('the scripted brain (existing deterministic code, no network)', () => {
   it('answers [[UNHANDLED]] where no deterministic handler exists', async () => {
     expect(await scriptedBrain()(byId('dp-rain-day'))).toMatch(/^\[\[UNHANDLED\]\]/);
   });
+
+  it('real rule breaks lead the lessons, ahead of every missed behaviour, however few scenarios they hit', async () => {
+    const report = await runSimulation(scriptedBrain(), SCENARIOS, { concurrency: 8 });
+    const lessons = lessonsFrom(report);
+    const at = (rule: string) => lessons.findIndex((l) => l.rule === rule);
+    const firstNag = lessons.findIndex((l) => l.rule.startsWith('behaviour:') || l.rule.startsWith('unhandled:'));
+    expect(firstNag).toBeGreaterThan(0);
+    for (const rule of ['no_date_promise', 'line_clearance_only']) {
+      expect(at(rule), rule).toBeGreaterThanOrEqual(0);
+      expect(at(rule), rule).toBeLessThan(firstNag);
+    }
+    // A desk with no handler is named in bySection, not offered as a lesson to approve.
+    expect(report.unhandled).toBeGreaterThan(0);
+    expect(lessons.some((l) => l.rule.startsWith('unhandled:'))).toBe(false);
+  });
+
+  it('each lesson is said once, in words for Mike — no ids, no "sim(s)", no ruling tags', async () => {
+    const lessons = lessonsFrom(await runSimulation(scriptedBrain(), SCENARIOS, { concurrency: 8 }));
+    for (const l of lessons) {
+      expect(l.proposedLesson, l.id).not.toMatch(/sim\(s\)|\(R\d+|\(§|_/);
+      for (const id of l.scenarioIds) expect(l.proposedLesson, l.id).not.toContain(id);
+      expect(l.scenarioIds.length).toBeGreaterThan(0);
+    }
+    const clear = lessons.find((l) => l.rule === 'behaviour:stay_clear')!;
+    expect(clear.proposedLesson).toBe('In these situations, tell people to stay away from the hazard.');
+  });
 });
