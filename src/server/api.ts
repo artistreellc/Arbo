@@ -120,8 +120,12 @@ export interface ApiLead {
   permit: ApiPermitFlag | null;
   /** True when the lead HAS a property but NO screen on file — it still needs one (§6B.1). */
   screenPending: boolean;
+  /** The permit read FAILED for this lead's property: not read, never shown as screenPending (§1B). */
+  permitUnreadable: boolean;
   /** §5A #27 repeat-customer memory — one human line, e.g. "Job completed Mar 2025 — oak removal". */
   history: string | null;
+  /** The past-work read FAILED: a missing history line here is not "no history" (§1B). */
+  historyUnreadable: boolean;
 }
 
 /** What the API needs from storage — live impl wraps the repositories. */
@@ -334,8 +338,12 @@ export interface ApiLeadInput {
   isFirstTimer: boolean | null;
   /** Latest permit track for the lead's property; null when none on file. */
   permit: ApiPermitFlag | null;
+  /** True when the permit read failed for this lead's property — permit is then unknown, not absent. */
+  permitUnreadable?: boolean;
   /** Latest prior work at the property (§5A #27); null when none. */
   history: { kind: 'job' | 'estimate'; when: string | null; scope: string | null; status: string | null } | null;
+  /** True when the past-work read failed for this lead's property — history is then unknown, not absent. */
+  historyUnreadable?: boolean;
 }
 
 export interface ApiResult {
@@ -431,9 +439,12 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
           }),
           permit: r.permit,
           // A lead with a property but no screen on file still needs one (§6B.1)
-          // — surfaced, never silently assumed fine.
-          screenPending: r.propertyId != null && r.permit == null,
+          // — surfaced, never silently assumed fine. A permit read that FAILED
+          // is not "no screen on file": it is named apart, never as pending (§1B).
+          screenPending: !r.permitUnreadable && r.propertyId != null && r.permit == null,
+          permitUnreadable: r.permitUnreadable === true,
           history: formatHistory(r.history),
+          historyUnreadable: r.historyUnreadable === true,
         };
       });
       return { status: 200, body: { leads } };

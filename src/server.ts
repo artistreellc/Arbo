@@ -225,24 +225,29 @@ export function createLiveSource(): DataSource {
       const rows = await listLeads(limit);
       // The §6B screen flag rides each lead: latest permit per property, batched.
       // A permit-join failure must not kill the inbox (the lead list is the
-      // lifeblood) — degrade to "no flag on file", which the API surfaces as
-      // screenPending, the honest "still needs a screen" state. Never a clear.
+      // lifeblood) — but it is NAMED: every lead with a property carries
+      // permitUnreadable, which the API keeps apart from screenPending. "We
+      // could not read the permits" is not "no screen on file" (§1B). Never a clear.
       const propertyIds = [...new Set(rows.map((r) => r.property?.id).filter((id): id is string => Boolean(id)))];
       let permits: Awaited<ReturnType<typeof latestPermitsForProperties>>;
+      let permitFailed = false;
       try {
         permits = await latestPermitsForProperties(propertyIds);
       } catch (err) {
         console.error('[server] permit flag fetch failed:', err instanceof Error ? err.message : 'error');
         permits = new Map();
+        permitFailed = true;
       }
-      // §27 memory — auxiliary like permits: a failure degrades to "no history
-      // line", never a dead inbox.
+      // §27 memory — auxiliary like permits: a failure never kills the inbox,
+      // and it is named the same way (historyUnreadable), never a silent blank.
       let history: Awaited<ReturnType<typeof latestHistoryForProperties>>;
+      let historyFailed = false;
       try {
         history = await latestHistoryForProperties(propertyIds);
       } catch (err) {
         console.error('[server] history fetch failed:', err instanceof Error ? err.message : 'error');
         history = new Map();
+        historyFailed = true;
       }
       return rows.map((r) => {
         const permit = r.property ? permits.get(r.property.id) ?? null : null;
@@ -264,7 +269,10 @@ export function createLiveSource(): DataSource {
           permit: permit
             ? { screenStatus: permit.screen_status, inRpa: permit.in_rpa, status: permit.status }
             : null,
+          // Only a lead WITH a property had a read that could fail.
+          permitUnreadable: permitFailed && r.property != null,
           history: h ? { kind: h.kind, when: h.when, scope: h.scope, status: h.status } : null,
+          historyUnreadable: historyFailed && r.property != null,
         };
       });
     },

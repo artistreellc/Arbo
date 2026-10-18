@@ -74,7 +74,7 @@
   /* paper, ink, gold */
   --paper:#F7F5F0; --paper-2:#EFEBE1; --paper-3:#E6E0D2; --card:#FFFFFF;
   --ink-1:#13201A; --ink-2:#3B4A43; --ink-3:#5A675F; --ink-4:#8B958F;
-  --gold-6:#9A7212; --gold-5:#C9971C; --gold-3:#E5C874; --gold-1:#F7EDD2;
+  --gold-6:#7E5C0A; --gold-5:#C9971C; --gold-3:#E5C874; --gold-1:#F7EDD2;
   /* legacy token names, brand values */
   --forest:#1B4D3E; --forest-dark:#12362B; --canopy:#2A6B57; --moss:#8A9790;
   --bark:#243B32; --clay:#B5502F; --amber:#C9971C; --gold:#C9971C;
@@ -216,7 +216,7 @@ main{padding:8px 16px 16px;max-width:680px;margin:0 auto}
 .slot:empty{display:none}
 .slot{background:var(--card);border:1px solid var(--hairline);border-radius:var(--r-lg);box-shadow:var(--shadow-card);
   padding:16px 16px 6px;margin-bottom:14px}
-.slot > div > .panel-title:first-child,.slot > .panel-title:first-child{margin-top:0}
+.slot > div > .panel-title:first-child,.slot > .panel-title:first-child,.card > .panel-title:first-child{margin-top:0}
 .slot .card{box-shadow:none;border-color:var(--hairline);background:var(--paper)}
 .slot.plain{background:none;border:0;box-shadow:none;padding:0;margin-bottom:0}
 
@@ -243,7 +243,7 @@ main{padding:8px 16px 16px;max-width:680px;margin:0 auto}
 .card .scope{font-size:14.5px;color:var(--ink-2);margin-bottom:8px;line-height:1.5}
 .badges{display:flex;flex-wrap:wrap;gap:6px}
 .badge{font-size:10.5px;font-weight:700;letter-spacing:.09em;border-radius:var(--r-pill);padding:4px 10px;border:1px solid transparent;text-transform:uppercase;line-height:1.3}
-.b-job{background:var(--forest);color:#fff}
+.b-job{background:var(--forest);color:var(--paper)}
 .b-est{border-color:color-mix(in srgb,var(--canopy) 45%,transparent);color:var(--canopy);background:var(--f-50)}
 .b-emg{background:var(--emergency);color:#fff}
 .b-flag{border-color:color-mix(in srgb,var(--emergency) 45%,transparent);color:var(--emergency);background:var(--emergency-bg)}
@@ -257,7 +257,7 @@ main{padding:8px 16px 16px;max-width:680px;margin:0 auto}
 .b-review{background:var(--info);color:#fff}
 .b-verify{border-color:var(--border);color:var(--ink-3)}
 .b-pending{background:var(--paper-2);color:var(--ink-3);border-color:var(--hairline)}
-.ordernum{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--forest);color:#fff;
+.ordernum{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--forest);color:var(--paper);
   font-family:var(--sans);font-size:13px;font-weight:700;margin-right:10px;flex:none;font-variant-numeric:tabular-nums}
 .section-title{font-family:var(--serif);font-size:17px;font-weight:600;color:var(--ink-1);margin:26px 2px 10px}
 
@@ -328,7 +328,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 .loc-strip .badge{flex:none;min-width:92px;text-align:center;white-space:nowrap}
 .loc-toggle{min-height:44px;min-width:64px;border:1px solid var(--border);border-radius:var(--r-pill);background:var(--card);color:var(--ink-3);
   font-size:12.5px;font-weight:700;padding:0 16px;letter-spacing:.06em;display:inline-grid;place-items:center}
-.loc-toggle.on{background:var(--forest);border-color:var(--forest);color:#fff}
+.loc-toggle.on{background:var(--forest);border-color:var(--forest);color:var(--paper)}
 .late{background:var(--warning-bg);border:1px solid color-mix(in srgb,var(--warning) 32%,transparent);color:color-mix(in srgb,var(--warning) 70%,var(--ink-1));
   border-radius:var(--r-md);padding:13px 16px;margin-bottom:12px;font-weight:600;font-size:14px;line-height:1.45}
 .late small{display:block;font-weight:500;opacity:.95;margin-top:6px}
@@ -349,7 +349,9 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 .minibtn:disabled{opacity:.5;box-shadow:none;background:var(--paper)}
 .minibtn.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,transparent)}
 .minibtn.bad{color:var(--emergency);border-color:color-mix(in srgb,var(--emergency) 35%,transparent)}
-.card.dismissed{opacity:.42}
+.minibtn.mark{display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:1}.minibtn.mark .ico{width:18px;height:18px}
+.card.dismissed > :not(.lead-filed):not(.save-err){opacity:.42}
+.lead-filed{margin-top:10px}
 .hudbtn{display:flex;align-items:center;justify-content:center;gap:10px;min-height:52px;border-radius:16px;background:var(--card);
   border:1px solid var(--border);color:var(--forest);font-size:15px;font-weight:700;text-decoration:none;width:100%;margin-bottom:12px;box-shadow:var(--shadow-card)}
 .hudbtn:hover{background:var(--paper)}
@@ -399,6 +401,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
   font-size:16.5px;padding:12px 14px;display:block;font-variant-numeric:tabular-nums;transition:border-color .18s var(--ease),box-shadow .18s var(--ease)}
 .field input:focus,.field select:focus,.field textarea:focus,#yard input:focus,#yard select:focus,#bd input[type=text]:focus,.input:focus{border-color:var(--forest);outline:none;box-shadow:var(--ring)}
 .field textarea{min-height:84px;resize:vertical;line-height:1.45}
+.field select,#yard select{-webkit-appearance:none;appearance:none;padding-right:44px;background-image:linear-gradient(45deg,transparent 50%,var(--forest) 50%),linear-gradient(135deg,var(--forest) 50%,transparent 50%);background-position:calc(100% - 22px) 50%,calc(100% - 16px) 50%;background-size:6px 6px,6px 6px;background-repeat:no-repeat}
 .checkfield{display:flex;align-items:center;gap:12px;min-height:56px;margin-bottom:4px;cursor:pointer}
 .checkfield span{font-size:16px;font-weight:600;color:var(--ink-1);text-transform:none;letter-spacing:0}
 #bd #bd-out{padding-bottom:96px}
@@ -409,6 +412,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 .verdict.v-on{border-color:color-mix(in srgb,var(--ok) 45%,transparent)}.verdict.v-on .vhead{color:var(--ok)}
 .verdict.v-below{border-color:color-mix(in srgb,var(--warning) 45%,transparent)}.verdict.v-below .vhead{color:var(--warning)}
 .verdict.v-lose{border-color:color-mix(in srgb,var(--emergency) 45%,transparent)}.verdict.v-lose .vhead{color:var(--emergency)}
+.verdict.v-verify{border-color:var(--border)}.verdict.v-verify .vhead{color:var(--ink-2)}
 .verdict .drv{font-size:13.5px;color:var(--ink-3);margin-top:8px;line-height:1.5}
 .internal-tag{font-size:11px;font-weight:700;letter-spacing:.12em;line-height:1.5;color:var(--ink-3);text-transform:uppercase;text-wrap:balance;margin-top:12px}
 
@@ -419,7 +423,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
 .cal-day{margin-bottom:14px}
 .cal-daylabel{display:flex;align-items:baseline;gap:8px;font-family:var(--serif);font-size:16px;font-weight:600;color:var(--ink-1);padding:6px 0;border-bottom:1px solid var(--hairline);margin-bottom:8px}
 .cal-day.today .cal-daylabel{color:var(--gold-6)}
-.cal-day.today .cal-daylabel::after{content:'TODAY';font-family:var(--sans);font-size:10px;background:var(--forest);color:#fff;border-radius:var(--r-pill);padding:2px 8px;letter-spacing:.1em}
+.cal-day.today .cal-daylabel::after{content:'TODAY';font-family:var(--sans);font-size:10px;background:var(--forest);color:var(--paper);border-radius:var(--r-pill);padding:2px 8px;letter-spacing:.1em}
 .cal-empty{font-size:14px;color:var(--ink-3);padding:4px 0 10px}
 .cal-ev{display:flex;gap:12px;align-items:flex-start;background:var(--card);border:1px solid var(--hairline);border-radius:var(--r-md);padding:12px 14px;margin-bottom:8px;box-shadow:inset 3px 0 0 var(--forest),var(--shadow-card)}
 .cal-ev.est{box-shadow:inset 3px 0 0 var(--gold-5),var(--shadow-card)}
@@ -456,6 +460,7 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
   nav{left:50%;right:auto;transform:translateX(-50%);width:560px}
   .grid-tiles{grid-template-columns:repeat(5,1fr)}
   .sheet{max-width:780px;left:50%;transform:translateX(-50%);border-left:1px solid var(--hairline);border-right:1px solid var(--hairline)}
+  #view-cal.view.active{display:block}
 }
 .wide-btn{width:100%}.wide-btn + .storm-muted{margin-top:14px}
 .qrow{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;padding:10px 0;border-bottom:1px solid var(--hairline)}
@@ -1460,13 +1465,15 @@ async function renderLeads() {
     data = await api('/api/leads?limit=50');
   } catch (e) {
     if (e.code === 401) return showKeywall();
-    v.appendChild(state('No leads yet', e.code === 503
-      ? 'Database not connected — leads appear here the moment it is.'
-      : 'Could not load leads. Pull refresh to retry.'));
+    // §1B: a lead feed Arbo could not read is NAMED, never headed "no leads".
+    // The boot /health read decides whether db_not_configured means cut.
+    await LINKS_READY;
+    v.appendChild(feedState(e, 'Leads', 'an empty inbox'));
     return;
   }
   if (!data.leads.length) {
-    v.appendChild(state('Inbox zero', 'New calls and web leads land here.'));
+    // R4: Mike handles the leads — this screen promises no ingestion.
+    v.appendChild(state('No new leads', 'Nothing waiting right now.'));
     return;
   }
   const rank = { hot: 0, warm: 1, cool: 2 };
@@ -1483,36 +1490,99 @@ async function renderLeads() {
     c.appendChild(top);
     if (lead.city) c.appendChild(el('div', 'addr', lead.city + (lead.zip ? ' · ' + lead.zip : '')));
     if (lead.history) c.appendChild(el('div', 'scope', '' + lead.history));
+    // §1B: a past-work read that failed is named — a missing line is not "no history".
+    else if (lead.historyUnreadable) c.appendChild(feedLine(null, 'Past work'));
     if (lead.details) c.appendChild(el('div', 'scope', lead.details));
     const b = el('div', 'badges');
     if (lead.isEmergency) b.appendChild(badge('EMERGENCY', 'b-emg'));
+    // Triage leads the row, so HOT/WARM never wraps onto a line by itself.
+    b.appendChild(badge(lead.quality.priority.toUpperCase(), 'b-' + lead.quality.priority));
     const pb = permitBadge(lead);
     if (pb) b.appendChild(pb);
     if (lead.isFirstTimer === true) b.appendChild(badge('FIRST-TIMER', 'b-first'));
     if (lead.isFirstTimer === false) b.appendChild(badge('REPEAT', 'b-repeat'));
-    b.appendChild(badge(lead.quality.priority.toUpperCase(), 'b-' + lead.quality.priority));
+    // A good lead says so; filing it as spam swaps this tag for SPAM until Undo.
+    let qTag = null;
+    if (lead.status === 'qualified') { qTag = badge('QUALIFIED', 'b-est'); b.appendChild(qTag); }
     c.appendChild(b);
+    // §1B: a permit read that FAILED is not "screen pending". It is named in the
+    // feed-state words under the badges — never as a permit badge (wording is Mike's, X6).
+    if (lead.permitUnreadable) c.appendChild(feedLine(null, 'Permit screen'));
     // §9 one-tap actions: call the human back, or file the lead. ARBOR never
     // calls anyone itself — the phone app does, with Mike's thumb on it.
     const row = el('div', 'actions');
     if (lead.phone) {
       const call = el('a', 'callbtn', 'Call back');
       call.href = 'tel:' + lead.phone;
+      // Its own line: beside two worded buttons it squeezed to "Call / back" at 390px.
+      call.style.flexBasis = '100%';
       row.appendChild(call);
     }
-    const mark = (label, cls, status) => {
-      const btn = el('button', 'minibtn ' + cls, label);
+    // Said in words, never a bare glyph: a one-tap SPAM on a lead must say what
+    // it does (R23 — a "Spam Likely" caller can be a customer), and it can be undone.
+    const btns = [];
+    const clearErr = () => { const n = c.querySelector(':scope > .save-err'); if (n) n.remove(); };
+    const mark = (iconId, word, aria, cls, status) => {
+      const btn = el('button', 'minibtn mark ' + cls);
+      btn.appendChild(icon(iconId));
+      btn.appendChild(el('span', '', word));
+      btn.setAttribute('aria-label', aria);
+      btn.title = aria;
       btn.addEventListener('click', async () => {
-        btn.disabled = true;
+        for (const x of btns) x.disabled = true;
         try {
           await api('/api/leads/' + lead.id + '/status', { method: 'POST', body: { status } });
-          c.classList.add('dismissed');
-        } catch { btn.disabled = false; }
+        } catch (e) {
+          // A tap that did not save says so on the card — never a silent re-enable.
+          for (const x of btns) x.disabled = false;
+          showSaveFail(c, e);
+          return;
+        }
+        clearErr();
+        if (status === 'qualified') {
+          // A good lead stays in the inbox at full strength (listLeads keeps it).
+          qTag = badge('QUALIFIED', 'b-est');
+          b.appendChild(qTag);
+          btn.remove();
+          for (const x of btns) x.disabled = false;
+          return;
+        }
+        // Spam dims the card and leaves on the next refresh — until then, Undo.
+        // The filed line and its Undo stay at full strength (.lead-filed).
+        c.classList.add('dismissed');
+        if (qTag) qTag.remove();
+        const tag = badge('SPAM', 'b-repeat');
+        b.appendChild(tag);
+        const filed = el('div', 'lead-filed');
+        filed.appendChild(el('div', 'scope', 'Filed as spam — it leaves the inbox on the next refresh.'));
+        const undoRow = el('div', 'actions');
+        const undo = el('button', 'minibtn', 'Undo');
+        undo.addEventListener('click', async () => {
+          undo.disabled = true;
+          try {
+            // Back to what it was filed as: a good lead stays a good lead.
+            await api('/api/leads/' + lead.id + '/status', { method: 'POST', body: { status: qTag ? 'qualified' : 'new' } });
+          } catch (e2) {
+            undo.disabled = false;
+            showSaveFail(c, e2);
+            return;
+          }
+          clearErr();
+          c.classList.remove('dismissed');
+          tag.remove();
+          if (qTag) b.appendChild(qTag);
+          for (const x of btns) x.disabled = false;
+          filed.replaceWith(row);
+        });
+        undoRow.appendChild(undo);
+        filed.appendChild(undoRow);
+        row.replaceWith(filed);
       });
+      btns.push(btn);
       return btn;
     };
-    row.appendChild(mark('✓', 'ok', 'qualified'));
-    row.appendChild(mark('✗', 'bad', 'spam'));
+    if (lead.status !== 'qualified') row.appendChild(mark('i-check', 'Good lead', 'Mark as a good lead', 'ok', 'qualified'));
+    row.appendChild(mark('i-close', 'Spam', 'File as spam or wrong number', 'bad', 'spam'));
     c.appendChild(row);
     v.appendChild(c);
   }
@@ -1521,20 +1591,24 @@ async function renderLeads() {
 // ---------- Route planner (R16) — lives with the calendar (Mike, 2026-09-21) ----------
 function routePlannerPanel(v) {
   v.appendChild(el('div', 'panel-title', 'Route planner'));
-  v.appendChild(el('div', 'storm-muted', 'One stop per line: address, city, ZIP. Twenty minutes on site each; Saturdays run Norfolk/Chesapeake/Portsmouth mornings and Virginia Beach after 12; weekdays start after 4.'));
+  v.appendChild(el('div', 'storm-muted', 'One stop per line: address, city, ZIP. Allow 20 minutes per stop. Saturdays: Norfolk, Chesapeake and Portsmouth in the morning, Virginia Beach after noon. Weekdays start after 4 PM.'));
+  // The shared form + button styles: 16px+ text so iPhone does not zoom on tap.
   const ta = document.createElement('textarea');
   ta.id = 'route-stops';
-  ta.placeholder = '555 Synthetic Ave, Virginia Beach, 23451\n88 Sample St, Norfolk, 23503';
-  ta.style.cssText = 'width:100%;min-height:110px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:inherit;padding:10px;font-size:15px';
+  ta.className = 'input';
+  ta.placeholder = '123 Example St, Virginia Beach, 23451\n45 Example Rd, Norfolk, 23503';
+  ta.style.cssText = 'min-height:110px;resize:vertical;line-height:1.45;margin-bottom:10px';
   v.appendChild(ta);
   const prow = el('div', 'loc-strip');
   const daySel = document.createElement('select');
   daySel.id = 'route-day';
-  daySel.style.cssText = 'min-height:48px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:inherit;padding:0 10px;font-size:15px';
+  daySel.className = 'input';
+  daySel.style.cssText = 'flex:1;width:auto';
   for (const [val, label] of [['saturday', 'Saturday'], ['weekday', 'Weekday (after 4)']]) {
     const o = document.createElement('option'); o.value = val; o.textContent = label; daySel.appendChild(o);
   }
-  const pbtn = el('button', 'loc-toggle on', 'Plan route');
+  const pbtn = el('button', 'actbtn', 'Plan route');
+  pbtn.style.cssText = 'flex:1;margin-top:0';
   const pout = el('div');
   pbtn.onclick = async () => {
     pbtn.disabled = true;
@@ -1545,6 +1619,12 @@ function routePlannerPanel(v) {
       const cm = line.match(cities);
       return zip ? { label: line, zip: zip, city: cm ? cm[0] : undefined } : null;
     });
+    // An empty box is a note, not an alarm — and nothing goes to the server.
+    if (!stops.length) {
+      pout.appendChild(el('div', 'storm-muted', 'Add at least one stop — one per line.'));
+      pbtn.disabled = false;
+      return;
+    }
     if (stops.some((s) => !s)) {
       pout.appendChild(el('div', 'storm', 'Every line needs a ZIP (23xxx). Nothing was planned.'));
       pbtn.disabled = false;
@@ -1554,10 +1634,13 @@ function routePlannerPanel(v) {
     try { plan = await api('/api/route/plan', { method: 'POST', body: { stops, day: daySel.value } }); }
     catch (e) { pout.appendChild(el('div', 'storm', 'Could not plan the route \u2014 nothing was changed.')); pbtn.disabled = false; return; }
     pout.appendChild(el('div', 'storm-muted', (plan.mode === 'live_traffic' ? 'Live traffic \u00b7 ' : '\u2139 ZIP estimates \u00b7 ') + plan.note));
-    for (const w of plan.warnings) pout.appendChild(el('div', 'storm', '\u26a0 ' + w));
+    // A plan warning is amber; the red callout stays for a plan that failed.
+    for (const w of plan.warnings) pout.appendChild(el('div', 'late', '\u26a0 ' + w));
+    // The server plans in 24-hour HH:MM; the screen reads a 12-hour clock.
+    const t12 = (s) => { if (!/^\d{1,2}:\d{2}$/.test(s)) return s; const [h, m] = s.split(':').map(Number); return ((h + 11) % 12 + 1) + ':' + String(m).padStart(2, '0') + (h < 12 ? ' AM' : ' PM'); };
     for (const vt of plan.visits) {
       const row = el('div', 'loc-strip');
-      row.appendChild(el('span', '', vt.order + '. ' + vt.startTime + '\u2013' + vt.endTime + ' \u2014 ' + vt.label));
+      row.appendChild(el('span', '', vt.order + '. ' + t12(vt.startTime) + '\u2013' + t12(vt.endTime) + ' \u2014 ' + vt.label));
       pout.appendChild(row);
     }
     pbtn.disabled = false;
@@ -1577,7 +1660,9 @@ function gcalEmbedUrl() {
     src: GCAL_ID,
     ctz: 'America/New_York',
     mode: window.innerWidth >= 900 ? 'WEEK' : 'AGENDA',
-    bgcolor: '#0B0D10',
+    // Google paints this behind its own toolbar — the theme's card colour, read
+    // at load (a mid-visit Day/Night switch recolours it on the next load).
+    bgcolor: getComputedStyle(document.documentElement).getPropertyValue('--card').trim() || '#FFFFFF',
     showTitle: '0',
     showNav: '1',
     showDate: '1',
@@ -1595,7 +1680,7 @@ function renderCalendar() {
   const head = el('div', 'cal-src', '\u25CF Google Calendar \u2014 Art-is-Tree');
   v.appendChild(head);
   // The open-in-Google action lives ABOVE the frame: if the embed can't render
-  // (signed out of Google on this device), the way through is already on screen.
+  // (signed out, offline, or blocked), the way through is already on screen.
   const openTop = el('a', 'cal-open', 'Open in Google Calendar \u2197');
   openTop.href = 'https://calendar.google.com/calendar/u/0/r';
   openTop.target = '_blank';
@@ -1610,8 +1695,10 @@ function renderCalendar() {
   frame.setAttribute('scrolling', 'no');
   frame.title = 'Art-is-Tree Google Calendar';
   v.appendChild(frame);
+  // §1B: Arbo cannot see inside Google's frame, so the line names the likely
+  // causes and never states one as fact.
   v.appendChild(el('div', 'cal-src',
-    'Blank above? You are signed out of Google on this device \u2014 use the button.'));
+    'Calendar not showing? Google may need you signed in on this phone, or the connection dropped \u2014 tap Open in Google Calendar above.'));
   // R16 (Mike): the planner belongs with the calendar — plan the run, then
   // put it on the real Google Calendar with the button above.
   routePlannerPanel(v);
@@ -1622,11 +1709,13 @@ function renderCalendar() {
 function estimatePrepPanel() {
   const card = el('div', 'card');
   card.appendChild(el('div', 'panel-title', 'Estimate prep'));
-  card.appendChild(el('div', 'storm-muted', 'Permit screen, drive estimate, Miss Utility and access notes — one sheet before you drive. Never a price, never a booking.'));
+  card.appendChild(el('div', 'storm-muted', 'Permit check, drive time, Miss Utility and access notes — one sheet before you drive. Never a price, never a booking.'));
+  // Each label is tied to its field (a tap focuses it, a screen reader names
+  // it) and takes the shared .field label style.
   const f = (label, node) => {
     const w = el('div', 'field');
-    const l = el('label', '', label); l.style.display = 'block'; l.style.fontSize = '11px'; l.style.fontWeight = '700';
-    l.style.letterSpacing = '.08em'; l.style.textTransform = 'uppercase'; l.style.color = 'var(--muted)'; l.style.marginBottom = '5px';
+    node.id = 'ep-' + label.toLowerCase().replace(/\W+/g, '-');
+    const l = el('label', '', label); l.htmlFor = node.id;
     w.appendChild(l); w.appendChild(node); return w;
   };
   const addr = el('input'); addr.type = 'text'; addr.placeholder = '123 Oak St';
@@ -1661,7 +1750,10 @@ function estimatePrepPanel() {
       return;
     }
     go.disabled = false; go.textContent = 'Build prep sheet';
-    const sheet = el('div', 'verdict ' + (s.permit.ran && s.permit.status === 'PERMIT_LIKELY' ? 'v-lose' : s.permit.ran && s.permit.status === 'REVIEW_NEEDED' ? 'v-below' : 'v-on'));
+    // Never the green ON TARGET pricing style: a screen that never ran is a
+    // warning, and NO OVERLAY — VERIFY is neutral — green would read as a pass.
+    const pc = !s.permit.ran ? 'v-below' : s.permit.status === 'PERMIT_LIKELY' ? 'v-lose' : s.permit.status === 'REVIEW_NEEDED' ? 'v-below' : 'v-verify';
+    const sheet = el('div', 'verdict ' + pc);
     sheet.appendChild(el('div', 'vhead', s.permit.ran ? s.permit.status.replace(/_/g, ' ').replace('NO OVERLAY VERIFY', 'NO OVERLAY — VERIFY') : 'SCREEN NOT RUN'));
     sheet.appendChild(el('div', 'drv', s.permit.ran ? s.permit.headline : s.permit.reason));
     if (s.permit.ran) {
@@ -1695,12 +1787,16 @@ async function renderBook() {
     data = await api('/api/properties');
   } catch (e) {
     if (e.code === 401) return showKeywall();
-    v.appendChild(state('The Book is empty', e.code === 503
-      ? 'Database not connected — properties appear the moment it is.'
-      : 'Could not load properties. Pull refresh to retry.'));
+    // §1B: a Book Arbo could not read is NAMED, never headed "empty".
+    await LINKS_READY;
+    v.appendChild(feedState(e, 'The Book', 'an empty Book'));
     return;
   }
-  if (data.comingDue && data.comingDue.length) {
+  if (data.forecastUnavailable) {
+    // §1B: a dead forecast is not "nothing due" — said before the list.
+    v.appendChild(el('div', 'sect', 'Coming due'));
+    v.appendChild(feedLine(null, 'Coming-due forecast', 'Due badges below are missing, not "nothing due".'));
+  } else if (data.comingDue && data.comingDue.length) {
     v.appendChild(el('div', 'sect', 'Coming due — worth a look'));
     for (const d of data.comingDue) {
       const c = el('div', 'card');
@@ -1750,7 +1846,7 @@ async function openTwin(id, title) {
   try {
     t = await api('/api/properties/' + id);
   } catch (e) {
-    body.appendChild(state('Could not load this property', 'Pull refresh and try again.'));
+    body.appendChild(state('Could not load this property', 'Close this and tap the property again.'));
     return;
   }
   const p = t.property;

@@ -112,7 +112,7 @@ function driveEstimate(workZip: string | null, propertyZip: string | undefined) 
   if (!workZip) {
     return {
       fromZip: null as null,
-      reason: "No work ZIP set today — set today's work ZIP in Settings for a drive estimate.",
+      reason: "No work ZIP set today — set today's work ZIP in Settings to see the drive time.",
     };
   }
   if (!propertyZip) {
