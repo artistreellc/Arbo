@@ -228,7 +228,7 @@ describe('Book + estimate prep (source pins)', () => {
     for (const gone of ['The Book is empty', 'Pull refresh', 'Database not connected']) {
       expect(book, gone).not.toContain(gone);
     }
-    expect(twin).toContain("state('Could not load this property', 'Close this and tap the property again.')");
+    expect(twin).toContain("feedState(e, 'This property', 'a property with no history', 'Close this and tap the property again.')");
     expect(twin).not.toContain('Pull refresh');
   });
 

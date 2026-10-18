@@ -195,13 +195,15 @@ export function findCertProblems(
       const { state, daysUntil } = certState(governing.expiresOn, todayEt);
       if (state === 'current') continue;
 
+      // '1 day' / '19 days' — the count is known, so the line never says 'day(s)'.
+      const days = (n: number) => `${n} day${n === 1 ? '' : 's'}`;
       const line =
         state === 'lapsed'
-          ? `${LABEL[type]} EXPIRED ${Math.abs(daysUntil!)} day(s) ago — this is not a reminder, it is a stop.`
+          ? `${LABEL[type]} EXPIRED ${days(Math.abs(daysUntil!))} ago — this is not a reminder, it is a stop.`
           : state === 'urgent'
-            ? `${LABEL[type]} expires in ${daysUntil} day(s) — book the renewal now.`
+            ? `${LABEL[type]} expires in ${days(daysUntil!)} — book the renewal now.`
             : state === 'upcoming'
-              ? `${LABEL[type]} expires in ${daysUntil} day(s).`
+              ? `${LABEL[type]} expires in ${days(daysUntil!)}.`
               : `${LABEL[type]} has no expiry date on file — Arbo cannot tell whether it is valid.`;
 
       out.push({

@@ -83,7 +83,7 @@ describe('GET /api/training/board', () => {
   it('names a completions source that is not wired, distinct from one that failed', async () => {
     const res = await createApi(src({ gateCompletionsSince: undefined })).trainingBoard();
     const b = res.body as { blindSpots: string[]; rows: Array<{ completedThisWeek: boolean | null }> };
-    expect(b.blindSpots.join(' ')).toMatch(/no source wired/i);
+    expect(b.blindSpots.join(' ')).toMatch(/not connected yet/i);
     expect(b.rows[0]!.completedThisWeek).toBeNull();
   });
 

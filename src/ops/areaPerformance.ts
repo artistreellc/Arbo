@@ -245,7 +245,8 @@ export function buildCampaignReport(facts: CampaignFact[]): CampaignResult[] {
     const cpj = Math.round((c.cost / c.bookedJobs) * 100) / 100;
     return {
       id: c.id, type: c.type, cost: c.cost, bookedJobs: c.bookedJobs, costPerBookedJob: cpj,
-      line: `${usd(c.cost)} spent · ${c.bookedJobs} booked ${c.bookedJobs === 1 ? 'job' : 'jobs'} · ${usd(cpj)} to win each one.`,
+      // The per-job figure is the card's headline (costPerBookedJob), so the line does not repeat it.
+      line: `${usd(c.cost)} spent · ${c.bookedJobs} booked ${c.bookedJobs === 1 ? 'job' : 'jobs'}.`,
     };
   }).sort((a, b) => {
     // Cheapest measured campaign first; unmeasurable ones last, never ranked

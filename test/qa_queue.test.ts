@@ -56,7 +56,9 @@ describe('Queue — one dead feed never blanks the screen (§1B)', () => {
 
   it('a failed open-loops read is named, and a real empty list says so', () => {
     const q = queue();
-    expect(q).toContain("feedState(e, 'Open loops', 'a sign that nothing is open')");
+    // One line, not a dashed card, so the safety stop stays on the first screen.
+    expect(q).toContain("feedLine(e, 'Open loops', 'That is not a sign that nothing is open.')");
+    expect(q).not.toContain("feedState(e, 'Open loops'");
     expect(q).not.toContain('.catch(() => {})');
     expect(q).toContain("'No open loops'");
   });
@@ -78,7 +80,7 @@ describe('Queue — one dead feed never blanks the screen (§1B)', () => {
     expect(html).toContain('if (await renderRosterList(listSlot)) slot.appendChild(rosterComposer(listSlot));');
     expect(html).toContain('if (await renderLibraryQueue(queueSlot)) slot.appendChild(libraryComposer(queueSlot));');
     const lists: Array<[string, string]> = [
-      ['async function renderRosterList(', 'function certAdder('],
+      ['async function renderRosterList(', '// A one-way action asks twice'],
       ['async function renderLibraryQueue(', 'function libraryComposer('],
     ];
     for (const [start, end] of lists) {
@@ -128,7 +130,7 @@ describe('Numbers — the benchmark reads as what it is (§1B/§6N.3)', () => {
 
   it('says which jobs and which window it covers, and when it was checked', () => {
     const p = perf();
-    expect(p).toContain("'Paid, completed jobs \\u00b7 '");
+    expect(p).toContain("'Paid, completed jobs in the '");
     expect(p).toContain('p.windowDays');
     expect(p).toContain('p.checkedAtIso');
     // Right under the tiles, before anything is judged against it.
@@ -153,7 +155,8 @@ describe('Numbers — the benchmark reads as what it is (§1B/§6N.3)', () => {
   it('an unrated rate is never a headline, and a below-average area is not an emergency', () => {
     const a = area();
     expect(a).toContain("const unjudged = a.verdict === 'not_enough_data';");
-    expect(a).toContain("'-job sample'");
+    // The job count is the line under the title; the rate slot never repeats it.
+    expect(a).not.toContain("'-job sample'");
     expect(a).toContain("rate.style.cssText = 'color:var(--ink-3);font-weight:500'");
     expect(a).not.toContain('emergency\'');
   });
@@ -194,10 +197,11 @@ describe('Numbers — campaigns', () => {
     id: 'c1', type: 'flyer', cost: 400, bookedJobs: 2, attributionWired: true, ...over,
   });
 
-  it('a measured campaign line carries the spend, the count and the dollar sign', () => {
-    expect(buildCampaignReport([camp()])[0]!.line).toBe('$400 spent · 2 booked jobs · $200 to win each one.');
+  it('a measured campaign line carries the spend and the count; the per-job figure is the headline only', () => {
+    expect(buildCampaignReport([camp()])[0]!.line).toBe('$400 spent · 2 booked jobs.');
     expect(buildCampaignReport([camp({ cost: 1250, bookedJobs: 1 })])[0]!.line)
-      .toBe('$1,250 spent · 1 booked job · $1,250 to win each one.');
+      .toBe('$1,250 spent · 1 booked job.');
+    expect(buildCampaignReport([camp()])[0]!.costPerBookedJob).toBe(200);
   });
 
   it('an untracked campaign shows what was spent and stays unknown, not failed', () => {

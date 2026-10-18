@@ -115,7 +115,7 @@ describe('ARBOR app shell', () => {
   });
 
   it('a dead training board is named, not drawn as a current crew (§1B)', () => {
-    expect(html).toContain('Training board unavailable');
+    expect(html).toContain("'Training board — ' + FEED_WORD[feedKind(e)]");
     expect(html).toContain('not a claim that everyone is current');
   });
 
@@ -128,12 +128,12 @@ describe('ARBOR app shell', () => {
   });
 
   it('a dead draft queue is named, not rendered as an empty queue (§1B)', () => {
-    expect(html).toContain('Draft queue unavailable');
+    expect(html).toContain("'Draft queue — ' + FEED_WORD[feedKind(e)]");
     expect(html).toContain('not a claim that nothing is waiting');
   });
 
   it('the money surface names a dead ledger instead of implying everything is paid (§1B)', () => {
-    expect(html).toContain('Ledger unavailable');
+    expect(html).toContain("'Ledger — ' + FEED_WORD[feedKind(e)]");
     expect(html).toContain('not a claim that everything is paid');
   });
 
@@ -149,7 +149,7 @@ describe('ARBOR app shell', () => {
   });
 
   it('the fleet surface names a dead feed instead of drawing all-units-up (§1B)', () => {
-    expect(html).toContain('Fleet status unknown');
+    expect(html).toContain("'Fleet — ' + FEED_WORD[feedKind(e)]");
     expect(html).toContain('not a claim that everything runs');
   });
 
@@ -174,7 +174,7 @@ describe('ARBOR app shell', () => {
   });
 
   it('a dead performance feed is named, not drawn as healthy numbers', () => {
-    expect(html).toContain('Performance unavailable');
+    expect(html).toContain("'Numbers — ' + FEED_WORD[feedKind(e)]");
     expect(html).toContain('not a claim that everything is fine');
     expect(html).toContain('not "no campaigns running"');
   });
@@ -182,13 +182,13 @@ describe('ARBOR app shell', () => {
   it('is the only place a crew member or a card can be put on file (§4)', () => {
     expect(html).toContain("api('/api/roster')");
     expect(html).toContain('/certification');
-    expect(html).toContain('Add somebody to the roster');
+    expect(html).toContain('Add someone to the roster');
     // The crew code is what somebody types into the crew door.
     expect(html).toContain('Crew code: ');
   });
 
   it('the roster counts cards on file and never rules on anybody', () => {
-    expect(html).toContain('CARDS ON FILE');
+    expect(html).toContain("plural(p.certCount, 'card') + ' on file'");
     // Scoped to the roster — 'qualified' is also a LEAD status elsewhere on
     // this page, which is a different word about a different thing.
     const roster = html.slice(html.indexOf('function renderRoster('), html.indexOf('// ---------- Training board'));
@@ -202,7 +202,7 @@ describe('ARBOR app shell', () => {
 
   it('an empty roster explains what it breaks, and a dead one is named apart', () => {
     expect(html).toContain('Nobody on the roster yet');
-    expect(html).toContain('Roster unavailable');
+    expect(html).toContain("'Roster — ' + FEED_WORD[feedKind(e)]");
     expect(html).toContain('not a claim that nobody is on it');
   });
 
@@ -214,7 +214,7 @@ describe('ARBOR app shell', () => {
   it('is the only place the §6U library can be written, and it writes drafts', () => {
     expect(html).toContain('/api/reference/drafts');
     expect(html).toContain("api('/api/reference'");
-    expect(html).toContain('Write a new entry');
+    expect(html).toContain('Write a new library entry');
     // §6U.3 stated where the entry is actually typed, not only in the API.
     expect(html).toContain('never paste the standard text');
   });
@@ -235,7 +235,7 @@ describe('ARBOR app shell', () => {
   });
 
   it('a dead library queue is named, not drawn as an empty one (§1B)', () => {
-    expect(html).toContain('Library queue unavailable');
+    expect(html).toContain("'Library drafts — ' + FEED_WORD[feedKind(e)]");
     expect(html).toContain('not a claim that nothing is waiting');
   });
 
