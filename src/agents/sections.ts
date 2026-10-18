@@ -18,12 +18,12 @@
 // inspectMessage, and nothing here imports it); never edits a calendar event;
 // never rewrites its own rules or code. Every run is recorded (agent_run).
 //
-// §1B, the spine: every input has one of four states. 'cut' = its data link
-// is closed (named, with the switch that opens it). 'notrun' = deliberately
-// not read here — an agent left to the hourly sweep, a reader not built, or a
-// feed the practice data does not carry. 'unreadable' = we tried and could
-// not. 'read' = a real answer. Only 'read' is an answer; the other three are
-// never a zero.
+// §1B, the spine: every input has one of six states. 'cut' = its data link
+// is closed on purpose. 'sim' = a feed the practice data does not carry.
+// 'notrun' = deliberately not read here — an agent left to the hourly check,
+// or a piece not connected in this run. 'notbuilt' = no reader exists yet.
+// 'unreadable' = we tried and could not. 'read' = a real answer. Only 'read'
+// is an answer; the other five are never a zero.
 //
 // Failure rule, one line: an input read that fails is 'unreadable' and the
 // section is 'degraded'; a WRAPPED existing agent that throws has broken its
@@ -44,7 +44,7 @@ import { KNOWLEDGE_BASE, type KbEntry } from '../reception/knowledgeBase.js';
 import { redact } from '../ops/inboxWatch.js';
 import { startAgentRun, type AgentRunHandle } from '../binder/agentRun.js';
 import { hasDb } from '../db/client.js';
-import { linkEnvVar, linkOpen, type DataLink } from '../db/links.js';
+import { linkOpen, type DataLink } from '../db/links.js';
 import { runWeatherAgent, type WeatherAgentResult } from './weatherAgent.js';
 import { runBookingAgent, type BookingAgentResult } from './bookingAgent.js';
 import { runCollectionsAgent, type CollectionsAgentResult } from './collectionsAgent.js';
@@ -95,20 +95,21 @@ const IN = {
   callBacklog: 'call review backlog',
   weather: 'NWS weather alerts',
   bookedStops: "tomorrow's booked stops",
-  openLoops: 'open loops (Loop-Closer queue)',
+  openLoops: 'open loops on the Queue',
   briefing: 'owner briefing',
   permitScreens: 'permit screens for recent leads',
   permitBoard: 'permit board',
   legal: 'legal & codes config',
   knowledge: 'arboriculture knowledge base',
   referenceDrafts: 'reference library drafts',
-  photos: 'site photos (vision & labeling)',
+  photos: 'site photos',
   crewSafety: 'crew certifications & near-miss log',
   training: 'training board',
-  invoices: 'open invoices (collections)',
+  invoices: 'open invoices',
   fleet: 'fleet units',
   performance: 'area & campaign performance',
 } as const;
+export const RULEBOOK_INPUTS: ReadonlySet<string> = new Set([IN.guardrails, IN.legal, IN.knowledge]); // static rulebooks: loading one is not looking at the business
 
 export const SECTION_AGENTS: readonly SectionAgentDef[] = [
   {
@@ -121,8 +122,8 @@ export const SECTION_AGENTS: readonly SectionAgentDef[] = [
     model: 'claude-opus-5',
   },
   {
-    id: 'dispatcher', name: 'Dispatcher', section: 'Calendar / route',
-    roles: ['#2 Booking/Dispatch', '#9 Weather & Conditions'],
+    id: 'dispatcher', name: 'Dispatcher', section: 'Calendar & route',
+    roles: ['#2 Booking & dispatch', '#9 Weather & Conditions'],
     carries: ['agents/bookingAgent', 'agents/weatherAgent'],
     reads: [IN.weather, IN.bookedStops],
     can: ['read:nws_alerts', 'read:booked_stops', 'propose:route_fix', 'propose:weather_hold_review', 'propose:flag_on_event_bus'],
@@ -130,7 +131,7 @@ export const SECTION_AGENTS: readonly SectionAgentDef[] = [
     model: 'claude-opus-5',
   },
   {
-    id: 'chief-of-staff', name: 'Chief of Staff', section: 'Today / Queue',
+    id: 'chief-of-staff', name: 'Chief of Staff', section: 'Today & Queue',
     roles: ['#3 Loop-Closer', '#13 Owner Briefing'],
     carries: ['ops/loopCloser (via the read-only queue)', 'agents/ownerBriefingAgent'],
     reads: [IN.openLoops, IN.briefing],
@@ -152,7 +153,7 @@ export const SECTION_AGENTS: readonly SectionAgentDef[] = [
     model: 'claude-opus-5',
   },
   {
-    id: 'arborist', name: 'Arborist', section: 'Measure / Book',
+    id: 'arborist', name: 'Arborist', section: 'Measure & Book',
     roles: ['#5 Master Arborist Knowledge', '#8 Vision & Labeling'],
     carries: ['reception/knowledgeBase', 'reference library (via the read-only drafts queue)'],
     reads: [IN.knowledge, IN.referenceDrafts, IN.photos],
@@ -173,7 +174,7 @@ export const SECTION_AGENTS: readonly SectionAgentDef[] = [
   },
   {
     id: 'yard-boss', name: 'Yard Boss', section: 'Fleet & money',
-    roles: ['#10 Fleet/Equipment/Parts', 'Collections (§4.8, §5B)'],
+    roles: ['#10 Equipment & parts', 'Collections (§4.8, §5B)'],
     carries: ['agents/collectionsAgent', 'fleet (via the read-only units list)'],
     reads: [IN.invoices, IN.fleet],
     can: ['read:open_invoices', 'read:fleet_units', 'propose:collections_review', 'propose:parts_review', 'propose:flag_on_event_bus'],
@@ -197,7 +198,7 @@ export function isSectionId(id: string): id is SectionId {
 
 // ─── Report shape ───────────────────────────────────────────────────────────
 
-export type InputState = 'read' | 'cut' | 'notrun' | 'unreadable';
+export type InputState = 'read' | 'cut' | 'sim' | 'notrun' | 'notbuilt' | 'unreadable';
 
 export interface InputReport { name: string; state: InputState; detail: string }
 export interface Finding { severity: 'info' | 'watch' | 'act'; text: string; ref?: string }
@@ -280,8 +281,8 @@ export function liveSectionDeps(api: Api, alerts: AlertsProvider, now = new Date
  * with the links open: the six scheduled agents are left out — each records
  * an agent_run row and raises bus events, and the owner briefing writes tree
  * forecasts — so they run on the hourly sweep only, and here each is named
- * "not wired in this run" (state 'notrun'; the Dispatcher reads the weather
- * feed itself instead). The section run itself is not recorded.
+ * HOURLY_ONLY (state 'notrun'; the Dispatcher reads the weather feed itself
+ * instead). The section run itself is not recorded.
  */
 export function onDemandSectionDeps(api: Api, alerts: AlertsProvider, now = new Date()): SectionDeps {
   const live = liveSectionDeps(api, alerts, now);
@@ -301,7 +302,7 @@ export function onDemandSectionDeps(api: Api, alerts: AlertsProvider, now = new 
 // ─── Input machinery ────────────────────────────────────────────────────────
 
 interface Read {
-  state: 'read' | 'notrun' | 'unreadable';
+  state: 'read' | 'sim' | 'notrun' | 'notbuilt' | 'unreadable';
   detail: string;
   findings?: Finding[];
   proposals?: Proposal[];
@@ -332,31 +333,34 @@ function plainErr(err: unknown): string {
 }
 
 // Not read on purpose — never 'unreadable', which means we tried and could not.
-const notWired = (what: string): Read => ({ state: 'notrun', detail: `not wired in this run: ${what}` });
+const notWired = (what: string): Read => ({ state: 'notrun', detail: `not connected in this run: ${what}` });
+// A wrapped agent left to the hourly sweep: it records runs and raises events, so the button never starts it.
+const HOURLY_ONLY: Read = { state: 'notrun', detail: 'runs on the hourly check, not from this button' };
 const propose = (kind: string, text: string): Proposal => ({ kind, text, needsMike: true });
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 async function readInput(spec: InputSpec, d: SectionDeps): Promise<InputReport & { got?: Read }> {
   if (spec.links.length > 0) {
+    // The screen names the switch once (Settings carries the variables), never per row.
     if (!d.hasDb()) {
-      return { name: spec.name, state: 'cut', detail: `data link cut on purpose (ARBO_DATA_LINKS); needs ${spec.links.join(', ')}` };
+      return { name: spec.name, state: 'cut', detail: 'cut on purpose' };
     }
-    const closed = spec.links.filter((l) => !d.linkOpen(l));
-    if (closed.length > 0) {
-      return { name: spec.name, state: 'cut', detail: `data link cut: ${closed.map((l) => `${l} (${linkEnvVar(l)})`).join(', ')}` };
+    if (spec.links.some((l) => !d.linkOpen(l))) {
+      return { name: spec.name, state: 'cut', detail: 'cut on purpose — this link is not opened yet' };
     }
   }
   try {
     const got = await spec.read(d);
     return { name: spec.name, state: got.state, detail: got.detail, got };
   } catch (err) {
-    // A cut link that slipped past the map above is still a cut, by name.
+    // A cut link that slipped past the map above is still a cut — said in the
+    // same words; its message names a table and a variable, not for the screen.
     if (err instanceof Error && err.name === 'LinkCutError') {
-      return { name: spec.name, state: 'cut', detail: errText(err) };
+      return { name: spec.name, state: 'cut', detail: 'cut on purpose' };
     }
     if (spec.wraps) throw new WrappedAgentThrew(`wrapped agent '${spec.wraps}' threw — ${errText(err)}`);
-    // The screen already prints the input's name before its detail.
-    return { name: spec.name, state: 'unreadable', detail: `feed unreadable — ${plainErr(err)}` };
+    // The screen prints the input's name and an UNREADABLE chip; the detail is only the why.
+    return { name: spec.name, state: 'unreadable', detail: plainErr(err) };
   }
 }
 
@@ -374,8 +378,8 @@ async function viaApi<T>(
   const r = await call();
   if (r.status !== 200) {
     const code = (r.body as { error?: unknown } | null)?.error;
-    if (r.status === 503 && code === 'not_simulated') return { state: 'notrun', detail: 'not in the practice data' };
-    return { state: 'unreadable', detail: `feed unreadable — answered ${r.status}${typeof code === 'string' ? ` ${code}` : ''}` };
+    if (r.status === 503 && code === 'not_simulated') return { state: 'sim', detail: 'not in the practice data' };
+    return { state: 'unreadable', detail: `answered ${r.status}${typeof code === 'string' ? ` ${code}` : ''}` };
   }
   return onBody(r.body as T);
 }
@@ -408,13 +412,13 @@ const weatherFromAgent: InputSpec = {
         const active = await d.alerts.activeAlerts();
         return dispatcherWeather(active.length, active.filter(isWorkStopping).length);
       } catch (err) {
-        return { state: 'unreadable', detail: `feed unreadable — ${plainErr(err)}` };
+        return { state: 'unreadable', detail: plainErr(err) };
       }
     }
     const r = await d.weather();
     const wrapped = { agent: 'weather', status: r.status, summary: `feed=${r.feed} active=${r.activeAlerts} work_stopping=${r.workStopping} newly_raised=${r.newlyRaised}` };
     if (r.status !== 'ok' || r.feed !== 'ok') {
-      return { state: 'unreadable', detail: 'feed unreadable: NWS alerts did not answer — not "no storm"', wrapped };
+      return { state: 'unreadable', detail: 'NWS alerts did not answer — not "no storm"', wrapped };
     }
     return { ...dispatcherWeather(r.activeAlerts, r.workStopping), wrapped };
   },
@@ -457,8 +461,8 @@ const INPUTS: Record<SectionId, InputSpec[]> = {
         const shown = n >= 50 ? '50 or more' : String(n);
         return {
           state: 'read', detail: `${shown} unreviewed`,
-          findings: n > 0 ? [{ severity: 'watch', text: `${shown} logged conversation(s) await review (§29).` }] : [],
-          proposals: n > 0 ? [propose('call_review', `Review ${shown} logged conversation(s).`)] : [],
+          findings: n > 0 ? [{ severity: 'watch', text: `${n === 1 ? '1 logged conversation awaits' : `${shown} logged conversations await`} review (§29).` }] : [],
+          proposals: n > 0 ? [propose('call_review', `Review ${n === 1 ? '1 logged conversation' : `${shown} logged conversations`}.`)] : [],
         };
       }),
     },
@@ -469,10 +473,10 @@ const INPUTS: Record<SectionId, InputSpec[]> = {
     {
       name: IN.bookedStops, links: ['jobs', 'estimates', 'properties', 'ops'], wraps: 'bookingAgent',
       async read(d) {
-        if (!d.booking) return notWired('booking agent');
+        if (!d.booking) return HOURLY_ONLY;
         const r = await d.booking();
         const wrapped = { agent: 'booking', status: r.status, summary: `stops=${r.stopsChecked} issues=${r.issues} newly_raised=${r.newlyRaised}` };
-        if (r.status !== 'ok') return { state: 'unreadable', detail: 'feed unreadable: the booking agent reported an error', wrapped };
+        if (r.status !== 'ok') return { state: 'unreadable', detail: 'the booking agent reported an error', wrapped };
         return {
           state: 'read', wrapped,
           detail: `${plural(r.stopsChecked, 'stop', 'stops')} checked for tomorrow`,
@@ -505,7 +509,7 @@ const INPUTS: Record<SectionId, InputSpec[]> = {
     {
       name: IN.briefing, links: ['estimates', 'jobs', 'properties', 'contacts', 'leads'], wraps: 'ownerBriefingAgent',
       async read(d) {
-        if (!d.ownerBriefing) return notWired('owner briefing agent');
+        if (!d.ownerBriefing) return HOURLY_ONLY;
         const r = await d.ownerBriefing();
         const s = r.sections;
         const wrapped = { agent: 'owner-briefing', status: r.status, summary: `brief=${s.brief} loops=${s.openLoops} storm=${s.storm} due=${s.comingDue}` };
@@ -525,18 +529,18 @@ const INPUTS: Record<SectionId, InputSpec[]> = {
     {
       name: IN.permitScreens, links: ['leads', 'permits', 'ops'], wraps: 'permittingAgent',
       async read(d) {
-        if (!d.permitting) return notWired('permitting agent');
+        if (!d.permitting) return HOURLY_ONLY;
         const r = await d.permitting();
         const wrapped = { agent: 'permitting', status: r.status, summary: `events=${r.eventsProcessed} screens_missing=${r.screensMissing}` };
-        if (r.status !== 'ok') return { state: 'unreadable', detail: 'feed unreadable: the permitting agent reported an error', wrapped };
+        if (r.status !== 'ok') return { state: 'unreadable', detail: 'the permitting agent reported an error', wrapped };
         const n = r.screensMissing;
         return {
           state: 'read', wrapped,
           detail: `${plural(n, 'property', 'properties')} with a recent lead and no screen on file`,
           findings: n > 0
-            ? [{ severity: 'act', text: `${plural(n, 'property has', 'properties have')} a lead in the last 14 days and no §6B screen on file — REVIEW NEEDED.`, ref: r.flaggedPropertyIds.slice(0, 10).join(',') }]
+            ? [{ severity: 'act', text: `${plural(n, 'property has', 'properties have')} a lead in the last 14 days and no permit screen on file — REVIEW NEEDED.`, ref: r.flaggedPropertyIds.slice(0, 10).join(',') }]
             : [{ severity: 'info', text: 'Every property with a lead in the last 14 days has a screen on file.' }],
-          proposals: n > 0 ? [propose('run_screen', `Run the §6B screen for ${plural(n, 'property', 'properties')}.`)] : [],
+          proposals: n > 0 ? [propose('run_screen', `Run the permit screen for ${plural(n, 'property', 'properties')}.`)] : [],
         };
       },
     },
@@ -570,7 +574,7 @@ const INPUTS: Record<SectionId, InputSpec[]> = {
     {
       name: IN.referenceDrafts, links: ['ops'],
       read: (d) => viaApi<{ count: number }>(IN.referenceDrafts, d.api?.referenceDrafts, (b) => ({
-        state: 'read', detail: `${b.count} draft(s) awaiting a vetter`,
+        state: 'read', detail: `${plural(b.count, 'draft', 'drafts')} awaiting a vetter`,
         findings: b.count > 0 ? [{ severity: 'watch', text: `${plural(b.count, 'library draft awaits', 'library drafts await')} a named vetter (§4.7).` }] : [],
         proposals: b.count > 0 ? [propose('vet_reference', `Vet ${plural(b.count, 'library draft', 'library drafts')} — only a named human publishes.`)] : [],
       })),
@@ -578,7 +582,7 @@ const INPUTS: Record<SectionId, InputSpec[]> = {
     {
       // #8 Vision & Labeling has no photo reader in the code yet. Said, not hidden.
       name: IN.photos, links: ['photos'],
-      read: async () => notWired('no photo reader is built yet'),
+      read: async () => ({ state: 'notbuilt', detail: 'there is no photo reader yet' }),
     },
   ],
 
@@ -586,7 +590,7 @@ const INPUTS: Record<SectionId, InputSpec[]> = {
     {
       name: IN.crewSafety, links: ['crew', 'safety', 'ops'], wraps: 'safetyAgent',
       async read(d) {
-        if (!d.safety) return notWired('safety agent');
+        if (!d.safety) return HOURLY_ONLY;
         const r = await d.safety();
         const c = r.certs;
         const wrapped = {
@@ -625,11 +629,11 @@ const INPUTS: Record<SectionId, InputSpec[]> = {
     {
       name: IN.invoices, links: ['jobs', 'ops'], wraps: 'collectionsAgent',
       async read(d) {
-        if (!d.collections) return notWired('collections agent');
+        if (!d.collections) return HOURLY_ONLY;
         const r = await d.collections();
         const wrapped = { agent: 'collections', status: r.status, summary: `feed=${r.feed} overdue=${r.overdue} suppressed=${r.suppressed} unknown=${r.unknown} newly_raised=${r.newlyRaised}` };
         if (r.status !== 'ok' || r.feed !== 'ok') {
-          return { state: 'unreadable', detail: 'feed unreadable: the invoice ledger could not be read — not "nothing overdue"', wrapped };
+          return { state: 'unreadable', detail: 'the invoice ledger could not be read — not "nothing overdue"', wrapped };
         }
         const findings: Finding[] = [];
         if (r.overdue > 0) findings.push({ severity: 'act', text: `${plural(r.overdue, 'invoice is', 'invoices are')} past due.` });
@@ -664,7 +668,11 @@ const INPUTS: Record<SectionId, InputSpec[]> = {
         for (const s of b.blindSpots) findings.push({ severity: 'watch', text: `Performance blind spot: ${s}` });
         return {
           state: 'read', detail: `${plural(b.areas.length, 'area', 'areas')} rated over 365 days`, findings,
-          proposals: below > 0 ? [propose('area_review', `Look at the ${plural(below, 'area', 'areas')} rating below the company average before spending on them.`)] : [],
+          proposals: below > 0
+            ? [propose('area_review', below === 1
+              ? 'Look at the area rated below the company average before spending there.'
+              : `Look at the ${below} areas rated below the company average before spending there.`)]
+            : [],
         };
       }),
     },

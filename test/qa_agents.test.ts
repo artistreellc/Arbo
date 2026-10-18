@@ -20,16 +20,17 @@ describe('Agents desk', () => {
   const agents = fn('renderAgents');
 
   it('a feed left out on purpose is NOT RUN, and a desk missing inputs says so in words', () => {
-    expect(html).toContain("notrun: ['NOT RUN', 'b-pending']");
-    expect(html).toContain("degraded: ['MISSING INPUTS', 'b-warm']");
+    expect(html).toContain("notrun: ['NOT RUN', 'info']");
+    expect(html).toContain("degraded: ['MISSING INPUTS', 'watch']");
     expect(html).not.toContain("'DEGRADED'");
   });
 
-  it('the intro note promises no label, and the offline note says how to turn the AI on', () => {
+  it('the intro note promises no label, and the offline note says the AI is off without an env var name', () => {
     expect(agents).toContain('Run only looks — it never changes anything.');
     expect(agents).not.toContain('not wired in this run');
     expect(agents).not.toContain('hourly sweep');
-    expect(agents).toContain('AI summaries are off (set ANTHROPIC_API_KEY on the server) — each desk shows a plain count instead.');
+    expect(agents).toContain("el('div', 'feed-state unset', 'AI summaries are off — the server has no AI key yet. Each desk shows a plain count.')");
+    expect(agents).not.toContain('ANTHROPIC_API_KEY');
   });
 
   it('brief numbering stays off the screen: roles and the rules pass through noRefs', () => {
@@ -38,13 +39,14 @@ describe('Agents desk', () => {
     expect(agents).toContain('a.cannot.map(noRefs)');
   });
 
-  it('a kept result says when it ran, and that it is not live', () => {
-    expect(agents).toContain("'Last run ' + fmtTime(AGENT_RUN.ranAt) + ' — these results are as of then, not live.'");
-    expect(agents).toContain('Over 15 minutes old — run again for a current read.');
+  it('a kept result says when it ran, and warns only once it is stale', () => {
+    expect(agents).toContain("'Ran ' + fmtWhen(AGENT_RUN.ranAt) + (stale ? ' — over 15 minutes old. Run again for a current read.' : '.')");
+    expect(agents).toContain("stale ? 'feed-state unset' : 'storm-muted'");
+    expect(agents).not.toContain('not live');
   });
 
   it('input rows line up in one column and the rules drawer shows it opens', () => {
-    expect(html).toContain('.agent-inputs{display:grid;grid-template-columns:auto 1fr;');
+    expect(html).toContain('.agent-inputs{display:grid;grid-template-columns:minmax(124px,auto) 1fr;');
     expect(html).toContain('.agent-in{display:contents}');
     expect(html).toContain('.wide-btn + .storm-muted{margin-top:14px}');
     expect(html).toContain('.agent-law summary::after{');
@@ -60,7 +62,7 @@ describe('Learn desk', () => {
     expect(learn).toContain("tile(exercised + '/' + ruleIds.length, 'rules checked')");
     expect(learn).toContain("tile(ruleIds.length, 'rules on file')");
     expect(learn).not.toContain('rules tested');
-    expect(learn).toContain("' unanswered'");
+    expect(learn).toContain("el('small', '', r.unhandled + ' can’t answer yet')");
     expect(html).toContain("const BRAIN_LABEL = { scripted: 'rule check', opus: 'Opus' };");
     expect(learn).toContain("'. Clears when the app is redeployed.'");
     expect(learn).not.toContain('r.honesty');
@@ -73,7 +75,7 @@ describe('Learn desk', () => {
 
   it('lesson cards are headed in words, and the evidence is labelled as the check’s note', () => {
     expect(html).toContain('function lessonLabel(k)');
-    for (const word of ["'Missed: '", "'Did what it shouldn’t: '", "'Broke a rule: '"]) expect(html).toContain(word);
+    for (const word of ["'Missed something'", "'Did what it shouldn’t'", "'Broke a rule'"]) expect(html).toContain(word);
     expect(learn).toContain('lessonLabel(l.rule)');
     expect(learn).not.toContain("l.rule.replace(/_/g, ' ')");
     expect(learn).toContain("'What the check found: '");
@@ -93,7 +95,7 @@ describe('Learn desk', () => {
 
   it('by-desk bars run in the caption’s order, and a rule break is the loud colour', () => {
     expect(html).toContain('.learnbar .b{background:var(--emergency)}');
-    expect(learn).toContain('bar.appendChild(pass); bar.appendChild(brk); bar.appendChild(un);');
+    expect(learn).toContain('bar.appendChild(pass); bar.appendChild(brk); bar.appendChild(mis); bar.appendChild(un);');
     expect(learn).toContain("' can’t answer yet'");
   });
 
