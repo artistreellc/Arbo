@@ -319,6 +319,9 @@ const GATE = {
   serverMsg: '',
   // True when serverMsg is a failure (a stop-work order), so it is styled as one.
   serverErr: false,
+  // True when pressing again cannot help (400 wrong crew code; 503 cut, practice
+  // data, not set up): GO stays tappable but is never green under that line.
+  serverHold: false,
 };
 // The server names what is missing in codes; the crew reads them in words.
 const GATE_NEED = { scroll: 'scroll to the bottom', checkbox: 'tick the box', read_time: 'read for longer' };
@@ -348,7 +351,7 @@ function renderGate(brief) {
   const row = el('div', 'ackrow');
   const cb = document.createElement('input');
   cb.type = 'checkbox'; cb.id = 'ackbox';
-  cb.addEventListener('change', () => { GATE.checked = cb.checked; GATE.serverMsg = ''; GATE.serverErr = false; refreshGate(); });
+  cb.addEventListener('change', () => { GATE.checked = cb.checked; GATE.serverMsg = ''; GATE.serverErr = false; GATE.serverHold = false; refreshGate(); });
   // The box sits INSIDE its label, so the whole row is one gloved-thumb target.
   const lab = el('label', '', 'I read this briefing and understand it.');
   lab.prepend(cb);
@@ -391,7 +394,7 @@ function refreshGate() {
   if (go) {
     const ready = need.length === 0;
     go.disabled = !ready;
-    go.className = ready ? 'ready' : '';
+    go.className = ready && !GATE.serverHold ? 'ready' : '';
   }
 }
 
@@ -400,6 +403,7 @@ async function submitGate() {
   go.disabled = true;
   GATE.serverMsg = '';
   GATE.serverErr = false;
+  GATE.serverHold = false;
   try {
     const res = await api('/api/crew/briefing/ack', {
       method: 'POST',
@@ -434,6 +438,7 @@ async function submitGate() {
     // Name the real reason instead of a generic retry (§1B: never bluff). The
     // day stays locked, so the words say so — same order as the briefing card.
     GATE.serverErr = true;
+    GATE.serverHold = e.code === 400 || e.code === 503;
     GATE.serverMsg = e.code === 400
       ? 'That sign-off was rejected — check your crew code with the office.'
       : e.code === 503
@@ -750,6 +755,12 @@ function renderLibrary() {
   out.id = 'lib-out';
   card.appendChild(out);
   box.appendChild(card);
+  // The page knows up front when the master link is cut, so it says so before
+  // anyone types. Only an exact 'cut': a /health with no answer is not a cut,
+  // and the catch in libSearch stays the backstop for that and a named link.
+  LINKS_READY.then(() => {
+    if (LINKS === 'cut') card.insertBefore(el('div', 'lib-warn', 'Off while the office data link is cut on purpose — ask the office.'), input);
+  });
 
   const run = () => libSearch(input.value.trim(), out, btn);
   btn.addEventListener('click', run);
@@ -879,6 +890,11 @@ function renderNearMiss() {
   out.id = 'nm-out';
   card.appendChild(out);
   box.appendChild(card);
+  // Never let a crew member type a whole safety report the page already knows
+  // cannot be filed. Exact 'cut' only; the click's catch stays the backstop.
+  LINKS_READY.then(() => {
+    if (LINKS === 'cut') card.insertBefore(el('div', 'lib-warn', 'Filing is off while the office data link is cut on purpose — tell the office directly.'), ta);
+  });
 
   btn.addEventListener('click', async () => {
     const description = ta.value.trim();
@@ -1010,6 +1026,10 @@ if ('serviceWorker' in navigator) {
 }
 
 $('dateline').textContent = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+// As the office app's header: every screen says SIMULATION while the data is
+// practice data, so nobody files a real near miss into it unawares. A /health
+// that did not answer leaves LINKS null, and the plain date stands.
+LINKS_READY.then(() => { if (LINKS === 'simulation') $('dateline').textContent = 'SIMULATION · ' + $('dateline').textContent; });
 if (renderWhoAmI()) {
   // No door key on this phone: the crew routes will almost surely answer 401, so
   // the panels stay hidden until the briefing answers, instead of painting and
