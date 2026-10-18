@@ -1024,7 +1024,7 @@ async function studyPanel(limit) {
     w.appendChild(quoOff
       ? el('div', 'feed-state unset', 'Quo isn\u2019t connected to Arbo yet \u2014 Arbo can\u2019t read your customer threads. That doesn\u2019t mean there are none.')
       : feedLine(e, 'Customer notes', 'That doesn\u2019t mean there are none.'));
-    if (quoOff) w.dataset.quoOff = '1'; // Today folds the three Quo cards into one when all three say this
+    if (quoOff) w.dataset.quoOff = '1'; // fillQuoSlots folds the three Quo cards into one when all three say this
     return w;
   }
   const st = d.status;
@@ -1062,6 +1062,25 @@ async function studyPanel(limit) {
   return wrap;
 }
 
+// ---------- The Quo fold: one cause, one card (Today and Calls alike) ----------
+// reads: the study, outreach and Sona panels; slots: their places, set before
+// any read so the order never depends on which lands first. When all three say
+// Quo isn't connected, ONE titled card says it once. Otherwise each panel fills
+// its own slot, and a read that throws empties only its own ('.slot:empty').
+function fillQuoSlots(reads, slots) {
+  return Promise.allSettled(reads).then((rs) => {
+    const bs = rs.map((r) => (r.status === 'fulfilled' ? r.value : null));
+    if (bs.every((b) => b && b.dataset.quoOff)) {
+      const q = el('div');
+      q.appendChild(el('div', 'panel-title', 'Quo'));
+      q.appendChild(el('div', 'feed-state unset', 'Quo isn’t connected to Arbo yet — Arbo can’t read your customer threads, can’t text anyone, and Sona’s calls aren’t reaching Arbo. That doesn’t mean there are no customer threads or Sona calls.'));
+      slots[0].appendChild(q);
+      return;
+    }
+    bs.forEach((b, i) => { if (b) slots[i].appendChild(b); });
+  });
+}
+
 // ---------- Sona via Quo (Mike, 2026-09-24: "let sona handle it for a while while arbo learns from it") ----------
 // One renderer, two places: Today shows the latest few, Calls shows them all
 // with transcripts. A Quo that is not wired is NAMED, never a quiet zero (§1B).
@@ -1079,7 +1098,7 @@ async function sonaPanel(limit, withTranscripts) {
   wrap.appendChild(el('div', 'panel-title', 'Sona calls (Quo)'));
   const st = d.status;
   if (st.registration.state === 'not_configured') {
-    // Its own sentence here, so Today can fold it into one Quo card (quoOff).
+    // Its own sentence here, so fillQuoSlots can fold it into one Quo card (quoOff).
     wrap.appendChild(el('div', 'feed-state unset', 'Waiting on Quo — Sona’s calls are not reaching Arbo.'));
     wrap.dataset.quoOff = '1';
     return wrap;
@@ -1166,7 +1185,7 @@ async function outreachPanel(full) {
     wrap0.appendChild(quoOff
       ? el('div', 'feed-state unset', 'Waiting on Quo — nothing can be texted.')
       : feedLine(e, 'Text outreach'));
-    if (quoOff) wrap0.dataset.quoOff = '1'; // Today folds the three Quo cards into one when all three say this
+    if (quoOff) wrap0.dataset.quoOff = '1'; // fillQuoSlots folds the three Quo cards into one when all three say this
     return wrap0;
   }
   const st = d.status;
@@ -1452,26 +1471,14 @@ async function renderToday() {
   // fetch, same links-cut lesson. Their three slots are placed here, before any
   // read, so the order never depends on which read lands first ('.slot:empty'
   // hides an unused one). A Quo that is not connected is ONE card, not three
-  // cards saying the same thing.
+  // cards saying the same thing — fillQuoSlots, the same fold Calls uses.
   const studySlot = el('div', 'slot');
   v.appendChild(studySlot);
   const outreachSlot = el('div', 'slot');
   v.appendChild(outreachSlot);
   const sonaSlot = el('div', 'slot');
   v.appendChild(sonaSlot);
-  Promise.all([studyPanel(5), outreachPanel(false), sonaPanel(3, false)]).then((bs) => {
-    if (bs.every((b) => b && b.dataset.quoOff)) {
-      const q = el('div');
-      q.appendChild(el('div', 'panel-title', 'Quo — customers, texts and Sona’s calls'));
-      q.appendChild(el('div', 'feed-state unset', 'Quo isn’t connected to Arbo yet — Arbo can’t read your customer threads, can’t text anyone, and Sona’s calls aren’t reaching Arbo. That doesn’t mean there are none.'));
-      studySlot.appendChild(q);
-      return;
-    }
-    const [study, outreach, sona] = bs;
-    if (study) studySlot.appendChild(study);
-    if (outreach) outreachSlot.appendChild(outreach);
-    if (sona) sonaSlot.appendChild(sona);
-  });
+  fillQuoSlots([studyPanel(5), outreachPanel(false), sonaPanel(3, false)], [studySlot, outreachSlot, sonaSlot]);
   // R19: website forms delivered straight from Resend — above the brief
   // fetch for the same links-cut-early-return reason as everything here.
   const formsSlot = el('div', 'slot');
@@ -2125,15 +2132,14 @@ async function renderCalls() {
   // R24 customer notes — every customer thread, read-only.
   const studyFull = el('div', 'slot');
   v.appendChild(studyFull);
-  fills.push(studyPanel(60).then((b) => { if (b) studyFull.appendChild(b); }));
   // R22 text outreach — the full list: who is ready, who was texted.
   const outreachFull = el('div', 'slot');
   v.appendChild(outreachFull);
-  fills.push(outreachPanel(true).then((b) => { if (b) outreachFull.appendChild(b); }));
   // Sona via Quo — every call, with transcripts.
   const sonaCallsSlot = el('div', 'slot');
   v.appendChild(sonaCallsSlot);
-  fills.push(sonaPanel(20, true).then((b) => { if (b) sonaCallsSlot.appendChild(b); }));
+  // The three fill together, so a Quo that is not connected is ONE card here too, as on Today.
+  fills.push(fillQuoSlots([studyPanel(60), outreachPanel(true), sonaPanel(20, true)], [studyFull, outreachFull, sonaCallsSlot]));
   // Texts + photos sent to the Arbo number (Mike, 2026-09-24). Receive only.
   const txSlot = el('div', 'slot');
   v.appendChild(txSlot);

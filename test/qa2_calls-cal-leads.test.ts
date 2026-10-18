@@ -248,6 +248,7 @@ describe('Calls: one own-line card, and a redraw that holds its height (run, not
     const renderCalls = pageFn<() => Promise<void>>('renderCalls', {
       $: () => v, el, api, chip, plural, fmtWhen, fmtTime: fmtWhen,
       studyPanel: () => study.promise, outreachPanel: async () => null, sonaPanel: async () => null,
+      fillQuoSlots: pageFn('fillQuoSlots', { el }),
       showKeywall: keywall, LINKS_READY: Promise.resolve('simulation'),
       state: (t: string, m: string) => el('div', 'state', t + ' ' + m),
       feedLine: (_e: unknown, what: string, tail?: string) => el('div', 'feed-state sim', what + ': not in the practice data.' + (tail ? ' ' + tail : '')),
@@ -324,7 +325,8 @@ describe('Calls: one own-line card, and a redraw that holds its height (run, not
     expect(hold).toBeGreaterThan(-1);
     expect(hold).toBeLessThan(calls.indexOf('v.replaceChildren();'));
     expect(calls).toContain('const fills = [];');
-    expect(calls.match(/fills\.push\(/g)).toHaveLength(6);
+    // QA round 3: the three Quo panels are one fill (fillQuoSlots), so 4, not 6.
+    expect(calls.match(/fills\.push\(/g)).toHaveLength(4);
     expect(calls).toContain("const release = () => Promise.allSettled(fills).then(() => { v.style.minHeight = ''; });");
     const tail = calls.slice(calls.indexOf('const release'));
     const returns = [...tail.matchAll(/\breturn\b/g)].map((m) => tail.slice(Math.max(0, m.index! - 24), m.index!));

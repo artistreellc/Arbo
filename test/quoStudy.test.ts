@@ -180,6 +180,7 @@ describe('HTTP + screens', () => {
     expect(html).toContain('That doesn\\u2019t mean there are none.');
     expect(html.indexOf('studyPanel(5), outreachPanel(false), sonaPanel(3, false)')).toBeGreaterThan(-1);
     expect(html.indexOf('studyPanel(5), outreachPanel(false), sonaPanel(3, false)')).toBeLessThan(html.indexOf("api('/api/brief?from="));
-    expect(html).toContain('studyPanel(60).then');
+    // Calls reads it through the shared Quo fold (QA round 3), as Today does.
+    expect(html).toContain('fillQuoSlots([studyPanel(60), outreachPanel(true), sonaPanel(20, true)]');
   });
 });

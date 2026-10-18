@@ -314,15 +314,18 @@ describe('T5: one cause, one card, plain words', () => {
   });
 
   it('Today fills its three Quo slots from one read, and folds them into ONE titled card when all three are off', () => {
-    const fold = between('Promise.all([studyPanel(5), outreachPanel(false), sonaPanel(3, false)]).then((bs) => {', 'websiteFormsPanel().then');
+    // QA round 3: the fold is the shared fillQuoSlots (Calls uses it too); its
+    // title fits one line at phone width, and its last sentence names what is not zero.
+    const fold = src('fillQuoSlots');
     expect(fold).toContain('bs.every((b) => b && b.dataset.quoOff)');
-    expect(fold).toContain("el('div', 'panel-title', 'Quo — customers, texts and Sona’s calls')");
-    expect(fold).toContain("el('div', 'feed-state unset', 'Quo isn’t connected to Arbo yet — Arbo can’t read your customer threads, can’t text anyone, and Sona’s calls aren’t reaching Arbo. That doesn’t mean there are none.')");
+    expect(fold).toContain("el('div', 'panel-title', 'Quo')");
+    expect(fold).toContain("el('div', 'feed-state unset', 'Quo isn’t connected to Arbo yet — Arbo can’t read your customer threads, can’t text anyone, and Sona’s calls aren’t reaching Arbo. That doesn’t mean there are no customer threads or Sona calls.')");
     expect(fold.match(/That doesn’t mean/g)).toHaveLength(1);
+    expect(today).toContain('fillQuoSlots([studyPanel(5), outreachPanel(false), sonaPanel(3, false)], [studySlot, outreachSlot, sonaSlot]);');
     // The slots are placed before any read, in a fixed order.
     const slots = ['const studySlot', 'const outreachSlot', 'const sonaSlot'].map((x) => today.indexOf(x));
     expect(slots).toEqual([...slots].sort((a, b) => a - b));
-    expect(slots[2]).toBeLessThan(today.indexOf('Promise.all([studyPanel(5)'));
+    expect(slots[2]).toBeLessThan(today.indexOf('fillQuoSlots([studyPanel(5)'));
     expect(today).not.toContain('studyPanel(5).then');
     expect(today).not.toContain('outreachPanel(false).then');
     expect(today).not.toContain('sonaPanel(3, false).then');
