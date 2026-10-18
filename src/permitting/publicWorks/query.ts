@@ -27,6 +27,8 @@ export interface ChecklistItem {
   status: ChecklistStatus;
   /** Who to ring for this step, taken from its fact, so the UI can offer tap-to-call. */
   call?: WhoToCall;
+  /** Life-safety step (power lines): the strongest chip on screen. */
+  safety?: true;
 }
 
 export type Maybe = boolean | 'unknown';
@@ -174,6 +176,7 @@ export function jobChecklist(input: JobInput): ChecklistItem[] {
       factIds: powerIds,
       status: 'CALL FIRST',
       call: factById('va-dominion-10ft')?.whoToCall,
+      safety: true,
     });
   } else if (input.nearPowerLines === 'unknown') {
     items.push(unknownItem('power lines', 'is any line within 10 ft of the tree or its branches?', powerIds));

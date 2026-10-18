@@ -42,12 +42,14 @@ describe('Permit Desk — job check (QA round)', () => {
     expect(permits).toContain('if (e.code === 401) showKeywall();');
   });
 
-  it('the power-line CALL FIRST chip is the strongest style, the same as EMERGENCY', () => {
-    expect(html).toContain("'CALL FIRST': ['CALL FIRST', 'b-emg']");
+  it('the power-line CALL FIRST chip is the strongest tone (alarm, as EMERGENCY); an unknown status reads amber', () => {
+    // QA round 2: [label, tone] on the shared chip table; checkCard keeps alarm for the power-line step only.
+    expect(html).toContain("'CALL FIRST': ['CALL FIRST', 'alarm']");
+    expect(cards).toContain("const st = PERMIT_STATUS[it.status] || [it.status, 'watch'];");
   });
 
-  it('the intro says who to call', () => {
-    expect(permits).toContain('is marked UNCONFIRMED — call the office listed on that rule before you tell a customer.');
+  it('the intro says where the office to call is — and promises no office a rule does not carry', () => {
+    expect(permits).toContain('is marked UNCONFIRMED — check it with the city before you tell a customer (the office to call is on the rule where we have one).');
   });
 
   it('cities sit in an even grid with whole names; the shared ON/OFF pill is untouched', () => {
@@ -80,19 +82,19 @@ describe('Permit Desk — result and rule cards (QA round)', () => {
     expect(cards).toContain('nb(f.title)');
   });
 
-  it('nb() joins digit-hyphen-digit with an invisible word joiner, and nothing else', () => {
+  it('nb() joins digit-hyphen-digit with an invisible word joiner and "§" to its number with a no-break space, and nothing else', () => {
     const src = /const nb = (\(s\) => [^\n]+);/.exec(html)?.[1];
-    expect(src).toBe("(s) => String(s).replace(/(\\d)-(?=\\d)/g, '$1-\\u2060')");
+    expect(src).toBe("(s) => String(s).replace(/(\\d)-(?=\\d)/g, '$1-\\u2060').replace(/§\\s+/g, '§\\u00a0')");
     const nb = new Function(`return ${src}`)() as (s: string) => string;
     expect(nb('757-385-6661')).toBe('757-\u2060385-\u20606661');
-    expect(nb('City Code § 23-50.1')).toBe('City Code § 23-\u206050.1');
+    expect(nb('City Code § 23-50.1')).toBe('City Code §\u00a023-\u206050.1');
     expect(nb('100-ft buffer, 3-to-1')).toBe('100-ft buffer, 3-to-1');
     expect(nb('757-385-6661').replace(/\u2060/g, '')).toBe('757-385-6661');
   });
 
   it('source links are named by their site, never numbered by position', () => {
     expect(cards).not.toContain("'source ' + (i + 1)");
-    expect(cards).toContain("site = new URL(u).hostname.replace(/^www\\./, '');");
+    expect(cards).toContain("const siteOf = (u) => { try { const h = new URL(u).hostname.replace(/^www\\./, ''); return KNOWN_HOSTS[h] || h; } catch (e) { return 'source'; } };");
   });
 
   it('a note never shows a doubled INTERNAL: prefix', () => {
@@ -125,8 +127,11 @@ describe('Measure desk (QA round)', () => {
     expect(measure).toContain("[['', 'Auto'], ['y', 'Y is up'], ['z', 'Z is up']]");
   });
 
-  it('the result names the axis it was read with', () => {
-    expect(result).toContain("'Read with ' + ua.axis.toUpperCase() + ' as up — '");
+  it('the status line names the axis it was read with, in plain words (QA round 2: upWords)', () => {
+    expect(html).toContain("' Read ' + ua.axis.toUpperCase() + ' as up — '");
+    expect(measure).toContain('upWords(LIDAR_LAST.file.upAxis)');
+    expect(measure).toContain('upWords(body.file.upAxis)');
+    expect(result).not.toContain("'Read with '");
   });
 
   it('warnings (units first) sit above the tiles; the duplicate paragraph and trunk-fit line are gone', () => {
@@ -135,7 +140,7 @@ describe('Measure desk (QA round)', () => {
     expect(warn).toBeLessThan(result.indexOf('wrap.appendChild(hud);'));
     expect(result).not.toContain("el('div', 'scope', r.summary)");
     expect(result).not.toContain('Trunk fit');
-    expect(result).toContain("(k === 'dbh' && m.dbhFit ? '; scatter ' + round(m.dbhFit.rmseCm, 1) + ' cm' : '')");
+    expect(result).toContain("(k === 'dbh' && m.dbhFit ? '; scatter ' + round(m.dbhFit.rmseCm / 2.54, 2) + ' in (' + round(m.dbhFit.rmseCm, 1) + ' cm)' : '')");
   });
 
   it('tiles lead in inches and feet; the how-to agrees with the 4 m clean range', () => {
@@ -170,7 +175,7 @@ describe('LiDAR summary text (agent and crew copy)', () => {
       dbh: { level: 'good', reason: 'r' },
       lean: { level: 'good', reason: 'r' },
     },
-    warnings: [UNITS_WARNING, 'Height is a minimum: the treetop is beyond what a phone scan reads cleanly (about 4 m / 13 ft).'],
+    warnings: [UNITS_WARNING, 'Height is a minimum: the treetop is beyond what a phone scan reads cleanly, about 13 ft (4 m).'],
     units: 'unknown',
     upAxis: 'y',
     pointCount: 33000,
@@ -183,8 +188,8 @@ describe('LiDAR summary text (agent and crew copy)', () => {
     expect(s).toContain('Trunk lean about 2.5°');
   });
 
-  it('says "Check —", never "Check: UNITS NOT CONFIRMED:"', () => {
-    expect(s).toContain('Check — UNITS NOT CONFIRMED: the file');
+  it('says "Check —", never "Check: Units not confirmed:"', () => {
+    expect(s).toContain('Check — Units not confirmed: the file');
     expect(s).not.toMatch(/Check: /);
     expect(s.endsWith(SIGN_OFF)).toBe(true);
   });

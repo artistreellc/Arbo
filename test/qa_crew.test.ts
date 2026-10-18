@@ -28,7 +28,8 @@ describe('the briefing gate keeps the server’s answer on screen', () => {
   it('a refusal and an error both land in serverMsg; a new tick or press clears it', () => {
     const submit = fn('submitGate');
     expect(submit).toMatch(/go\.disabled = true;\s*GATE\.serverMsg = '';/);
-    expect(submit).toContain("GATE.serverMsg = 'Still needed: '");
+    // QA round 2: read time is left to the live countdown, so only the other codes are held.
+    expect(submit).toContain("GATE.serverMsg = other.length ? 'Still needed: '");
     expect(submit).toMatch(/GATE\.serverMsg = e\.code === 400/);
     expect(submit).not.toContain("$('gate-status').textContent");
     expect(fn('renderGate')).toContain("GATE.checked = cb.checked; GATE.serverMsg = '';");
@@ -44,7 +45,9 @@ describe('the briefing gate keeps the server’s answer on screen', () => {
     expect(html).not.toMatch(/not blocked/i);
     expect(submit).toContain('Your work orders stay locked');
     expect(submit).toContain('do not start work; call the office to log your briefing');
-    expect(submit).toContain("e.message === 'not_simulated'");
+    // QA round 2: the reason comes from crewWhy, the crew door's one wording for a failed read.
+    expect(submit).toContain("'Your sign-off could not be recorded (' + crewWhy(e) + ').'");
+    expect(fn('crewWhy')).toContain("if (m === 'not_simulated') return 'not part of the practice data';");
   });
 
   it('the acknowledgement box sits inside its label, one full-row target', () => {
@@ -105,13 +108,14 @@ describe('near-miss filing tells the crew the truth', () => {
     const nm = fn('renderNearMiss');
     expect(nm).not.toContain("'Did not save ('");
     expect(nm).not.toMatch(/\+ \(?e\.message/);
-    expect(nm).toContain('near misses are not part of the practice data');
+    // QA round 2: every other failure is worded by crewWhy ('not part of the practice data', 'cut on purpose', …).
+    expect(nm).toContain("'Did not save — ' + crewWhy(e) + '.'");
     expect(nm).toContain('the office did not recognise your crew code');
   });
 
   it('the copy says it is filed under the crew code and becomes a lesson, not "straight into training"', () => {
     const nm = fn('renderNearMiss');
-    expect(nm).toContain('It is filed under your crew code');
+    expect(nm).toContain('It’s filed under your crew code');
     expect(nm).toContain('turns it ');
     expect(nm).not.toContain('straight into training');
   });
