@@ -16,4 +16,11 @@ describe('no dead feed reads as an empty one', () => {
     expect(app).toContain('function feedKind(');
     for (const w of ['cut on purpose', 'not in the practice data', 'not set up yet', 'couldn’t read it']) expect(app).toContain(w);
   });
+  it('every chip on every screen takes its colour from the one tone table', () => {
+    const calls = app.match(/\bbadge\(/g) ?? [];
+    // The only direct badge() calls left are the helper's own definition and chip() itself.
+    expect(calls.length).toBeLessThanOrEqual(2);
+    expect(app).toContain('function chip(text, tone)');
+    expect(app).not.toMatch(/badge\([^)]*'b-[a-z-]+'\)/);
+  });
 });
