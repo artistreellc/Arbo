@@ -129,6 +129,8 @@ describe('Calls: a transcripts or call-notes read that failed is named, never an
     const renderCalls = pageFn<() => Promise<void>>('renderCalls', {
       $: () => v, el, api, chip, plural, fmtWhen, fmtTime: fmtWhen,
       studyPanel: async () => null, outreachPanel: async () => null, sonaPanel: async () => null,
+      // The Quo panels fold through the shared helper (QA3 quo-fold); a no-op here.
+      fillQuoSlots: () => Promise.resolve(),
       showKeywall: keywall, LINKS_READY: Promise.resolve('simulation'),
       state: (t: string, m: string) => el('div', 'state', t + ' ' + m),
       feedLine, showSaveFail: () => {},

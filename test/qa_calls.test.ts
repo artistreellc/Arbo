@@ -67,7 +67,7 @@ describe('the Calls screen', () => {
     expect(calls).toContain('Arbo line (757-821-6983): disconnected while Sona handles calls — this is not zero texts. Nothing was deleted.');
     // QA round 2: the transcript line drops the honesty tag — the call log in
     // the same card carries that card's one "not zero calls".
-    expect(calls).toContain('Call transcripts: disconnected while Sona handles calls. Sona’s calls have their own section above.');
+    expect(calls).toContain('Call transcripts: disconnected while Sona handles calls. Sona’s calls are in the Quo card above.');
     expect(calls.indexOf('if (t.linkCut)')).toBeLessThan(calls.indexOf('!t.wired'));
     expect(html).not.toContain('The in-call records still capture every call');
     // No shouted NOT, no "wire" in the status lines.
