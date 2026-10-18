@@ -267,7 +267,7 @@ describe('ARBOR app shell', () => {
   it('the reception instrument is on the home surface and never renders a dead feed as quiet', () => {
     expect(html).toContain('/api/reception/status');
     expect(html).toContain('Reception: status unavailable right now');
-    expect(html).toContain('no calls since deploy');
+    expect(html).toContain('no calls since Arbo last restarted');
     expect(html).toContain('rejected call attempt');
     expect(html).toContain('receptionStrip().then((b) => { if (b) recSlot.appendChild(b); });');
   });

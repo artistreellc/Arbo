@@ -22,14 +22,17 @@ describe('the shared Quo panels name why they cannot read', () => {
     const caught = study.slice(study.indexOf('catch (e)'), study.indexOf('const st = d.status'));
     expect(caught).toContain("el('div', 'panel-title', 'Where each customer stands')");
     expect(caught).toContain("e.message === 'quo_not_configured'");
-    expect(caught).toContain('Arbo can\\u2019t read your customer threads. This is not zero customers.');
-    expect(caught).toContain("feedLine(e, 'Customer notes', 'This is not zero customers.')");
+    expect(caught).toContain('Arbo can\\u2019t read your customer threads. That doesn\\u2019t mean there are none.');
+    expect(caught).toContain("feedLine(e, 'Customer notes', 'That doesn\\u2019t mean there are none.')");
+    expect(caught).toContain("if (quoOff) w.dataset.quoOff = '1';");
     expect(html).not.toContain('Customer notes: unavailable right now');
   });
 
   it('one cause, one wording: Quo isn’t connected, and no env var on Today or Calls', async () => {
     const outreach = fn('outreachPanel');
-    expect(outreach).toContain('Quo isn\\u2019t connected to Arbo yet \\u2014 nothing can be texted. This is not zero candidates.');
+    expect(outreach).toContain('Waiting on Quo — nothing can be texted.');
+    expect(outreach).not.toContain('This is not zero candidates');
+    expect(fn('sonaPanel')).toContain('Waiting on Quo — Sona’s calls are not reaching Arbo.');
     expect(outreach).toContain("feedLine(e, 'Text outreach')");
     expect(fn('sonaPanel')).toContain("feedLine(e, 'Sona (Quo)')");
     expect(html).not.toContain('QUO_API_KEY');

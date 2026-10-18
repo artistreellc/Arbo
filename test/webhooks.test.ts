@@ -198,7 +198,7 @@ describe('app surfaces (source pins — §1B named states, links-cut placement)'
     const brief = html.indexOf("api('/api/brief?from=");
     expect(panel).toBeGreaterThan(-1);
     expect(panel).toBeLessThan(brief);
-    expect(html).toContain('this is not zero forms');
+    expect(html).toContain('Website forms aren’t connected to Arbo yet. They still arrive in your Gmail inbox.');
     // QA round: the card is titled in Mike's words — "direct wire" was build jargon.
     expect(html).toContain("'panel-title', 'Website forms')");
   });
