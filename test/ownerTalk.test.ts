@@ -1124,7 +1124,7 @@ describe('the page: wiring, header button and sheet', () => {
   });
 
   it('it is a sheet like the others: Back, the phone\'s back and the X all leave it — and leaving stops the talk', () => {
-    expect(html).toContain("const SHEETS = ['twin', 'yard', 'bd', 'talk'];");
+    expect(html).toContain("const SHEETS = ['twin', 'yard', 'bd', 'talk', 'approval'];"); // R28's approval sheet sits beside it (merged)
     expect(html).toContain("$('talk').classList.add('show'); sheetOpened('talk');");
     expect(html).toContain("$('talk-close').addEventListener('click', () => closeSheet('talk'));");
     const close = html.slice(html.indexOf('function closeSheet(id) {'), html.indexOf('\n}', html.indexOf('function closeSheet(id) {')));
