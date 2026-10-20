@@ -2020,7 +2020,7 @@ let inboxWatch: InboxWatchHandle | null = null;
 let intentWatch: IntentWatch | null = null;
 /** The Quo intake the running handler uses — startServer hands it its webhook keys. */
 let currentQuoIntake: QuoIntake | null = null;
-/** Learning from Quo's record: a week back at boot, a day back every 10 minutes. */
+/** Learning from Quo's record: a week back at boot, then every 10 minutes a day back (the week until it was read whole — M10). */
 const QUO_LEARN_BACKFILL_MS = 7 * 24 * 60 * 60 * 1000;
 const QUO_LEARN_WINDOW_MS = 24 * 60 * 60 * 1000;
 const QUO_LEARN_EVERY_MS = 10 * 60 * 1000;
@@ -2164,8 +2164,10 @@ export function startServer(port: number) {
         // Sona's calls from Quo's own record — the last week at boot (learned
         // without new holds), then every 10 minutes (catches any call the
         // webhook missed). reconcile() names its own failures; it never throws.
+        // M10: the 10-minute pass keeps reading the week until a week read has
+        // finished whole, and reads back past any outage — nextWindowMs says how far.
         void intake.reconcile(line.api, line.phoneNumberId, QUO_LEARN_BACKFILL_MS);
-        setInterval(() => { void intake.reconcile(line.api, line.phoneNumberId, QUO_LEARN_WINDOW_MS); }, QUO_LEARN_EVERY_MS).unref();
+        setInterval(() => { void intake.reconcile(line.api, line.phoneNumberId, intake.nextWindowMs(QUO_LEARN_WINDOW_MS)); }, QUO_LEARN_EVERY_MS).unref();
         // R24 study: a week back, 2 minutes after boot (so it never shares
         // Quo's rate limit with the boot read above), then every 30 minutes.
         // run() never throws; unchanged threads cost no model call.

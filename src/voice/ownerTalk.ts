@@ -396,8 +396,12 @@ function sonaSection(q: QuoRead | null, detail: boolean, now: number): Section {
   // M10: the week's read stopped at its cap — the calls Arbo holds are not the whole week.
   const weekShort = rec.weekThreadsNotRead ?? 0;
   if (weekShort > 0) lines.push(`Arbo has not read all of this week's calls yet — ${plural(weekShort, 'older customer thread', 'older customer threads')} not read, so this is not the whole week.`);
+  // M10: a week read that has not finished (it failed, or left a call unread) is not an empty week.
+  else if (rec.lastAt && !rec.weekReadOkAt) lines.push("Arbo has not finished reading the past week of Quo's record — the calls Arbo holds are not the whole week yet.");
+  // R33: a webhook Arbo won't create ('read_only') changes nothing here — the calls are read from Quo's record.
   if (!sona.length && (st.registration.state === 'ok' || st.registration.state === 'read_only') && !rec.error && !rec.unreadable && weekShort === 0) {
-    lines.push(rec.lastAt ? "No Sona calls in the last 7 days — checked against Quo's own record." : "Wired — still reading Sona's calls from Quo.");
+    if (!rec.lastAt) lines.push("Wired — still reading Sona's calls from Quo.");
+    else if (rec.weekReadOkAt) lines.push("No Sona calls in the last 7 days — checked against Quo's own record.");
   }
   return { lines, missing };
 }

@@ -97,7 +97,7 @@ function quoRead(status: Record<string, unknown>, calls: Array<Record<string, un
     status: {
       registration: { state: 'ok', detail: 'wired' }, reading: true, received: 0, rejected: 0, lastAt: null, lastError: null,
       sonaCalls: calls.length, slips: 0, callsWithSlips: 0, holdsFiled: 0, holdsFailed: 0, holdsWaiting: 0, readsRetrying: 0, readRetryMax: 5, hangups: 0, learnedFromRecord: 0, notUsed: {},
-      quoRecord: { lastAt: NOW, learned: 0, pending: 0, error: null, unreadable: null },
+      quoRecord: { lastAt: NOW, learned: 0, pending: 0, error: null, unreadable: null, weekReadOkAt: NOW },
       ...status,
     },
     calls,

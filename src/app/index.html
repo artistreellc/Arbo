@@ -1573,6 +1573,10 @@ async function sonaPanel(limit, withTranscripts) {
   if (rec.weekThreadsNotRead > 0) {
     wrap.appendChild(el('div', 'feed-state unread', 'Arbo read the first ' + rec.callCap + ' calls of the past week from Quo\u2019s record \u2014 ' + plural(rec.weekThreadsNotRead, 'older customer thread was', 'older customer threads were') + ' not read, so the Sona calls here are not the whole week.'));
   }
+  // M10: a week read that has not finished (it failed, or left a call unread) is not an empty week.
+  if (rec.lastAt && !rec.weekReadOkAt && !(rec.weekThreadsNotRead > 0)) {
+    wrap.appendChild(el('div', 'feed-state unread', 'Arbo has not finished reading the past week of Quo\u2019s record \u2014 the Sona calls here are not the whole week yet.'));
+  }
   const notUsed = Object.entries(st.notUsed || {});
   if (notUsed.length) {
     wrap.appendChild(el('div', 'storm', 'Quo sent ' + plural(notUsed.reduce((n, [, k]) => n + k, 0), 'event') + ' Arbo could not use (' + notUsed.map(([r, k]) => k + ' ' + r).join(', ') + ') \u2014 Arbo reads those calls from Quo\u2019s record instead.'));
@@ -1587,9 +1591,10 @@ async function sonaPanel(limit, withTranscripts) {
   }
   if (!sona.length) {
     // A webhook Arbo won't create (R33, 'read_only') changes nothing here: the calls are read from Quo's record.
-    // M10: "none this week" only when the week's read was whole.
+    // M10: "none this week" only when the week's read was whole \u2014 finished, nothing left unread.
     if ((st.registration.state === 'ok' || st.registration.state === 'read_only') && !rec.error && !(rec.weekThreadsNotRead > 0)) {
-      wrap.appendChild(el('div', 'storm-muted', rec.lastAt ? 'No Sona calls in the last 7 days \u2014 checked against Quo\u2019s own record.' : 'Wired \u2014 reading Sona\u2019s calls from Quo\u2026'));
+      if (!rec.lastAt) wrap.appendChild(el('div', 'storm-muted', 'Wired \u2014 reading Sona\u2019s calls from Quo\u2026'));
+      else if (rec.weekReadOkAt) wrap.appendChild(el('div', 'storm-muted', 'No Sona calls in the last 7 days \u2014 checked against Quo\u2019s own record.'));
     }
     return wrap;
   }

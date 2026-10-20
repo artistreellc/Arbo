@@ -251,9 +251,13 @@ export class QuoIntake {
    * covered the whole week (the boot read) — the 10-minute passes look back
    * a day only, so that shortfall stands until a week pass finishes under
    * the cap (M10: a capped read is never presented as the whole week).
+   * weekReadOkAt: when a week-long pass last finished with nothing left
+   * unread (no thread past the cap, no call unreadable) — null until then,
+   * and null again after any pass that leaves something unread. Null means
+   * the week is NOT whole: a boot read that failed is not an empty week.
    */
-  private sweep: { lastAt: string | null; lastOkAt: string | null; learned: number; pending: number; error: string | null; unreadable: string | null; threadsNotRead: number; weekThreadsNotRead: number | null; callCap: number } = {
-    lastAt: null, lastOkAt: null, learned: 0, pending: 0, error: null, unreadable: null, threadsNotRead: 0, weekThreadsNotRead: null, callCap: RECONCILE_CAP,
+  private sweep: { lastAt: string | null; lastOkAt: string | null; learned: number; pending: number; error: string | null; unreadable: string | null; threadsNotRead: number; weekThreadsNotRead: number | null; weekReadOkAt: string | null; callCap: number } = {
+    lastAt: null, lastOkAt: null, learned: 0, pending: 0, error: null, unreadable: null, threadsNotRead: 0, weekThreadsNotRead: null, weekReadOkAt: null, callCap: RECONCILE_CAP,
   };
   private readonly googleWrites: boolean;
   private textsHook = false;
@@ -698,11 +702,16 @@ export class QuoIntake {
       }
       await this.queue;
       const wholeWeek = windowMs >= WEEK_MS;
+      const nowIso = new Date(nowMs).toISOString();
+      // M10: left something unread → the week is not whole (the timed passes
+      // go back to reading the week); a week pass with nothing left → whole.
+      const leftUnread = notRead > 0 || unreadable > 0;
       this.sweep = {
-        lastAt: new Date(nowMs).toISOString(), lastOkAt: new Date(nowMs).toISOString(), learned: this.sweep.learned + learned, pending, error: null,
+        lastAt: nowIso, lastOkAt: nowIso, learned: this.sweep.learned + learned, pending, error: null,
         unreadable: unreadable ? `${unreadable} call(s) could not be read (${unreadableWhy})` : null,
         threadsNotRead: notRead,
         weekThreadsNotRead: wholeWeek ? notRead : this.sweep.weekThreadsNotRead,
+        weekReadOkAt: leftUnread ? null : wholeWeek ? nowIso : this.sweep.weekReadOkAt,
         callCap: RECONCILE_CAP,
       };
       if (learned || pending || unreadable || notRead) console.error(`[quo] read Quo's record — learned ${learned} call(s), ${pending} not ready yet, ${unreadable} unreadable${notRead ? `, ${notRead} thread(s) NOT read (cap ${RECONCILE_CAP} calls)` : ''}`);
@@ -712,6 +721,19 @@ export class QuoIntake {
       console.error(`[quo] reading Quo's record FAILED — ${why}. Calls the webhook missed are not being learned.`);
     }
     return { learned, pending };
+  }
+
+  /**
+   * M10: how far back the next timed pass reads. The whole week until a week
+   * pass has finished with nothing left unread; after that a day — or back
+   * to a day before the last good pass, when passes failed for longer than
+   * that, so an outage never leaves a hole under the "last 7 days" lines.
+   * Never more than the week those lines speak for.
+   */
+  nextWindowMs(dayMs: number): number {
+    const okMs = Date.parse(this.sweep.lastOkAt ?? '');
+    if (!this.sweep.weekReadOkAt || !Number.isFinite(okMs)) return WEEK_MS;
+    return Math.min(WEEK_MS, Math.max(dayMs, this.now() - okMs + dayMs));
   }
 
   /** Newest first, for the app (keywall). */

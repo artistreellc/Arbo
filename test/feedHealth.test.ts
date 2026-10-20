@@ -22,7 +22,7 @@ function quoStatus(over: Record<string, unknown> = {}) {
     sonaCalls: 2, slips: 0, callsWithSlips: 0, holdsFiled: 1, holdsFailed: 0, holdsWaiting: 0, readsRetrying: 0, readRetryMax: 5, hangups: 0, learnedFromRecord: 2,
     feedLog: { holdFiledAt: T(60), holdFailedAt: null, holdError: null, readOkAt: T(60) },
     notUsed: {},
-    quoRecord: { lastAt: T(5), lastOkAt: T(5), learned: 2, pending: 0, error: null, unreadable: null, threadsNotRead: 0, weekThreadsNotRead: 0, callCap: 100 },
+    quoRecord: { lastAt: T(5), lastOkAt: T(5), learned: 2, pending: 0, error: null, unreadable: null, threadsNotRead: 0, weekThreadsNotRead: 0, weekReadOkAt: T(60), callCap: 100 },
     ...over,
   };
 }

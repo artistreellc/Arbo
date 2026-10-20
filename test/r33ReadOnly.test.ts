@@ -529,7 +529,8 @@ describe('the app says it', () => {
   });
 
   it('a Quo hook Arbo won’t create is named in its own muted tone, not as a failure', async () => {
-    const status = { registration: { state: 'read_only', detail: QUO_HOOK_MISSING_LINE }, reading: true, callsWithSlips: 0, sonaCalls: 0, holds: 'read_only', quoRecord: { lastAt: 'x' }, notUsed: {} };
+    // M10 follow-up merge: "none this week" now needs a FINISHED week read (weekReadOkAt) — the fixture says the week was read whole.
+    const status = { registration: { state: 'read_only', detail: QUO_HOOK_MISSING_LINE }, reading: true, callsWithSlips: 0, sonaCalls: 0, holds: 'read_only', quoRecord: { lastAt: 'x', weekReadOkAt: 'x' }, notUsed: {} };
     const panel = await pageFn<(n: number, t: boolean) => Promise<FakeEl>>('sonaPanel', { ...deps, api: async () => ({ status, calls: [] }) })(3, false);
     const line = panel.all().find((n) => n.textContent === QUO_HOOK_MISSING_LINE)!;
     expect(line.className).toBe('storm-muted');

@@ -285,9 +285,12 @@ describe('every screen H1 touched shows R33’s line when holds are off — neve
     const short = await sonaPanel(st, [], true);
     expect(short.textContent).toContain('Arbo read the first 100 calls of the past week from Quo’s record');
     expect(short.textContent).not.toContain('No Sona calls in the last 7 days');
-    // The whole week read and nothing there: the read-only state still says so (R33 review).
-    const whole = await sonaPanel(status({ registration: { state: 'read_only', detail: 'hook missing' }, sonaCalls: 0, quoRecord: { lastAt: 'x', weekThreadsNotRead: 0, callCap: 100 } }), [], true);
+    // The whole week read and nothing there: the read-only state still says so (R33 review)…
+    const whole = await sonaPanel(status({ registration: { state: 'read_only', detail: 'hook missing' }, sonaCalls: 0, quoRecord: { lastAt: 'x', weekReadOkAt: 'x', weekThreadsNotRead: 0, callCap: 100 } }), [], true);
     expect(whole.textContent).toContain('No Sona calls in the last 7 days');
+    // …but a week read that never finished (M10 follow-up) is not an empty week, read-only or not.
+    const unfinished = await sonaPanel(status({ registration: { state: 'read_only', detail: 'hook missing' }, sonaCalls: 0, quoRecord: { lastAt: 'x', weekReadOkAt: null, weekThreadsNotRead: 0, callCap: 100 } }), [], true);
+    expect(unfinished.textContent).not.toContain('No Sona calls in the last 7 days');
   });
 
   it('the outreach list: holds off is said in the muted tone; nobody is listed as "calendar hold filed"; nothing is red', async () => {
