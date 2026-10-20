@@ -674,3 +674,43 @@ imported from live business activity beyond R24's read-only study; email
 never; calendar edits never (R18 holds only); texting only via R22; logs
 stay counts-and-ids (§4.3); the website, Resend and SEO stay out of scope;
 deploys stay manual.
+
+## R26 — The pre-deploy review answers (Mike, 2026-10-20)
+
+Mike answered all 16 questions on his private pre-deploy review page
+(2026-10-18) and then said in the session: *"Done"*. Every answer was **Yes**,
+none carried a note. The answers live in the review page's own store
+(`answers/<id>`, written 2026-10-20 03:57–04:00 UTC). In order of weight:
+
+1. **Deploy** the reviewed build (R25 + the three QA rounds, #41). Data links
+   stay cut; nothing new turns on.
+2. **The Grok "Arbo for Claude" package is reference only, not an add-on.**
+   It does not replace the Master Build Brief. Useful parts are taken on
+   purpose, one by one (see `docs/research/GROK_HANDOFF_REVIEW.md`).
+3. **R25 stands** over the package's "no Claude Code build — Jack's veto".
+   Personas in another system's documents have no standing in Arbo.
+4. **Keep the three permit words** (PERMIT LIKELY / REVIEW NEEDED / NO
+   OVERLAY–VERIFY) over add-on -01's CLEAR / EXEMPT / PERMIT REQUIRED. This
+   settles the -01 vocabulary conflict; its other held items stay held.
+5. **Approved to build** (each listed with the default Claude used where the
+   page asked for a detail and the note was left empty — Mike may change any):
+   - Sourced Virginia facts from the package into the Permit Desk, marked
+     UNCONFIRMED until checked (VA811 dig-site steps, imported fire ant
+     quarantine, power-line statute by section, pest regulatory status).
+   - A code guard that blocks a spoken or drafted date promise.
+   - A brake or steering defect keeps a unit off the schedule until signed
+     back on. *Default: Mike signs it back on (no designate).*
+   - Emergency script tells a caller to call 911 when someone is hurt and
+     Dominion when a line is down. *Default wording drafted by Claude,
+     shown to Mike to change.*
+   - A TCIA/credential question is answered "licensed and insured".
+   - An owner-only storm-law awareness flag (Va. Code 59.1-526/527).
+   - Spanish-speaking callers are recognised. *Default: detect and flag only;
+     what a Spanish caller hears is still Mike's call.*
+   - Screen decisions: one label per permit state everywhere (the badge
+     wording); page headings on Book, Queue, Numbers, Settings; desk names
+     lined up; an emergency lead reaches Today and badges the Leads tab; the
+     "Crew door" tile in More becomes a look-only preview that cannot sign.
+
+What did NOT move: everything in "Hard boundaries" and §3 — no sends beyond
+R22, no email, no calendar edits beyond R18 holds, links cut, deploys manual.
