@@ -20,7 +20,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod/v4';
-import { QuoHttpError, type QuoApi, type QuoCall, type QuoTranscriptLine } from '../integrations/quo.js';
+import { QuoHttpError, type QuoApi, type QuoCall, type QuoMessage, type QuoTranscriptLine } from '../integrations/quo.js';
+import type { MediaRef } from '../integrations/quoMedia.js';
 import { DriveReadError, parseCsv, type DriveFolderReader, type DriveTextFile } from '../integrations/driveRead.js';
 
 export const QUO_STUDY_MODEL = 'claude-opus-5';
@@ -80,12 +81,31 @@ export interface StudyNote extends StudyFacts {
   readAt: string;
   /** A note built without Opus (no words on record) — said so, never dressed up. */
   noWords: boolean;
+  /**
+   * What the customer texted besides words, newest first (Mike, 2026-10-20:
+   * "Needs to be able to view photos on quo"). An opaque id per photo the app
+   * can show — never Quo's address. View-only: nothing is kept but the id.
+   */
+  media: StudyMedia[];
+  /** Attachments on record beyond the ones listed — named on the card, never a silent gap (§1B). */
+  mediaNotShown: number;
+}
+
+export interface StudyMedia extends MediaRef {
+  at: string | null;
+}
+
+/** Mints the opaque id for one attachment (src/integrations/quoMedia.ts). Reads nothing, writes nothing. */
+export interface StudyMediaIds {
+  mint(messageId: string | null, index: number, item: { url: string | null; contentType: string | null }): MediaRef;
 }
 
 export interface StudyDeps {
   quo: QuoApi;
   reader: StudyReader | null;
   drive: DriveFolderReader | null;
+  /** Photo ids for the app; absent = every attachment is counted as not shown. */
+  media?: StudyMediaIds | null;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
 }
@@ -99,6 +119,8 @@ const PACE_MS = 150;
 const CONVERSATION_CAP = 60;
 const THREAD_CHAR_CAP = 12_000;
 const DRIVE_FILES = 6;
+/** Attachments listed on one note; the rest are counted and named. */
+const MEDIA_PER_NOTE = 12;
 const STAGE_ORDER: Record<StudyFacts['stage'], number> = {
   waiting_on_us: 0, new_inquiry: 1, quoted: 2, waiting_on_customer: 3, scheduled: 4, unclear: 5, won: 6, lost: 7, not_a_customer: 8,
 };
@@ -234,7 +256,13 @@ export class QuoStudy {
       ...msgs.map((m) => m.id),
       ...mine.map((l) => `${l.file}:${l.text.length}:${l.text.slice(0, 40)}`),
     ].join('|');
+    // Before the unchanged return AND before the model: every pass re-mints
+    // from this read, so a photo's address stays as fresh as Quo's last
+    // answer at no model cost — and a new photo reaches the card even when
+    // the re-read below fails (the failure is counted on status()).
+    const attached = this.mediaOf(msgs);
     const prev = this.byConversation.get(conversationId);
+    if (prev) prev.note = { ...prev.note, ...attached };
     if (prev && prev.key === key) return 'unchanged';
 
     const events: Array<{ at: string; text: string }> = [];
@@ -253,7 +281,7 @@ export class QuoStudy {
     const lastActivityAt = [inbound, outbound].filter(Boolean).sort().at(-1) ?? null;
     const lastTouch: StudyNote['lastTouch'] = !inbound && !outbound ? null : inbound >= outbound ? 'customer' : 'us';
     const hasWords = events.some((e) => !/^\[[^\]]*\] CALL[^\n]*\(no words on record\)$/.test(e.text)) || logText.length > 0;
-    const base = { conversationId, number, lastActivityAt, lastTouch, sources: { calls: done.length, texts: msgs.length, logLines: mine.length }, readAt: new Date(nowMs).toISOString() };
+    const base = { conversationId, number, lastActivityAt, lastTouch, sources: { calls: done.length, texts: msgs.length, logLines: mine.length }, readAt: new Date(nowMs).toISOString(), ...attached };
 
     let facts: StudyFacts;
     let noWords = false;
@@ -266,6 +294,25 @@ export class QuoStudy {
     }
     this.byConversation.set(conversationId, { key, note: { ...facts, ...base, noWords } });
     return 'read';
+  }
+
+  /**
+   * What the customer texted besides words — newest first, the overflow
+   * counted. Ids are minted ONLY for what the card shows: the store is
+   * shared and capped, so minting a whole thread's attachments would let one
+   * customer's flood push every other customer's photo out of it.
+   */
+  private mediaOf(msgs: QuoMessage[]): { media: StudyMedia[]; mediaNotShown: number } {
+    const all: Array<{ messageId: string; index: number; item: NonNullable<QuoMessage['media']>[number]; at: string | null }> = [];
+    for (const m of msgs) {
+      if (m.direction !== 'incoming' || !m.media?.length) continue;
+      m.media.forEach((item, index) => all.push({ messageId: m.id, index, item, at: m.createdAt }));
+    }
+    const ids = this.deps.media;
+    if (!ids) return { media: [], mediaNotShown: all.length };
+    all.sort((a, b) => (b.at ?? '').localeCompare(a.at ?? '')); // stable: one text's items keep their order
+    const media = all.slice(0, MEDIA_PER_NOTE).map((x) => ({ ...ids.mint(x.messageId, x.index, x.item), at: x.at }));
+    return { media, mediaNotShown: all.length - media.length };
   }
 
   private callText(c: QuoCall, t10: string): string {

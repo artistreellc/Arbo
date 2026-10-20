@@ -96,7 +96,8 @@ describe('practice mode: the folded Quo card uses the practice-data words, like 
     await fillQuoSlotsSim([Promise.resolve(panel('Where each customer stands', true)), Promise.resolve(panel('Text outreach', true)), Promise.resolve(panel('Sona calls (Quo)', true))], s);
     const card = s[0]!.children[0]!;
     expect(card.children.map((c) => c.className)).toEqual(['panel-title', 'feed-state sim']);
-    expect(card.children[1]!.textContent).toBe('Not in the practice data — no customer threads, texts or Sona calls show here; the real ones stay in Quo.');
+    // "real": the one PRACTICE text under Calls › Texts is made up, so the card never says no texts show at all.
+    expect(card.children[1]!.textContent).toBe('Not in the practice data — no real customer threads, texts or Sona calls show here; those stay in Quo.');
     expect(card.children[1]!.textContent).not.toContain('isn’t connected');
   });
 });

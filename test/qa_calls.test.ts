@@ -108,7 +108,9 @@ describe('the Calls screen', () => {
   });
 
   it('a texts read that failed keeps its title and names the failure', () => {
-    expect(calls).toContain("txSlot.appendChild(el('div', 'panel-title', 'Texts')); txSlot.appendChild(feedLine(e, 'Texts'));");
+    // Every failure keeps the title — a 401 included (the server locks texts with no APP_ACCESS_KEY), named in words.
+    expect(calls).toContain("catch (e) {\n      txSlot.appendChild(el('div', 'panel-title', 'Texts'));");
+    expect(calls).toContain(": feedLine(e, 'Texts'));");
     expect(html).not.toContain('Texts: status unavailable right now');
   });
 });

@@ -71,6 +71,8 @@ import { createDriveFolderReader } from './integrations/driveRead.js';
 import { GoogleTokenStore, googleCreds, consentUrl, codeFrom, exchangeCode, GOOGLE_SCOPES } from './integrations/googleTokenStore.js';
 import { Bouncie, BOUNCIE_CALLBACK_PATH, BOUNCIE_REDIRECT, RETIRED_CALLBACK_PATH, bouncieTokenBackend, callbackPage, type UnitLite } from './integrations/bouncie.js';
 import { createQuoApi, ensureQuoWebhooks } from './integrations/quo.js';
+import { QuoMediaStore } from './integrations/quoMedia.js';
+import { simQuoTexts } from './dev/simQuoTexts.js';
 import { createQuoSender } from './integrations/quoSend.js';
 import { OutreachEngine } from './ops/outreach.js';
 import {
@@ -606,8 +608,10 @@ const consoleAlerter: Alerter = {
  * `opts.assistant` is the R28 business assistant; tests hand in one built on
  * a fake Anthropic client. Unset, the real one is built — and it starts
  * nothing unless ARBO_AGENT is exactly 'live' and every id is set.
+ * `opts.quoMedia` is the photo-id store (view-only Quo photos, R34); tests
+ * hand in one with a fake Quo host. The server builds its own.
  */
-export function createArborRequestHandler(opts: { assistant?: Assistant } = {}) {
+export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedia?: QuoMediaStore } = {}) {
   boot(); // validates guardrails + legal or throws
   const alertsProvider = createNwsAlertsProvider((url, init) => fetch(url, init));
   // R26: the owner-only storm-law flag — OpenFEMA, read-only, asked at most
@@ -695,6 +699,10 @@ export function createArborRequestHandler(opts: { assistant?: Assistant } = {}) 
   // Arbo texts from) is learned at boot from Quo, never guessed.
   const quoApi = env.quoApiKey ? createQuoApi(env.quoApiKey) : null;
   const sonaExtractor = env.anthropic.apiKey ? createSonaExtractor(env.anthropic.apiKey) : null;
+  // Quo photos, view-only (Mike, 2026-10-20: "Needs to be able to view photos
+  // on quo"). In memory only: an opaque id per photo Arbo itself read from
+  // Quo; the page gets the id, never the address.
+  const quoMedia = opts.quoMedia ?? new QuoMediaStore();
   let outreach: OutreachEngine | null = null;
   const quoIntake = new QuoIntake({
     guardrails,
@@ -703,7 +711,8 @@ export function createArborRequestHandler(opts: { assistant?: Assistant } = {}) 
     callRecords,
     calendarHold,
     onText: (t) => {
-      webhooks.addQuoText(t);
+      // Signature-checked by the intake; each photo is swapped for an id here, so no address reaches the Texts list.
+      webhooks.addQuoText({ ...t, media: quoMedia.refs(t.messageSid, t.media) });
       outreach?.noteInbound(t);
     },
     onDelivery: (id, status) => outreach?.noteDelivery(id, status),
@@ -719,6 +728,7 @@ export function createArborRequestHandler(opts: { assistant?: Assistant } = {}) 
         quo: quoApi,
         reader: env.anthropic.apiKey ? createStudyReader(env.anthropic.apiKey) : null,
         drive: studyGoogleToken ? createDriveFolderReader(studyGoogleToken) : null,
+        media: quoMedia,
       })
     : null;
   currentQuoStudy = quoStudy;
@@ -1074,6 +1084,32 @@ export function createArborRequestHandler(opts: { assistant?: Assistant } = {}) 
       if (req.method === 'POST' && url.pathname === '/api/talk') {
         if (!env.appAccessKey) return send(401, { error: 'no_app_key', message: 'APP_ACCESS_KEY is not set — Talk is locked until it is.' });
         return send(...unpack(await ownerTalk.handle(await readJson(req))));
+      }
+      // Quo photos, view-only (Mike, 2026-10-20: "Needs to be able to view
+      // photos on quo"). Owner only: the crew key never passes the gate above,
+      // the office's look-only crew preview (Mike's own key + x-arbo-preview)
+      // is refused, and with no APP_ACCESS_KEY it stays locked even while the
+      // database is cut. Only an id Arbo minted is known (else 404). The bytes
+      // are fetched from Quo now and handed on — nothing is kept, on disk or
+      // in the browser's cache (no-store; the page holds them in memory).
+      {
+        const pm = url.pathname.match(/^\/api\/quo\/media\/([A-Za-z0-9_-]{1,64})$/);
+        if (req.method === 'GET' && pm) {
+          if (!env.appAccessKey) return send(401, { error: 'no_app_key', message: 'APP_ACCESS_KEY is not set — customer photos are locked until it is.' });
+          if (req.headers['x-arbo-preview'] === '1') return send(403, { error: 'preview_refused' });
+          const out = await quoMedia.load(pm[1]!);
+          if (!out.ok) return send(out.status, { error: out.error });
+          res.writeHead(200, {
+            'content-type': out.contentType,
+            'content-length': String(out.bytes.length),
+            'cache-control': 'private, no-store',
+            'x-content-type-options': 'nosniff',
+            'content-security-policy': "default-src 'none'; sandbox",
+            'content-disposition': 'inline',
+            'referrer-policy': 'no-referrer',
+          });
+          return res.end(out.bytes);
+        }
       }
       if (req.method === 'GET' && url.pathname === '/api/brief/audio' && !vendorLinked('elevenlabs')) {
         return send(503, vendorCutBody('elevenlabs'));
@@ -1770,11 +1806,16 @@ export function createArborRequestHandler(opts: { assistant?: Assistant } = {}) 
         }
       }
       if (req.method === 'GET' && url.pathname === '/api/webhooks/texts') {
+        // Customers' numbers and words, held in MEMORY — "nothing to leak while
+        // the database is cut" does not hold here, so no app key means locked.
+        if (!env.appAccessKey) return send(401, { error: 'no_app_key', message: 'APP_ACCESS_KEY is not set — customer texts are locked until it is.' });
+        // Practice mode adds one SIM text whose photo is the repo placeholder — never a customer's.
+        const texts = dataLinksSim() ? [...simQuoTexts(quoMedia, Date.now()), ...webhooks.texts()].sort((a, b) => b.at.localeCompare(a.at)) : webhooks.texts();
         return send(200, {
           wired: Boolean(env.twilioSmsWebhookKey),
           // R21: the key can be set while the link is cut — cut wins, and is its own state.
           linkCut: !vendorLinked('twilio'),
-          texts: webhooks.texts(),
+          texts,
           note: 'Texts and photos sent to the Arbo number. Receive only — Arbo never replies. NOT WIRED is not zero texts.',
         });
       }

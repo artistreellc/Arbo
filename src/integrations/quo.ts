@@ -72,6 +72,13 @@ export interface QuoMessage {
   text: string;
   status: string | null;
   createdAt: string | null;
+  /**
+   * Photos and files on the text — Quo's signed address and MIME type, https
+   * only, at most 10. Server-side only: the app is handed an opaque id per
+   * photo (src/integrations/quoMedia.ts), never this address. Optional so a
+   * reader that never looks at photos need not carry it.
+   */
+  media?: Array<{ url: string; contentType: string | null }>;
 }
 
 export interface QuoTranscriptLine {
@@ -228,7 +235,13 @@ export function createQuoApi(apiKey: string, fetchImpl: FetchLike = fetch as unk
         const id = str(o.id);
         const d = dir(o.direction);
         if (!id || !d) return [];
-        return [{ id, direction: d, text: str(o.text) ?? '', status: str(o.status), createdAt: str(o.createdAt) }];
+        const media = Array.isArray(o.media)
+          ? (o.media as Array<Record<string, unknown> | null>)
+              .map((m) => ({ url: str(m?.url), contentType: str(m?.type) }))
+              .filter((m): m is { url: string; contentType: string | null } => m.url !== null && m.url.startsWith('https://'))
+              .slice(0, 10)
+          : [];
+        return [{ id, direction: d, text: str(o.text) ?? '', status: str(o.status), createdAt: str(o.createdAt), media }];
       });
     },
     async getCallTranscript(callId) {

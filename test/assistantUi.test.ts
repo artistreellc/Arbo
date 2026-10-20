@@ -271,7 +271,7 @@ describe('R28 — one row per ask', () => {
 
 describe('R28 — the approval sheet', () => {
   it('is a sheet like the others: in SHEETS, so Back, Android back and the iPhone swipe close it', () => {
-    expect(pageConst<string[]>('SHEETS')).toEqual(['twin', 'yard', 'bd', 'talk', 'approval']); // R30 Talk's sheet sits beside it (merged)
+    expect(pageConst<string[]>('SHEETS')).toEqual(['twin', 'yard', 'bd', 'talk', 'approval', 'photo']); // R30 Talk's and R34's photo sheets sit beside it (merged)
     expect(html).toContain('<div id="approval" class="sheet">\n  <div class="sheet-head">\n    <button id="approval-close" aria-label="Close"><svg class="hico" aria-hidden="true"><use href="#i-close"/></svg></button>\n    <div id="approval-title"></div>\n  </div>\n  <div id="approval-body"></div>\n</div>');
     expect(html).toContain("$('approval-close').addEventListener('click', () => closeSheet('approval'));");
     const src = fnSrc('openApproval');

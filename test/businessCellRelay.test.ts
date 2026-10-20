@@ -58,9 +58,26 @@ describe('business-cell relays', () => {
     expect((await post('/api/relay/text', { from: '+17575550100', text: 'hi' })).status).toBe(200);
     expect((await post('/api/relay/text', {})).status).toBe(400);
     expect((await post('/api/relay/call-notes', { text: 'notes' })).status).toBe(200);
-    const texts = (await (await fetch(`${base}/api/webhooks/texts`)).json()) as { texts: Array<{ line: string }> };
-    expect(texts.texts.some((t) => t.line === 'business')).toBe(true);
+    // The list of customers' texts is locked with no APP_ACCESS_KEY (held in memory, not in the database).
+    expect((await fetch(`${base}/api/webhooks/texts`)).status).toBe(401);
     srv.close();
+    const saved = { ...process.env };
+    try {
+      vi.resetModules();
+      process.env.APP_ACCESS_KEY = 'admin-k';
+      const { createArborRequestHandler: fresh } = await import('../src/server.js');
+      const keyed = createServer(fresh());
+      await new Promise<void>((r) => keyed.listen(0, r));
+      const kbase = `http://127.0.0.1:${(keyed.address() as { port: number }).port}`;
+      const k = { 'x-arbor-key': 'admin-k' };
+      expect((await fetch(`${kbase}/api/relay/text`, { method: 'POST', headers: { 'content-type': 'application/json', ...k }, body: JSON.stringify({ from: '+17575550100', text: 'hi' }) })).status).toBe(200);
+      const texts = (await (await fetch(`${kbase}/api/webhooks/texts`, { headers: k })).json()) as { texts: Array<{ line: string }> };
+      expect(texts.texts.some((t) => t.line === 'business')).toBe(true);
+      keyed.close();
+    } finally {
+      process.env = { ...saved };
+      vi.resetModules();
+    }
     const html = readFileSync(new URL('../src/app/index.html', import.meta.url), 'utf8');
     expect(html).toContain('Photos stay on your phone');
     expect(html).toContain('nothing relayed from your iPhone since Arbo last restarted');

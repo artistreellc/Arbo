@@ -99,7 +99,7 @@ iPhone Silence Unknown Callers OFF — either one stops a call before the
 
 | Line | How texts reach Arbo | State |
 |---|---|---|
-| Quo 757-606-9432 | Quo webhook (above), photos included. Outbound: the R22 text only. | Live. |
+| Quo 757-606-9432 | Quo webhook (above), photos included — Arbo shows them view-only (R34): an opaque id per photo, the bytes read from Quo when Mike looks, never stored. Outbound: the R22 text only. | Live. |
 | Arbo 757-821-6983 | Twilio "A message comes in" webhook → `/webhooks/twilio/sms?key=…`, key = **`TWILIO_SMS_WEBHOOK_KEY`** (Railway). Receive only — empty TwiML reply. | **CUT (R21).** Twilio console paste never done. |
 | Business 757-319-5131 | iOS blocks every app from native SMS. Optional bridge: an iPhone Shortcuts "Message" automation POSTing `{from, text}` to `/api/relay/text` with header `x-arbor-key` = the app key. Words only, never photos. | Built; Shortcut **not set up**. |
 
