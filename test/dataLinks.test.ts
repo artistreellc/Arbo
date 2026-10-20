@@ -111,7 +111,7 @@ describe('the data-link switch', () => {
     expect(() => c.getDb()).toThrow(/Nothing was deleted/);
   });
 
-  // ── R-READONLY (Mike, 2026-10-20: "give arbo and its agents read only data
+  // ── R32 (Mike, 2026-10-20: "give arbo and its agents read only data
   // access"): a third exact value. It reads, it never writes, and it can
   // never be mistaken for live. Every near miss of the spelling stays CUT.
   it('opens READS only on the exact string "readonly" — and is never live, never writable', async () => {

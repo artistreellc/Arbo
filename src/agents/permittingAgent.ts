@@ -95,7 +95,7 @@ async function propertiesMissingScreens(sinceIso: string): Promise<string[]> {
 export async function runPermittingAgent(now = new Date()): Promise<PermittingSweepResult> {
   const run = await startAgentRun({ agent: 'permitting', modelUsed: env.anthropic.apiKey ? 'claude-opus-5' : undefined });
   const llm = env.anthropic.apiKey ? 'available' as const : 'not_configured' as const;
-  // R-READONLY: the same batch is read again next run — said, not hidden, on a failed run too.
+  // R32: the same batch is read again next run — said, not hidden, on a failed run too.
   let cursorNote = '';
   try {
     let processed = 0;

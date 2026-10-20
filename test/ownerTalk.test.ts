@@ -476,7 +476,7 @@ describe('R30 review — a part of a feed Arbo could not read is still NAMED (§
     expect((await createTalkTools(okReads()).run('arbo_update')).text).toContain('Every feed answered.');
   });
 
-  // R-READONLY behaviour review, finding 1: nothing in the app files a lead (R4),
+  // R32 behaviour review, finding 1: nothing in the app files a lead (R4),
   // so an empty emergency list on real data is an unfed list — never "none open".
   it('live or read-only: no emergency lead in Arbo\'s list says the list is not fed — never "none open right now"', async () => {
     for (const mode of ['live', 'readonly'] as const) {

@@ -104,7 +104,7 @@ export async function emitSafe(
   source: string,
 ): Promise<boolean> {
   if (!hasDb()) return false;
-  // R-READONLY: not written, and COUNTED by name (event type only — never the
+  // R32: not written, and COUNTED by name (event type only — never the
   // payload), so "nothing raised" is never a silent zero (§1B).
   if (!canWrite()) {
     noteNotSaved('event');
@@ -152,7 +152,7 @@ async function setCursor(consumer: string, seq: number): Promise<void> {
  * order; the cursor advances only past events the handler completed, so a
  * crash mid-batch re-delivers (at-least-once — consumers must be idempotent).
  *
- * R-READONLY: the events are still READ and handled, but the cursor is not
+ * R32: the events are still READ and handled, but the cursor is not
  * written — `cursorSaved: false` says so, and the next run reads the same
  * batch again (once per sweep, never a retry loop).
  */

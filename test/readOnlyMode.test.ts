@@ -2,7 +2,7 @@
   SLOW::ARBO — these tests pin the read-only data mode at the one door
   (src/db/client.ts). The note at the top of src/db/client.ts applies.
 */
-// R-READONLY — Mike, 2026-10-20, verbatim: "give arbo and its agents read only
+// R32 — Mike, 2026-10-20, verbatim: "give arbo and its agents read only
 // data access and run systems checks every couple hours while you contuin to
 // build". ARBO_DATA_LINKS=readonly: Arbo READS the named links through the one
 // door and every WRITE is refused there, by name, before anything leaves.
@@ -693,7 +693,7 @@ describe('read-only: the app and the crew page say it plainly', () => {
   // ARBO_OUTREACH_CATCHUP), and read-only does not switch it — the ruling says so.
   it('the draft ruling words R22 truthfully: automatic only on its own switches, and read-only does not switch it', () => {
     const rulings = readFileSync(new URL('../docs/OWNER_RULINGS.md', import.meta.url), 'utf8');
-    const ro = rulings.slice(rulings.indexOf('## R-READONLY')).replace(/\s+/g, ' ');
+    const ro = rulings.slice(rulings.indexOf('## R32')).replace(/\s+/g, ' ');
     expect(ro).not.toContain("texting only via R22 behind `inspectMessage` and Mike's tap;");
     expect(ro).toContain("texting only via R22 behind `inspectMessage` (Mike's tap, or automatically only while `ARBO_OUTREACH=live` or `ARBO_OUTREACH_CATCHUP=live`) — read-only mode does not switch it;");
   });

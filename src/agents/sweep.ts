@@ -111,7 +111,7 @@ export interface SweepSummary {
   safety: Awaited<ReturnType<typeof runSafetyAgent>> | { status: 'error' };
   urgentLoopsRaised: number | 'unavailable';
   /**
-   * R-READONLY: whether this sweep's run log and raised events were written.
+   * R32: whether this sweep's run log and raised events were written.
    * 'not_saved_read_only' = the agents READ and reported, nothing was saved;
    * `notSaved` then counts what was skipped since boot (kinds and counts only).
    * 'no_database' = there was nothing to write to (cut or not configured).
@@ -162,7 +162,7 @@ export function startAgentScheduler(api: Api, alerts: AlertsProvider): NodeJS.Ti
       // A safety agent that RAN but could not read a feed is not "ok": a
       // safety brief with a silent hole reads as "nothing to worry about".
       const safetyBlind = 'blindSpots' in s.safety ? s.safety.blindSpots : ['safety agent did not run'];
-      // R-READONLY: the run log and raised events were not written — said on
+      // R32: the run log and raised events were not written — said on
       // every tick, with the running count, never left for someone to infer.
       const ro = s.writes === 'not_saved_read_only'
         ? ` READ-ONLY — run log and events NOT saved (${s.notSaved?.total ?? 0} writes skipped since boot)`

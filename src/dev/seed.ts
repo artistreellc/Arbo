@@ -107,7 +107,7 @@ async function isEmpty(): Promise<{ empty: boolean; found: Record<string, number
 
 export async function seedSimulation(): Promise<SeedResult> {
   if (!hasDb()) return { wrote: false, reason: 'db_not_configured', counts: {} };
-  // R-READONLY: a read-only database is never seeded — refused by name before a count is read.
+  // R32: a read-only database is never seeded — refused by name before a count is read.
   if (!canWrite()) return { wrote: false, reason: 'read_only', counts: {} };
 
   const { empty, found } = await isEmpty();

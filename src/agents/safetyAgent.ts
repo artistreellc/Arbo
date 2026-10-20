@@ -157,7 +157,7 @@ export async function runSafetyAgent(alerts: AlertsProvider, now = new Date()): 
     } else {
       findings = findCertProblems(cc.crew, cc.certs, todayEt);
       // An empty roster read fine, but nobody to check is not an all-clear
-      // (R-READONLY made the real, empty roster readable — same rule as /api/safety).
+      // (R32 made the real, empty roster readable — same rule as /api/safety).
       if (cc.crew.length === 0) blindSpots.push('certifications: crew roster is empty — no one to check, not an all-clear');
       const count = (s: CertFinding['state']) => findings.filter((f) => f.state === s).length;
       result.certs = {

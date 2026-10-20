@@ -102,7 +102,7 @@ key) — closed by 0019. What the advisor still reports, and why it stays:
 `locate_ticket`, `utility_marking`. No code queries them yet, and the door
 refuses unmapped tables — they join a link when code that reads them ships.
 
-## READ-ONLY mode — `ARBO_DATA_LINKS=readonly` (R-READONLY, 2026-10-20)
+## READ-ONLY mode — `ARBO_DATA_LINKS=readonly` (R32, 2026-10-20)
 
 Mike: *"give arbo and its agents read only data access and run systems checks
 every couple hours while you contuin to build"*.

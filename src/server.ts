@@ -213,7 +213,7 @@ export function createServerSource(): DataSource {
 export function createLiveSource(): DataSource {
   return {
     ready: () => hasDb(),
-    // R-READONLY: read-only reads (ready) but never writes (canWrite).
+    // R32: read-only reads (ready) but never writes (canWrite).
     canWrite: () => canWrite(),
     async stopsBetween(fromIso, toIso): Promise<StopInput[]> {
       const rows = await listStopsBetween(fromIso, toIso);
@@ -241,7 +241,7 @@ export function createLiveSource(): DataSource {
       const propertyIds = [...new Set(rows.map((r) => r.property?.id).filter((id): id is string => Boolean(id)))];
       let permits: Awaited<ReturnType<typeof latestPermitsForProperties>>;
       let permitFailed = false;
-      // R-READONLY: leads can be open while permits is kept cut — that is a
+      // R32: leads can be open while permits is kept cut — that is a
       // cut on purpose, said as one (not "couldn't read it, try again"), and
       // not logged on every poll.
       let permitCut = false;
@@ -437,7 +437,7 @@ export function createLiveSource(): DataSource {
     leakageWindow: () => leakageWindow(),
     logLeakage: (input) => createLeakageEvent(input),
     // §8A.6g audit surface + §8A.6b bus.
-    // R-READONLY: no run is saved, so the saved log would freeze on old rows
+    // R32: no run is saved, so the saved log would freeze on old rows
     // and pose as current. Read-only shows this process's own runs from
     // memory instead (each marked saved: false), and the API says so.
     agentRuns: async (limit) => (canWrite() ? listAgentRuns(limit) : unsavedAgentRuns(limit)),
@@ -1341,7 +1341,7 @@ export function createArborRequestHandler(opts: { assistant?: Assistant } = {}) 
       // no job table to write into, and pretending otherwise is the lie §1B
       // exists to stop.
       if (req.method === 'POST' && url.pathname === '/api/inbox/convert') {
-        // R-READONLY: a conversion is a write — refused in read-only's own words, not "links cut".
+        // R32: a conversion is a write — refused in read-only's own words, not "links cut".
         if (dataLinksReadOnly()) {
           return send(503, { error: 'read_only', line: READ_ONLY_LINE, message: 'Read-only: nothing was converted. Open the thread in Gmail and handle it there for now.' });
         }
@@ -1805,7 +1805,7 @@ export function createArborRequestHandler(opts: { assistant?: Assistant } = {}) 
               }
             }
           }
-          // R-READONLY: a readable link is 'read-only' (never 'open' — nothing it
+          // R32: a readable link is 'read-only' (never 'open' — nothing it
           // holds can be saved); a link kept cut says why in words.
           const keptCut = readOnlyMode ? readOnlyKeptCut(link) : null;
           return {
@@ -1851,7 +1851,7 @@ export function createArborRequestHandler(opts: { assistant?: Assistant } = {}) 
       // A bad request is the CALLER's fault and says so — 400, with which of
       // the two problems it was. Everything else is genuinely ours.
       if (err instanceof BadRequestError) return send(400, { error: err.code });
-      // R-READONLY: a write refused at the read-only door. FIRST, because a
+      // R32: a write refused at the read-only door. FIRST, because a
       // ReadOnlyError is also a LinkCutError and must not be called "link cut".
       // The plain line rides as `line`, which the app shows as it is. The op
       // and table are names only — no customer data (§4.3).

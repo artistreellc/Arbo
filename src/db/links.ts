@@ -58,7 +58,7 @@ export function linkForTable(table: string): DataLink | null {
 }
 
 /**
- * READ-ONLY MODE (R-READONLY, Mike 2026-10-20: "give arbo and its agents read
+ * READ-ONLY MODE (R32, Mike 2026-10-20: "give arbo and its agents read
  * only data access"). With ARBO_DATA_LINKS exactly 'readonly', every link
  * below is READABLE without its own ARBO_LINK_* variable — EXCEPT these,
  * which stay CUT because reading them would put a false or misleading state
@@ -131,7 +131,7 @@ export class LinkCutError extends Error {
   }
 }
 
-/** The one plain line a refused write says, on every screen and in every 503 (R-READONLY). */
+/** The one plain line a refused write says, on every screen and in every 503 (R32). */
 export const READ_ONLY_LINE = 'Read-only: Arbo can look but not save. Nothing was written.';
 
 /**

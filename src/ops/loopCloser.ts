@@ -195,7 +195,7 @@ export function findOpenLoops(s: LoopSnapshot, cfg: LoopCloserConfig = defaultLo
   }
 
   for (const l of s.leads) {
-    // R-READONLY: a lead older than OLDER_LEAD_DAYS is an older lead, not a
+    // R32: a lead older than OLDER_LEAD_DAYS is an older lead, not a
     // call back owed today — it never becomes an open loop or an urgent count.
     if (isOlderLead(l.createdAtIso, Date.parse(s.nowIso))) continue;
     if (l.needsCallback && l.status === 'new') {

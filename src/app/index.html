@@ -782,7 +782,7 @@ const el = (tag, cls, text) => {
 
 let KEY = localStorage.getItem('arborKey') || '';
 
-// R-READONLY: the one plain line for a tap that would have saved while Arbo is read-only.
+// R32: the one plain line for a tap that would have saved while Arbo is read-only.
 const READ_ONLY_LINE = 'Read-only: Arbo can look but not save. Nothing was written.';
 // Said once, wherever the tap was — some cards word their own failures, and
 // none of them may leave Mike guessing why nothing saved.
@@ -2008,7 +2008,7 @@ async function renderToday() {
   v.replaceChildren();
   v.appendChild(buildHero());
   v.appendChild(buildSystems());
-  // R-READONLY: one plain line while Arbo reads real records and saves nothing.
+  // R32: one plain line while Arbo reads real records and saves nothing.
   const roSlot = el('div', 'slot plain');
   v.appendChild(roSlot);
   LINKS_READY.then(() => { if (LINKS === 'readonly') roSlot.appendChild(el('div', 'storm-muted', 'Read-only: Arbo is reading your real records and saving nothing. Anything that would save says so.')); });
@@ -2102,7 +2102,7 @@ async function renderToday() {
   }).catch((e) => { if (e.code !== 401) tileWhy(dueTile, FEED_TAG[feedKind(e)]); });
   api('/api/agents/runs?limit=5').then((r) => {
     setTile(agentTile, r.runs.length, r.runs.some(x => x.status === 'error') ? 'warn' : 'ok-t');
-    // R-READONLY: these runs live in memory and were not saved — the tile says so.
+    // R32: these runs live in memory and were not saved — the tile says so.
     if (r.runLog === 'not_saved_read_only') tileWhy(agentTile, 'not saved — read-only');
   }).catch((e) => { if (e.code !== 401) tileWhy(agentTile, FEED_TAG[feedKind(e)]); });
   api('/api/money').then((m) => {
@@ -2380,7 +2380,7 @@ async function renderLeads() {
     v.appendChild(practice ? state('No new leads', 'Nothing waiting right now.') : state('New leads are not in Arbo', notFed));
     return;
   }
-  // R-READONLY: a lead older than 14 days (the server marks it `older`) is
+  // R32: a lead older than 14 days (the server marks it `older`) is
   // never new work: it sits below the rest under its own heading, with its
   // date, and carries no alarm, no call-back label and no Call back button.
   // Whether anyone is contacted is Mike's call, never Arbo's.
@@ -2417,7 +2417,7 @@ async function renderLeads() {
     if (lead.city) c.appendChild(el('div', 'addr', lead.city + (lead.zip ? ' · ' + lead.zip : '')));
     if (lead.history) c.appendChild(el('div', 'scope', '' + lead.history));
     // §1B: a past-work read that failed is named — a missing line is not "no history".
-    // R-READONLY: a link cut on purpose is said as "cut", never "couldn't read it — try again".
+    // R32: a link cut on purpose is said as "cut", never "couldn't read it — try again".
     else if (lead.historyUnreadable) c.appendChild(feedLine(lead.historyCut ? { code: 503, message: 'link_cut' } : null, 'Past work'));
     if (lead.details) c.appendChild(el('div', 'scope', lead.details));
     // Line 1 is triage + who they are; EMERGENCY already outranks HOT, so an
@@ -2443,7 +2443,7 @@ async function renderLeads() {
     // §9 one-tap actions: call the human back, or file the lead. ARBOR never
     // calls anyone itself — the phone app does, with Mike's thumb on it.
     const row = el('div', 'actions');
-    // An older lead carries no Call back button: contacting anyone is Mike's call (R-READONLY).
+    // An older lead carries no Call back button: contacting anyone is Mike's call (R32).
     if (lead.phone && !lead.older) {
       const call = el('a', 'callbtn', 'Call back');
       call.href = 'tel:' + lead.phone;
@@ -4971,7 +4971,7 @@ async function buildSettings(v, gen) {
     if (gen !== settingsGen) return;
     // Three states, three sentences: simulation is never worded as cut or live.
     // Live is plain help text; simulation and a cut master are gaps, so they wear the feed-state look.
-    // R-READONLY is its own sentence too: real records on screen, nothing saved, never worded as live or cut.
+    // R32 is its own sentence too: real records on screen, nothing saved, never worded as live or cut.
     const masterLook = dl.master === 'sim' ? 'feed-state sim' : dl.master === 'live' || dl.master === 'readonly' ? 'storm-muted' : 'feed-state cut';
     v.appendChild(el('div', masterLook, dl.master === 'sim'
       ? 'SIMULATION \u2014 every screen is showing fake SIM- records, except the Calendar, which is always your live Google Calendar. No real database is connected; the real links below stay CUT.'

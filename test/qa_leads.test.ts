@@ -127,7 +127,7 @@ describe('Leads screen (source pins)', () => {
 
   it('an unreadable permit or history read gets a feed line, and no new permit badge word', () => {
     expect(leads).toContain('lead.permitUnreadable');
-    // R-READONLY: a link kept cut on purpose is said as cut — a failed read keeps the null (unread) form.
+    // R32: a link kept cut on purpose is said as cut — a failed read keeps the null (unread) form.
     expect(leads).toContain("feedLine(lead.permitCut ? { code: 503, message: 'link_cut' } : null, 'Permit screen')");
     expect(leads).toContain('lead.historyUnreadable');
     expect(leads).toContain("feedLine(lead.historyCut ? { code: 503, message: 'link_cut' } : null, 'Past work')");

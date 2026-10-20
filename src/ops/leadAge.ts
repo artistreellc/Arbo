@@ -1,5 +1,5 @@
 // Old rows must not pose as new work (§1B, §3's lesson). Mike's database holds
-// leads from July still marked 'new' — read-only mode (R-READONLY) makes them
+// leads from July still marked 'new' — read-only mode (R32) makes them
 // readable, and a lead that old is not an emergency to answer now, not a call
 // back owed today, and not new work. It shows with its date as an OLDER lead.
 // Whether anyone is contacted is Mike's call, never Arbo's (R4, R22).

@@ -51,7 +51,7 @@ import type { ToolCallRecord } from './toolRegistry.js';
 
 export interface AgentRunHandle {
   id: string | null;
-  /** False when the run was NOT written to agent_run because Arbo is read-only (R-READONLY). */
+  /** False when the run was NOT written to agent_run because Arbo is read-only (R32). */
   saved?: boolean;
   finish(params: {
     status: 'ok' | 'error' | 'blocked';
@@ -72,7 +72,7 @@ export async function startAgentRun(params: {
   if (!hasDb()) {
     return { id: null, finish: async () => {} };
   }
-  // R-READONLY: the agent still runs its sweep (R4 — sweeps are read-only by
+  // R32: the agent still runs its sweep (R4 — sweeps are read-only by
   // rule); only its run log is not written. It is NAMED, never silent: each
   // skipped row is counted, and the finished run is kept in memory so the
   // app shows what ran (marked "not saved") instead of freezing on old rows.

@@ -93,7 +93,7 @@ export function dataLinksSim(): boolean {
 }
 
 /**
- * READ-ONLY mode (R-READONLY). Mike, 2026-10-20, verbatim: "give arbo and its
+ * READ-ONLY mode (R32). Mike, 2026-10-20, verbatim: "give arbo and its
  * agents read only data access and run systems checks every couple hours
  * while you contuin to build".
  *
@@ -159,7 +159,7 @@ export function getDb(): SupabaseClient {
       'Supabase not configured: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env',
     );
   }
-  // R-READONLY: read-only takes its own door and never the live client below.
+  // R32: read-only takes its own door and never the live client below.
   // Checked BEFORE the live client is even built, so in read-only mode a
   // writable client does not exist in this process to be reached by accident.
   if (dataLinksReadOnly()) return readOnlyDb();
@@ -178,7 +178,7 @@ export function getDb(): SupabaseClient {
     const raw = _client;
     _guarded = new Proxy(raw, {
       get(target, prop) {
-        // A handle taken while 'live' must not outlive 'live' (R-READONLY door
+        // A handle taken while 'live' must not outlive 'live' (R32 door
         // review): once the master is anything else it answers to the door in
         // force NOW — read-only's door, or getDb()'s own "CUT" refusal. In live
         // this is always false, so live behaves exactly as before.
@@ -199,7 +199,7 @@ export function getDb(): SupabaseClient {
 }
 
 /**
- * THE READ-ONLY DOOR (R-READONLY). Three layers, so a caller that forgets to
+ * THE READ-ONLY DOOR (R32). Three layers, so a caller that forgets to
  * check canWrite() still cannot write — the guard lives here, like the link
  * guard, not in each caller:
  *

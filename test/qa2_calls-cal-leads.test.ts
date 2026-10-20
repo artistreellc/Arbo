@@ -134,7 +134,7 @@ describe('Leads: the file-it pair, Undo and the chip rows (run, not just read)',
     return { v, renderLeads, posts, saveFails, ctl, card, good, spam, undo };
   }
 
-  // R-READONLY: an older lead (the server's `older`, > 14 days) is never new work.
+  // R32: an older lead (the server's `older`, > 14 days) is never new work.
   it('an older lead sits under its own heading with its age: no alarm, no call-back label, no Call back button', async () => {
     const s = mount([
       lead({ id: 'OLD', createdAt: '2026-07-12T14:00:00Z', older: true, ageDays: 100, filedAsEmergency: true, isEmergency: false, needsCallback: false, quality: { priority: 'hot' } }),
@@ -164,7 +164,7 @@ describe('Leads: the file-it pair, Undo and the chip rows (run, not just read)',
     expect(s.v.children.some((n) => n.textContent === 'Older leads — more than 14 days old')).toBe(true);
   });
 
-  // R-READONLY behaviour review, finding 1: nothing in the app files a lead
+  // R32 behaviour review, finding 1: nothing in the app files a lead
   // (R4), so on real data an empty list is an UNFED list — never "no new leads".
   const NOT_FED = 'Arbo doesn’t receive new leads yet — Sona’s are in Quo, and website and ad leads are in Gmail. This is not an empty inbox.';
   it.each(['readonly', 'live'])('%s with no rows: the screen says the list is not fed, never "No new leads"', async (links) => {

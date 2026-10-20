@@ -132,7 +132,7 @@ export interface ApiLead {
   history: string | null;
   /** The past-work read FAILED: a missing history line here is not "no history" (§1B). */
   historyUnreadable: boolean;
-  /** R-READONLY: the permit / past-work read was refused because that link is cut on purpose — said as "cut", never "couldn't read it". */
+  /** R32: the permit / past-work read was refused because that link is cut on purpose — said as "cut", never "couldn't read it". */
   permitCut?: true;
   historyCut?: true;
   /** R26: 'es' when the receptionist heard a Spanish speaker (detect and flag only). */
@@ -153,7 +153,7 @@ export interface ApiLead {
 export interface DataSource {
   ready(): boolean;
   /**
-   * R-READONLY: false when Arbo may READ but not WRITE (ARBO_DATA_LINKS=readonly).
+   * R32: false when Arbo may READ but not WRITE (ARBO_DATA_LINKS=readonly).
    * Writers that run without a person's tap (the forecast write-through, the
    * visit stamp, the phone's location ping) skip by name instead of meeting
    * the door. Absent = writable (the practice data writes to memory).
@@ -365,7 +365,7 @@ export interface ApiExtras {
   dataLinksLive?: boolean;
   /** True when the app is running on in-memory simulated records. */
   dataLinksSim?: boolean;
-  /** R-READONLY: true when ARBO_DATA_LINKS is exactly 'readonly' — reading real data, writing nothing. */
+  /** R32: true when ARBO_DATA_LINKS is exactly 'readonly' — reading real data, writing nothing. */
   dataLinksReadOnly?: boolean;
 }
 
@@ -391,7 +391,7 @@ export interface ApiLeadInput {
   history: { kind: 'job' | 'estimate'; when: string | null; scope: string | null; status: string | null } | null;
   /** True when the past-work read failed for this lead's property — history is then unknown, not absent. */
   historyUnreadable?: boolean;
-  /** The permit read failed because its link is CUT on purpose (R-READONLY keeps permits cut) — not a failed read. */
+  /** The permit read failed because its link is CUT on purpose (R32 keeps permits cut) — not a failed read. */
   permitCut?: boolean;
   /** The past-work read failed because its link is CUT on purpose (jobs) — not a failed read. */
   historyCut?: boolean;
@@ -428,7 +428,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
     !source.ready() ? 'db_not_configured' : has ? null : extras.dataLinksSim ? 'not_simulated' : 'not_built';
   // A blind spot in words: the practice data simply lacks it, or no source is connected yet (§1B — never snake_case, never "wired").
   const unwired = (what: string, tail: string): string => `${what} — ${extras.dataLinksSim ? 'not in the practice data' : 'not connected yet'}. ${tail}`;
-  // R-READONLY: true only when the source says it may read but not write.
+  // R32: true only when the source says it may read but not write.
   // Asked after source.ready(), so a cut database still answers db_not_configured.
   const readOnly = (): boolean => (source.canWrite ? !source.canWrite() : false);
   // A refused write, by name, with the plain line the screens show; counted (kind only, §4.3).
@@ -581,7 +581,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
     async forecast(now = new Date()): Promise<ApiResult> {
       if (!source.ready() || !source.growthTargets) return { status: 503, body: { error: gap(source.growthTargets) } };
       const due = buildDueProperties(await source.growthTargets(), now);
-      // R-READONLY: the answer stands; the write-through is skipped BY NAME
+      // R32: the answer stands; the write-through is skipped BY NAME
       // (counted, and said in the body) — a GET never meets the write door.
       const skipWrites = readOnly();
       if (source.saveTreeForecast && !skipWrites) {
@@ -692,7 +692,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       }
       if (!(await source.getTracking())) return { status: 403, body: { error: 'tracking_off' } };
       if (!withinWorkingHours(now)) return { status: 403, body: { error: 'after_hours' } };
-      // R-READONLY: the phone's timer pings on its own — refused by name and
+      // R32: the phone's timer pings on its own — refused by name and
       // counted, before the write door. A 503 the phone ignores until its next tick.
       if (readOnly()) return readOnlyRefusal('location_ping');
       const accuracyM = Number(body.accuracyM);
@@ -755,7 +755,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
         windowPings,
         located.map((s) => ({ id: s.id, kind: s.kind, lat: s.lat, lng: s.lng, timeIso: s.timeIso })),
       );
-      // R-READONLY: a GET must never fail on the write door. In read-only the
+      // R32: a GET must never fail on the write door. In read-only the
       // visits are still READ and shown; the stamp is skipped, counted and said.
       const skipWrites = readOnly();
       let unsavedVisits = 0;
@@ -1616,7 +1616,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
         try {
           const [crew, certs] = await Promise.all([source.activeCrew(), source.certifications()]);
           certProblems = findCertProblems(crew, certs, todayEt);
-          // R-READONLY made the real (empty) roster readable: nobody to check is
+          // R32 made the real (empty) roster readable: nobody to check is
           // not "everyone is current". Named, so the board never reads all-clear.
           if (crew.length === 0) blindSpots.push('Crew roster — nobody is on it yet, so there is no one to check. This is not an all-clear.');
         } catch {
@@ -2416,7 +2416,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
     /** GET /api/agents/runs — §8A.6g audit visibility: what the agents did. */
     async agentRuns(limit = 20): Promise<ApiResult> {
       if (!source.ready() || !source.agentRuns) return { status: 503, body: { error: gap(source.agentRuns) } };
-      // R-READONLY: the runs shown are this process's own, kept in memory and
+      // R32: the runs shown are this process's own, kept in memory and
       // NOT saved — the body says so, so the tile never reads as a saved log.
       if (readOnly()) {
         return {

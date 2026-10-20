@@ -1075,9 +1075,7 @@ Mike* #5 and #7).
 `docs/BOUNCIE.md`, `docs/DATA_LINKS.md`, `docs/GO_LIVE.md`, `CLAUDE.md` §3,
 `test/bouncie.test.ts`, `test/credentialStore.test.ts`.
 
-## R-READONLY (number assigned at merge) — Arbo and its agents may READ the data; nothing is written (Mike, 2026-10-20)
-
-*Draft, filed with the read-only build — the number is assigned when it merges.*
+## R32 — Arbo and its agents may READ the data; nothing is written (Mike, 2026-10-20)
 
 Mike, verbatim: *"give arbo and its agents read only data access and run
 systems checks every couple hours while you contuin to build"*.

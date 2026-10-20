@@ -201,7 +201,7 @@ describe('Settings in the shared vocabulary (ST0, ST4)', () => {
     expect(liveLine.textContent).toBe('Master switch LIVE. A CUT link is a closed door, not empty data — each opens after its verification.');
   });
 
-  // R-READONLY: its own sentence — never "Master switch CUT" over real records, never "LIVE" over a door that cannot save.
+  // R32: its own sentence — never "Master switch CUT" over real records, never "LIVE" over a door that cannot save.
   it('the master line in read-only is one plain sentence; READ-ONLY rows are good, kept-cut rows say why', async () => {
     const { v } = await build({ '/api/links': { master: 'readonly', links: [
       { link: 'leads', state: 'read-only', rowCounts: { lead: 37, campaign: 0 } },

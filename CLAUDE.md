@@ -103,10 +103,10 @@ the prompts and makes the calls; your job is to build.
 - **Do not ingest or store leads.** Mike handles them. Scheduled sweeps are
   READ-ONLY: scan, report issues, write nothing — no lead rows, no Gmail
   labels, no calendar edits. (Ruling R4.)
-- **Never modify calendar events. Never send email.** Ever. (Two owner-ruled
-  carve-outs, both structural: R18 lets Arbo CREATE unconfirmed calendar
-  holds, never edit; R22 lets Arbo TEXT via Quo through the compliance gate,
-  never email.)
+- **Never modify calendar events. Never send email.** Ever. (Three owner-ruled
+  carve-outs: R18 lets Arbo CREATE unconfirmed calendar holds, never edit;
+  R22 lets Arbo TEXT via Quo through the compliance gate, never email; R28,
+  below, lets the hosted assistant send only on Mike's per-item OK.)
   *R28 carve-out (Mike, 2026-10-20):* the hosted assistant (`agents/arbo/`,
   `src/assistant/`) sends email, texts and Square invoices/payments only on
   Mike's per-item OK in the Arbo app, and may only CREATE calendar events,
@@ -177,7 +177,7 @@ for code that never checked. Opening a link is still Mike's process, never an
 optimisation to make quietly — and connecting a link is NOT an import ruling:
 nothing new flows in without its own go.
 
-*Read-only mode (R-READONLY draft, Mike 2026-10-20: "give arbo and its agents
+*Read-only mode (R32, Mike 2026-10-20: "give arbo and its agents
 read only data access"):* `ARBO_DATA_LINKS=readonly` — exactly — lets Arbo READ
 every link except the four kept cut (calls, photos, jobs, permits — reasons in
 `src/db/links.ts`), and refuses EVERY write at the door (`ReadOnlyError`, 503
@@ -190,7 +190,8 @@ Never price · never diagnose · never promise a date · never claim a credentia
 the company doesn't hold · TCPA consent + permanent STOP + 8am–9pm ET quiet
 hours · permit vocabulary is PERMIT LIKELY / REVIEW NEEDED / NO OVERLAY–VERIFY
 and **never "you're clear"** · agents cannot spend money or send anything —
-the one exception is the R22 text via Quo, behind `inspectMessage`.
+the one exception is the R22 text via Quo, behind `inspectMessage`; the R28
+hosted assistant sends, books and charges only on Mike's per-item OK in the app.
 
 **§1B is the spine of this codebase:** a dead feed is NAMED, never rendered as
 a confident zero. "We couldn't read it" and "there's nothing there" are

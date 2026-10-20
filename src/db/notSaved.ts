@@ -4,7 +4,7 @@
 */
 
 /**
- * What Arbo did NOT save because it is read-only (R-READONLY, Mike
+ * What Arbo did NOT save because it is read-only (R32, Mike
  * 2026-10-20: "give arbo and its agents read only data access").
  *
  * A writer that is skipped in read-only mode says so HERE, so "not saved" is

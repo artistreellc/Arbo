@@ -297,7 +297,7 @@ function gap(name: string, feed: Gap, notWhat: string): Section {
 function modeLine(mode: TalkMode): string | null {
   if (mode === 'sim') return 'PRACTICE DATA: Arbo is running on simulated records (the names start with SIM). Tell Mike once that this is practice data, not his real business.';
   if (mode === 'cut') return "DATA LINKS CUT: Arbo's link to the business records is cut on purpose while the app is being built. Every feed that needs it is named below as cut — none of them is zero.";
-  // R-READONLY: real records, nothing saved. Some links stay cut on purpose and are named as cut below.
+  // R32: real records, nothing saved. Some links stay cut on purpose and are named as cut below.
   if (mode === 'readonly') return "READ-ONLY: Arbo is reading Mike's real records and saving nothing. Some feeds stay cut on purpose and are named below as cut — none of them is zero. Arbo cannot change anything, so never say it did.";
   return null;
 }
