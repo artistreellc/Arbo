@@ -1467,20 +1467,23 @@ function leadsTabBadge(err, n) {
 }
 
 // Leads, scrolled to one lead. Leads redraws first, so the card is the current one;
-// a lead filed since stays at the top of the list instead.
+// a lead filed since stays at the top of the list instead. A spam Undo still on
+// offer holds the redraw (holdsTyping, as the minute timer does) unless this lead is not on Leads yet.
 async function openLead(id) {
   switchTab('leads');
-  await renderLeads();
+  if (!holdsTyping($('view-leads')) || !document.getElementById('lead-' + id)) await renderLeads();
   const c = document.getElementById('lead-' + id);
   if (c) c.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 // Today's read of the leads feed: { list } of emergency leads, { gap: err } when
 // it could not be read, or null on the key wall. The Leads tab badge follows it.
+// An emergency Mike marked Good (status 'qualified') has been acted on, so it no
+// longer alarms here or on the badge; Leads still shows it red (renderLeads counts the same way).
 async function emergencyLeads() {
   let list;
   // The filter sits inside the try: a body with no leads list is a read that failed, never "no emergencies".
-  try { list = (await api('/api/leads?limit=50')).leads.filter((l) => l.isEmergency); }
+  try { list = (await api('/api/leads?limit=50')).leads.filter((l) => l.isEmergency && l.status !== 'qualified'); }
   catch (e) {
     if (e.code === 401) return null;
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
@@ -1691,7 +1694,8 @@ async function renderToday() {
     for (const l of r.list.slice(0, 3)) emgSlot.appendChild(emergencyLeadCard(l));
     if (r.list.length > 3) {
       const more = el('button', 'hudbtn', 'All ' + r.list.length + ' emergency leads →');
-      more.addEventListener('click', () => { switchTab('leads'); renderLeads(); });
+      // A spam Undo still on offer is kept (holdsTyping), as the minute timer does.
+      more.addEventListener('click', () => { switchTab('leads'); if (!holdsTyping($('view-leads'))) renderLeads(); });
       emgSlot.appendChild(more);
     }
   });
@@ -1903,7 +1907,7 @@ async function renderLeads() {
     v.appendChild(feedState(e, 'Leads', 'an empty inbox'));
     return;
   }
-  leadsTabBadge(null, data.leads.filter((l) => l.isEmergency).length);
+  leadsTabBadge(null, data.leads.filter((l) => l.isEmergency && l.status !== 'qualified').length); // the same count as emergencyLeads
   if (!data.leads.length) {
     // R4: Mike handles the leads — this screen promises no ingestion.
     v.appendChild(state('No new leads', 'Nothing waiting right now.'));
@@ -1994,6 +1998,7 @@ async function renderLeads() {
           b.appendChild(qTag);
           goodDone(btn);
           ready();
+          if (lead.isEmergency) emergencyLeads(); // acted on: the re-read takes it off the tab badge now
           return;
         }
         // Spam dims the card and offers Undo. The minute timer holds Leads for
