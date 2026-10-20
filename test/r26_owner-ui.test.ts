@@ -105,6 +105,14 @@ const feedKindWith = (LINKS: string) => pageFn<(e: unknown) => string>('feedKind
 const feedKind = feedKindWith('cut');
 const feedLine = pageFn<(e: unknown, what: string, tail?: string) => N>('feedLine', { el, feedKind, FEED_WORD, RETRY }, oneLine('function feedLine('));
 const permitChip = pageFn<(s: string) => N>('permitChip', { chip, PERMIT_STATE });
+// The page's own hold: a spam Undo filed under 2 minutes ago keeps Leads from being redrawn.
+const holdsTyping = pageFn<(v: N) => boolean>('holdsTyping', {});
+/** A stand-in Leads view, with a spam filing `filedAgo` ms ago (null: none). */
+function leadsView(filedAgo: number | null): N {
+  const view = el('div');
+  if (filedAgo !== null) { const f = el('div', 'lead-filed'); f.dataset.at = String(Date.now() - filedAgo); view.appendChild(f); }
+  return view;
+}
 
 // ---------- qa-x6: one label per permit state ----------
 describe('R26 qa-x6 — one label per permit state, the badge wording everywhere', () => {
@@ -325,6 +333,30 @@ describe('R26 qa-x10 — Today reads the emergency leads', () => {
     expect(badge2).not.toHaveBeenCalled();
   });
 
+  it('an emergency Mike marked Good (qualified) has been acted on: no Today card, nothing on the tile, no badge — an open one still alarms', async () => {
+    const badge = vi.fn();
+    const read = pageFn<() => Promise<{ list?: Array<{ id: string }> } | null>>('emergencyLeads', {
+      api: async () => ({ leads: [
+        { id: 'Q', isEmergency: true, status: 'qualified' },
+        { id: 'E', isEmergency: true, status: 'emergency' },
+        { id: 'N', isEmergency: true, status: 'new' }, // the simulated phone lead's shape
+        { id: 'W', isEmergency: false, status: 'qualified' },
+      ] }),
+      LINKS_READY: Promise.resolve('simulation'), leadsTabBadge: badge,
+    });
+    const r = await read();
+    // Today draws a card per r.list entry and hands r.list.length to the emergencies tile (pinned below).
+    expect(r!.list!.map((l) => l.id)).toEqual(['E', 'N']);
+    expect(badge).toHaveBeenCalledWith(null, 2);
+    const badge2 = vi.fn();
+    const onlyGood = pageFn<() => Promise<{ list?: unknown[] } | null>>('emergencyLeads', {
+      api: async () => ({ leads: [{ id: 'Q', isEmergency: true, status: 'qualified' }] }),
+      LINKS_READY: Promise.resolve('simulation'), leadsTabBadge: badge2,
+    });
+    expect((await onlyGood())!.list).toEqual([]);
+    expect(badge2).toHaveBeenCalledWith(null, 0);
+  });
+
   it('a body with no leads list is a read that failed — never "no emergencies" (§1B)', async () => {
     const badge = vi.fn();
     const read = pageFn<() => Promise<{ gap?: { code?: number } } | null>>('emergencyLeads', { api: async () => ({}), LINKS_READY: Promise.resolve('live'), leadsTabBadge: badge });
@@ -363,16 +395,44 @@ describe('R26 qa-x10 — the red alarm card links to the lead', () => {
     expect(c.text()).toContain('Unknown caller');
   });
 
-  it('openLead goes to Leads, redraws it, then scrolls to that lead', async () => {
+  // openLead on a stand-in Leads view: `onScreen` = the lead's card is there before any redraw.
+  function opener(filedAgo: number | null, onScreen: boolean) {
     const order: string[] = [];
+    const view = leadsView(filedAgo);
     const target = el('div');
+    let drawn = onScreen;
     const go = pageFn<(id: string) => Promise<void>>('openLead', {
       switchTab: (t: string) => order.push('tab:' + t),
-      renderLeads: async () => { order.push('render'); },
-      document: { getElementById: (id: string) => { order.push('find:' + id); return target; } },
+      renderLeads: async () => { order.push('render'); drawn = true; },
+      holdsTyping,
+      $: (id: string) => { expect(id).toBe('view-leads'); return view; },
+      document: { getElementById: (id: string) => { order.push('find:' + id); return drawn ? target : null; } },
     });
+    return { go, order, target };
+  }
+
+  it('openLead goes to Leads, redraws it, then scrolls to that lead', async () => {
+    const { go, order, target } = opener(null, true);
     await go('E1');
     expect(order).toEqual(['tab:leads', 'render', 'find:lead-E1']);
+    expect(target.scrolled).toEqual([{ behavior: 'smooth', block: 'center' }]);
+  });
+
+  it('a spam Undo still on offer is kept: with the lead already on Leads there is no redraw (the tab switch still comes first)', async () => {
+    const { go, order, target } = opener(5000, true);
+    await go('E1');
+    expect(order).toEqual(['tab:leads', 'find:lead-E1', 'find:lead-E1']);
+    expect(target.scrolled).toEqual([{ behavior: 'smooth', block: 'center' }]);
+    // Past the 2-minute hold it redraws, as before.
+    const late = opener(121000, true);
+    await late.go('E1');
+    expect(late.order).toEqual(['tab:leads', 'render', 'find:lead-E1']);
+  });
+
+  it('a lead not on Leads yet is drawn even under the hold — showing the lead wins', async () => {
+    const { go, order, target } = opener(5000, false);
+    await go('E1');
+    expect(order).toEqual(['tab:leads', 'find:lead-E1', 'render', 'find:lead-E1']);
     expect(target.scrolled).toEqual([{ behavior: 'smooth', block: 'center' }]);
   });
 });
@@ -408,6 +468,24 @@ describe('R26 qa-x10 — Today: the place on screen and the emergencies count', 
     // More than three: one button to all of them, never a wall of red cards.
     expect(today).toContain('for (const l of r.list.slice(0, 3)) emgSlot.appendChild(emergencyLeadCard(l));');
     expect(today).toContain("'All ' + r.list.length + ' emergency leads →'");
+  });
+
+  it('"All N emergency leads →" keeps a spam Undo still on offer, as the minute timer does', () => {
+    const m = /\n\s*more\.addEventListener\('click', (\(\) => \{ switchTab\('leads'\);[^\n]*\})\);\n/.exec(today);
+    expect(m).not.toBeNull();
+    const run = (filedAgo: number | null) => {
+      const order: string[] = [];
+      const view = leadsView(filedAgo);
+      const tap = new Function('switchTab', 'holdsTyping', '$', 'renderLeads', `return ${m![1]};`)(
+        (t: string) => order.push('tab:' + t), holdsTyping,
+        (id: string) => { expect(id).toBe('view-leads'); return view; }, () => order.push('render'),
+      ) as () => void;
+      tap();
+      return order;
+    };
+    expect(run(null)).toEqual(['tab:leads', 'render']);
+    expect(run(5000)).toEqual(['tab:leads']);
+    expect(run(121000)).toEqual(['tab:leads', 'render']);
   });
 
   // setEmergencies and layoutFlags, lifted out of renderToday and run on a stand-in grid.
@@ -487,14 +565,15 @@ describe('R26 — Leads flags a Spanish speaker and keeps the tab badge current'
   async function mount(leads: Lead[] | Error) {
     const v = el('div');
     const badge = vi.fn();
+    const reread = vi.fn(); // emergencyLeads: the re-read that re-badges the tab
     const render = pageFn<() => Promise<void>>('renderLeads', {
       $: () => v, el, api: async () => { if (leads instanceof Error) throw leads; return { leads }; }, chip, fmtWhen: () => '',
       permitBadge: () => null, leadsTabBadge: badge, icon: (id: string) => el('svg', 'ico ' + id),
       showKeywall: () => {}, LINKS_READY: Promise.resolve('simulation'), state: (t: string) => el('div', 'state', t),
-      feedState: (_e: unknown, w: string) => el('div', 'state', w), feedLine, showSaveFail: () => {},
+      feedState: (_e: unknown, w: string) => el('div', 'state', w), feedLine, showSaveFail: () => {}, emergencyLeads: reread,
     });
     await render();
-    return { v, badge };
+    return { v, badge, reread };
   }
 
   it('language "es" (or lang "es") shows SPANISH SPEAKER as context, beside who they are', async () => {
@@ -512,6 +591,29 @@ describe('R26 — Leads flags a Spanish speaker and keeps the tab badge current'
     expect(badge).toHaveBeenCalledWith(null, 1);
     const empty = await mount([]);
     expect(empty.badge).toHaveBeenCalledWith(null, 0);
+  });
+
+  it('an emergency Mike marked Good stays red at the top of Leads, chips and all — the badge counts only the ones not acted on', async () => {
+    const { v, badge } = await mount([
+      lead({ id: 'B' }),
+      lead({ id: 'Q', isEmergency: true, status: 'qualified', quality: { priority: 'hot' } }),
+      lead({ id: 'E', isEmergency: true, status: 'emergency', quality: { priority: 'hot' } }),
+    ]);
+    expect(v.children.map((c) => c.id)).toEqual(['lead-Q', 'lead-E', 'lead-B']);
+    const q = v.children[0]!;
+    expect(q.has('emergency')).toBe(true);
+    expect(chipsIn(q.children.find((n) => n.has('badges'))!)).toEqual(['EMERGENCY=alarm', 'FIRST-TIMER=info', 'QUALIFIED=good']);
+    expect(badge).toHaveBeenCalledWith(null, 1);
+  });
+
+  it('tapping Good lead on an emergency re-reads the emergencies, so the tab badge drops at once; a plain lead does not', async () => {
+    const { v, reread } = await mount([lead({ id: 'E', isEmergency: true, status: 'emergency', quality: { priority: 'hot' } }), lead({ id: 'B' })]);
+    const good = (i: number) => v.children[i]!.all().find((n) => n.tag === 'button' && n.has('ok'))!;
+    await good(1).click(); // B, a plain lead
+    expect(reread).not.toHaveBeenCalled();
+    await good(0).click(); // E, the emergency
+    expect(reread).toHaveBeenCalledTimes(1);
+    expect(chipsIn(v.children[0]!)).toContain('QUALIFIED=good');
   });
 
   it('a leads feed it could not read badges the tab with the gap, beside the named state', async () => {
