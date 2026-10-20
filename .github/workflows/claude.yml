@@ -1,8 +1,8 @@
 name: Claude Code Assistant
 
-# Responds to @claude mentions in issues and pull requests. Runs on Mike's Claude
-# subscription via the CLAUDE_CODE_OAUTH_TOKEN repo secret (mint with
-# `claude setup-token`); needs the Claude GitHub App installed on this repo.
+# Responds to @claude mentions in issues and pull requests. Runs on either repo
+# secret: ANTHROPIC_API_KEY (an Anthropic Console key) or CLAUDE_CODE_OAUTH_TOKEN
+# (mint with `claude setup-token`); needs the Claude GitHub App installed.
 
 on:
   issue_comment:
@@ -31,13 +31,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 1
 
       - name: Run Claude Code
         uses: anthropics/claude-code-action@v1
         with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # No 'prompt' input → interactive mode: waits for @claude mentions.
           claude_args: |
