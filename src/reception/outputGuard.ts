@@ -42,14 +42,16 @@
 */
 // The output guard — guardrails enforced as LAW in code, not just in the prompt
 // (brief §3, §12). Every candidate reply the AI wants to speak is scanned here
-// FIRST. If it would quote a price, diagnose a tree, or mention a forbidden term
-// (Suffolk / TCIA), the guard blocks it and substitutes the approved pivot line.
+// FIRST. If it would quote a price, diagnose a tree, promise a date (R26), or
+// mention a forbidden term (Suffolk / TCIA), the guard blocks it and
+// substitutes the approved pivot line.
 // The LLM can be imperfect; this layer cannot be talked out of the rules.
 
 import type { Guardrails } from '../config/guardrails.schema.js';
 import { scanForbidden } from '../lint/forbiddenStrings.js';
 
 import { screenFinancialCommitment, FINANCIAL_DEFERRAL } from './judgment.js';
+import { findDatePromise } from './datePromise.js';
 
 export interface GuardViolation {
   rule: string; // golden-rule id or 'forbidden-term'
@@ -73,7 +75,8 @@ function approvedLine(g: Guardrails, id: string): string {
 
 /**
  * Scan a candidate reply. Returns the safe reply to speak. Pivot priority:
- * price → diagnosis → forbidden term. A safe reply passes through untouched.
+ * price → diagnosis → money → date promise → forbidden term. A safe reply
+ * passes through untouched.
  */
 export function guardReply(candidate: string, g: Guardrails): GuardResult {
   const violations: GuardViolation[] = [];
@@ -92,6 +95,11 @@ export function guardReply(candidate: string, g: Guardrails): GuardResult {
   const money = screenFinancialCommitment(candidate);
   if (money.blocked) violations.push({ rule: 'no-financial-authority', matched: money.what! });
 
+  // R26 — no promised day, date or time (golden rule no-date-guarantee). The
+  // rule name is the one inspectMessage has always logged for it.
+  const date = findDatePromise(candidate);
+  if (date) violations.push({ rule: 'no-date-promise', matched: date });
+
   for (const hit of scanForbidden(candidate, 'reply')) {
     violations.push({ rule: 'forbidden-term', matched: hit.term });
   }
@@ -105,6 +113,8 @@ export function guardReply(candidate: string, g: Guardrails): GuardResult {
   // Ranked above the on-topic pivot: the caller DID ask about money, so
   // changing the subject would read as dodging. Defer it to Mike instead.
   else if (violations.some((v) => v.rule === 'no-financial-authority')) reply = FINANCIAL_DEFERRAL;
+  // Above the on-topic pivot for the same reason: they asked about timing.
+  else if (violations.some((v) => v.rule === 'no-date-promise')) reply = approvedLine(g, 'no-date-guarantee');
   else reply = approvedLine(g, 'on-topic') || "Let's keep it to your trees — I can get you set up with a free estimate.";
 
   return { safe: false, violations, reply };

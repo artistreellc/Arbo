@@ -231,9 +231,11 @@ describe('the scripted brain (existing deterministic code, no network)', () => {
     expect(report.total).toBe(SCENARIOS.length);
     expect(report.brain).toBe('scripted');
     expect(report.passed + report.failed).toBe(report.total);
-    // Recorded pass rate 2026-09-28: 53 / 189 (28%). Not forced to 100% — the
-    // failures ARE the lessons. This is a floor so a regression shows up.
-    expect(report.passed).toBeGreaterThanOrEqual(53);
+    // Recorded pass rate 2026-09-28: 53 / 189 (28%); R26 (2026-10-20): 60 / 189
+    // — the date-promise guard, the 911 / Dominion lines and the credential
+    // answer. Not forced to 100% — the failures ARE the lessons. This is a
+    // floor so a regression shows up.
+    expect(report.passed).toBeGreaterThanOrEqual(60);
     expect(lessonsFrom(report).every((l) => l.status === 'proposed')).toBe(true);
   });
 
@@ -265,10 +267,13 @@ describe('the scripted brain (existing deterministic code, no network)', () => {
     const at = (rule: string) => lessons.findIndex((l) => l.rule === rule);
     const firstNag = lessons.findIndex((l) => l.rule.startsWith('behaviour:') || l.rule.startsWith('unhandled:'));
     expect(firstNag).toBeGreaterThan(0);
-    for (const rule of ['no_date_promise', 'line_clearance_only']) {
+    for (const rule of ['line_clearance_only']) {
       expect(at(rule), rule).toBeGreaterThanOrEqual(0);
       expect(at(rule), rule).toBeLessThan(firstNag);
     }
+    // R26: the code guard now blocks the stand-in's deliberate date promise
+    // before a caller hears it, so it is no longer a lesson at all.
+    expect(at('no_date_promise')).toBe(-1);
     // A desk with no handler is named in bySection, not offered as a lesson to approve.
     expect(report.unhandled).toBeGreaterThan(0);
     expect(lessons.some((l) => l.rule.startsWith('unhandled:'))).toBe(false);

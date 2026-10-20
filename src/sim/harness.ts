@@ -208,9 +208,9 @@ export interface LessonProposal {
 /**
  * What to teach, per rule, where a plain restatement is not enough. This
  * text IS the lesson Mike approves into the prompt list, so it carries no
- * code notes. Engineering gap, kept here and off his screen: the voice
- * guard (guardReply) has no date-promise patterns — only inspectMessage
- * screens dates — so on a call no_date_promise lives in the prompt alone.
+ * code notes. (Since R26 the voice guard blocks a date promise on a call
+ * too — reception/datePromise.ts — so no_date_promise no longer lives in
+ * the prompt alone.)
  */
 const LESSON_HINT: Partial<Record<RuleId, string>> = {
   emergency_911: 'On a tree on a house, a line down, or anyone hurt, the FIRST words are "call 911" (and stay clear) — then alert Mike and take the address.',

@@ -55,7 +55,9 @@ import {
   notifyTier, missOnCallEnd,
   type NotifyDecision, type MissRecord,
 } from './judgment.js';
-import { detectIntent, type CallIntent, type IncidentType } from './intent.js';
+import { detectIntent, isCredentialQuestion, type CallIntent, type IncidentType } from './intent.js';
+import { emergencySafetyCalls } from './emergency.js';
+import type { CallerLanguage } from './language.js';
 import { capture, nextQuestion, isComplete, toQualificationJson, type QualField, type QualState } from './qualification.js';
 
 export interface ChatMessage {
@@ -108,6 +110,11 @@ export interface TurnResult {
   emergency: boolean;
   intent: CallIntent;
   incidentType?: IncidentType;
+  /**
+   * R26: 'es' once this call has been recognised as a Spanish speaker — it
+   * stays for the rest of the call. Flag only: the reply is still English.
+   */
+  language?: CallerLanguage;
 }
 
 export class Receptionist {
@@ -121,6 +128,8 @@ export class Receptionist {
   private screened = false;
   private flaggedByMike = false;
   private lastNotify: NotifyDecision | null = null;
+  /** R26: set once the caller's words are recognised as Spanish. */
+  private languageSeen: CallerLanguage | null = null;
   /** R15: server-computed, conclusion-only routing note — never a location. */
   private contextNote: string | null = null;
 
@@ -159,6 +168,7 @@ export class Receptionist {
       this.messages.push(m);
       if (m.role !== 'user') continue;
       const intent = detectIntent(m.content, this.deps.g);
+      if (intent.language) this.languageSeen = intent.language;
       if (intent.intent === 'emergency') {
         this.emergencyAlerted = true;
       } else if (intent.intent === 'incident' && intent.incidentType) {
@@ -182,6 +192,7 @@ export class Receptionist {
   async handleUserTurn(text: string): Promise<TurnResult> {
     const routing = this.deps.g.callRouting;
     const intent = detectIntent(text, this.deps.g);
+    if (intent.language) this.languageSeen = intent.language;
     this.messages.push({ role: 'user', content: text });
 
     // Route the safety-critical / non-lead paths.
@@ -220,14 +231,40 @@ export class Receptionist {
     } else if (intent.intent === 'spam') {
       guard = guardReply(routing.spam.approvedLine, this.deps.g);
       reply = guard.reply;
+    } else if (intent.intent === 'normal' && isCredentialQuestion(text)) {
+      // R26 — the caller asked what we hold (TCIA, certified, licensed,
+      // insured): Mike's credential line, said by code. A model reply that
+      // names TCIA would trip the guard into the off-topic line, and one that
+      // agreed to ISA or any credential not held would be a false claim.
+      guard = guardReply(this.deps.g.goldenRules.find((r) => r.id === 'credential-accuracy')!.approvedLine, this.deps.g);
+      reply = guard.reply;
     } else {
       const candidate = await this.deps.llm.complete(
         this.contextNote ? `${this.system}\n\n${this.contextNote}` : this.system,
         this.messages,
       );
-      // The guard is law: any price/diagnosis/forbidden term is blocked here.
+      // The guard is law: any price/diagnosis/date promise/forbidden term is blocked here.
       guard = guardReply(candidate, this.deps.g);
-      reply = guard.reply;
+      // R26: on an emergency a blocked reply ("we'll get someone out there
+      // tonight") becomes the emergency alert line, not a schedule or
+      // estimate pivot — so the caller still hears Mike is being alerted.
+      reply = intent.intent === 'emergency' && !guard.safe ? this.deps.g.emergency.alertLine : guard.reply;
+    }
+
+    // R26 — Mike's safety lines go first, said by code whatever else is said:
+    // 911 when someone is or may be hurt (an injury report always), Dominion
+    // Energy when a power line is involved, both when both. A line the reply
+    // already carries (the prompt teaches the model the same words) is not
+    // said twice. The reply itself follows unchanged — on an emergency that
+    // is the model's answer (the prompt has it tell the caller Mike is being
+    // alerted right away) or, when the guard blocked it, the alert line.
+    if (intent.intent === 'emergency' || intent.incidentType === 'injury') {
+      const calls = emergencySafetyCalls(text);
+      const lines = this.deps.g.emergency.safetyLines;
+      const first: string[] = [];
+      if ((calls.call911 || intent.incidentType === 'injury') && !/\b911\b/.test(reply)) first.push(lines.personHurt);
+      if (calls.callDominion && !/\bDominion\b/i.test(reply)) first.push(lines.powerLine);
+      if (first.length > 0) reply = `${first.join(' ')} ${reply}`;
     }
 
     this.messages.push({ role: 'assistant', content: reply });
@@ -247,6 +284,7 @@ export class Receptionist {
       emergency: this.emergencyAlerted,
       intent: intent.intent,
       incidentType: intent.incidentType ?? undefined,
+      ...(this.languageSeen ? { language: this.languageSeen } : {}),
     };
   }
 
@@ -309,6 +347,11 @@ export class Receptionist {
     return this.wantsHumanFlag;
   }
 
+  /** R26: 'es' when this caller was recognised as a Spanish speaker, else null. */
+  get language(): CallerLanguage | null {
+    return this.languageSeen;
+  }
+
   /** True when the call was screened as spam/solicitation — must NOT become a lead. */
   get isScreened(): boolean {
     return this.screened;
@@ -322,7 +365,11 @@ export class Receptionist {
       phone: this.state.phone,
       address: this.state.address,
       city: this.state.city,
-      qualification: toQualificationJson(this.state),
+      // R26: the lead carries "Spanish speaker" for the owner (flag only).
+      qualification: {
+        ...toQualificationJson(this.state),
+        ...(this.languageSeen ? { language: this.languageSeen } : {}),
+      },
       isEmergency: this.emergencyAlerted,
       hadWorkBefore: this.state.hadWorkBefore,
     });

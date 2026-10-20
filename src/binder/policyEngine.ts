@@ -90,16 +90,11 @@ export function withinQuietHoursSafe(atIso: string, timeZone = 'America/New_York
   return hour >= 8 && hour < 21;
 }
 
-const DATE_PROMISE_PATTERNS: RegExp[] = [
-  /\bwe(?:'ll| will) be (?:there|out) (?:on|by|at) [A-Z][a-z]+day\b/i,
-  /\bguarantee[ds]? (?:you )?(?:a|the) (?:date|slot|time)\b/i,
-  /\bI(?:'ve| have) booked you (?:in )?for\b/i,
-];
-
 /**
  * Inspect an outbound message. Customer audience gets the full wall: golden
- * rules (price/diagnosis/forbidden terms via the ONE outputGuard), date
- * promises, TCPA consent + STOP + quiet hours, and the admin-data wall.
+ * rules (price/diagnosis/date promises/forbidden terms via the ONE
+ * outputGuard — R26 moved the date patterns there, reception/datePromise.ts),
+ * TCPA consent + STOP + quiet hours, and the admin-data wall.
  * Crew audience gets the admin-data wall (no pricing/tracking leaks, §8C).
  * Admin/internal text passes untouched — Mike sees everything.
  */
@@ -143,11 +138,6 @@ export function inspectMessage(params: {
     blocks.push({ rule: v.rule, detail: v.matched });
   }
 
-  for (const re of DATE_PROMISE_PATTERNS) {
-    const m = text.match(re);
-    if (m) blocks.push({ rule: 'no-date-promise', detail: m[0] });
-  }
-
   // TCPA gates apply to OUTBOUND reach-outs (not replies the customer initiated).
   if (!params.inboundReply && params.channel !== 'none' && params.channel !== 'app') {
     const c = params.contact;
@@ -167,9 +157,10 @@ export function inspectMessage(params: {
   }
   if (blocks.length > 0) {
     // Content violation on a permitted send: speak an approved pivot instead.
-    // guard.reply is only a pivot when the voice guard ITSELF blocked; a
-    // date-promise caught here alone would pass guard.reply through verbatim —
-    // so a violation the voice guard didn't see gets its own pivot line.
+    // guard.reply is only a pivot when the voice guard ITSELF blocked. Since
+    // R26 every content block comes from the voice guard, but this fallback
+    // stays: a content rule added here later must never pass guard.reply
+    // (the violation itself) through verbatim.
     const pivot = guard.safe
       ? (params.guardrails.goldenRules.find((r) => r.id === 'no-date-guarantee')?.approvedLine
           ?? "Let's get you on the schedule — Mike will confirm the exact time.")
