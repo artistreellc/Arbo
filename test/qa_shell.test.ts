@@ -191,10 +191,10 @@ describe('the key screen', () => {
 });
 
 describe('refresh', () => {
-  it('↻ also redraws the More desk on screen — Settings, Learn, Permits, Agents, Measure, More', () => {
+  it('↻ also redraws the More desk on screen — Settings, Learn, Permits, Agents, Measure, Assistant, More', () => {
     const ran: string[] = [];
     const deps: Record<string, unknown> = {};
-    for (const n of ['renderSettings', 'renderPermits', 'renderAgents', 'renderMeasure', 'renderLearn', 'renderMore']) deps[n] = () => ran.push(n);
+    for (const n of ['renderSettings', 'renderPermits', 'renderAgents', 'renderMeasure', 'renderLearn', 'renderAssistant', 'renderMore']) deps[n] = () => ran.push(n);
     let on = 'view-learn';
     deps.$ = (id: string) => view([], id === on);
     const redraw = pageFn<() => void>('refreshActiveMoreView', deps);
@@ -203,9 +203,12 @@ describe('refresh', () => {
     on = 'view-settings';
     redraw();
     expect(ran).toEqual(['renderLearn', 'renderSettings']);
+    on = 'view-assistant'; // R28
+    redraw();
+    expect(ran).toEqual(['renderLearn', 'renderSettings', 'renderAssistant']);
     on = 'view-today'; // refreshAll owns this one
     redraw();
-    expect(ran).toHaveLength(2);
+    expect(ran).toHaveLength(3);
     const handler = between("$('refresh').addEventListener", "$('settings-btn')");
     expect(handler.indexOf('refreshActiveMoreView()')).toBeGreaterThan(handler.indexOf('refreshAll()'));
   });

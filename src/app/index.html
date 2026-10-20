@@ -583,6 +583,46 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 .talk-row .actbtn{margin-top:0}
 .talk-form small,.talk-foot{font-size:13px;line-height:1.5;color:var(--ink-3)}
 /* ── /Talk */
+/* ── Your assistant (R28): every ask that waits for Mike's OK ─────────── */
+/* One tappable row per ask: its kind and when on the first line, what it wants on the second, › at the side. */
+.approw{display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px 10px;width:100%;min-height:56px;padding:10px 12px 10px 14px;margin-bottom:8px;
+  border:1px solid var(--hairline);border-radius:var(--r-md);background:var(--paper);color:var(--ink-1);font:inherit;text-align:left}
+.approw .ameta{display:flex;align-items:center;gap:8px;min-width:0}
+.approw .t{font-size:12.5px;font-weight:700;color:var(--gold-6);white-space:nowrap;font-variant-numeric:tabular-nums}
+.approw .sum{grid-column:1;font-size:15px;font-weight:600;line-height:1.35;overflow-wrap:anywhere}
+.approw::after{content:'\203A';grid-column:2;grid-row:1 / span 2;font-size:24px;line-height:1;color:var(--ink-3)}
+#approval-title{font-family:var(--serif);font-size:19px;font-weight:600;line-height:1.25;color:var(--ink-1);min-width:0;overflow-wrap:anywhere}
+#approval-close{flex:none} /* a long title never squeezes the X below a 44px target */
+.approval-meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 2px 16px;font-size:13px;font-weight:600;color:var(--ink-3)}
+.adetail{margin:0 2px 14px}
+.adetail .lab{font-size:11px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
+.adetail .val{font-size:16px;line-height:1.45;color:var(--ink-1);white-space:pre-wrap;overflow-wrap:anywhere}
+/* A body or a long message scrolls in its own box, so the two buttons stay near. */
+.adetail .val.box{max-height:min(46vh,420px);overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--card);border:1px solid var(--hairline);border-radius:var(--r-md);padding:12px 14px;font-size:15px}
+.adecide{display:grid;gap:10px;margin-top:18px}
+.adecide .actbtn{width:100%;margin-top:0}
+.adecide .field{margin:6px 0 0}
+.actbtn.charge.armed{background:var(--emergency);color:var(--on-emergency)}
+/* The More tile's count of asks waiting: amber like WAITING ON YOU — a look, not an alarm. */
+.grid-tiles .gtile{position:relative}
+.gtile .count{position:absolute;top:10px;right:10px;min-width:22px;height:22px;padding:0 6px;border-radius:var(--r-pill);background:var(--gold-5);color:#221A02;
+  font-size:12px;font-weight:700;line-height:22px;text-align:center;font-variant-numeric:tabular-nums}
+/* A 320px phone: three columns of tiles fit only with a little less padding and title — "Assistant" is the longest word. */
+@media (max-width:359px){.gtile{padding:12px 9px}.gtile b{font-size:15px}}
+/* The state line drops under its chip when they cannot share a row, so a variable name never breaks mid-word. */
+.asst-state{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;font-size:15px;font-weight:600;color:var(--ink-1);margin-bottom:10px}
+.asst-state .badge{flex:none}
+.asst-state span:last-child{flex:1 1 220px;min-width:0;overflow-wrap:anywhere}
+.asst-list{list-style:none;margin:0 0 10px}
+.asst-list li{position:relative;padding:5px 0 5px 20px;font-size:14.5px;line-height:1.45;color:var(--ink-2)}
+.asst-list li::before{content:'';position:absolute;left:3px;top:.95em;width:7px;height:7px;border-radius:50%;background:var(--gold-5)}
+.asst-list.own li::before{background:var(--forest)}
+.actrow{padding:10px 0;border-bottom:1px solid var(--hairline)}
+.actrow:last-child{border-bottom:0}
+.actrow .ameta{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:3px}
+.actrow .t{font-size:12.5px;font-weight:700;color:var(--gold-6);font-variant-numeric:tabular-nums}
+.actrow .txt{font-size:14.5px;line-height:1.45;color:var(--ink-1);overflow-wrap:anywhere}
+@media (min-width:900px){#view-today .assist,#view-assistant .assist{grid-column:1 / -1}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -627,6 +667,7 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
   <div id="view-agents" class="view"></div>
   <div id="view-measure" class="view"></div>
   <div id="view-learn" class="view"></div>
+  <div id="view-assistant" class="view"></div>
 </main>
 
 <div id="twin" class="sheet">
@@ -702,6 +743,15 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
     </form>
     <p class="talk-foot">Read-only: Arbo tells you things &mdash; it can&rsquo;t send, book or change anything. Your iPhone does the listening and the speaking.</p>
   </div>
+</div>
+
+<!-- R28: one ask from the assistant — what it wants to do, then Approve or Deny. -->
+<div id="approval" class="sheet">
+  <div class="sheet-head">
+    <button id="approval-close" aria-label="Close"><svg class="hico" aria-hidden="true"><use href="#i-close"/></svg></button>
+    <div id="approval-title"></div>
+  </div>
+  <div id="approval-body"></div>
 </div>
 
 <nav aria-label="Sections">
@@ -783,19 +833,22 @@ function showSaveFail(box, e) { const n = box.querySelector(':scope > .save-err'
 
 // ONE status -> colour table. Every chip says what it means with one of five tones (alarm > stop > watch > good > info).
 // TONE WORDS (the canonical list) — a new chip finds its word here, or the nearest kin of it:
-//   alarm = EMERGENCY, POWER LINES, the power-line CALL FIRST, NO AERIAL WORK (nothing is stronger)
+//   alarm = EMERGENCY, POWER LINES, the power-line CALL FIRST, NO AERIAL WORK (nothing is stronger); the assistant's
+//     PAYMENT ask wears it too (R28 build: money leaves only on Mike's OK)
 //   stop = BLOCKED, GUARD BLOCKED A REPLY, SONA BROKE A RULE, EXPIRED, NO RECORD, NEVER TESTED, DOWN, NOT SCHEDULABLE,
-//     FINAL — CALL THEM, FAILED, TICKET REQUIRED, STRUCTURES, HOT (lead), WRONG KEY
+//     FINAL — CALL THEM, FAILED, TICKET REQUIRED, STRUCTURES, HOT (lead), WRONG KEY, ERROR (the assistant)
 //   watch = WARM, PERMIT LIKELY, REVIEW NEEDED, PERMIT SCREEN PENDING, UNCONFIRMED / any non-SOURCED fact, RE-CHECK DUE,
 //     UNREADABLE, MISSING INPUTS, FAIR, LOW, NOT SET UP, NOT WIRED, PENDING, NO EXPIRY DATE, EXPIRES SOON, WEEK UNKNOWN,
 //     OWES THIS WEEK, OVERDUE, DUE NOW, COMING DUE (property), PAST DUE, SECOND NOTICE, LATE FEE, NEEDS ATTENTION,
 //     N OPEN TASKS, SIZE UNKNOWN, CARDS UNKNOWN, BELOW AVERAGE, WAITING ON YOU, IN RPA, FOLLOW-UP, NO-SHOW SAVE,
-//     a non-power CALL FIRST, an unknown crew role, NOT CONNECTED, REFUSED (after Bouncie’s last update), DROPPED
-//   good = READ, OK, GOOD, SOURCED, QUALIFIED, WIRED, OPEN, UP, ABOVE AVERAGE, WEEK DONE, REVIEWED, CONNECTED
+//     a non-power CALL FIRST, an unknown crew role, NOT CONNECTED, REFUSED (after Bouncie’s last update), DROPPED,
+//     the assistant's EMAIL and TEXT asks, ASKED YOU, an unknown kind of ask
+//   good = READ, OK, GOOD, SOURCED, QUALIFIED, WIRED, OPEN, UP, ABOVE AVERAGE, WEEK DONE, REVIEWED, CONNECTED, ON (the assistant), APPROVED
 //   info = CUT / LINK CUT, NOT SIMULATED, NOT RUN, NOT BUILT, NO OVERLAY — VERIFY W/ CITY, JOB, ESTIMATE, FIRST-TIMER,
 //     REPEAT, SPANISH SPEAKER, SPAM, COOL, OFF ROSTER, AT AVERAGE, NOT ENOUGH DATA, RENEWAL DUE, SEASONAL, REVIEW ASK,
 //     COMING DUE (growth nudge), + PROOF OF INSURANCE, REFUSED (someone else knocking), and every identity tag
-//     (city, channel, line, job type, role, source, money amount, counts, study stages other than WAITING ON YOU)
+//     (city, channel, line, job type, role, source, money amount, counts, study stages other than WAITING ON YOU),
+//     the assistant's DRIVE, CALENDAR and OTHER asks, OFF (the assistant), DENIED, DECIDED
 const TONE = { alarm: 't-alarm', stop: 't-stop', watch: 't-watch', good: 't-good', info: 't-info' };
 // A feed state as a tone: a gap on purpose is grey; anything Arbo does not know is amber.
 const FEED_TONE = { cut: 'info', sim: 'info', unset: 'watch', unread: 'watch' };
@@ -1611,6 +1664,286 @@ async function stormLawFlag(alerting) {
   return box;
 }
 
+// ---------- Your assistant (R28, Mike 2026-10-20: "Make it safe, then set it up" · "put it in the arbo app") ----------
+// The hosted assistant works Mike's texts, email, calendar, Drive and Square.
+// Every email, text, Drive write and Square invoice or charge waits HERE for his
+// OK; Arbo's server holds the ask and passes his answer on. Owner key only.
+// Off and not set up are switches Mike sets, so Today stays quiet about them and
+// the desk says which; a read that failed is named, never a quiet nothing (§1B).
+// [label, tone] per kind of ask: a charge wears the alarm chip (R28 build), a send is amber, the rest is context.
+const APPROVAL_KIND = { email: ['EMAIL', 'watch'], payment: ['PAYMENT', 'alarm'], text: ['TEXT', 'watch'], drive: ['DRIVE', 'info'], calendar: ['CALENDAR', 'info'], other: ['OTHER', 'info'] };
+// A kind this page does not know is still named, in amber — never blank, never calm.
+function approvalChip(kind) {
+  const k = APPROVAL_KIND[kind] || [kind ? String(kind).toUpperCase() : 'UNKNOWN', 'watch'];
+  return chip(k[0], k[1]);
+}
+// What happens next, said in place of the row once Mike has answered.
+const APPROVAL_NEXT = { email: 'send it', text: 'send it', payment: 'charge it', drive: 'save it', calendar: 'book it' };
+function approvalAnswered(a, decision, note) {
+  if (decision === 'allow') return 'Approved — Arbo will ' + (APPROVAL_NEXT[a.kind] || 'do it') + ' now.';
+  // "told why" only when there was a why to tell.
+  return note ? 'Denied — Arbo was told why.' : 'Denied — Arbo was told no.';
+}
+// One ask as a row: its kind and when, then what it wants. A tap opens the sheet to decide.
+function approvalRow(a) {
+  const row = el('button', 'approw');
+  row.dataset.approval = a.id;
+  const meta = el('span', 'ameta');
+  meta.appendChild(approvalChip(a.kind));
+  meta.appendChild(el('span', 't', fmtWhen(a.requestedAt)));
+  row.appendChild(meta);
+  row.appendChild(el('span', 'sum', nb(a.summary || a.tool || 'Arbo didn’t say what this is'))); // nb: a phone number never splits at its hyphen
+  row.addEventListener('click', () => openApproval(a));
+  return row;
+}
+// After Mike's answer, every row for that ask — on Today and on the desk — gives
+// way to one plain line, and Today's "All N waiting" drops by it — only if it was
+// one of the N, so an ask that came in after Today's read never makes it undercount.
+function approvalDone(id, line) {
+  for (const row of document.querySelectorAll('.approw')) {
+    if (row.dataset.approval === id) row.replaceWith(el('div', 'storm-muted', line));
+  }
+  for (const all of document.querySelectorAll('.approw-all')) {
+    const ids = all.dataset.ids.split('\n').filter((x) => x && x !== id);
+    all.dataset.ids = ids.join('\n');
+    all.textContent = 'All ' + ids.length + ' waiting →';
+  }
+}
+// Read what is waiting again, wherever it is drawn: Today's card and the desk.
+function assistantReread() {
+  const s = document.getElementById('today-assist');
+  if (s) fillAssistToday(s);
+  if ($('view-assistant').hasChildNodes()) renderAssistant();
+}
+
+// The approval sheet: everything Mike needs to decide, then two big buttons. A
+// charge asks twice and says its amount on the button; a no can carry one line
+// for Arbo. With nothing to check (no details, or a charge with no amount) the
+// Approve button stays off — deny is always open.
+// A detail with one of these labels, and any long value, scrolls in its own box.
+const APPROVAL_BOX = /^(body|message|text|note|notes|content|description)$/i;
+function openApproval(a) {
+  $('approval-title').textContent = nb(a.summary || a.tool || 'Waiting for your OK');
+  const body = $('approval-body');
+  body.replaceChildren();
+  $('approval').classList.add('show');
+  sheetOpened('approval');
+  const meta = el('div', 'approval-meta');
+  meta.appendChild(approvalChip(a.kind));
+  meta.appendChild(el('span', '', 'Asked ' + (fmtWhen(a.requestedAt) || '— Arbo didn’t say when')));
+  body.appendChild(meta);
+  const details = Array.isArray(a.details) ? a.details.filter((d) => d && typeof d === 'object') : [];
+  for (const d of details) {
+    const value = d.value === undefined || d.value === null ? '' : String(d.value);
+    const row = el('div', 'adetail');
+    row.appendChild(el('div', 'lab', d.label ? String(d.label) : 'Detail'));
+    const long = APPROVAL_BOX.test(String(d.label)) || value.length > 160 || value.indexOf('\n') !== -1;
+    // A short value keeps a phone number whole (nb); a body is shown exactly as it will go out.
+    row.appendChild(el('div', 'val' + (long ? ' box' : ''), !value ? '(empty)' : long ? value : nb(value)));
+    body.appendChild(row);
+  }
+  const pay = a.kind === 'payment';
+  const amt = details.find((d) => /^amount$/i.test(String(d.label)));
+  const amount = amt && amt.value !== undefined && amt.value !== null ? String(amt.value).trim() : '';
+  const money = /^\d/.test(amount) ? '$' + amount : amount;
+  // §1B: what Arbo did not send is named, and it is never approved blind.
+  const blocked = !details.length ? 'Arbo sent nothing to check for this one, so it can’t be approved here. Deny it if you can’t tell what it is.'
+    : pay && !amount ? 'Arbo didn’t say how much this charge is, so it can’t be approved here. Deny it and tell Arbo to show the amount.' : '';
+  if (blocked) body.appendChild(el('div', 'feed-state unread', blocked));
+  const out = el('div', 'errline');
+  body.appendChild(out);
+  const decide = el('div', 'adecide');
+  const yes = el('button', 'actbtn' + (pay ? ' charge' : ''), pay ? (amount ? 'Approve — charge ' + money : 'Approve — amount not shown') : 'Approve');
+  yes.disabled = !!blocked;
+  const noteWrap = el('div', 'field');
+  noteWrap.hidden = true;
+  const note = document.createElement('input');
+  note.type = 'text';
+  note.className = 'input';
+  note.id = 'approval-note';
+  note.maxLength = 300;
+  note.setAttribute('autocomplete', 'off');
+  const noteLab = el('label', '', 'Why, for Arbo (optional)');
+  noteLab.htmlFor = note.id;
+  noteWrap.appendChild(noteLab);
+  noteWrap.appendChild(note);
+  const no = el('button', 'actbtn alt', 'Deny');
+  const send = async (decision) => {
+    const why = decision === 'deny' ? note.value.trim() : '';
+    yes.disabled = true;
+    no.disabled = true;
+    out.textContent = '';
+    try {
+      await api('/api/assistant/approvals/' + encodeURIComponent(a.id), { method: 'POST', body: why ? { decision: decision, note: why } : { decision: decision } });
+    } catch (e) {
+      if (e && (e.code === 409 || e.code === 404)) {
+        // Answered somewhere else, or no longer waiting: said, and the lists are read again. The buttons stay off.
+        out.textContent = e.code === 409 ? 'Already decided — reading the list again.' : 'This one is no longer waiting — reading the list again.';
+        assistantReread();
+        return;
+      }
+      // Anything else leaves the ask waiting: the row stays, the buttons come back, and the line says why.
+      yes.disabled = !!blocked;
+      no.disabled = false;
+      if (e && e.code === 401) { out.textContent = 'Arbo needs the key again — nothing was decided.'; showKeywall(); return; }
+      out.textContent = (e && e.line) || (e && e.code ? 'Arbo didn’t take your answer — it is still waiting. Try again.' : 'Couldn’t reach Arbo — your answer may not have arrived. Tap ↻ to see if it is still waiting.');
+      return;
+    }
+    closeSheet('approval');
+    approvalDone(a.id, approvalAnswered(a, decision, why));
+  };
+  if (pay) armTwice(yes, 'Tap again to charge ' + money, () => send('allow'));
+  else yes.addEventListener('click', () => send('allow'));
+  no.addEventListener('click', () => {
+    // The first tap opens the one-line note; the second sends the no, with or without it.
+    if (noteWrap.hidden) { noteWrap.hidden = false; no.textContent = 'Deny — tell Arbo'; note.focus(); return; }
+    send('deny');
+  });
+  decide.appendChild(yes);
+  decide.appendChild(noteWrap);
+  decide.appendChild(no);
+  body.appendChild(decide);
+}
+$('approval-close').addEventListener('click', () => closeSheet('approval'));
+
+// Today's "Waiting for your OK" card: under the alarms, above the run. Off or
+// not set up: nothing here. A read that failed: ONE named line. A problem the
+// assistant reports is named on the card.
+let ASSIST_TODAY_GEN = 0;
+async function fillAssistToday(slot) {
+  const gen = ++ASSIST_TODAY_GEN;
+  const [st, ap] = await Promise.allSettled([api('/api/assistant/status'), api('/api/assistant/approvals')]);
+  if (gen !== ASSIST_TODAY_GEN) return; // a newer read owns the card
+  slot.replaceChildren();
+  const s = st.status === 'fulfilled' ? st.value : null;
+  if (s && (s.state === 'off' || s.state === 'not_set_up')) return;
+  const why = ap.status === 'rejected' ? ap.reason || {} : {};
+  if (why.code === 401) return; // the key wall is the brief's to show
+  if (why.code === 503 && (why.message === 'assistant_off' || why.message === 'assistant_not_set_up')) return;
+  // The filter sits on the body: one with no approvals list is a read that failed, never "nothing waiting".
+  const list = ap.status === 'fulfilled' && ap.value && Array.isArray(ap.value.approvals) ? ap.value.approvals : null;
+  if (!list) { slot.appendChild(el('div', 'feed-state unread', 'Assistant: couldn’t read what’s waiting. ' + RETRY)); return; }
+  if (list.length) slot.appendChild(el('div', 'panel-title', 'Waiting for your OK'));
+  if (s && s.state === 'error') slot.appendChild(el('div', 'feed-state unread', 'Assistant: ' + (s.reason ? String(s.reason).replace(/\.\s*$/, '') : 'something is wrong and Arbo didn’t say what') + '. Open More → Assistant.'));
+  for (const a of list.slice(0, 4)) slot.appendChild(approvalRow(a));
+  if (list.length > 4) {
+    const more = el('button', 'hudbtn approw-all', 'All ' + list.length + ' waiting →');
+    more.dataset.ids = list.map((a) => a.id).join('\n'); // the asks it counts: approvalDone takes each one off as Mike answers it
+    more.addEventListener('click', () => { switchTab('assistant'); renderAssistant(); });
+    slot.appendChild(more);
+  }
+}
+
+// The assistant's switches and a failed read, each in its own words (§1B):
+// off is grey (on purpose), not set up amber, a read that failed hollow amber.
+function assistGap(e, what) {
+  const m = e && e.code === 503 ? e.message : '';
+  if (m === 'assistant_off') return el('div', 'feed-state cut', what + ': off on purpose — nothing shows here while the assistant is off.');
+  if (m === 'assistant_not_set_up') return el('div', 'feed-state unset', what + ': ' + FEED_WORD.unset + ' — nothing shows here until the assistant is set up.');
+  return feedLine(e, what);
+}
+// [label, tone] for the activity that carries a chip: an ask, Mike's answer, a problem.
+const ACTIVITY_CHIP = { waiting: ['ASKED YOU', 'watch'], error: ['ERROR', 'stop'] };
+function activityRow(it) {
+  const row = el('div', 'actrow');
+  const meta = el('div', 'ameta');
+  meta.appendChild(el('span', 't', fmtWhen(it.at)));
+  const c = it.kind === 'decided'
+    ? (it.permission === 'allow' ? ['APPROVED', 'good'] : it.permission === 'deny' ? ['DENIED', 'info'] : ['DECIDED', 'info'])
+    : ACTIVITY_CHIP[it.kind];
+  if (c) meta.appendChild(chip(c[0], c[1]));
+  row.appendChild(meta);
+  row.appendChild(el('div', 'txt', nb(it.text || it.tool || 'Arbo didn’t say')));
+  return row;
+}
+// One status line per state, in Mike's words. A state this page does not know is said as one.
+function assistStateLine(s) {
+  if (s.state === 'ready') {
+    const busy = typeof s.sessionsOpen === 'number' ? (s.sessionsOpen ? 'working on ' + plural(s.sessionsOpen, 'thing') : 'nothing in progress') : 'Arbo didn’t say what it is working on';
+    const heard = s.lastEventAt ? fmtWhen(s.lastEventAt) : '';
+    // A time it could not read is left out, never said as "not heard from yet".
+    return 'On — ' + busy + (heard ? ' · last heard from ' + heard : s.lastEventAt ? '' : ' · not heard from yet');
+  }
+  if (s.state === 'off') return 'Off — Railway switch ARBO_AGENT is not live';
+  if (s.state === 'not_set_up') return 'Not set up — missing: ' + (Array.isArray(s.missing) && s.missing.length ? s.missing.join(', ') : 'Arbo didn’t say what');
+  if (s.state === 'error') return s.reason ? String(s.reason) : 'Something is wrong — Arbo didn’t say what';
+  return 'Arbo reported “' + s.state + '”, a state this page doesn’t know';
+}
+const ASSIST_STATE = { ready: ['ON', 'good'], off: ['OFF', 'info'], not_set_up: ['NOT SET UP', 'watch'], error: ['ERROR', 'stop'] };
+
+// The desk (More → Assistant): is it on, what it asks first, what is waiting, what it did.
+let ASSIST_GEN = 0;
+async function renderAssistant() {
+  const gen = ++ASSIST_GEN;
+  const v = $('view-assistant');
+  v.replaceChildren();
+  const head = el('div', 'viewhead');
+  head.appendChild(el('div', 'eyebrow', 'Front office'));
+  head.appendChild(el('h1', '', 'Your assistant'));
+  head.appendChild(el('p', '', 'It works your texts, email, calendar, Drive and Square — and asks you first before anything goes out or gets charged.'));
+  v.appendChild(head);
+  // Every slot is placed before any read, so the order never depends on which read lands first.
+  const stSlot = el('div', 'slot assist');
+  const askSlot = el('div', 'slot');
+  const ownSlot = el('div', 'slot');
+  const waitSlot = el('div', 'slot');
+  const actSlot = el('div', 'slot');
+  for (const x of [stSlot, askSlot, ownSlot, waitSlot, actSlot]) v.appendChild(x);
+  const rules = (slot, title, cls, lines) => {
+    slot.appendChild(el('div', 'panel-title', title));
+    const ul = el('ul', 'asst-list' + cls);
+    for (const l of lines) ul.appendChild(el('li', '', l));
+    slot.appendChild(ul);
+  };
+  rules(askSlot, 'What it asks you first', '', [
+    'Every email, before it goes out.',
+    'Every text, before it goes out. Texts to customers also need their consent, stop for good on STOP, and only go 8am–9pm ET.',
+    'Every Drive write. It never deletes or shares a file.',
+    'Every Square invoice or charge.',
+  ]);
+  rules(ownSlot, 'What it does on its own', ' own', [
+    'Reads your inbox, texts and calls.',
+    'Drafts — nothing a draft says goes out without your OK.',
+    'Books calendar times inside your rules.',
+    'Never edits, moves or deletes an event.',
+  ]);
+  const [st, ap, act] = await Promise.allSettled([api('/api/assistant/status'), api('/api/assistant/approvals'), api('/api/assistant/activity')]);
+  if (gen !== ASSIST_GEN) return; // a newer render owns the desk
+  if ([st, ap, act].some((r) => r.status === 'rejected' && r.reason && r.reason.code === 401)) return showKeywall();
+  stSlot.appendChild(el('div', 'panel-title', 'Status'));
+  const s = st.status === 'fulfilled' && st.value && typeof st.value.state === 'string' && st.value.state ? st.value : null; // no state is a read that failed
+  if (!s) stSlot.appendChild(feedLine(st.status === 'rejected' ? st.reason : null, 'Assistant status'));
+  else {
+    const row = el('div', 'asst-state');
+    const [label, tone] = ASSIST_STATE[s.state] || [s.state.toUpperCase(), 'watch'];
+    row.appendChild(chip(label, tone));
+    row.appendChild(el('span', '', assistStateLine(s)));
+    stSlot.appendChild(row);
+  }
+  waitSlot.appendChild(el('div', 'panel-title', 'Waiting for your OK'));
+  const list = ap.status === 'fulfilled' && ap.value && Array.isArray(ap.value.approvals) ? ap.value.approvals : null;
+  if (!list) waitSlot.appendChild(assistGap(ap.status === 'rejected' ? ap.reason : null, 'Waiting for your OK'));
+  else if (!list.length) waitSlot.appendChild(el('div', 'storm-muted', 'Nothing is waiting for your OK.'));
+  else for (const a of list) waitSlot.appendChild(approvalRow(a));
+  actSlot.appendChild(el('div', 'panel-title', 'What it did'));
+  const items = act.status === 'fulfilled' && act.value && Array.isArray(act.value.items) ? act.value.items : null;
+  if (!items) actSlot.appendChild(assistGap(act.status === 'rejected' ? act.reason : null, 'What it did'));
+  else if (!items.length) actSlot.appendChild(el('div', 'storm-muted', 'Nothing on record yet.'));
+  else {
+    // Newest first, as the server sends them. The first 30 show; the rest are one tap away.
+    const feed = el('div');
+    feed.replaceChildren(...items.slice(0, 30).map(activityRow));
+    actSlot.appendChild(feed);
+    if (items.length > 30) {
+      const row = el('div', 'actions');
+      const all = el('button', 'minibtn', 'Show all ' + items.length);
+      all.addEventListener('click', () => { feed.replaceChildren(...items.map(activityRow)); row.remove(); });
+      row.appendChild(all);
+      actSlot.appendChild(row);
+    }
+  }
+}
+
 // ---------- Today (Morning Brief) ----------
 async function renderToday() {
   const v = $('view-today');
@@ -1632,6 +1965,12 @@ async function renderToday() {
   const lawSlot = el('div', 'slot plain');
   v.appendChild(lawSlot);
   stormLawFlag(alerting).then((b) => { if (b) lawSlot.appendChild(b); });
+  // R28: what the assistant is waiting on Mike for — under the alarms, above the
+  // run, its place set before the read. Empty (off, not set up, nothing waiting) it hides ('.slot:empty').
+  const assistSlot = el('div', 'slot assist');
+  assistSlot.id = 'today-assist';
+  v.appendChild(assistSlot);
+  fillAssistToday(assistSlot);
   // The day's run, then the instruments, sit right under a storm alert — their
   // place on screen is chosen here, before any fetch, not left to whichever
   // fetch returns early. display:contents keeps every child in the desktop grid.
@@ -4776,6 +5115,22 @@ function renderMore() {
     grid.appendChild(b);
     return b;
   };
+  // R28: the assistant's desk leads — it is where asks wait for Mike's OK. A count
+  // when some wait; off, not set up or a read that failed is said on the tile (§1B).
+  const asst = tile('i-shield', 'Assistant', 'Asks you first', () => { switchTab('assistant'); renderAssistant(); });
+  api('/api/assistant/approvals').then((d) => {
+    const n = d && Array.isArray(d.approvals) ? d.approvals.length : null;
+    if (n === null) { asst.querySelector('small').textContent = 'Couldn’t read what’s waiting'; return; }
+    if (!n) return;
+    const count = el('span', 'count', String(n));
+    count.setAttribute('aria-hidden', 'true'); // the tile's own label says it in words
+    asst.appendChild(count);
+    asst.setAttribute('aria-label', 'Assistant: ' + n + ' waiting for your OK');
+  }).catch((e) => {
+    if (e.code === 401) return;
+    const m = e.code === 503 ? e.message : '';
+    asst.querySelector('small').textContent = m === 'assistant_off' ? 'Switched off' : m === 'assistant_not_set_up' ? 'Not set up yet' : 'Couldn’t read what’s waiting';
+  });
   tile('i-agents', 'Agents', 'Eight desks, one brain', () => { switchTab('agents'); renderAgents(); });
   tile('i-learn', 'Learn', 'Train the brain', () => { switchTab('learn'); renderLearn(); });
   tile('i-lidar', 'Measure', 'LiDAR scan → DBH', () => { switchTab('measure'); renderMeasure(); });
@@ -5540,7 +5895,7 @@ async function renderLearn() {
   }
 }
 
-const VIEW_TITLES = { learn: 'Learn', measure: 'Measure', agents: 'Agents', permits: 'Permits', today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Book', followups: 'Queue', calls: 'Calls', perf: 'Numbers', settings: 'Settings', more: 'More' };
+const VIEW_TITLES = { learn: 'Learn', measure: 'Measure', agents: 'Agents', permits: 'Permits', today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Book', followups: 'Queue', calls: 'Calls', perf: 'Numbers', settings: 'Settings', more: 'More', assistant: 'Assistant' };
 
 // The line under ARBO. Today's hero already carries the date, so Today shows
 // the name alone; every screen says SIMULATION while the data is practice data.
@@ -5555,14 +5910,14 @@ function setAppSub() {
 
 function switchTab(which) {
   navPush(which);
-  for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf', 'settings', 'more', 'permits', 'agents', 'measure', 'learn']) {
+  for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf', 'settings', 'more', 'permits', 'agents', 'measure', 'learn', 'assistant']) {
     $('view-' + t).classList.toggle('active', which === t);
     const tb = $('tab-' + t); // Settings opens from the header gear — it has no nav tab
     if (tb) tb.classList.toggle('active', which === t);
   }
   // Book, Queue, Numbers and the R25 desks sit behind More in the dock. Settings
   // opens from the header gear, so it lights no dock tab.
-  $('tab-more').classList.toggle('active', ['book', 'followups', 'perf', 'more', 'permits', 'agents', 'measure', 'learn'].indexOf(which) !== -1);
+  $('tab-more').classList.toggle('active', ['book', 'followups', 'perf', 'more', 'permits', 'agents', 'measure', 'learn', 'assistant'].indexOf(which) !== -1);
   $('apptitle').textContent = VIEW_TITLES[which] || 'ARBO';
   CUR_TAB = which;
   setAppSub();
@@ -5869,8 +6224,8 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && TAL
 // browser's back all walk the same steps. With no step behind (a reload, a
 // home-screen shortcut, the crew preview's way back) a More desk lands on More
 // and anything else on Today.
-const NAV_PARENT = { book: 'more', followups: 'more', perf: 'more', permits: 'more', agents: 'more', measure: 'more', learn: 'more', settings: 'today' };
-const SHEETS = ['twin', 'yard', 'bd', 'talk'];
+const NAV_PARENT = { book: 'more', followups: 'more', perf: 'more', permits: 'more', agents: 'more', measure: 'more', learn: 'more', assistant: 'more', settings: 'today' };
+const SHEETS = ['twin', 'yard', 'bd', 'talk', 'approval'];
 let NAV_QUIET = false; // true while a back step is drawn — drawing it must not add a new step
 function navPush(which) {
   if (NAV_QUIET) return;
@@ -5890,7 +6245,7 @@ function navShowBack() {
 }
 // A screen drawn by stepping back keeps what it showed (an agents run, a typed
 // ZIP); only one never drawn yet is drawn now. More is always redrawn, as its tab does.
-const NAV_DRAW = { more: () => renderMore(), settings: () => renderSettings(), permits: () => renderPermits(), agents: () => renderAgents(), measure: () => renderMeasure(), learn: () => renderLearn() };
+const NAV_DRAW = { more: () => renderMore(), settings: () => renderSettings(), permits: () => renderPermits(), agents: () => renderAgents(), measure: () => renderMeasure(), learn: () => renderLearn(), assistant: () => renderAssistant() };
 function navShow(which) {
   NAV_QUIET = true;
   try {
@@ -5959,7 +6314,7 @@ const TIMED = { today: renderToday, leads: renderLeads, cal: renderCalendar, boo
 function refreshAll() { for (const t in TIMED) TIMED[t](); }
 // ↻ and the key screen also redraw a More desk that is on screen — refreshAll never draws those.
 function refreshActiveMoreView() {
-  const r = { settings: renderSettings, permits: renderPermits, agents: renderAgents, measure: renderMeasure, learn: renderLearn, more: renderMore };
+  const r = { settings: renderSettings, permits: renderPermits, agents: renderAgents, measure: renderMeasure, learn: renderLearn, assistant: renderAssistant, more: renderMore };
   for (const t in r) {
     if ($('view-' + t).classList.contains('active')) { r[t](); return; }
   }
@@ -5998,6 +6353,7 @@ netState();
     if (want === 'agents') renderAgents();
     if (want === 'measure') renderMeasure();
     if (want === 'learn') renderLearn();
+    if (want === 'assistant') renderAssistant();
     NAV_QUIET = true;
     try { switchTab(want); } finally { NAV_QUIET = false; }
   }
