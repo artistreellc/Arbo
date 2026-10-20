@@ -50,8 +50,35 @@
 //    NEVER places an order and NEVER stores a vendor card. It builds the list
 //    and deep-links; a human buys.
 //  - §1B: a part Arbo cannot identify is named as unknown, never guessed.
+//
+// And one R26 (Mike, 2026-10-20) adds: a brake or steering defect HOLDS the
+// unit off the schedule, whatever its severity, until Mike signs it back on
+// with the owner key. Nothing returns a held unit on its own.
 
-export type UnitStatus = 'up' | 'down' | 'maintenance' | 'retired';
+export type UnitStatus = 'up' | 'down' | 'maintenance' | 'held' | 'retired';
+
+/** R26: why a held unit is off the schedule, in the words the screens show. */
+export const HOLD_REASON = "brake/steering defect — needs Mike's sign-off";
+
+/**
+ * R26: who a sign-back is recorded as. The owner key is the only door to it
+ * (no designate), so this is what Arbo actually knows — never a name a caller
+ * typed into the request.
+ */
+export const OWNER_SIGNER = 'Mike (owner key)';
+
+/** R26: the words that mean a brake or steering defect. */
+const BRAKE = /\bbrak(e|es|ed|ing)\b|\babs\b/i;
+const STEERING = /\bsteer(s|ed|ing)?\b|\btie ?rods?\b/i;
+
+/**
+ * Does this field report name a brake or steering defect? Matched on its own
+ * words, never through the parts hint below: "brake line leaking" must hold
+ * the unit even though the parts hint files it under hydraulic.
+ */
+export function isBrakeOrSteering(description: string): boolean {
+  return BRAKE.test(description) || STEERING.test(description);
+}
 
 /**
  * Whether this unit is on the books. 'unknown' is the honest default: nothing
@@ -92,6 +119,8 @@ export interface ActionPlan {
   ordersPlaced: false;
   /** Named when Arbo could not match the symptom to a known part. */
   unknowns: string[];
+  /** R26: set when a brake or steering defect holds the unit; null otherwise. */
+  holdReason: string | null;
 }
 
 /** Symptom keywords → the part families this unit's log might hold. */
@@ -102,7 +131,8 @@ const SYMPTOM_HINTS: Array<{ match: RegExp; family: RegExp; label: string }> = [
   { match: /\bbatter(y|ies)|won'?t start|no crank\b/i, family: /batter|starter|alternator/i, label: 'starting system' },
   { match: /\bfilter|clogg(ed|ing)\b/i, family: /filter/i, label: 'filter' },
   { match: /\btire|flat\b/i, family: /tire|wheel/i, label: 'tire' },
-  { match: /\bbrake\b/i, family: /brake|pad|rotor/i, label: 'brakes' },
+  { match: BRAKE, family: /brake|pad|rotor/i, label: 'brakes' },
+  { match: STEERING, family: /steer|tie ?rod/i, label: 'steering' },
 ];
 
 /**
@@ -117,16 +147,24 @@ export function buildActionPlan(
   const steps: string[] = [];
   const unknowns: string[] = [];
 
-  // Status first — an immobilized unit is DOWN, full stop. A unit that still
-  // runs goes to 'maintenance' so it is visible without falsely grounding it.
+  // Status first — a brake or steering defect is HELD whatever its severity
+  // (R26), an immobilized unit is DOWN, full stop, and a unit that still runs
+  // goes to 'maintenance' so it is visible without falsely grounding it.
   // A report can only ever ground a unit further, never put it back in service.
-  const proposed: UnitStatus = report.immobilized ? 'down' : 'maintenance';
+  const hold = isBrakeOrSteering(report.description);
+  const proposed: UnitStatus = hold ? 'held' : report.immobilized ? 'down' : 'maintenance';
   const newStatus = escalateStatus(opts.currentStatus ?? 'up', proposed);
-  steps.push(newStatus === 'down'
-    ? (proposed === 'down'
-      ? 'Unit marked DOWN — scheduling will stop assigning it until it is cleared.'
-      : 'Unit stays DOWN — it was already grounded, and a field report does not put it back in service.')
-    : 'Unit flagged for maintenance — still usable, but it needs attention.');
+  if (newStatus === 'held') {
+    steps.push((opts.currentStatus === 'held' ? 'Unit stays HELD' : 'Unit HELD') + ' — ' + HOLD_REASON
+      + '. Scheduling will not assign it until Mike signs it back on; nothing returns it on its own.');
+    if (report.immobilized) steps.push('Also reported as unable to be driven or run at all.');
+  } else {
+    steps.push(newStatus === 'down'
+      ? (proposed === 'down'
+        ? 'Unit marked DOWN — scheduling will stop assigning it until it is cleared.'
+        : 'Unit stays DOWN — it was already grounded, and a field report does not put it back in service.')
+      : 'Unit flagged for maintenance — still usable, but it needs attention.');
+  }
 
   // §1B: Arbo says what it actually knows. There is no unit→job assignment in
   // the schema yet, so "is this unit on today's schedule?" is genuinely
@@ -134,7 +172,7 @@ export function buildActionPlan(
   const assignment: ScheduleAssignment = opts.assignment ?? 'unknown';
   if (assignment === 'assigned') {
     steps.push('This unit is assigned to work on the books — reassign or move those jobs before the crew rolls.');
-  } else if (assignment === 'unknown' && newStatus === 'down') {
+  } else if (assignment === 'unknown' && (newStatus === 'down' || newStatus === 'held')) {
     unknowns.push('Arbo cannot see which jobs this unit is assigned to — no unit-to-job link exists yet. Check today\'s schedule yourself before the crew rolls.');
   }
 
@@ -182,17 +220,35 @@ export function buildActionPlan(
     supplierLinks,
     ordersPlaced: false,
     unknowns,
+    holdReason: newStatus === 'held' ? HOLD_REASON : null,
   };
 }
 
-/** Can this unit be scheduled? A DOWN unit cannot — that is the whole point. */
+/**
+ * Can this unit be scheduled? A DOWN unit cannot — that is the whole point.
+ * Neither can a HELD one (R26), however minor the brake or steering report
+ * was. An allow-list: any status it does not name is not schedulable.
+ */
 export function isSchedulable(status: UnitStatus): boolean {
   return status === 'up' || status === 'maintenance';
 }
 
-/** How grounded each status is. A field report may only move a unit DOWN this
- * ladder, never back up it. */
-const SEVERITY: Record<UnitStatus, number> = { up: 0, maintenance: 1, down: 2, retired: 3 };
+/**
+ * How grounded each status is. A field report may only move a unit DOWN this
+ * ladder, never back up it. HELD sits above DOWN on purpose: a brake or
+ * steering report on a unit that is already down must still hold it, so that
+ * Mike's sign-off is the one way back however the unit got there.
+ */
+const SEVERITY: Record<UnitStatus, number> = { up: 0, maintenance: 1, down: 2, held: 3, retired: 4 };
+
+/**
+ * R26 — the one way OUT of a hold. Only a HELD unit can be signed back on,
+ * and it goes back to service ('up'). Anything else answers null: there is
+ * nothing to sign back on, and this never lifts a DOWN or retired unit.
+ */
+export function afterSignBack(current: UnitStatus): UnitStatus | null {
+  return current === 'held' ? 'up' : null;
+}
 
 /**
  * A second field report can never quietly un-ground a unit. If the truck is

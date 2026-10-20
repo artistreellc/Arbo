@@ -154,6 +154,7 @@ import {
   recordGateCompletion,
   recordBreakdown,
   closeMaintenanceTask,
+  signBackOnUnit,
 } from './db/repositories.js';
 import { createCensusGeocoder } from './permitting/gis/geocode.js';
 import { createDefaultGisProvider } from './permitting/gis/liveGisProvider.js';
@@ -490,6 +491,8 @@ export function createLiveSource(): DataSource {
     recordGate: (input) => recordGateCompletion(input),
     recordBreakdown: (input) => recordBreakdown(input),
     closeMaintenanceTask: (input) => closeMaintenanceTask(input),
+    // R26: the one way out of a brake/steering hold — Mike, owner key.
+    signBackOn: (input) => signBackOnUnit(input),
   };
 }
 
@@ -1290,6 +1293,15 @@ export function createArborRequestHandler() {
         const m = url.pathname.match(/^\/api\/fleet\/units\/([^/]+)\/part$/);
         if (req.method === 'POST' && m) {
           return send(...unpack(await api.addEquipmentPart(m[1]!, (await readJson(req)) as Record<string, unknown>)));
+        }
+      }
+      // R26: Mike signs a brake/steering hold back on. Behind the /api key gate
+      // above, which opens the crew key to /api/crew/ only — so a crew phone
+      // can never reach this, and there is no /api/crew/ twin of it.
+      {
+        const m = url.pathname.match(/^\/api\/fleet\/units\/([^/]+)\/sign-back$/);
+        if (req.method === 'POST' && m) {
+          return send(...unpack(await api.signBackOn(m[1]!)));
         }
       }
       if (req.method === 'POST' && url.pathname === '/api/campaigns') {

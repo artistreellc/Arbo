@@ -87,7 +87,8 @@ describe('Q0 — chips speak one tone table', () => {
       STAGE_LABEL: {
         reminder: ['PAST DUE', 'watch'], second_notice: ['SECOND NOTICE', 'watch'], final_notice: ['FINAL — CALL THEM', 'stop'],
       },
-      UNIT_STATUS: { up: ['UP', 'good'], down: ['DOWN', 'stop'], maintenance: ['NEEDS ATTENTION', 'watch'] },
+      // R26: HELD (brake/steering, off the schedule until Mike signs it back on) is a stop, like DOWN.
+      UNIT_STATUS: { up: ['UP', 'good'], down: ['DOWN', 'stop'], maintenance: ['NEEDS ATTENTION', 'watch'], held: ['HELD', 'stop'] },
       FU_LABEL: {
         estimate_follow_up: ['FOLLOW-UP', 'watch'], review_request: ['REVIEW ASK', 'info'], no_show_saver: ['NO-SHOW SAVE', 'watch'],
         seasonal_outreach: ['SEASONAL', 'info'], growth_outreach: ['COMING DUE', 'info'],
@@ -386,12 +387,15 @@ describe('Q6 — counts and dates read like a person wrote them', () => {
     expect(breakdown()).toContain("'Arbo never places the order and holds no card — you click, you buy.'");
   });
 
-  it('the fleet heading counts in words, and a DOWN unit leads the list', () => {
+  it('the fleet heading counts in words, and a unit off the schedule leads the list', () => {
     const f = fleet();
-    expect(f).toContain("f.down > 0 ? 'Fleet — ' + plural(f.down, 'unit') + ' down' : 'Fleet — all units schedulable'");
-    expect(f).toContain("for (const u of [...f.units].sort((a, b) => (b.status === 'down') - (a.status === 'down'))) {");
-    const units = [{ n: 'a', status: 'up' }, { n: 'b', status: 'down' }, { n: 'c', status: 'maintenance' }, { n: 'd', status: 'down' }];
-    const sorted = [...units].sort((a, b) => Number(b.status === 'down') - Number(a.status === 'down')).map((u) => u.n);
+    // R26: DOWN and HELD both count against "all units schedulable".
+    expect(f).toContain("if (f.down > 0) offSchedule.push(plural(f.down, 'unit') + ' down');");
+    expect(f).toContain("if (f.held > 0) offSchedule.push(plural(f.held, 'unit') + ' held');");
+    expect(f).toContain("offSchedule.length ? 'Fleet — ' + offSchedule.join(', ') : 'Fleet — all units schedulable'");
+    expect(f).toContain('for (const u of [...f.units].sort((a, b) => (!b.schedulable) - (!a.schedulable))) {');
+    const units = [{ n: 'a', schedulable: true }, { n: 'b', schedulable: false }, { n: 'c', schedulable: true }, { n: 'd', schedulable: false }];
+    const sorted = [...units].sort((a, b) => Number(!b.schedulable) - Number(!a.schedulable)).map((u) => u.n);
     expect(sorted).toEqual(['b', 'd', 'a', 'c']); // stable: server order kept inside each group
   });
 

@@ -1482,11 +1482,11 @@ export async function unitOpenTaskCount(unitId: string): Promise<number> {
 }
 
 /** This unit's current status, or null when there is no such unit. */
-export async function unitStatus(unitId: string): Promise<'up' | 'down' | 'maintenance' | 'retired' | null> {
+export async function unitStatus(unitId: string): Promise<'up' | 'down' | 'maintenance' | 'held' | 'retired' | null> {
   const db = getDb();
   const res = await db.from('equipment_unit').select('status').eq('id', unitId).maybeSingle();
   if (res.error) throw res.error;
-  return (res.data?.status as 'up' | 'down' | 'maintenance' | 'retired' | undefined) ?? null;
+  return (res.data?.status as 'up' | 'down' | 'maintenance' | 'held' | 'retired' | undefined) ?? null;
 }
 
 /** Record the breakdown: set the unit's status and open a maintenance task. */
@@ -1525,6 +1525,30 @@ export async function closeMaintenanceTask(input: {
     completed_at: new Date().toISOString(),
   }).eq('id', input.taskId);
   if (res.error) throw res.error;
+}
+
+/**
+ * R26: Mike signs a HELD unit (brake/steering defect) back on. The write only
+ * touches a unit that is still held — the same compare-and-set retire uses —
+ * so it returns false, never a quiet success, when there was nothing to sign.
+ * Who and when stay on the unit (migration 0020).
+ */
+export async function signBackOnUnit(input: {
+  unitId: string; status: string; signedBackBy: string; atIso: string;
+}): Promise<boolean> {
+  const db = getDb();
+  const res = await db.from('equipment_unit')
+    .update({
+      status: input.status,
+      signed_back_by: input.signedBackBy,
+      signed_back_at: input.atIso,
+      updated_at: input.atIso,
+    })
+    .eq('id', input.unitId)
+    .eq('status', 'held')
+    .select('id');
+  if (res.error) throw res.error;
+  return (res.data ?? []).length > 0;
 }
 
 // ---------------------------------------------------------------------------
