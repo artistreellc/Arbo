@@ -101,12 +101,23 @@ const CREDENTIAL = '(?:certified|accredited|licensed|insured|bonded)';
 const CREDENTIAL_ASK: RegExp[] = [
   /\bT\.?C\.?I\.?A\b/i,
   /\bISA\b/, // case-sensitive: "Isa" is a first name
+  /\bI\.S\.A\b/, // the dotted spelling, case-sensitive for the same reason
   new RegExp(`\\bare (?:you|y'?all|your (?:guys|crews?|workers|climbers|people))(?: guys)?\\b[^.!?]{0,30}\\b${CREDENTIAL}\\b`, 'i'),
   new RegExp(`\\bis (?:mike|he|your (?:company|crew|business)|the (?:company|crew|business))\\b[^.!?]{0,30}\\b${CREDENTIAL}\\b`, 'i'),
   new RegExp(`\\b(?:you|y'?all)(?: guys)?(?:'re| are)\\b[^.!?]{0,20}\\b${CREDENTIAL}\\b`, 'i'),
   new RegExp(`\\byou (?:guys )?${CREDENTIAL}\\b`, 'i'),
-  /\b(?:do|does) (?:you|y'?all|mike|the company|your company)(?: guys)? (?:have|carry)\b[^.!?]{0,25}\b(?:insurance|licen[cs]es?|certifications?|credentials?|accreditations?)\b/i,
+  // What WE hold: only words that describe our own coverage may sit between
+  // "have" and the noun, and a claim / company / adjuster after it is the
+  // caller's own insurance ("do you have experience with insurance claims?").
+  /\b(?:do|does) (?:you|y'?all|mike|the company|your company)(?: guys)? (?:have|carry) (?:(?:a|an|any|your own|valid|current|general|liability|commercial|business|contractor'?s?|workers'? comp(?:ensation)?|proof of|certificates? of|(?:kind|type)s? of) )*(?:insurance|licen[cs]es?|certifications?|credentials?|accreditations?)\b(?!\s+(?:claims?|compan(?:y|ies)|adjusters?|agents?|polic(?:y|ies)))/i,
   /\bwhat (?:certifications?|credentials?|accreditations?)\b/i,
+  // A certified arborist on OUR side ("do you have a certified arborist?",
+  // "is your arborist certified?") — not one the caller needs ("my HOA says
+  // I need a certified arborist letter", "do you have to use a certified
+  // arborist?", "is the city going to require a certified arborist report?").
+  /\b(?:do|does) (?:you|y'?all|mike|the company|your company)(?: guys)? (?:have|employ|use|send)\b(?! to\b)[^.!?]{0,25}\b(?:certified|ISA|I\.S\.A\.?)\s*arborists?\b(?!\s+(?:reports?|letters?|requirements?))/i,
+  /\bis (?:there|your)\b[^.!?]{0,30}\b(?:certified|ISA)\s+arborists?\b(?!\s+(?:reports?|letters?|requirements?))/i,
+  /\b(?:is|are) (?:your|the) (?:arborists?|guys?|person|estimator)\b[^.!?]{0,30}\b(?:certified|ISA)\b/i,
 ];
 
 export function isCredentialQuestion(text: string): boolean {

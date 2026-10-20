@@ -65,6 +65,16 @@ export interface ChatMessage {
   content: string;
 }
 
+/**
+ * The hang-up marker. The system prompt tells the model to END its final
+ * reply with this token after the goodbyes; it is NEVER spoken — the voice
+ * bridge strips it and, when the platform declared an end_call tool, emits
+ * the OpenAI tool call that actually hangs up the line (Mike's test call,
+ * 2026-09-24). It lives here, not in the bridge, because handleUserTurn keeps
+ * it across a guard block; the bridge re-exports it.
+ */
+export const END_CALL_MARKER = '[[END_CALL]]';
+
 /** The LLM behind the receptionist (Anthropic in prod, a fake in tests). */
 export interface LlmClient {
   complete(system: string, messages: ChatMessage[]): Promise<string>;
@@ -249,6 +259,10 @@ export class Receptionist {
       // tonight") becomes the emergency alert line, not a schedule or
       // estimate pivot — so the caller still hears Mike is being alerted.
       reply = intent.intent === 'emergency' && !guard.safe ? this.deps.g.emergency.alertLine : guard.reply;
+      // The hang-up marker is the model's "goodbyes are done", not words. A
+      // blocked goodbye keeps it: the caller hears the safe line, the call
+      // still ends, and the bridge's R18 finalize (record, memory, hold) runs.
+      if (!guard.safe && candidate.includes(END_CALL_MARKER)) reply = `${reply} ${END_CALL_MARKER}`;
     }
 
     // R26 — Mike's safety lines go first, said by code whatever else is said:

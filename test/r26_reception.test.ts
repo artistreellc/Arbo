@@ -11,7 +11,9 @@ import { dirname, resolve } from 'node:path';
 
 import { loadGuardrails, loadLegal } from '../src/config/loadConfig.js';
 import { GuardrailsSchema } from '../src/config/guardrails.schema.js';
-import { Receptionist, type LlmClient, type ChatMessage, type LeadSink } from '../src/reception/receptionist.js';
+import { Receptionist, END_CALL_MARKER as RECEPTION_END_CALL, type LlmClient, type ChatMessage, type LeadSink } from '../src/reception/receptionist.js';
+import { createElevenLabsBridge, END_CALL_MARKER, type CallHold } from '../src/voice/elevenlabsBridge.js';
+import { CallRecordStore } from '../src/reception/callMemory.js';
 import { guardReply } from '../src/reception/outputGuard.js';
 import { findDatePromise } from '../src/reception/datePromise.js';
 import { detectEmergency, emergencySafetyCalls } from '../src/reception/emergency.js';
@@ -83,6 +85,34 @@ const PROMISES = [
   "We'll send someone out tomorrow.",
   "We'll have a crew there Tuesday.",
   'Mike will have it taken care of by Friday.',
+  // review: a typographic apostrophe (’) is the same contraction
+  'We’ll be there Tuesday.',
+  'I’ve booked you for Friday.',
+  'You’re booked for Tuesday.',
+  'Mike’ll be out tomorrow.',
+  // review: a yes to the day, then the next question in the same sentence
+  "Tuesday works — what's the property address?",
+  'Tuesday is fine, can I get your address?',
+  'Tomorrow at 3, no problem — can I get your name?',
+  'Definitely tomorrow, can I get your name?',
+  'Tuesday works, okay?',
+  // review: "coming" said as the future, and a clock time without "at"
+  "Mike's coming out Tuesday.",
+  "We're coming Tuesday.",
+  'The crew is coming Monday.',
+  "We'll be there by 3pm.",
+  'Mike will be out around 9am.',
+  "We'll be out by noon.",
+  // review: the old text check blocked "midday"; folding it in must not lose it
+  'We will be there at midday.',
+  "We'll be out by midday.",
+  // review: the deferral fixes stay narrow — these still block
+  'Saturday, no problem.',
+  'Tomorrow, guaranteed.',
+  'I promise Tuesday.',
+  'If you want, we can be there Saturday.',
+  "We'll be there Saturday if that works.",
+  "Mike will call you, and we'll be out tomorrow for sure.",
 ];
 
 const HARMLESS = [
@@ -114,6 +144,30 @@ const HARMLESS = [
   "We'll have Mike call you back today.",
   "I'll get someone to call you back today.",
   "We'll send Mike your details today.",
+  // review: "can’t" with a typographic apostrophe is still a negation
+  'I can’t promise Tuesday, but Mike will confirm.',
+  // review: a question still shields its own clause
+  "If Tuesday works, what's your address?",
+  'Which day works, Tuesday or Wednesday?',
+  'Does Tuesday work, or is Wednesday better?',
+  // review: coming BACK to the caller is a callback, not a visit
+  "Mike's coming back to you on that tomorrow.",
+  // review: "that's coming" is the storm, not us
+  "With the storm that's coming tomorrow, please stay clear of the tree.",
+  // review: deferring the day to Mike is what the rule asks for
+  'Mike will let you know if he can come out Saturday.',
+  "I'll ask Mike if he can come out Saturday.",
+  'Mike will confirm whether we can be there tomorrow.',
+  "Mike will let you know if he's coming out Saturday.",
+  // review: declining to promise
+  "I don't want to promise Tuesday.",
+  "I'm not able to promise Tuesday.",
+  // review: a callback, however sure, is not a visit
+  'Mike will call you back today for sure.',
+  "He'll get back to you tomorrow for sure.",
+  "I'll get your details to Mike today, no problem.",
+  // review: "a Saturday" is any Saturday — Mike's estimates fact, not a day
+  "Mike can come by after work or on a Saturday — he'll confirm the time.",
 ];
 
 describe('R26.1 — the guard blocks a date promise', () => {
@@ -165,11 +219,72 @@ describe('R26.1 — the guard blocks a date promise', () => {
     expect(v.safeText).toBe(DATE_LINE);
   });
 
+  it('a text that promises "midday" is still blocked, as the old text check did', () => {
+    for (const text of ['We will be there at midday.', "We'll be out by midday."]) {
+      const v = inspectMessage({
+        audience: 'customer', channel: 'sms', guardrails: g, text,
+        contact: { consented: true, optedOut: false }, atIso: '2026-09-28T18:00:00.000Z',
+      });
+      expect(v.blocks.map((b) => b.rule), text).toContain('no-date-promise');
+      expect(v.safeText, text).toBe(DATE_LINE);
+    }
+  });
+
   it('on a call, the model\'s date promise is never spoken', async () => {
     const { r } = desk(['Sure — Mike can come out tomorrow at 3.']);
     const turn = await r.handleUserTurn('Can Mike come out tomorrow afternoon?');
     expect(turn.reply).toBe(DATE_LINE);
     expect(turn.guard.violations.map((v) => v.rule)).toContain('no-date-promise');
+  });
+
+  it('a blocked goodbye keeps the hang-up: the safe line is said, then the call ends', async () => {
+    expect(RECEPTION_END_CALL).toBe(END_CALL_MARKER); // one marker, re-exported by the bridge
+    const { r } = desk([`Sounds like Thursday works for you — I'll pass that along to Mike and he'll confirm. Thanks, have a good one! ${END_CALL_MARKER}`]);
+    const turn = await r.handleUserTurn('Thursday works for me. Thanks, bye!');
+    expect(turn.guard.violations.map((v) => v.rule)).toContain('no-date-promise');
+    expect(turn.reply).toBe(`${DATE_LINE} ${END_CALL_MARKER}`);
+  });
+
+  it('a blocked emergency goodbye keeps the hang-up after the alert line', async () => {
+    const { r } = desk([`Mike is being alerted right away — we'll get someone out there tonight. Stay safe! ${END_CALL_MARKER}`]);
+    const turn = await r.handleUserTurn('A tree just fell on my house!');
+    expect(turn.reply).toBe(`${NINE_ONE_ONE} ${g.emergency.alertLine} ${END_CALL_MARKER}`);
+  });
+
+  it('a blocked turn that was not a goodbye gains no hang-up', async () => {
+    const { r } = desk(["We'll be there Tuesday — what's the address?"]);
+    const turn = await r.handleUserTurn('Can somebody look at my oak?');
+    expect(turn.reply).toBe(DATE_LINE);
+  });
+
+  it('on the bridge, a blocked goodbye still hangs up and still files the record and the R18 hold', async () => {
+    const holds: CallHold[] = [];
+    const records = new CallRecordStore();
+    const llm = new ScriptLlm([
+      "Got it — what's the property address?",
+      `Sounds like Thursday works for you — I'll pass that along to Mike and he'll confirm. Thanks, have a good one! ${END_CALL_MARKER}`,
+    ]);
+    const bridge = createElevenLabsBridge({
+      guardrails: g, legal, llm, alerter: { emergency: async () => {} }, bridgeSecret: 's',
+      callRecords: records,
+      calendarHold: async (h: CallHold) => { holds.push(h); },
+      now: () => Date.parse('2026-09-22T15:00:00Z'),
+    });
+    const tools = [{ type: 'function', function: { name: 'end_call' } }];
+    const said = ['Hi, this is SIM-Sam, I need a big oak removed at 9 Nullpoint Way.', 'ack', 'Thursday works for me. Thanks, bye!'];
+    const call = (n: number) => bridge.handle('Bearer s', {
+      user: '+17575550142', elevenlabs_extra_body: { conversation_id: 'sim-goodbye' }, tools,
+      messages: said.slice(0, n).map((content, i) => ({ role: i % 2 === 0 ? 'user' : 'assistant', content })),
+    });
+    await call(1);
+    const out = await call(3);
+    await new Promise((res) => setTimeout(res, 0)); // the hold is fire-and-forget
+    const choice = (out.json as { choices: Array<{ message: { content: string; tool_calls?: unknown[] }; finish_reason: string }> }).choices[0]!;
+    expect(choice.message.content).toBe(DATE_LINE); // the safe line, the marker never spoken
+    expect(choice.finish_reason).toBe('tool_calls'); // the call ends
+    expect(choice.message.tool_calls).toHaveLength(1);
+    expect(records.list()).toHaveLength(1);
+    expect(holds).toHaveLength(1);
   });
 
   it('the judge still names a date promise in a raw answer', () => {
@@ -226,9 +341,29 @@ describe('R26.2 — the emergency script says 911 and Dominion Energy', () => {
     ['a tree came down on my car in the driveway', true, false],
     ['a tree is blocking the whole road', false, false],
     ['this is an emergency', false, false],
+    // review: a named person hurt, trapped or pinned
+    ['My husband is hurt, a limb fell on him.', true, false],
+    ["He's trapped under the tree.", true, false],
+    ['My wife is pinned under a branch.', true, false],
+    ['My son got hurt by a falling branch.', true, false],
+    // review: a line on the ground, or a tree into the lines (plural too)
+    ['The power line is on the ground.', false, true],
+    ['Tree fell into the power lines.', false, true],
+    ['The tree fell on the lines.', false, true],
+    ['The tree is on the wires.', false, true],
+    ['A tree is on the power lines.', false, true],
+    ['A limb is on the power lines.', false, true],
   ] as Array<[string, boolean, boolean]>)('%s → 911 %s, Dominion %s', (text, call911, callDominion) => {
     expect(detectEmergency(text).isEmergency).toBe(true);
     expect(emergencySafetyCalls(text)).toEqual({ call911, callDominion });
+  });
+
+  it.each([
+    'My truck is stuck in the yard.',
+    'Can you trim the branches near the power lines?',
+  ])('a routine call stays routine: %s', (text) => {
+    expect(detectEmergency(text).isEmergency).toBe(false);
+    expect(emergencySafetyCalls(text)).toEqual({ call911: false, callDominion: false });
   });
 
   it('both: the 911 line, then the Dominion line, then the reply — Mike is still alerted', async () => {
@@ -304,6 +439,23 @@ describe('R26.3 — a credential question gets "licensed and insured"', () => {
     'Is your crew certified?',
     'You guys licensed?',
     "You're licensed, right?",
+    // review: the certified-arborist question, the way callers ask it
+    'Do you have a certified arborist?',
+    'Do you have any certified arborists?',
+    'Do you guys employ certified arborists?',
+    'Is your arborist certified?',
+    'Is there a certified arborist who will look at it?',
+    'Is the person coming out a certified arborist?',
+    'Are you I.S.A.?',
+    // review: narrowing the insurance pattern keeps these
+    'Do you have insurance?',
+    'Do you guys have a license?',
+    'Do you have proof of insurance?',
+    'Do you carry general liability insurance?',
+    'Do you have workers comp insurance?',
+    // ...and keeps what the open gap used to catch
+    'Do you have a certificate of insurance?',
+    'Do you have any kind of insurance?',
   ])('recognises: %s', (text) => {
     expect(isCredentialQuestion(text)).toBe(true);
   });
@@ -318,6 +470,15 @@ describe('R26.3 — a credential question gets "licensed and insured"', () => {
     'Thank you, my house is insured, will they cover the removal?',
     "Thank you, I'm insured through my homeowner's policy.",
     'Do you need a licensed electrician for the line?',
+    // review: an arborist the CALLER needs is not a question about us
+    'My HOA says I need a certified arborist letter.',
+    'Is the city going to require a certified arborist?',
+    'Is the county going to want a certified arborist report?',
+    'Do you have to use a certified arborist for the permit?',
+    // review: the caller's own insurance claim goes to the model (Mike's INSURANCE fact)
+    'Do you have experience with insurance claims?',
+    'Does Mike have time to talk to my insurance adjuster?',
+    'Do you have to deal with my insurance company?',
   ])('leaves alone: %s', (text) => {
     expect(isCredentialQuestion(text)).toBe(false);
   });
@@ -330,6 +491,21 @@ describe('R26.3 — a credential question gets "licensed and insured"', () => {
     expect(turn.reply).not.toMatch(/TCIA/);
     expect(turn.reply).not.toBe(line('on-topic'));
     expect(llm.calls).toBe(0); // said by code, not left to the model
+  });
+
+  it('"do you have a certified arborist?" is answered by code, not the model', async () => {
+    const { r, llm } = desk(['Yes, Mike is a certified arborist.']);
+    const turn = await r.handleUserTurn('Do you have a certified arborist?');
+    expect(turn.reply).toBe(CREDENTIAL_LINE);
+    expect(llm.calls).toBe(0);
+  });
+
+  it("a question about the caller's own insurance claim reaches the model, not the credential line", async () => {
+    const answer = 'Mike works with insurance companies and goes over that with you himself. What is the property address?';
+    const { r, llm } = desk([answer]);
+    const turn = await r.handleUserTurn('Do you have experience with insurance claims?');
+    expect(llm.calls).toBe(1);
+    expect(turn.reply).toBe(answer);
   });
 
   it('the guard was not loosened: a reply that names TCIA is still blocked', () => {
@@ -389,6 +565,20 @@ describe('R26.4 — Spanish-speaking callers are recognised (detect and flag onl
     ['Alguien está herido.', true, false],
     ['arbol se cayo sobre mi casa', true, false],
     ['¡Es una emergencia!', false, false],
+    // review: a tree resting on the house or car
+    ['Hay un árbol encima de la casa.', true, false],
+    ['Un árbol está sobre mi carro.', true, false],
+    ['Hay un árbol en el techo.', true, false],
+    // review: fallen cables, either word order, or a tree touching them
+    ['Los cables se cayeron.', false, true],
+    ['Se cayeron los cables.', false, true],
+    ['El árbol está tocando los cables.', false, true],
+    // review: someone hurt, said the everyday way
+    ['Necesito una ambulancia, mi esposo se cayó del árbol.', true, false],
+    ['Mi hijo se lastimó.', true, false],
+    // review: a fence, as in English
+    ['El árbol tumbó la cerca.', true, false],
+    ['Se cayó un árbol sobre la cerca de mi vecino.', true, false], // "the neighbour's fence"
   ] as Array<[string, boolean, boolean]>)('catches the Spanish emergency: %s', (text, call911, callDominion) => {
     expect(detectEmergency(text).isEmergency).toBe(true);
     expect(emergencySafetyCalls(text)).toEqual({ call911, callDominion });
@@ -396,6 +586,15 @@ describe('R26.4 — Spanish-speaking callers are recognised (detect and flag onl
 
   it('a Spanish price question is not an emergency', () => {
     expect(detectEmergency(SPANISH_PRICE).isEmergency).toBe(false);
+  });
+
+  it.each([
+    'Tengo un árbol en mi casa que quiero podar.', // a tree AT my house, to prune
+    'Vi su anuncio en línea.', // "online", not a power line
+    'Perdón, se cayó la línea.', // the call dropped
+    'Se cayó una rama cerca de la calle.', // "cerca de" here is "near"
+  ])('a routine Spanish line is not an emergency: %s', (text) => {
+    expect(detectEmergency(text).isEmergency).toBe(false);
   });
 
   it("the intent carries language 'es'; an English caller's intent carries no language at all", () => {

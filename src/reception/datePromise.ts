@@ -54,10 +54,14 @@
 // caller when they are free, a quiet-hours hold, or the caller's own day said
 // back to them as a question.
 
-const DAY = '(?:today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|this (?:coming )?week(?:end)?|next week(?:end)?)';
+// "a Saturday" / "any Saturday" is no particular day ("estimates after work or
+// on a Saturday"), so a weekday counts only when it is not one of those.
+const DAY = '(?:today|tomorrow|tonight|(?<!\\b(?:a|any|every|most)\\s)(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|this (?:coming )?week(?:end)?|next week(?:end)?)';
 const MONTH = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\\.?';
 const DATE = `(?:the \\d{1,2}(?:st|nd|rd|th)|${MONTH} \\d{1,2}(?:st|nd|rd|th)?|\\d{1,2}/\\d{1,2})`;
-const TIME = '(?:at (?:\\d{1,2}(?::\\d{2})?(?:\\s?[ap]\\.?m\\b\\.?)?|noon))';
+// "at 3" / "at noon" / "at midday"; by, around, before or after only with an
+// am/pm, noon or midday after it, so "booked out by 3 weeks" is not a time.
+const TIME = '(?:at (?:\\d{1,2}(?::\\d{2})?(?:\\s?[ap]\\.?m\\b\\.?)?|noon|midday)|(?:by|around|before|after) (?:\\d{1,2}(?::\\d{2})?\\s?[ap]\\.?m\\b\\.?|noon|midday))';
 /** A day, a calendar date or a clock time. */
 const WHEN = `(?:${DAY}|${DATE}|${TIME})\\b`;
 
@@ -71,10 +75,16 @@ const GAP = '(?:(?!confirm|call|text|let you know)[^.!?,;—–]){0,25}?';
 
 /** A promise in any sentence, question mark or not ("we'll be there Tuesday, okay?"). */
 const PROMISES: RegExp[] = [
-  new RegExp(`\\b${WHO}${WILL}\\s+(?:definitely |for sure |probably )?${VISIT}\\b${GAP}\\b${WHEN}`, 'i'),
+  // "if / whether he can come out Saturday" asks; it does not promise.
+  new RegExp(`(?<!\\b(?:if|whether)\\s)\\b${WHO}${WILL}\\s+(?:definitely |for sure |probably )?${VISIT}\\b${GAP}\\b${WHEN}`, 'i'),
+  // "Mike's coming out Tuesday" — the present tense said as the future. Coming
+  // BACK to the caller is a callback, not a visit, and "that's coming
+  // tomorrow" is the storm, not us.
+  new RegExp(`(?<!\\b(?:if|whether)\\s)\\b(?!that\\b)${WHO}(?:'s|'re|'m|\\s+(?:is|are|am))\\s+(?:definitely |for sure )?(?:coming|stopping by|swinging by|heading)(?! back)(?: out| by| over| there)?\\b${GAP}\\b${WHEN}`, 'i'),
   new RegExp(`\\byou(?:'re| are)(?: all)? (?:booked|scheduled|set|confirmed|on the (?:schedule|calendar)) (?:for |on )?${WHEN}`, 'i'),
-  // "I can't promise Tuesday" is the right answer, not a promise.
-  new RegExp(`(?<!\\b(?:can'?t|cannot|not|never|won'?t|don'?t|couldn'?t)\\s)\\b(?:promise|guarantee)[ds]?\\b[^.!?]{0,40}\\b${WHEN}`, 'i'),
+  // "I can't promise Tuesday" is the right answer, not a promise — and so is
+  // "I don't want to promise" / "I'm not able to promise".
+  new RegExp(`(?<!\\b(?:can'?t|cannot|not|never|won'?t|don'?t|couldn'?t|unable)\\s(?:(?:want|able|going)\\s)?(?:to\\s)?)\\b(?:promise|guarantee)[ds]?\\b[^.!?]{0,40}\\b${WHEN}`, 'i'),
   /\bguarantee[ds]? (?:you )?(?:a|the) (?:date|slot|time)\b/i,
   /\bI(?:'ve| have) booked you (?:in )?for\b/i,
   /\bI(?:'ve| have) (?:scheduled|put) you (?:in|on|down)\b/i,
@@ -82,25 +92,37 @@ const PROMISES: RegExp[] = [
 
 /**
  * Agreeing to the caller's day. Only in a statement: "Tuesday works." is a
- * yes; "So Tuesday works for you?" is the caller's own words asked back.
+ * yes; "So Tuesday works for you?" is the caller's own words asked back. A
+ * question shields only its last clause (findDatePromise).
  */
 const AGREEMENTS: RegExp[] = [
   new RegExp(`(?<!\\b(?:if|whether|what|which|when)\\s)\\b${DAY} (?:works|is (?:fine|good|open|available|no problem))\\b`, 'i'),
   /(?<!\b(?:if|whether)\s)\bthat (?:day|time) works\b/i,
-  new RegExp(`\\b${WHEN},? (?:for sure|guaranteed|no problem)\\b|\\b(?:definitely|for sure|guaranteed),? (?:by |on |this |next )?${WHEN}`, 'i'),
+  // "Tomorrow, no problem." — but not a callback or a hand-off to Mike ("Mike
+  // will call you back today for sure", "I'll get this to Mike today, no problem").
+  new RegExp(`(?<!\\b(?:call|text|reach out|get back|let you know|to (?:mike|him))\\b[^.!?]{0,40})\\b${WHEN},? (?:for sure|guaranteed|no problem)\\b|\\b(?:definitely|for sure|guaranteed),? (?:by |on |this |next )?${WHEN}`, 'i'),
   /\b(?:done|finished) (?:before|by) (?:then|the (?:wedding|party|storm|hurricane))\b/i,
 ];
 
 /** The words that promise a date, or null. Same text, same answer — no model. */
 export function findDatePromise(text: string): string | null {
+  // A typographic apostrophe (’ ‘ ʼ) reads as ' — "We’ll be there Tuesday" is
+  // the same promise, and "can’t promise" the same negation. Only the copy
+  // matched here changes; the caller still hears the reply as written.
+  const t = text.replace(/[‘’ʼ]/g, "'");
   for (const re of PROMISES) {
-    const m = text.match(re);
+    const m = t.match(re);
     if (m) return m[0];
   }
-  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
-    if (sentence.trim().endsWith('?')) continue;
+  for (const sentence of t.split(/(?<=[.!?])\s+|\n+/)) {
+    const s = sentence.trim();
+    // A question shields only its own last clause: "So Tuesday works for
+    // you?" is asked back, but "Tuesday works — what's the address?" said yes
+    // first. Everything before the last clause break is checked whole.
+    const breaks = [...s.matchAll(/\s[—–-]\s|[,;]\s/g)];
+    const said = s.endsWith('?') ? s.slice(0, breaks.at(-1)?.index ?? 0) : s;
     for (const re of AGREEMENTS) {
-      const m = sentence.match(re);
+      const m = said.match(re);
       if (m) return m[0];
     }
   }

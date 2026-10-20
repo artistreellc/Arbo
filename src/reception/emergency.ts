@@ -58,11 +58,18 @@ const STRUCTURE = '(roof|car|house|home|garage|shed|vehicle|truck|deck|fence|str
 // leaves English as it was and lets the Spanish lines below use plain \b.
 const HARD: Array<{ re: RegExp; reason: string }> = [
   { re: new RegExp(`\\b(fell|fallen|falling|came down|crashed|collapsed|landed|toppled|smashed)\\b[^.]{0,40}\\b${STRUCTURE}\\b`, 'i'), reason: 'tree down on a structure/vehicle' },
-  { re: /\b(power ?line|powerline|electrical wire)\b[^.]{0,30}\b(down|touching|on it|tangled|arcing|sparking)\b/i, reason: 'power line involved' },
-  { re: /\b(down|touching|tangled|arcing|sparking|on)\b[^.]{0,30}\b(power ?line|powerline|electrical wire)\b/i, reason: 'power line involved' },
+  // Plural line nouns too ("into the power lines"), and a line on the ground.
+  { re: /\b(power ?lines?|powerlines?|electrical wires?)\b[^.]{0,30}\b(down|touching|on it|tangled|arcing|sparking|on the ground|lying|laying)\b/i, reason: 'power line involved' },
+  { re: /\b(down|touching|tangled|arcing|sparking|on|onto|into|fell|took out|knocked)\b[^.]{0,30}\b(power ?lines?|powerlines?|electrical wires?)\b/i, reason: 'power line involved' },
   { re: /\b(someone|somebody|person|kid|child|anyone|neighbor)\b[^.]{0,30}\b(hurt|injured|trapped|stuck|pinned|in danger)\b/i, reason: 'person in danger' },
+  // A person named the way callers name them ("my husband is hurt", "he's
+  // trapped", "it fell on him"). Named relatives, not "my <anything>", and no
+  // "stuck" — "my truck is stuck in the yard" is not an emergency.
+  { re: /\b(he|she|they|my (husband|wife|son|daughter|kids?|child(ren)?|mom|mother|dad|father|brother|sister|grand\w+|boy|girl|baby|neighbor|friend))\b[^.]{0,30}\b(hurt|injured|trapped|pinned)\b|\b(trapped|pinned) (under|beneath)\b|\b(fell|landed|came down) on (him|her|them|my (husband|wife|son|daughter|kids?|child|mom|mother|dad|father|brother|sister|boy|girl|baby|neighbor|friend))\b/i, reason: 'person in danger' },
   // R25 sim: callers say "a line down" / "wires down" without the word power.
-  { re: /\b(lines?|wires?)\b[^.]{0,15}\b(down|arcing|sparking|on fire)\b|\bdowned (lines?|wires?)\b/i, reason: 'power line involved' },
+  // Plural "the lines / the wires" only after the tree verb, so phone talk
+  // ("on the line") is not a power line.
+  { re: /\b(lines?|wires?)\b[^.]{0,15}\b(down|arcing|sparking|on fire|on the ground)\b|\bdowned (lines?|wires?)\b|\b(fell|fallen|landed|came down|is|resting|leaning|sitting)\b (on|onto|into|in) the (lines|wires)\b/i, reason: 'power line involved' },
   // R25 sim: "one of your guys fell out of the tree… he's not moving".
   { re: /\b(not moving|not breathing|unconscious|passed out|bleeding bad(ly)?)\b|\bfell (out of|from) (the|a) tree\b/i, reason: 'person in danger' },
   { re: /\bblock(ing|ed)?\b[^.]{0,20}\b(driveway|road|street|exit|door)\b/i, reason: 'access blocked' },
@@ -73,18 +80,33 @@ const HARD: Array<{ re: RegExp; reason: string }> = [
   { re: /\b(cayo|caido|caida|cayeron|tumbo)\b[^.]{0,40}\b(casa|techo|carro|coche|auto|camioneta|camion|garaje|cochera|edificio|porche)\b/i, reason: 'tree down on a structure/vehicle' },
   { re: /\b(cables?|lineas?|alambres?)\b[^.]{0,30}\b(caidos?|caidas?|en el suelo|en el piso|chispas|chispea\w*|tocando|colgando|sueltos?|sueltas?|quemando)\b|\b(cables?|lineas?|alambres?) (electric[oa]s?|de luz|de la luz|de electricidad|de alta tension)\b/i, reason: 'power line involved' },
   { re: /\b(herid[oa]s?|lastimad[oa]s?|atrapad[oa]s?|sangrando|inconsciente|no se mueve|no respira)\b/i, reason: 'person in danger' },
+  // A fence, as in English ("tumbó la cerca", "la cerca de mi vecino"). The
+  // article is what makes "cerca" the fence: "una rama cerca de la calle" is
+  // "near".
+  { re: /\b(cayo|caido|caida|cayeron|tumbo)\b[^.]{0,40}\b(?:la|mi|una|nuestra|el|un) (?:cerca|cerco|valla)\b/i, reason: 'tree down on a structure/vehicle' },
+  // Fallen cables in either word order, or a tree touching / on them. Not
+  // "línea": "se cayó la línea" is the call dropping, "en línea" is online.
+  { re: /\b(cables?|alambres?)\b[^.]{0,20}\b(?:se )?(?:cayeron|cayo)\b|\b(?:se )?(?:cayeron|cayo)\b[^.]{0,20}\b(cables?|alambres?)\b|\b(tocando|toca|encima de|sobre)\b[^.]{0,20}\b(cables?|alambres?)\b/i, reason: 'power line involved' },
+  // Someone hurt, said the everyday way ("necesito una ambulancia", "se
+  // lastimó", "se cayó del árbol").
+  { re: /\b(ambulancia|se (?:lastimo|hirio|lastimaron|hirieron))\b|\bse cayo (?:del|de un|de una|de la) (?:arbol|escalera)\b/i, reason: 'person in danger' },
   { re: /\bemergencia\b/i, reason: 'caller said emergency' },
 ];
 
 // A tree resting on a structure — emergency unless the call is clearly routine.
 const REST_ON = new RegExp(`\\btree\\b[^.]{0,20}\\bon (my|the|a|top of)\\b[^.]{0,20}${STRUCTURE}`, 'i');
 const ROUTINE = /\b(trim|prune|trimmed|pruned|cut back|hedge|quote|estimate|schedule|appointment)\b/i;
+// The same in Spanish: a tree ON the house or car, never a bare "en mi casa"
+// ("un árbol grande en mi casa" is where the tree is, not where it fell).
+const REST_ON_ES = /\barbol(?:es)?\b[^.]{0,25}\b(?:(?:encima de|sobre|arriba de)\b[^.]{0,15}\b(?:casa|techo|carro|coche|auto|camioneta|camion|garaje|cochera|edificio|porche)|en el (?:techo|carro|coche|auto|camion|camioneta))\b/i;
+const ROUTINE_ES = /\b(podar|poda|recortar|presupuesto|estimado|cotizacion|cita)\b/i;
 
 /** Every emergency reason in the text, in HARD order, then a resting tree. */
 function emergencyReasons(text: string): string[] {
   const t = foldAccents(text);
   const reasons = HARD.filter(({ re }) => re.test(t)).map(({ reason }) => reason);
   if (REST_ON.test(t) && !ROUTINE.test(t)) reasons.push('tree on a structure/vehicle');
+  if (REST_ON_ES.test(t) && !ROUTINE.test(t) && !ROUTINE_ES.test(t)) reasons.push('tree on a structure/vehicle');
   return reasons;
 }
 
