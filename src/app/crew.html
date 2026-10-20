@@ -366,6 +366,13 @@ const GATE_NEED = { scroll: 'scroll to the bottom', checkbox: 'tick the box', re
 function renderGate(brief) {
   document.querySelector('main').classList.remove('door-locked'); // the door answered: show the panels
   GATE.content = brief;
+  // M11: the briefing can land long after the page loaded (Try again, back
+  // online, back on screen), so the read clock and the sign-off's start begin
+  // HERE — never at page load — and nothing done before it counts toward it.
+  GATE.openedMs = Date.now();
+  GATE.startedAt = new Date().toISOString();
+  GATE.scrolled = false;
+  GATE.checked = false;
   // The server's read floor (10–15 s by length), so the countdown is its number, not a guess.
   GATE.requiredSeconds = brief.requiredSeconds || 10;
   const slot = $('gate-slot');
