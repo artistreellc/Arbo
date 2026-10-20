@@ -47,7 +47,7 @@ const D = '2026-08-03'; // Monday
 const at = (h: number, m = 0) => `${D}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00-04:00`;
 
 const day: StopInput[] = [
-  { id: 'e1', kind: 'estimate', timeIso: at(13, 0), name: 'Kathy Arnett', address: '12 Holly Rd', city: 'Virginia Beach', zip: '23464', source: 'WEB', isFirstTimer: true },
+  { id: 'e1', kind: 'estimate', timeIso: at(13, 0), name: 'Sim Alder', address: '12 Holly Rd', city: 'Virginia Beach', zip: '23464', source: 'WEB', isFirstTimer: true },
   { id: 'e2', kind: 'estimate', timeIso: at(15, 0), name: 'Ray Diaz', address: '9 Bay Ct', city: 'Norfolk', zip: '23505', source: 'GG', isFirstTimer: false },
   { id: 'e3', kind: 'estimate', timeIso: at(13, 30), name: 'Sam Lee', address: '44 Pine St', city: 'Virginia Beach', zip: '23464', source: 'REFERAL', isFirstTimer: false, nearPowerLines: true },
   { id: 'j1', kind: 'job', timeIso: at(8, 0), name: 'Henderson', address: '3 Oakcrest Dr', city: 'Chesapeake', zip: '23320', isFirstTimer: false, scope: 'Oak removal + stump' },

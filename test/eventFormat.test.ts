@@ -45,10 +45,10 @@ import { buildEventTitle, buildEventDescription, normalizeSourceTag, tenDigitPho
 
 describe('calendar event formatting (§3.22 — looks exactly like Mike types)', () => {
   it('builds the observed title format: Name SOURCE 10-digit-phone (space-separated, D34)', () => {
-    // Matches the live calendar ("Peter Simmons TT 7578193493"), not the
+    // Matches the live calendar ("Sim Birch TT 7575550102"), not the
     // brief's hyphenated draft.
-    expect(buildEventTitle({ name: 'Kathy Arnett', source: 'WEB', phone: '757-427-3361' })).toBe(
-      'Kathy Arnett WEB 7574273361',
+    expect(buildEventTitle({ name: 'Sim Alder', source: 'WEB', phone: '757-555-0101' })).toBe(
+      'Sim Alder WEB 7575550101',
     );
   });
 
@@ -62,8 +62,8 @@ describe('calendar event formatting (§3.22 — looks exactly like Mike types)',
   });
 
   it('extracts a clean 10-digit phone', () => {
-    expect(tenDigitPhone('+1 (757) 427-3361')).toBe('7574273361');
-    expect(tenDigitPhone('757.427.3361')).toBe('7574273361');
+    expect(tenDigitPhone('+1 (757) 555-0101')).toBe('7575550101');
+    expect(tenDigitPhone('757.555.0101')).toBe('7575550101');
     expect(tenDigitPhone('12345')).toBeNull();
   });
 
@@ -77,6 +77,6 @@ describe('calendar event formatting (§3.22 — looks exactly like Mike types)',
     expect(desc).toContain('Service: removal');
     expect(desc).toContain('Access: can a truck get to the back?');
     // title stays clean
-    expect(buildEventTitle({ name: 'Joe', source: 'WEB', phone: '7574273361' })).not.toContain('removal');
+    expect(buildEventTitle({ name: 'Joe', source: 'WEB', phone: '7575550101' })).not.toContain('removal');
   });
 });

@@ -44,12 +44,12 @@
 // creates must be indistinguishable from one Mike typed himself:
 //   Title:       "Client Name SOURCE 10-digit-phone"  (space-separated)
 //   Description: all scope / site / access detail from intake
-// e.g. "Kathy Arnett WEB 7574273361". Mike calls straight from the title.
+// e.g. "Sim Alder WEB 7575550101". Mike calls straight from the title.
 //
 // FORMAT LEARNED FROM THE LIVE CALENDAR (D34): the brief documented a
 // hyphenated "Name - SOURCE - phone" but 250 real events (Apr–Jul 2026) are
-// space-separated ("Peter Simmons TT 7578193493", "April Herrod GG
-// 7574690321"). §3.11's own rule — model how Mike ACTUALLY books — wins.
+// space-separated ("Sim Birch TT 7575550102", "Sim Cedar GG
+// 7575550103"). §3.11's own rule — model how Mike ACTUALLY books — wins.
 
 // The real source-tag set observed on Mike's calendar (§3.11 / §3.22 / §3.29).
 export const SOURCE_TAGS = ['TT', 'WEB', 'YELP', 'REFERAL', 'REC', 'GG', 'LSA', 'TLT', 'TSP', 'WL'] as const;
