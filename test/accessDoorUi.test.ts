@@ -60,6 +60,54 @@ describe('the office app — api() sends the gate’s refusals to the key screen
   });
 });
 
+describe('the office app — the LiDAR upload (its own fetch) treats the gate’s refusals like api() does', () => {
+  // Verify-pass finding 3: the upload showed "Not measured — too_many_attempts."
+  // (a code, not words), and its 401 opened the key screen with whatever an
+  // EARLIER refusal had said.
+  const m = /^ {2}inp\.addEventListener\('change', (async \(\) => \{[\s\S]*?^ {2}\})\);$/m.exec(app);
+  if (!m) throw new Error('no LiDAR upload handler in the page');
+  const handler = m[1];
+  const KEY_REFUSED = pageConst(app, 'KEY_REFUSED') as Record<string, string>;
+  async function upload(status: number, body: unknown, stale = 'words from an earlier refusal') {
+    const shown = { className: '', title: '', textContent: '' };
+    const walls: Array<string | undefined> = [];
+    const deps: Record<string, unknown> = {
+      inp: { files: [{ name: 'tree.ply', size: 1024 }] },
+      status: shown,
+      out: { replaceChildren: () => {}, appendChild: () => {} },
+      fetch: async () => ({ ok: status < 400, status, json: async () => body }),
+      KEY: 'k', LIDAR_UP: '', KEY_REFUSED,
+      showKeywall: (msg?: string) => { walls.push(msg); },
+      upWords: () => '', measureResult: () => ({}),
+    };
+    const make = new Function(...Object.keys(deps),
+      `let KEY_REFUSED_WHY = ${JSON.stringify(stale)}; let LIDAR_LAST = null; let LIDAR_UP_CHANGED = false;\nreturn { run: ${handler}, why: () => KEY_REFUSED_WHY };`);
+    const h = make(...Object.values(deps)) as { run: () => Promise<void>; why: () => string };
+    await h.run();
+    return { shown, walls, why: h.why() };
+  }
+
+  it('the gate’s 429 opens the key screen in words — never "Not measured — too_many_attempts."', async () => {
+    const r = await upload(429, { error: 'too_many_attempts', message: '…', retryAfterSec: 60 });
+    expect(r.walls).toHaveLength(1);
+    expect(r.why).toBe(KEY_REFUSED.too_many_attempts);
+    expect(r.shown.textContent).not.toContain('too_many_attempts');
+  });
+
+  it('a 401 opens the key screen with ITS reason, never an earlier refusal’s words', async () => {
+    const plain = await upload(401, { error: 'unauthorized', message: '…' });
+    expect(plain.walls).toHaveLength(1);
+    expect(plain.why).toBe('');
+    expect((await upload(401, { error: 'no_app_key', message: '…' })).why).toBe(KEY_REFUSED.no_app_key);
+  });
+
+  it('the LiDAR busy 429 is not about keys: it stays the upload’s own "Not measured" line', async () => {
+    const r = await upload(429, { error: 'measuring_another_scan', detail: 'Arbo is measuring another scan right now. Try again in a minute.' });
+    expect(r.walls).toHaveLength(0);
+    expect(r.shown.textContent).toContain('Not measured — Arbo is measuring another scan right now');
+  });
+});
+
 describe('the office app — the key screen', () => {
   async function open(answer: unknown) {
     const els = { keygo: { disabled: false, textContent: 'Open' }, keyinput: { value: 'typed-key' }, keyerr: { textContent: '' } };
@@ -157,5 +205,39 @@ describe('the crew page — the door card names the two server states', () => {
     const r = render(false, false, 'unauthorized');
     expect(r.text).toContain('That key did not open the door');
     expect(r.hasField).toBe(true);
+  });
+});
+
+describe('the crew page — a throttled connection is named on every card, never "the office didn’t answer"', () => {
+  // Verify-pass finding 2: one crew phone typing 10 different wrong door keys
+  // on the yard Wi-Fi slows that connection for everyone on it; a coworker's
+  // library, near-miss save and sign-off then blamed the office.
+  const throttled = () => Object.assign(new Error('too_many_attempts'), { code: 429 });
+  const crewWhy = pageFn<(e: unknown) => string>(crew, 'crewWhy', { LINKS: 'live' });
+
+  it('crewWhy (library, near-miss save) names the wait and what to do', () => {
+    const why = crewWhy(throttled());
+    expect(why).toContain('too many wrong door keys from this connection');
+    expect(why).toContain('wait a minute');
+    expect(why).not.toContain('didn’t answer');
+    // Unchanged: a plain no-answer is still the office not answering.
+    expect(crewWhy(Object.assign(new Error('error'), { code: 500 }))).toBe('the office didn’t answer');
+    expect(crewWhy(new TypeError('Failed to fetch'))).toBe('the office didn’t answer');
+  });
+
+  it('the sign-off names it too, and the day stays locked', async () => {
+    const GATE: Record<string, unknown> = { preview: '', content: {}, scrolled: true, checked: true, startedAt: '' };
+    const go = { disabled: false, textContent: '', className: '' };
+    const submitGate = pageFn<() => Promise<void>>(crew, 'submitGate', {
+      GATE, $: () => go, api: async () => { throw throttled(); }, refreshGate: () => {},
+      LINKS_READY: Promise.resolve(), crewWhy, secondsOnScreen: () => 30, CREW_ID: 'SIM-1', GATE_NEED: {},
+      renderQuiz: () => {}, renderWork: () => {}, document: { querySelector: () => ({}) },
+    });
+    await submitGate();
+    expect(GATE.unlocked).toBeUndefined();
+    expect(GATE.serverErr).toBe(true);
+    expect(GATE.serverMsg).toContain('too many wrong door keys from this connection');
+    expect(GATE.serverMsg).toContain('do not start work');
+    expect(go.disabled).toBe(false);
   });
 });

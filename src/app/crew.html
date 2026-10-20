@@ -317,6 +317,9 @@ async function api(path, opts) {
 let LINKS = null;
 const LINKS_READY = api('/health').then((h) => { LINKS = h.dataLinks || 'unknown'; }).catch(() => null);
 function crewWhy(e) {
+  // The key gate's 429: one phone sent 10 different wrong door keys from this
+  // connection (the yard Wi-Fi is shared) — a wait, not the office down.
+  if (e && e.code === 429 && e.message === 'too_many_attempts') return 'too many wrong door keys from this connection — wait a minute and try again, or switch between Wi-Fi and cellular';
   const m = e && e.code === 503 ? e.message : '';
   if (m === 'not_simulated') return 'not part of the practice data';
   // R32: Arbo is reading but not saving — nothing from this phone was written.
@@ -477,7 +480,7 @@ async function submitGate() {
     GATE.serverHold = e.code === 400 || e.code === 503;
     GATE.serverMsg = e.code === 400
       ? 'That sign-off was rejected — check your crew code with the office.'
-      : e.code === 503
+      : e.code === 503 || e.code === 429
         ? 'Your sign-off could not be recorded (' + crewWhy(e) + ').'
           + ' Your work orders stay locked — do not start work; call the office to log your briefing.'
         : 'Could not record that — try once more.';

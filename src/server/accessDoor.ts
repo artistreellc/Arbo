@@ -29,11 +29,16 @@
 //         yard Wi-Fi never slow Mike's side.
 //       - Per connection, never global: a guesser anywhere else can never
 //         slow Mike down. Across all connections Arbo only logs a loud line.
-//       - The right key opens on the next check (at most a minute) and the
-//         connection is forgiven. A guesser on the SAME connection as Mike
-//         could keep taking those checks — said by name in the 429 ("switch
-//         networks"), because the right key cannot both always pass and stop
-//         a guesser who shares its address.
+//       - The right key opens on the next check (at most a minute) and lifts
+//         the throttle, so Mike's app works at once. It does NOT wipe the
+//         count of different wrong keys: the app sends the right key every
+//         minute, so wiping it let a guesser on Mike's own connection take 9
+//         guesses a minute forever. Now a NEW wrong key from that connection
+//         inside the ten minutes throttles it again at once; a key already
+//         counted (a tab still holding a typo) never does. A guesser on the
+//         SAME connection as Mike could still take the one-a-minute checks —
+//         said by name in the 429 ("switch networks"), because the right key
+//         cannot both always pass and stop a guesser who shares its address.
 //     In memory, capped, counted in /health — never an address, never a key.
 //
 // The connection is the X-Real-IP header Railway's edge sets ("for
@@ -62,7 +67,11 @@ export function clientAddress(
   behindRailway: boolean,
 ): string | null {
   const real = req.headers['x-real-ip'];
-  if (typeof real === 'string' && real.trim() !== '') return real.trim().slice(0, 64);
+  // Node joins two X-Real-IP headers into "a, b". The first can be the
+  // client's own; one the edge adds comes last, so the last is the one read.
+  // (If the edge overwrites the client's, there is only one and nothing changes.)
+  const last = typeof real === 'string' ? (real.split(',').pop() ?? '').trim() : '';
+  if (last !== '') return last.slice(0, 64);
   if (behindRailway) return null;
   return req.socket?.remoteAddress ?? null;
 }
@@ -149,9 +158,14 @@ export class KeyAttemptGuard {
     return { ok: false, retryAfterSec: secs(r.nextCheckAt - now) };
   }
 
-  /** The right key: this connection is forgiven at once. */
+  /**
+   * The right key: the throttle is lifted at once. The count of different
+   * wrong keys stays until its window runs out — never wiped by the right key.
+   */
   right(door: Door, addr: string | null): void {
-    if (addr) this.recs.delete(`${door}|${addr}`);
+    if (!addr) return;
+    const r = this.recs.get(`${door}|${addr}`);
+    if (r) { r.throttledUntil = 0; r.nextCheckAt = 0; }
   }
 
   /** A wrong key (never a missing one). Says whether this connection is now throttled. */
@@ -171,7 +185,11 @@ export class KeyAttemptGuard {
     if (!r || now - r.firstAt >= this.windowMs) r = { seen: new Set(), firstAt: now, throttledUntil: 0, nextCheckAt: 0 };
     this.touch(k, r);
     // A fingerprint, never the key: the set only has to tell keys apart.
-    r.seen.add(createHash('sha256').update(given, 'utf8').digest('hex').slice(0, 16));
+    const fp = createHash('sha256').update(given, 'utf8').digest('hex').slice(0, 16);
+    // A key already counted is not a new guess: after the right key lifts a
+    // throttle, a stale typo still in a tab must not throttle Mike again.
+    if (r.seen.has(fp)) return { throttled: false };
+    r.seen.add(fp);
     if (r.seen.size < this.maxDistinct) return { throttled: false };
     r.throttledUntil = now + this.throttleMs;
     r.nextCheckAt = now + this.checkEveryMs;

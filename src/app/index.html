@@ -6074,8 +6074,14 @@ function renderMeasure() {
       const res = await fetch('/api/lidar/measure?name=' + encodeURIComponent(f.name) + (LIDAR_UP ? '&up=' + LIDAR_UP : ''), {
         method: 'POST', headers: KEY ? { 'x-arbor-key': KEY } : {}, body: f,
       });
-      if (res.status === 401) return showKeywall();
       const body = await res.json().catch(() => ({}));
+      // The key gate's refusals, as api() takes them: a 401, or the gate's own
+      // 429 (too_many_attempts — the busy 429 below is not about keys). The key
+      // screen says THIS refusal's reason, never an earlier one's.
+      if (res.status === 401 || (res.status === 429 && body.error === 'too_many_attempts')) {
+        KEY_REFUSED_WHY = KEY_REFUSED[body.error] || '';
+        return showKeywall();
+      }
       if (!res.ok) {
         status.className = 'storm';
         // Every server detail already ends in a full stop; drop it so the line never reads "..".

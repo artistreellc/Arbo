@@ -64,6 +64,17 @@ describe('which connection a request came from', () => {
     // The leftmost X-Forwarded-For is the client's to write — it is never read.
     expect(clientAddress(req({ 'x-forwarded-for': '1.2.3.4, 10.0.0.1' }, '127.0.0.1'), false)).toBe('127.0.0.1');
   });
+
+  it('two X-Real-IP headers (Node joins them "a, b"): the LAST one counts — the first is the client’s to write', () => {
+    // Verify-pass finding 4: if Railway's edge adds its own X-Real-IP after one
+    // the client sent, the whole joined value changed with every guess, so a
+    // guesser could be a new connection each time. The edge's is the last one.
+    expect(clientAddress(req({ 'x-real-ip': '10.9.8.7, 203.0.113.7' }), true)).toBe('203.0.113.7');
+    expect(clientAddress(req({ 'x-real-ip': '10.9.8.1,203.0.113.7' }), true)).toBe('203.0.113.7');
+    // Nothing after the last comma: not a usable address — on Railway, not counted (never pooled).
+    expect(clientAddress(req({ 'x-real-ip': '203.0.113.7, ' }, '10.0.0.1'), true)).toBeNull();
+    expect(clientAddress(req({ 'x-real-ip': '203.0.113.7,' }, '127.0.0.1'), false)).toBe('127.0.0.1');
+  });
 });
 
 describe('M2 — the wrong-key limiter', () => {
@@ -115,7 +126,53 @@ describe('M2 — the wrong-key limiter', () => {
     g.right('owner', 'a');
     expect(g.admit('owner', 'a')).toEqual({ ok: true });
     expect(g.counts().throttledNow).toBe(0);
-    expect(g.wrong('owner', 'a', 'k1')).toEqual({ throttled: false }); // a fresh count
+    expect(g.wrong('owner', 'a', 'k1')).toEqual({ throttled: false }); // over ten minutes since the first: a fresh count
+  });
+
+  it('the right key lifts a throttle but never wipes the count: a guesser on Mike’s own connection is still slowed', () => {
+    // Verify-pass finding 1: right() used to forget the connection outright, and
+    // the app sends the right key every minute — so 9 guesses, Mike's ping, 9
+    // more… was never slowed (180 of 180 guesses checked in the probe).
+    const c = clock();
+    const g = make(c);
+    let checked = 0;
+    for (let round = 0; round < 20; round++) {
+      for (let i = 1; i <= 9; i++) {
+        if (!g.admit('owner', 'a').ok) continue;
+        checked++;
+        g.wrong('owner', 'a', `r${round}-k${i}`);
+      }
+      if (g.admit('owner', 'a').ok) g.right('owner', 'a'); // Mike's app, once a minute
+      c.t += 60_000;
+    }
+    // The first 9, then about one a minute — never 9 a minute.
+    expect(checked).toBeLessThanOrEqual(9 + 20);
+  });
+
+  it('let back in by the right key: a stale key already counted does not throttle again; a NEW wrong key does', () => {
+    const c = clock();
+    const g = make(c);
+    for (let i = 1; i <= 10; i++) g.wrong('owner', 'a', `k${i}`);
+    c.t += 60_000;
+    expect(g.admit('owner', 'a')).toEqual({ ok: true }); // the minute's check
+    g.right('owner', 'a');
+    expect(g.counts().throttledNow).toBe(0);
+    expect(g.admit('owner', 'a')).toEqual({ ok: true }); // Mike's app works at once
+    expect(g.admit('owner', 'a')).toEqual({ ok: true });
+    // A tab still holding one of the typos: already counted, so it never re-throttles Mike.
+    expect(g.wrong('owner', 'a', 'k3')).toEqual({ throttled: false });
+    expect(g.admit('owner', 'a')).toEqual({ ok: true });
+    // A different wrong key inside the same ten minutes: the count still stands — throttled again.
+    expect(g.wrong('owner', 'a', 'k11')).toEqual({ throttled: true, retryAfterSec: 60 });
+    expect(g.admit('owner', 'a').ok).toBe(false);
+  });
+
+  it('a few typos, then the right key: the typos stay counted for the window (they do not reset to zero)', () => {
+    const c = clock();
+    const g = make(c);
+    for (let i = 1; i <= 9; i++) g.wrong('owner', 'a', `k${i}`);
+    g.right('owner', 'a');
+    expect(g.wrong('owner', 'a', 'k10')).toEqual({ throttled: true, retryAfterSec: 60 });
   });
 
   it('left alone, a throttle ends after 15 minutes', () => {

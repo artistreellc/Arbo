@@ -209,7 +209,7 @@ describe('M2 — wrong keys are limited per connection; the right key is never s
     } finally { srv.close(); }
   });
 
-  it('on the next one-a-minute check the right key opens and the connection is forgiven; /health counts it, never an IP or a key', async () => {
+  it('on the next one-a-minute check the right key opens and lifts the throttle — but never wipes the count; /health counts it, never an IP or a key', async () => {
     let now = Date.parse('2026-10-20T12:00:00Z');
     const { KeyAttemptGuard } = await import('../src/server/accessDoor.js');
     const keyGuard = new KeyAttemptGuard({ now: () => now, log: () => {} });
@@ -225,10 +225,37 @@ describe('M2 — wrong keys are limited per connection; the right key is never s
       expect(text).not.toContain('guess-');
       now += 60_000;
       expect((await hit(base, '/api/webhooks/texts', { key: 'admin-k', ip: '203.0.113.7' })).status).toBe(200);
-      // Forgiven: the next wrong key starts a fresh count (a 401, not a 429).
-      expect((await hit(base, '/api/leads', { key: 'guess-12', ip: '203.0.113.7' })).status).toBe(401);
+      // Let back in: the throttle is lifted, so Mike's app works at once…
+      expect((await hit(base, '/api/webhooks/texts', { key: 'admin-k', ip: '203.0.113.7' })).status).toBe(200);
       const after = await (await hit(base, '/health')).json() as { access: { throttledNow: number } };
       expect(after.access.throttledNow).toBe(0);
+      // …and a guess already counted (a tab holding a typo) never throttles him again…
+      expect((await hit(base, '/api/leads', { key: 'guess-3', ip: '203.0.113.7' })).status).toBe(401);
+      expect((await hit(base, '/api/webhooks/texts', { key: 'admin-k', ip: '203.0.113.7' })).status).toBe(200);
+      // …but the count of different wrong keys is NOT wiped by the right key
+      // (verify-pass finding 1): a NEW guess from this connection inside the
+      // ten minutes is throttled again at once, so a guesser sharing Mike's
+      // connection gets about one check a minute, not nine.
+      expect((await hit(base, '/api/leads', { key: 'guess-12', ip: '203.0.113.7' })).status).toBe(429);
+    } finally { srv.close(); }
+  });
+
+  it('two X-Real-IP headers: the last one is the connection — changing the first each time does not dodge the limiter', async () => {
+    const { request } = await import('node:http');
+    const { base, srv } = await serve(ENV);
+    // Two separate header lines on the wire (a client's, then one an edge adds); fetch cannot send that.
+    const twoIps = (key: string, first: string) => new Promise<number>((resolve, reject) => {
+      const u = new URL(base + '/api/leads');
+      const r = request({ host: u.hostname, port: u.port, path: u.pathname, method: 'GET', headers: { 'x-arbor-key': key, 'x-real-ip': [first, '203.0.113.50'] } }, (res) => {
+        res.resume();
+        resolve(res.statusCode ?? 0);
+      });
+      r.on('error', reject);
+      r.end();
+    });
+    try {
+      for (let i = 1; i <= 9; i++) expect(await twoIps(`guess-${i}`, `10.0.0.${i}`), `guess ${i}`).toBe(401);
+      expect(await twoIps('guess-10', '10.0.0.10')).toBe(429);
     } finally { srv.close(); }
   });
 });
