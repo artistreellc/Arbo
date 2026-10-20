@@ -714,3 +714,29 @@ none carried a note. The answers live in the review page's own store
 
 What did NOT move: everything in "Hard boundaries" and §3 — no sends beyond
 R22, no email, no calendar edits beyond R18 holds, links cut, deploys manual.
+
+## R27 — A Spanish version of the whole app for Spanish-speaking employees (Mike, 2026-10-20)
+
+Mike, verbatim: *"The whole app needs to be able to have a Spanish version as
+well for our Spanish speaking, employees"*
+
+This is new scope, approved by Mike in his own words. Defaults Claude used
+where he did not say (Mike may change any):
+
+1. **Both apps, every screen.** The crew door and the owner app each get an
+   English / Español switch, remembered per phone. Server text shown on those
+   screens (briefings, quiz, work-order steps, desk findings, feed states)
+   follows the same switch. English stays the default.
+2. **Data is not translated.** Names, addresses, notes and anything a person
+   typed stay exactly as entered — a translated note is a changed note.
+3. **Customers are not part of this.** What callers hear and what customers
+   are texted stay as R26 left them (detect and flag only).
+4. **Legal and safety labels keep the English term beside the Spanish.**
+   Permit words, STOP WORK and the 811 / Dominion / 911 lines show both
+   ("PERMISO PROBABLE · PERMIT LIKELY"), because the city, the utility and
+   the inspector work in English. The Spanish never says "clear" or "exempt"
+   either ("libre", "exento", "no necesita permiso" are banned the same way).
+5. **A person checks it before the field.** Claude's Spanish is reviewed by a
+   second, independent translation pass, and safety text is back-translated.
+   Before crews rely on it, a Spanish-speaking crew member reads the safety
+   briefing and the quiz on a phone and says it reads right.
