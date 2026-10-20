@@ -58,8 +58,10 @@ export interface WorkOrderSource {
   hazardStructures: boolean;
   /** Permit posture for this address — vocabulary is fixed (§6B.3). */
   permitStatus: 'PERMIT_LIKELY' | 'REVIEW_NEEDED' | 'NO_OVERLAY_VERIFY' | null;
-  /** No screen on file (or the lookup failed) — UNKNOWN, never "fine". */
+  /** The lookup ANSWERED and no screen is on file — UNKNOWN, never "fine". */
   permitScreenPending?: boolean;
+  /** The permit lookup FAILED — UNKNOWN, and never "no screen on file" (§1B). */
+  permitUnreadable?: boolean;
   /** Photo refs for before/after (the job cannot complete without the pair). */
   photoRefs: string[];
   /** The gated safety briefing that rides under the order (§6V.4). */
@@ -99,11 +101,15 @@ export function buildCrewPayload(src: WorkOrderSource): CrewPayload {
         ? 'PERMIT: REVIEW NEEDED — check with the office before cutting.'
         : src.permitStatus === 'NO_OVERLAY_VERIFY'
           ? 'NO OVERLAY — VERIFY W/ CITY before protected work.'
-          // No screen on file (or the lookup failed) is UNKNOWN — on a safety
-          // surface, silence reads as "no concern", which it never is (§6B.3).
-          : src.permitScreenPending
-            ? 'PERMIT SCREEN PENDING — status UNKNOWN, no screen on file. Check with the office before protected work.'
-            : null;
+          // A FAILED lookup and "no screen on file" are both UNKNOWN — on a
+          // safety surface, silence reads as "no concern", which it never is
+          // (§6B.3). They are different facts and never read the same (§1B):
+          // a failed read cannot claim no screen exists, so it is named first.
+          : src.permitUnreadable
+            ? 'PERMIT STATUS UNKNOWN — Arbo could not read the permit screen. Check with the office before protected work.'
+            : src.permitScreenPending
+              ? 'PERMIT SCREEN PENDING — status UNKNOWN, no screen on file. Check with the office before protected work.'
+              : null;
 
   return {
     jobId: src.jobId,

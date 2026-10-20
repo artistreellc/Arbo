@@ -1310,8 +1310,10 @@ export interface CrewJobRow {
   hazardPowerLines: boolean;
   hazardStructures: boolean;
   permitStatus: string | null;
-  /** True when the permit lookup could not answer — UNKNOWN, not "fine". */
+  /** True when the lookup ANSWERED and no screen row is on file — UNKNOWN, not "fine". */
   permitScreenPending: boolean;
+  /** True when the permit lookup FAILED — UNKNOWN, and never "no screen on file" (§1B). */
+  permitUnreadable: boolean;
   propertyId: string;
 }
 
@@ -1351,9 +1353,12 @@ export async function listCrewJobs(fromIso: string, toIso: string): Promise<Crew
     hazardPowerLines: r.property?.hazard_power_lines ?? false,
     hazardStructures: r.property?.hazard_structures ?? false,
     permitStatus: permits.get(r.property_id)?.screen_status ?? null,
-    // No screen on file is UNKNOWN — the three screen_status values are all
-    // warnings; there is no "screened and fine" value to fall back on.
-    permitScreenPending: permitLookupFailed || !permits.has(r.property_id),
+    // A FAILED lookup is unreadable, never "no screen on file": Arbo did not
+    // look, so it cannot say no screen exists (§1B). Both are UNKNOWN on the
+    // crew note — the three screen_status values are all warnings; there is
+    // no "screened and fine" value to fall back on.
+    permitUnreadable: permitLookupFailed,
+    permitScreenPending: !permitLookupFailed && !permits.has(r.property_id),
     propertyId: r.property_id,
   }));
 }
