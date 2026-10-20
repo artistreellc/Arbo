@@ -707,7 +707,7 @@ describe('POST /api/talk — over the wire', () => {
       const body = JSON.stringify({ messages: [] });
       const crew = await post(base, '/api/talk', body, 'crew-k');
       expect(crew.status).toBe(401);
-      expect(await crew.json()).toEqual({ error: 'unauthorized' });
+      expect(await crew.json()).toEqual({ error: 'unauthorized', message: 'The crew door key opens the crew door only. This needs the app key.' }); // the 401 says what to do (audit L1/M2)
       expect((await post(base, '/api/talk', body)).status).toBe(401);
       expect((await post(base, '/api/talk', body, 'wrong')).status).toBe(401);
       const owner = await post(base, '/api/talk', body, 'admin-k');

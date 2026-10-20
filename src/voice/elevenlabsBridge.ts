@@ -67,6 +67,7 @@ import { CallMemory, CallRecordStore, normalizeCallerId, repeatCallerNote } from
 import { parseRequestedWindow, type RequestedWindow } from '../ops/requestedWindow.js';
 import { buildEstimateHold, type CallHold } from '../reception/estimateHold.js';
 import { GOOGLE_READ_ONLY } from '../integrations/readOnly.js';
+import { secretEqual } from '../lib/secretEqual.js';
 
 export type { CallHold };
 
@@ -249,7 +250,8 @@ export function createElevenLabsBridge(deps: BridgeDeps): ElevenLabsBridge {
     async handle(authorization, body) {
       // Fail closed: without a configured secret the bridge refuses everything.
       if (!deps.bridgeSecret) return { status: 503, json: { error: 'bridge_not_configured' } };
-      if (authorization !== `Bearer ${deps.bridgeSecret}`) {
+      // L2 (audit 2026-10-20): constant-time, like every other secret Arbo checks.
+      if (!secretEqual(authorization, `Bearer ${deps.bridgeSecret}`)) {
         counters.unauthorized += 1; // repoint tripwire: a wrong ElevenLabs key must be VISIBLE, not silent
         return { status: 401, json: { error: 'unauthorized' } };
       }

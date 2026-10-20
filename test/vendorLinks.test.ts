@@ -6,11 +6,16 @@
 // labs links while we develop off sona". Fail-closed like every other link:
 // cut unless the variable is exactly 'live', and every door the link opens
 // refuses BY NAME while it is cut — nothing deleted, one variable to undo.
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { vendorLinked, cutVendorLinks, vendorEnvVar } from '../src/integrations/vendorLinks.js';
 import { createArborRequestHandler } from '../src/server.js';
+import { ownerFetch } from './ownerKey.js';
+// Audit M1 (2026-10-20): the /api door is locked without APP_ACCESS_KEY in every
+// data mode, so this file sets the owner key before src/env.ts reads it and
+// calls /api with it (test/ownerKey.ts).
+vi.hoisted(() => { process.env.APP_ACCESS_KEY = 'test-owner-key'; });
 
 const saved = { ...process.env };
 afterEach(() => { process.env = { ...saved }; });
@@ -40,7 +45,7 @@ describe('vendor link switches', () => {
     delete process.env.ARBO_LINK_TWILIO;
     const { srv, base } = await serve();
     const cut = async (method: string, path: string, link: string) => {
-      const res = await fetch(`${base}${path}`, { method, ...(method === 'POST' ? { body: '{}' } : {}) });
+      const res = await ownerFetch(`${base}${path}`, { method, ...(method === 'POST' ? { body: '{}' } : {}) });
       expect(res.status, path).toBe(503);
       const body = (await res.json()) as { error: string; link: string; message: string };
       expect(body.error, path).toBe('link_cut');
@@ -56,9 +61,9 @@ describe('vendor link switches', () => {
     const talk = await fetch(`${base}/talk`);
     expect(talk.status).toBe(503);
     expect(await talk.text()).toContain('Talk to Arbo is off');
-    const rec = (await (await fetch(`${base}/api/reception/status`)).json()) as { linkCut: boolean };
+    const rec = (await (await ownerFetch(`${base}/api/reception/status`)).json()) as { linkCut: boolean };
     expect(rec.linkCut).toBe(true);
-    const wh = (await (await fetch(`${base}/api/webhooks`)).json()) as { cut: string[] };
+    const wh = (await (await ownerFetch(`${base}/api/webhooks`)).json()) as { cut: string[] };
     expect(wh.cut).toEqual(['elevenlabs', 'twilio']);
     srv.close();
   });

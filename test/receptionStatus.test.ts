@@ -40,9 +40,14 @@
 
   Remember the marker: SLOW::ARBO
 */
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, afterAll, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { createArborRequestHandler } from '../src/server.js';
+import { ownerFetch } from './ownerKey.js';
+// Audit M1 (2026-10-20): the /api door is locked without APP_ACCESS_KEY in every
+// data mode, so this file sets the owner key before src/env.ts reads it and
+// calls /api with it (test/ownerKey.ts).
+vi.hoisted(() => { process.env.APP_ACCESS_KEY = 'test-owner-key'; });
 
 // The cockpit's reception instrument. Two laws meet here: §9 (the phone line
 // as a one-glance instrument) and §4.3 (counts and ids only — the payload's
@@ -60,7 +65,7 @@ afterAll(() => { server?.close(); });
 describe('GET /api/reception/status', () => {
   it('serves exactly the promised keys — no slot for caller content', async () => {
     const base = await listen();
-    const res = await fetch(`${base}/api/reception/status`);
+    const res = await ownerFetch(`${base}/api/reception/status`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     expect(Object.keys(body).sort()).toEqual([

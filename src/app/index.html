@@ -804,6 +804,14 @@ const el = (tag, cls, text) => {
 };
 
 let KEY = localStorage.getItem('arborKey') || '';
+// The key screen's words when the server NAMED why a key was refused (audit
+// 2026-10-20, M1/M2) — never "that key didn't work" when the server has no
+// app key at all, or when this connection only has to wait.
+const KEY_REFUSED = {
+  no_app_key: 'Arbo’s server has no app key set (APP_ACCESS_KEY), so no key can open it yet. Set it on Railway and deploy again.',
+  too_many_attempts: 'Too many wrong keys from this connection. Wait a minute, then enter the right key — or switch between Wi-Fi and cellular.',
+};
+let KEY_REFUSED_WHY = ''; // the last refusal's words, for a key screen opened without its own line
 
 // R32: the one plain line for a tap that would have saved while Arbo is read-only.
 const READ_ONLY_LINE = 'Read-only: Arbo can look but not save. Nothing was written.';
@@ -831,8 +839,16 @@ async function api(path, opts) {
     headers: Object.assign({ 'content-type': 'application/json' }, KEY ? { 'x-arbor-key': KEY } : {}),
     body: opts && opts.body ? JSON.stringify(opts.body) : undefined,
   });
-  if (res.status === 401) throw Object.assign(new Error('unauthorized'), { code: 401 });
   const body = await res.json().catch(() => ({}));
+  // The key gate's refusals open the key screen: a missing or wrong key, or no
+  // app key on the server, is a 401; a connection slowed after too many
+  // different wrong keys is the gate's 429 (too_many_attempts — the LiDAR busy
+  // flag is a 429 too, and is not about keys). The server's reason rides along
+  // as `why`, so the screen can say it, and a 429 is never read as "key good".
+  if (res.status === 401 || (res.status === 429 && body.error === 'too_many_attempts')) {
+    KEY_REFUSED_WHY = KEY_REFUSED[body.error] || '';
+    throw Object.assign(new Error('unauthorized'), { code: 401, why: typeof body.error === 'string' ? body.error : null });
+  }
   if (!res.ok && body.error === 'read_only') readOnlyToast(typeof body.line === 'string' ? body.line : READ_ONLY_LINE);
   // A refusal the server words for a person (body.line) rides along, so the screen can say it.
   if (!res.ok) throw Object.assign(new Error(body.error || 'error'), { code: res.status, line: typeof body.line === 'string' ? body.line : null });
@@ -4893,7 +4909,7 @@ async function renderFollowUps() {
 
 // ---------- Shell ----------
 function showKeywall(msg) {
-  $('keyerr').textContent = msg || '';
+  $('keyerr').textContent = msg || KEY_REFUSED_WHY;
   $('keywall').classList.add('show');
   keywallChrome(true);
 }
@@ -4922,7 +4938,7 @@ async function unlockWithKey() {
   try {
     await api('/api/leads?limit=1');
   } catch (e) {
-    if (e.code === 401) return showKeywall('That key didn’t work — check it and try again.');
+    if (e.code === 401) return showKeywall(KEY_REFUSED[e.why] || 'That key didn’t work — check it and try again.');
     // No signal, or the host's own non-JSON 502/504 mid-deploy: the key was never checked.
     if (!e.code || e.message === 'error') return showKeywall('Couldn’t reach Arbo to check the key — check your signal and try again.');
     // Any other answer is Arbo's own, from past the key gate (a cut link's 503): the key is good.

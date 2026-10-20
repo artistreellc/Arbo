@@ -132,7 +132,7 @@ describe('identity and the door key', () => {
   });
 
   it('with no crew key on the server, the card says so and offers no field', () => {
-    expect(html).toContain("renderDoorKey(e.message === 'crew_key_not_set')");
+    expect(html).toContain("renderDoorKey(e.message === 'crew_key_not_set', e.message)");
     const door = fn('renderDoorKey');
     const notSet = door.slice(door.indexOf('if (notSet) {'), door.indexOf('return;', door.indexOf('if (notSet) {')));
     expect(notSet).toContain('No crew door key has been set up yet');

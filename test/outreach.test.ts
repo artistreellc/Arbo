@@ -22,6 +22,11 @@ import type { QuoSender, SendResult } from '../src/integrations/quoSend.js';
 import type { SonaCallFacts } from '../src/ops/quoExtract.js';
 import { loadAllConfig } from '../src/config/loadConfig.js';
 import { createArborRequestHandler } from '../src/server.js';
+import { ownerFetch } from './ownerKey.js';
+// Audit M1 (2026-10-20): the /api door is locked without APP_ACCESS_KEY in every
+// data mode, so this file sets the owner key before src/env.ts reads it and
+// calls /api with it (test/ownerKey.ts).
+vi.hoisted(() => { process.env.APP_ACCESS_KEY = 'test-owner-key'; });
 
 const DAY = 24 * 60 * 60 * 1000;
 /** A Thursday, 11:00 EDT — inside quiet hours. */
@@ -440,7 +445,7 @@ describe('HTTP + screens', () => {
     const srv = createServer(createArborRequestHandler());
     await new Promise<void>((r) => srv.listen(0, r));
     const base = `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
-    const res = await fetch(`${base}/api/outreach`);
+    const res = await ownerFetch(`${base}/api/outreach`);
     expect(res.status).toBe(503);
     expect(((await res.json()) as { error: string }).error).toBe('quo_not_configured');
     srv.close();

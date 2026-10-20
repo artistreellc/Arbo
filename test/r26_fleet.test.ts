@@ -436,7 +436,7 @@ describe('R26 route — POST /api/fleet/units/:id/sign-back', () => {
       });
       const crew = await post('/api/fleet/units/sim-unit-3/sign-back', 'crew-k');
       expect(crew.status).toBe(401);
-      expect(await crew.json()).toEqual({ error: 'unauthorized' });
+      expect(await crew.json()).toEqual({ error: 'unauthorized', message: 'The crew door key opens the crew door only. This needs the app key.' });
       expect((await post('/api/fleet/units/sim-unit-3/sign-back')).status).toBe(401);
       expect((await post('/api/fleet/units/sim-unit-3/sign-back', 'wrong')).status).toBe(401);
       // The owner key is past the gate and in the handler: practice data has no

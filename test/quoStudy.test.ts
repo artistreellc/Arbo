@@ -9,6 +9,11 @@ import { QuoStudy, type StudyFacts } from '../src/ops/quoStudy.js';
 import { createDriveFolderReader, parseCsv, DriveReadError, type DriveFolderReader } from '../src/integrations/driveRead.js';
 import { QuoHttpError, type QuoApi, type QuoCall, type QuoMessage, type QuoTranscript } from '../src/integrations/quo.js';
 import { createArborRequestHandler } from '../src/server.js';
+import { ownerFetch } from './ownerKey.js';
+// Audit M1 (2026-10-20): the /api door is locked without APP_ACCESS_KEY in every
+// data mode, so this file sets the owner key before src/env.ts reads it and
+// calls /api with it (test/ownerKey.ts).
+vi.hoisted(() => { process.env.APP_ACCESS_KEY = 'test-owner-key'; });
 
 const NOW = Date.parse('2026-09-27T15:00:00Z');
 const MIN = 60_000;
@@ -171,7 +176,7 @@ describe('HTTP + screens', () => {
     const srv = createServer(createArborRequestHandler());
     await new Promise<void>((r) => srv.listen(0, r));
     const base = `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
-    const res = await fetch(`${base}/api/quo/study`);
+    const res = await ownerFetch(`${base}/api/quo/study`);
     expect(res.status).toBe(503);
     expect(((await res.json()) as { error: string }).error).toBe('quo_not_configured');
     srv.close();

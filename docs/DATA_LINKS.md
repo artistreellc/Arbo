@@ -175,8 +175,8 @@ switches and never touched these tables — read-only does not turn them on or o
 
 **Turn it ON** (Mike's call, like every link):
 1. Confirm `APP_ACCESS_KEY` is set on Railway — with no key the `/api` door
-   stays LOCKED in read-only (real rows are never keyless), so the app would
-   show only the key wall.
+   stays LOCKED (in every data mode since the 2026-10-20 audit fix, M1 — real
+   rows are never keyless), so the app would show only the key wall.
 2. Confirm the Supabase project is active (a paused project reads as "couldn't read it").
 3. Set `ARBO_DATA_LINKS=readonly` on Railway. Deploy manually by full SHA.
 4. Verify: the boot line reads `db READ-ONLY (ARBO_DATA_LINKS=readonly) —

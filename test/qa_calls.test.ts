@@ -3,10 +3,15 @@
 // each one inside the function that renders it. §1B throughout: a feed Arbo
 // could not read is NAMED, a link cut on purpose (R21) is not "not set up",
 // and neither one is ever worded as zero.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { createArborRequestHandler } from '../src/server.js';
+import { ownerFetch } from './ownerKey.js';
+// Audit M1 (2026-10-20): the /api door is locked without APP_ACCESS_KEY in every
+// data mode, so this file sets the owner key before src/env.ts reads it and
+// calls /api with it (test/ownerKey.ts).
+vi.hoisted(() => { process.env.APP_ACCESS_KEY = 'test-owner-key'; });
 
 const html = readFileSync(new URL('../src/app/index.html', import.meta.url), 'utf8');
 /** One top-level function's source, from its declaration to its closing brace. */
@@ -41,7 +46,7 @@ describe('the shared Quo panels name why they cannot read', () => {
     const srv = createServer(createArborRequestHandler());
     await new Promise<void>((r) => srv.listen(0, r));
     const base = `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
-    const q = (await (await fetch(`${base}/api/quo`)).json()) as { status: { registration: { detail: string } } };
+    const q = (await (await ownerFetch(`${base}/api/quo`)).json()) as { status: { registration: { detail: string } } };
     srv.close();
     expect(q.status.registration.detail).toContain('Quo isn’t connected to Arbo yet');
     expect(q.status.registration.detail).not.toContain('QUO_API_KEY');

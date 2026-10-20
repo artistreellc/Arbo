@@ -199,6 +199,7 @@ import { InboxSurfaceStore } from './ops/inboxSurface.js';
 import { createOpusIntentModel } from './ops/inboxIntent.js';
 import { createSimSource } from './dev/simSource.js';
 import { Assistant } from './assistant/assistant.js';
+import { KeyAttemptGuard, checkApiDoor, keyFromHeader, clientAddress, accessBootLine } from './server/accessDoor.js';
 
 /**
  * The source the server actually runs on. In SIM mode this is in-memory fake
@@ -611,9 +612,16 @@ const consoleAlerter: Alerter = {
  * nothing unless ARBO_AGENT is exactly 'live' and every id is set.
  * `opts.quoMedia` is the photo-id store (view-only Quo photos, R34); tests
  * hand in one with a fake Quo host. The server builds its own.
+ *
+ * `opts.keyGuard` is the M2 wrong-key limiter; tests hand in one on a fake
+ * clock. Unset, one is built per handler (in memory, capped).
  */
-export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedia?: QuoMediaStore } = {}) {
+export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedia?: QuoMediaStore; keyGuard?: KeyAttemptGuard } = {}) {
   boot(); // validates guardrails + legal or throws
+  const keyGuard = opts.keyGuard ?? new KeyAttemptGuard();
+  // On Railway the edge names the caller in X-Real-IP; with it missing there,
+  // a wrong key is not counted rather than pool every caller into one address.
+  const behindRailway = Boolean(process.env.RAILWAY_ENVIRONMENT_NAME || process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID);
   const alertsProvider = createNwsAlertsProvider((url, init) => fetch(url, init));
   // R26: the owner-only storm-law flag — OpenFEMA, read-only, asked at most
   // once an hour. It never prices; a failed read is named, never 'none'.
@@ -798,19 +806,13 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
       res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
       res.end(JSON.stringify(body));
     };
-    // Lead/brief data is customer PII — the /api surface fails CLOSED (§4.3):
-    // with a key configured it must match; with no key configured it only
-    // opens while the DB is disconnected (nothing to leak). /health and the
-    // voice bridge (own secret) stay outside this gate.
-    const apiAuthorized = (): boolean => {
-      if (env.appAccessKey) {
-        const given = req.headers['x-arbor-key'] ?? url.searchParams.get('key');
-        // R25: the crew key opens the crew door's own routes and nothing else.
-        if (env.crewAccessKey && given === env.crewAccessKey && url.pathname.startsWith('/api/crew/')) return true;
-        return given === env.appAccessKey;
-      }
-      return !hasDb();
-    };
+    // Lead/brief data is customer PII — the /api surface fails CLOSED (§4.3).
+    // The door itself lives in src/server/accessDoor.ts (audit 2026-10-20):
+    // no APP_ACCESS_KEY = LOCKED in every data mode (M1 — Quo, Gmail and the
+    // relays never lived in the database, so "links cut" was never "nothing
+    // to leak"); the key rides the x-arbor-key header only, never ?key= (L1);
+    // constant-time compare (L2); wrong keys limited per connection (M2).
+    // /health and the voice bridge (own secret) stay outside this gate.
     try {
       // §8C.1 the CREW door. Separate surface, separate shell — a crew phone
       // never loads the admin cockpit.
@@ -931,7 +933,11 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=3600' });
         return res.end(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Arbo — ${title}</title><style>body{font-family:system-ui,sans-serif;max-width:640px;margin:40px auto;padding:0 16px;line-height:1.6;color:#1a1a1a}h1{font-size:1.5rem}a{color:#6d28d9}</style></head><body><h1>Arbo — ${title}</h1><p><i>Art-is-Tree LLC · Effective 2026-09-24</i></p>${bodyHtml}</body></html>`);
       }
-      if (req.method === 'GET' && url.pathname === '/health') return send(...unpack(await api.health()));
+      // M2: the wrong-key counts ride /health — counts only, never an address or a key.
+      if (req.method === 'GET' && url.pathname === '/health') {
+        const h = await api.health();
+        return send(h.status, { ...(h.body as Record<string, unknown>), access: keyGuard.counts() });
+      }
       // R19 webhook receivers — PUBLIC paths, each gated by its own
       // signature/secret, exactly like the voice bridge. An unwired source
       // refuses by name; nothing is ever accepted unverified.
@@ -1029,11 +1035,28 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
         return send(out.status, out.body);
       }
       // ═══ end Bouncie (public) ═══
-      if (url.pathname.startsWith('/api/') && !apiAuthorized()) {
-        // D89: with no CREW_ACCESS_KEY there is no crew key to ask for. Say so
-        // by name, so the crew page does not send the office looking for one
-        // (and a crew phone does not end up holding Mike's key instead).
-        return send(401, { error: url.pathname.startsWith('/api/crew/') && env.appAccessKey && !env.crewAccessKey ? 'crew_key_not_set' : 'unauthorized' });
+      if (url.pathname.startsWith('/api/')) {
+        // D89 lives on in checkApiDoor: with no CREW_ACCESS_KEY the crew door
+        // says 'crew_key_not_set' by name, so the crew page does not send the
+        // office looking for one (and a crew phone never ends up holding
+        // Mike's key instead). Every refusal carries a plain `message`.
+        const door = checkApiDoor({
+          pathname: url.pathname,
+          given: keyFromHeader(req.headers),
+          keyInUrl: url.searchParams.has('key'),
+          addr: clientAddress(req, behindRailway),
+          appKey: env.appAccessKey,
+          crewKey: env.crewAccessKey,
+          guard: keyGuard,
+        });
+        if (!door.ok) {
+          res.writeHead(door.status, {
+            'content-type': 'application/json',
+            'cache-control': 'no-store',
+            ...(door.retryAfterSec ? { 'retry-after': String(door.retryAfterSec) } : {}),
+          });
+          return res.end(JSON.stringify(door.body));
+        }
       }
       // R26 (defence in depth): the office's look-only crew preview sends
       // x-arbo-preview: 1 on every request. A crew route that is not a read is
@@ -2012,6 +2035,10 @@ async function wireQuo(intake: QuoIntake, outreach: OutreachEngine | null): Prom
 
 export function startServer(port: number) {
   const summary = boot();
+  // M1: the boot log names whether each door key is set — never a value.
+  const door = accessBootLine(Boolean(env.appAccessKey), Boolean(env.crewAccessKey));
+  if (door.ok) console.log(door.line);
+  else console.error(door.line);
   const server = createServer(createArborRequestHandler());
   // Mike, 2026-08-03: "it needs to run a sweep every 5 mins". The platform
   // scheduler floors at an hour and its routines carry no Gmail connector,

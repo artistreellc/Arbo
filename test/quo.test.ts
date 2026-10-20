@@ -20,6 +20,11 @@ import { loadAllConfig } from '../src/config/loadConfig.js';
 import type { CallHold } from '../src/reception/estimateHold.js';
 import type { SonaCallFacts } from '../src/ops/quoExtract.js';
 import { createArborRequestHandler } from '../src/server.js';
+import { ownerFetch } from './ownerKey.js';
+// Audit M1 (2026-10-20): the /api door is locked without APP_ACCESS_KEY in every
+// data mode, so this file sets the owner key before src/env.ts reads it and
+// calls /api with it (test/ownerKey.ts).
+vi.hoisted(() => { process.env.APP_ACCESS_KEY = 'test-owner-key'; });
 
 const NOW = Date.parse('2026-09-24T15:00:00Z');
 const KEY = Buffer.from('arbo-test-signing-key-32-bytes!!').toString('base64');
@@ -533,7 +538,7 @@ describe('Quo HTTP surface and screens', () => {
     const base = `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
     const hook = await fetch(`${base}/webhooks/quo`, { method: 'POST', body: '{}' });
     expect(hook.status).toBe(503);
-    const q = (await (await fetch(`${base}/api/quo`)).json()) as { status: { registration: { state: string; detail: string } } };
+    const q = (await (await ownerFetch(`${base}/api/quo`)).json()) as { status: { registration: { state: string; detail: string } } };
     expect(q.status.registration.state).toBe('not_configured');
     expect(q.status.registration.detail).toContain('That doesn’t mean no calls came in.');
     srv.close();

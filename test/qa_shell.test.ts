@@ -133,6 +133,7 @@ describe('the key screen', () => {
       refreshActiveMoreView: () => { log.push('refreshMoreDesk'); },
       localStorage: { setItem: (k: string, v: string) => { saved.push(k + '=' + v); } },
       KEY: '',
+      KEY_REFUSED: {}, // the server-named refusals (audit M1/M2) — test/accessDoorUi.test.ts
     });
     await unlock();
     return { log, saved, busy, button: [els.keygo.disabled, els.keygo.textContent], err: els.keyerr.textContent };

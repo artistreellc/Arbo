@@ -15,11 +15,34 @@ Mike's own look at the crew page is the **Crew** tile in More, or the
 **Crew preview** shortcut on the installed app's icon (press and hold). It is
 look-only: nothing there signs, files or clocks in (R26).
 
-The crew door key is the Railway variable **`CREW_ACCESS_KEY`** — pick any
-long phrase, set it on Railway, give it to the crew. It opens the crew
+The crew door key is the Railway variable **`CREW_ACCESS_KEY`** — set it on
+Railway, give it to the crew. It opens the crew
 routes only; it can never open Mike's side. Until it is set, a crew phone
 shows "the crew door key isn't set up yet — ask Mike" and asks for nothing
 (a phone already holding a working key keeps working).
+
+**Making the two keys (audit 2026-10-20, M2).** `APP_ACCESS_KEY` (Mike's) and
+`CREW_ACCESS_KEY` (the crew's) are the only things between the public address
+and live Quo transcripts and the customer text button, so make each one
+random, not a memorable phrase. On any computer with Node:
+`node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`
+— run it once per key, paste each into Railway, deploy, and enter it once per
+phone. How the door treats them now:
+
+- **No `APP_ACCESS_KEY` = Arbo is locked.** Every `/api` route answers
+  `401 no_app_key` in every data mode, and the app's key screen says the
+  server has no key. (It used to open with no key while the links were cut.)
+- **The key travels in the `x-arbor-key` header only.** A `?key=` in a web
+  address is refused. The app and the iPhone Shortcuts already use the header.
+  (The Railway and Twilio *webhook* addresses keep their own `?key=` secrets —
+  those are separate keys for services that cannot send headers.)
+- **Wrong guesses are slowed.** Ten *different* wrong keys from one connection
+  inside ten minutes, and that connection gets one key check a minute for the
+  next fifteen (429, "Too many wrong keys from this connection"). A phone still
+  holding an old key after a change counts once, never ten times. The right key
+  opens on the next check — at most a minute — or at once from another network
+  (Wi-Fi ↔ cellular). `/health` shows the counts under `access`, never an
+  address or a key.
 
 ## 2. What to field-test (links still cut — nothing live is touched)
 

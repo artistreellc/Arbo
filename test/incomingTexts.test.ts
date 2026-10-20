@@ -7,6 +7,11 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { WebhookIntake } from '../src/ops/webhooks.js';
 import { createArborRequestHandler } from '../src/server.js';
+import { ownerFetch } from './ownerKey.js';
+// Audit M1 (2026-10-20): the /api door is locked without APP_ACCESS_KEY in every
+// data mode, so this file sets the owner key before src/env.ts reads it and
+// calls /api with it (test/ownerKey.ts).
+vi.hoisted(() => { process.env.APP_ACCESS_KEY = 'test-owner-key'; });
 
 const NOW = Date.parse('2026-09-24T12:00:00Z');
 const form = (o: Record<string, string>) => new URLSearchParams(o).toString();
@@ -73,10 +78,11 @@ describe('Twilio text HTTP surface', () => {
     const base = `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
     const hook = await fetch(`${base}/webhooks/twilio/sms?key=x`, { method: 'POST', body: 'Body=hi' });
     expect(hook.status).toBe(503);
-    // Customers' texts are held in memory: with no APP_ACCESS_KEY the list is locked, by name.
-    const locked = await fetch(`${base}/api/webhooks/texts`);
-    expect(locked.status).toBe(401);
-    expect(await locked.json()).toMatchObject({ error: 'no_app_key' });
+    // Customers' texts are held in memory: without the owner key the list is locked.
+    expect((await fetch(`${base}/api/webhooks/texts`)).status).toBe(401);
+    const t0 = (await (await ownerFetch(`${base}/api/webhooks/texts`)).json()) as { wired: boolean; note: string };
+    expect(t0.wired).toBe(false);
+    expect(t0.note).toContain('never replies');
     srv.close();
     const saved = { ...process.env };
     try {
@@ -91,6 +97,17 @@ describe('Twilio text HTTP surface', () => {
       expect(t.wired).toBe(false);
       expect(t.note).toContain('never replies');
       keyed.close();
+      // With no APP_ACCESS_KEY at all the list is locked, by name.
+      vi.resetModules();
+      delete process.env.APP_ACCESS_KEY;
+      const { createArborRequestHandler: keyless } = await import('../src/server.js');
+      const bare = createServer(keyless());
+      await new Promise<void>((r) => bare.listen(0, r));
+      const bbase = `http://127.0.0.1:${(bare.address() as { port: number }).port}`;
+      const locked = await fetch(`${bbase}/api/webhooks/texts`);
+      expect(locked.status).toBe(401);
+      expect(await locked.json()).toMatchObject({ error: 'no_app_key' });
+      bare.close();
     } finally {
       process.env = { ...saved };
       vi.resetModules();

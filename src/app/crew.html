@@ -1026,16 +1026,25 @@ function renderWhoAmI() {
 // R25: the crew door has its own key (CREW_ACCESS_KEY). It opens the crew
 // routes only. Asked once per phone, and only when the server says the door
 // is locked — never guessed at, never shown as "nothing today".
-function renderDoorKey(notSet) {
+function renderDoorKey(notSet, why) {
   // Hide (not just empty) the other panels: their own 401s land later and
   // must not paint an "unavailable" line under a locked door.
   document.querySelector('main').classList.add('door-locked');
   const box = $('whoami');
   box.replaceChildren();
+  // Audit 2026-10-20: two states the server names that no key on this phone
+  // fixes right now — no app key set on the server at all (M1), and too many
+  // wrong keys from this connection (M2, one key check a minute for now).
+  const SLOWED = 'Too many wrong keys from this connection. Wait a minute, then try the key again — or switch between Wi-Fi and cellular.';
   if (PREVIEW) {
     // R26: the preview never asks for the crew door key. It opens with the
     // office app's key, and the server would not take the one on this phone.
     box.hidden = false;
+    if (why === 'no_app_key' || why === 'too_many_attempts') {
+      box.appendChild(el('h2', '', why === 'no_app_key' ? 'Arbo is locked' : 'Too many wrong keys'));
+      box.appendChild(el('p', '', why === 'no_app_key' ? 'Arbo’s server has no app key set (APP_ACCESS_KEY), so nothing opens yet. Set it on Railway and deploy again.' : SLOWED));
+      return;
+    }
     box.appendChild(el('h2', '', 'Office key needed'));
     box.appendChild(el('p', '', 'The preview opens with the office app’s key, and this phone has none that works. Open it from the office app — More, then Crew — on a phone signed in to it.'));
     return;
@@ -1047,6 +1056,11 @@ function renderDoorKey(notSet) {
     // that works (Mike's own), and that key must never live on a crew phone.
     // No field on purpose.
     box.appendChild(el('p', '', 'No crew door key has been set up yet. Ask Mike to set one. Don\u2019t put the office app key on a crew phone.'));
+    return;
+  }
+  if (why === 'no_app_key') {
+    // M1: nothing opens until the office sets Arbo's own key. No field on purpose.
+    box.appendChild(el('p', '', 'The crew door is locked on the server right now \u2014 no key opens it until the office sets Arbo\u2019s key. Tell the office.'));
     return;
   }
   box.appendChild(el('p', '', 'One more step: the crew door key from the office. It is not your crew code \u2014 it is one phrase the whole crew shares. You only enter it once on this phone.'));
@@ -1063,7 +1077,7 @@ function renderDoorKey(notSet) {
     show.textContent = hidden ? 'Hide key' : 'Show key';
   });
   const go = el('button', '', 'Open the crew door');
-  const err = el('div', 'errline', KEY ? 'That key did not open the door \u2014 check it with the office.' : '');
+  const err = el('div', 'errline', why === 'too_many_attempts' ? SLOWED : KEY ? 'That key did not open the door \u2014 check it with the office.' : '');
   go.addEventListener('click', () => {
     const v = input.value.trim();
     if (!v) { err.textContent = 'Enter the key from the office.'; return; }
@@ -1134,7 +1148,8 @@ if (renderWhoAmI()) {
   renderLibrary();
   renderNearMiss();
   api('/api/crew/briefing').then(renderGate).catch(async (e) => {
-    if (e.code === 401) return renderDoorKey(e.message === 'crew_key_not_set');
+    // The gate's 429 (too many wrong keys from this connection) is the door card's too, with the server's reason.
+    if (e.code === 401 || e.code === 429) return renderDoorKey(e.message === 'crew_key_not_set', e.message);
     document.querySelector('main').classList.remove('door-locked'); // the door answered: show the panels
     if (e.code === 404) {
       $('gate-slot').appendChild(el('div', 'state', 'No briefing published for today yet — check with the office.'));

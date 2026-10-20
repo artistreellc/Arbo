@@ -40,9 +40,14 @@
 
   Remember the marker: SLOW::ARBO
 */
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, afterAll, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { createArborRequestHandler } from '../src/server.js';
+import { ownerFetch } from './ownerKey.js';
+// Audit M1 (2026-10-20): the /api door is locked without APP_ACCESS_KEY in every
+// data mode, so this file sets the owner key before src/env.ts reads it and
+// calls /api with it (test/ownerKey.ts).
+vi.hoisted(() => { process.env.APP_ACCESS_KEY = 'test-owner-key'; });
 import { channelIsOff, SEASONAL_CHANNELS_OFF } from '../src/reception/leadMail.js';
 import { getTodayWorkZip, setTodayWorkZip, setLocationEnabled, getLiveWorkZip } from '../src/reception/routingHint.js';
 
@@ -67,7 +72,7 @@ afterAll(() => {
 describe('lead channel settings API', () => {
   it('GET lists every channel with its live state and the reset-on-deploy honesty note', async () => {
     const base = await listen();
-    const res = await fetch(`${base}/api/settings/channels`);
+    const res = await ownerFetch(`${base}/api/settings/channels`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { channels: Array<{ id: string; label: string; on: boolean }>; note: string };
     expect(body.channels.length).toBe(8);
@@ -79,14 +84,14 @@ describe('lead channel settings API', () => {
 
   it('POST flips a channel and the classifier obeys immediately', async () => {
     const base = server ? `http://127.0.0.1:${(server.address() as { port: number }).port}` : await listen();
-    const off = await fetch(`${base}/api/settings/channels`, {
+    const off = await ownerFetch(`${base}/api/settings/channels`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id: 'yelp', on: false }),
     });
     expect(off.status).toBe(200);
     expect(await off.json()).toEqual({ id: 'yelp', on: false });
     expect(channelIsOff('yelp')).toBe(true);
-    const on = await fetch(`${base}/api/settings/channels`, {
+    const on = await ownerFetch(`${base}/api/settings/channels`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id: 'yelp', on: true }),
     });
@@ -96,12 +101,12 @@ describe('lead channel settings API', () => {
 
   it('rejects an unknown channel and a missing toggle — 400, nothing changed', async () => {
     const base = server ? `http://127.0.0.1:${(server.address() as { port: number }).port}` : await listen();
-    const bad = await fetch(`${base}/api/settings/channels`, {
+    const bad = await ownerFetch(`${base}/api/settings/channels`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id: 'carrier_pigeon', on: false }),
     });
     expect(bad.status).toBe(400);
-    const noToggle = await fetch(`${base}/api/settings/channels`, {
+    const noToggle = await ownerFetch(`${base}/api/settings/channels`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id: 'yelp' }),
     });
@@ -113,23 +118,23 @@ describe('lead channel settings API', () => {
 describe('today work ZIP settings API (R15)', () => {
   it('GET starts null with the honesty note; POST sets, clears, and validates', async () => {
     const base = server ? `http://127.0.0.1:${(server.address() as { port: number }).port}` : await listen();
-    const g0 = await (await fetch(`${base}/api/settings/route`)).json() as { workZip: string | null; note: string };
+    const g0 = await (await ownerFetch(`${base}/api/settings/route`)).json() as { workZip: string | null; note: string };
     expect(g0.workZip).toBeNull();
     expect(g0.note).toContain('resets on redeploy');
 
-    const setRes = await fetch(`${base}/api/settings/route`, {
+    const setRes = await ownerFetch(`${base}/api/settings/route`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workZip: '23452' }),
     });
     expect(await setRes.json()).toEqual({ workZip: '23452' });
     expect(getTodayWorkZip()).toBe('23452');
 
-    const bad = await fetch(`${base}/api/settings/route`, {
+    const bad = await ownerFetch(`${base}/api/settings/route`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workZip: 'abc' }),
     });
     expect(bad.status).toBe(400);
     expect(getTodayWorkZip()).toBe('23452'); // nothing changed on a bad input
 
-    const clear = await fetch(`${base}/api/settings/route`, {
+    const clear = await ownerFetch(`${base}/api/settings/route`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workZip: null }),
     });
     expect(await clear.json()).toEqual({ workZip: null });
@@ -140,24 +145,24 @@ describe('today work ZIP settings API (R15)', () => {
 describe('live location intake + toggle (R15/R16)', () => {
   it('toggle OFF refuses pings with a NAMED reason and clears state; ON accepts in-window', async () => {
     const base = server ? `http://127.0.0.1:${(server.address() as { port: number }).port}` : await listen();
-    await fetch(`${base}/api/settings/location`, {
+    await ownerFetch(`${base}/api/settings/location`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: false }),
     });
-    const refused = await fetch(`${base}/api/location/zip`, {
+    const refused = await ownerFetch(`${base}/api/location/zip`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ zip: '23452' }),
     });
     expect(refused.status).toBe(403);
     expect(await refused.json()).toEqual({ error: 'location_off' });
     expect(getLiveWorkZip(Date.now())).toBeNull();
 
-    await fetch(`${base}/api/settings/location`, {
+    await ownerFetch(`${base}/api/settings/location`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: true }),
     });
-    const g = await (await fetch(`${base}/api/settings/route`)).json() as { location: { enabled: boolean } };
+    const g = await (await ownerFetch(`${base}/api/settings/route`)).json() as { location: { enabled: boolean } };
     expect(g.location.enabled).toBe(true);
     // In-window acceptance is covered by the pure-store tests; the endpoint
     // itself is clock-dependent here, so only the named refusals are pinned.
-    const bad = await fetch(`${base}/api/location/zip`, {
+    const bad = await ownerFetch(`${base}/api/location/zip`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ zip: 'nope' }),
     });
     expect([400, 403]).toContain(bad.status); // bad zip in-window, or after_hours when CI runs at night — both refuse
