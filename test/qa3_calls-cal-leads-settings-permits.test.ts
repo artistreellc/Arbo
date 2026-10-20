@@ -311,6 +311,7 @@ async function buildSettings(over: Record<string, Route> = {}, post?: (path: str
     showSaveFail: (_box: Node, e: unknown) => { saveFails.push(e); },
     saveFailText: () => '', fmtTime: () => '', renderSettings: rerender,
     themePref: () => 'auto', setTheme: () => {},
+    bouncieSettings: async () => {}, // R31: the Bouncie card has its own tests (test/bouncie.test.ts)
   });
   await build(v, 1);
   const texts = () => v.all().map((n) => n.textContent).filter(Boolean);

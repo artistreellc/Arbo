@@ -53,7 +53,7 @@ const OK_ROUTES: Record<string, Route> = {
   '/api/webhooks': { sources: { resend: { configured: false, received: 0 }, railway: { configured: true, received: 0 } }, cut: [] },
   '/api/quo': { status: { registration: { state: 'ok' }, received: 0 } },
 };
-async function build(over: Record<string, Route> = {}) {
+async function build(over: Record<string, Route> = {}, deps: Record<string, unknown> = {}) {
   const v = node();
   const keywall = vi.fn();
   const buildSettings = pageFn<(v: N, gen: number) => Promise<void>>('buildSettings', {
@@ -70,10 +70,39 @@ async function build(over: Record<string, Route> = {}) {
     showKeywall: keywall,
     showSaveFail: () => {}, saveFailText: () => '', fmtTime: () => '', renderSettings: () => {},
     themePref: () => 'auto', setTheme: () => {},
+    bouncieSettings: async () => {}, // R31: the Bouncie card has its own tests (test/bouncie.test.ts)
+    ...deps,
   });
   await buildSettings(v, 1);
   return { v, keywall };
 }
+
+describe('a slow Bouncie never holds Settings up (R31 review)', () => {
+  it('the card fills its own slot; the data links below draw without waiting for it', async () => {
+    let release: () => void = () => {};
+    const slots: N[] = [];
+    const { v } = await build({}, {
+      bouncieSettings: (slot: N) => {
+        slots.push(slot);
+        slot.appendChild(node('div', 'panel-title', 'Bouncie (truck tracking)'));
+        return new Promise<void>((r) => { release = r; }); // Bouncie hanging on its 8 s deadline
+      },
+    });
+    // build() returned while the Bouncie read is still out.
+    const t = texts(v);
+    expect(t.indexOf('Bouncie (truck tracking)')).toBeGreaterThan(-1);
+    expect(t.indexOf('Data links')).toBeGreaterThan(t.indexOf('Bouncie (truck tracking)'));
+    expect(slots).toHaveLength(1);
+    expect(v.children).toContain(slots[0]);
+    release();
+  });
+
+  it('a card that breaks is named in its slot, never left blank', async () => {
+    const { v } = await build({}, { bouncieSettings: async () => { throw new Error('boom'); } });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(texts(v)).toContain('Bouncie status');
+  });
+});
 
 describe('Settings swaps in one go after the first visit (ST1)', () => {
   function harness(firstChild: unknown) {

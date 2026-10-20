@@ -740,3 +740,150 @@ where he did not say (Mike may change any):
    second, independent translation pass, and safety text is back-translated.
    Before crews rely on it, a Spanish-speaking crew member reads the safety
    briefing and the quiz on a phone and says it reads right.
+
+## R29 — The layout review answers: Direction B, and sixteen more (Mike, 2026-10-20)
+
+*(R28, the hosted assistant, is filed with its own build.)*
+
+Mike answered every question on the Arbo Layout Review page (his taps, read
+back from the page's database on 2026-10-20). His words where he typed any:
+
+1. **Direction B — screens named for the job.** The dock becomes Today ·
+   Leads · Calendar · Estimate · Office; every hub shows live counts and every
+   tap lands on the exact thing. (Yes: fold Calls into Leads as a "Calls &
+   texts" segment, with a red Sona flag just as loud; split Queue into
+   Follow-ups, Money, Fleet, Crew & safety, with the R26 desk name as the small
+   line above each title; move Yard check into Estimate; one feeds card per
+   screen that still names every dead feed, §1B; build the 15 quick fixes
+   first.)
+2. **Back stays as built** — the labeled ‹ Back on every screen except Today,
+   dock tabs included.
+3. **Spanish (R27):** address the crew as *usted*; the crew door first, the
+   office app next, the long owner-only text last; a Spanish-reading crew
+   member checks the briefing, quiz and work orders on a phone before crews
+   rely on them — Mike's note: *"rudy or marco or temo"*.
+4. **Call scripts:** a downed power line with nobody hurt keeps the **Dominion
+   line only — NOT 911** (Mike chose no; his note: *"call dominion"*). A
+   blocked date promise is replaced with *"Let's get you on the schedule —
+   Mike will confirm the exact time."* A blocked goodbye still closes warmly
+   ("Have a good one") before the call ends. Emergency detection stays
+   sensitive even if "hurt the tree" sometimes alerts.
+5. **Trucks:** a "Brakes or steering" checkbox on the breakdown sheet holds
+   the unit in one tap; the word list stays as the backup.
+6. **Leads:** tapping Good lead on an emergency counts as handling the alarm
+   (built in R26, confirmed).
+7. **Database:** restore the paused Supabase project. Done 2026-10-20
+   (ACTIVE_HEALTHY); migration 0020 (the brake hold) applied live and checked.
+
+**The 11 mistaken job rows (Mike, 2026-10-20: "Delete the 11").** The §3
+lesson's 11 `job` rows (status booked, written 2026-08-02, dated Aug 3–4)
+were still in the database. Before reading any real data, Mike chose to
+delete them. A full copy was made first — `archive.job_mistaken_import_20260802`,
+in its own schema with every grant revoked, verified identical row for row.
+The delete removes only those 11 rows (`delete from public.job where id in
+(select id from archive.job_mistaken_import_20260802);`). Supabase's tool
+would not run a delete from Claude's session, so Mike runs that one line in
+the Supabase SQL editor and Claude checks the counts after. His 37 leads, 26
+contacts and 14 properties are untouched. Restore, if ever wanted:
+`insert into public.job select * from archive.job_mistaken_import_20260802;`
+
+## R30 — Talk: tap a button in Arbo and talk to it, no third party (Mike, 2026-10-20)
+
+Mike, verbatim: *"i need their to be a voice feature for when im driving and
+it can update me"* — offered three ways, he picked *"Talk back and forth"* —
+then: *"no i want to tap a button in arbo and i can talk to it no third
+party"*.
+
+What this changes:
+1. **A Talk button inside Arbo**, in the header of every screen. One tap opens
+   Talk and starts it: Arbo speaks a short update, then answers questions out
+   loud, hands-free, until Mike says "that's all" / "stop" / "goodbye", taps
+   End, leaves Talk, or locks the phone.
+2. **No third party for the voice.** The iPhone's own speech listens and
+   speaks (the browser's built-in recognition and voice). No ElevenLabs, no
+   Twilio, no Claude app, no connector, no new vendor or account, no new
+   dependency. The thinking is Arbo's existing brain (`BRAIN_MODEL`, R5) on
+   the `ANTHROPIC_API_KEY` already set — the same brain the desks use.
+3. **Read-only, structurally.** `POST /api/talk` has four tools — the update,
+   Sona's calls, today's stops and work orders, the trucks — each built on
+   the reads the app's screens already make. None can send, book, edit, file,
+   approve, sign a truck back on, or write anything; there is no tool that
+   could. A feed that is cut or unreadable is named, never a zero (§1B).
+
+Defaults Claude used where Mike did not say (he may change any):
+- Arbo says customer **names** (the app already shows them, R17) but never a
+  phone number, email or street address — "call back from the Arbo app".
+- Every answer passes the brain's guard (no price, no promised day, permit
+  words only, never "clear", no phone number, and never a claim that Arbo
+  sent, booked or changed something — it cannot). A blocked answer is sent
+  back to the brain once with the rule named; blocked again, it becomes "I
+  can't say that one out loud". The guard was written for callers, so a few
+  harmless owner questions are held back too (anything about Suffolk,
+  "TCIA", a dollar figure).
+- A customer's name or city reaches the brain short and plain (letters only,
+  40 characters at most), so a caller's own words cannot steer what Arbo says.
+- After three quiet listens in a row it stops listening ("Tap Start when you
+  need me") rather than leave the mic open in the truck.
+- The first listen of a launch waits up to 20 seconds for the iPhone's
+  "Allow" prompt. Only a REFUSED mic switches Talk to typing for the rest of
+  the launch; a mic taken by a call or Siri, or one that never opened, types
+  for now and is tried again on the next Start.
+- Not in Talk yet (each one more tool, on Mike's word): who is waiting on
+  Mike from the R24 customer study, and R28 approvals.
+
+Open — Mike's call, not a build's: **two things are called "Talk"**. The new
+header button is this ruling. The More tile "Talk / Voice with Arbo" and
+Today's "Talk to Arbo" button still open the old receptionist page (R21: off
+while Sona answers calls). Renaming those (e.g. "Phone line / Arbo's
+receptionist") is an R21 surface, so it waits for Mike's word.
+
+Open — Mike's call, not a build's: whether the **installed home-screen app**
+can listen on his iPhone is not something Apple has promised. If it cannot,
+Talk falls back to a typing box (the keyboard's own mic still works). The
+choices then are (a) use Talk from a Safari tab, or (b) one tap per question
+with the keyboard mic. Field test first (docs/GO_LIVE.md §6).
+
+What did NOT move: R21 — the ElevenLabs/Twilio links and the old `/talk`
+receptionist page stay cut; Talk does not use the receptionist or its prompt.
+Data links stay cut (§3, R19). Logs stay counts-and-ids (§4.3) — the log line
+for a turn is counts and milliseconds, never a word said. The route sits
+behind the owner key; the crew key never opens it, and with no
+`APP_ACCESS_KEY` it is locked.
+
+*Carried by:* `src/voice/ownerTalk.ts`, `src/server.ts` (`POST /api/talk`),
+`src/app/index.html` (the Talk block and sheet), `src/app/sprite.svg`
+(`i-mic`), `test/ownerTalk.test.ts`.
+
+## R31 — Bouncie truck tracking, built dormant (Mike, 2026-10-20)
+
+Mike, verbatim: *"how do i add the bouncie api keys for live tracking"*, then
+*"why dont you build and then i add later"*.
+
+1. **Truck positions for Mike only.** The Bouncie OBD trackers report where
+   each truck is; Arbo shows it on the Fleet card as one line per unit in
+   words (never coordinates on the card) and serves it to the coming map
+   screen from one owner-only route. The crew door and the crew key never
+   reach it; the policy engine already walls `tracking`/`bouncie` off every
+   crew surface.
+2. **Mike's own switches, all off until he acts.** `BOUNCIE_CLIENT_ID` and
+   `BOUNCIE_CLIENT_SECRET` on Railway, then Settings → Connect Bouncie, then
+   the webhook in Bouncie's portal with `BOUNCIE_WEBHOOK_KEY`, then
+   `ARBO_LINK_BOUNCIE` exactly `live` (fail-closed, like R21). Until then an
+   authentic Bouncie update is answered (so Bouncie never switches the
+   webhook off) and dropped unread, counted by name in Settings.
+   Steps: `docs/BOUNCIE.md`.
+3. **Read only, memory only.** One sign-in (Bouncie's own approval page,
+   started behind the owner key) and GET reads; the only POST is the sign-in
+   token swap. Nothing is written to Bouncie and nothing goes into Arbo's
+   database. The sign-in is kept on the storage disk, like Google's.
+
+Defaults Claude used (Mike may change either): positions show around the
+clock (not the office phone's 8am–8pm Mon–Sat hours); the sign-in is not
+refreshed while positions are cut, so turning them on may need one Reconnect.
+
+What did NOT move: §3 — nothing imported; R4 — sweeps read-only; §4.3 — logs
+carry counts and the last 4 of a device id at most, never a place or a VIN;
+agents still cannot send or spend; deploys stay manual.
+
+*Carried by:* `src/integrations/bouncie.ts`, `src/server.ts` (the Bouncie
+blocks), `src/app/index.html` (Settings card, Fleet line), `test/bouncie.test.ts`.

@@ -67,6 +67,7 @@ import { createSonaExtractor } from './ops/quoExtract.js';
 import { QuoStudy, createStudyReader } from './ops/quoStudy.js';
 import { createDriveFolderReader } from './integrations/driveRead.js';
 import { GoogleTokenStore, googleCreds, consentUrl, codeFrom, exchangeCode, GOOGLE_SCOPES } from './integrations/googleTokenStore.js';
+import { Bouncie, callbackPage, type UnitLite } from './integrations/bouncie.js';
 import { createQuoApi, ensureQuoWebhooks } from './integrations/quo.js';
 import { createQuoSender } from './integrations/quoSend.js';
 import { OutreachEngine } from './ops/outreach.js';
@@ -167,6 +168,7 @@ import { createStormLawCheck } from './ops/stormLaw.js';
 import { loadAllConfig } from './config/loadConfig.js';
 import { env } from './env.js';
 import { createVoiceLlm } from './voice/anthropicLlm.js';
+import { createOwnerTalk, talkReadsFrom, anthropicTalkModel } from './voice/ownerTalk.js';
 import { createElevenLabsBridge, type BridgeRequestBody } from './voice/elevenlabsBridge.js';
 import { createGoogleGmailReader, createGoogleGmailThreadReader } from './integrations/gmail.js';
 import { createGoogleCalendarApi } from './integrations/calendar.js';
@@ -524,6 +526,23 @@ async function readRawBody(req: IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
+/**
+ * Bouncie's webhook body, or null when it is over 1 MB. A body over the cap is
+ * read to the end and dropped, never thrown: throwing out of the loop destroys
+ * the socket, so Bouncie would see a reset (and retry, then switch the webhook
+ * off) instead of the 200 every authentic call gets. Only a caller that passed
+ * the key check reaches this.
+ */
+async function readBouncieBody(req: IncomingMessage): Promise<string | null> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    if (size <= 1_000_000) chunks.push(chunk as Buffer);
+  }
+  return size > 1_000_000 ? null : Buffer.concat(chunks).toString('utf8');
+}
+
 async function readJson(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
@@ -624,6 +643,16 @@ export function createArborRequestHandler() {
     fetchEmail: env.resend.apiKey ? createResendEmailFetcher(env.resend.apiKey) : null,
   });
 
+  // ═══ R31 — Bouncie truck tracking (docs/BOUNCIE.md). Owner only, read
+  // only, memory only; dormant until Mike adds the keys, connects, and sets
+  // ARBO_LINK_BOUNCIE=live. The boot line names each state, never a secret. ═══
+  const bouncie = new Bouncie({
+    clientId: env.bouncie.clientId ?? null,
+    clientSecret: env.bouncie.clientSecret ?? null,
+    webhookKey: env.bouncie.webhookKey ?? null,
+  });
+  console.log(`[bouncie] ${bouncie.bootLine()}`);
+
   // Sona's calls via Quo (Mike, 2026-09-24: "auto do it"). Same R18 stores
   // as Arbo's own calls; keys and numbers arrive when startServer registers.
   // R22: the one outbound path — the "still interested in a quote?" text via
@@ -658,6 +687,19 @@ export function createArborRequestHandler() {
       })
     : null;
   currentQuoStudy = quoStudy;
+  // R30 (Mike, 2026-10-20: "i want to tap a button in arbo and i can talk to
+  // it no third party"): Talk. The iPhone listens and speaks; this is Arbo's
+  // own brain with READ-ONLY tools over the same reads the screens make. Not
+  // the receptionist, and no ElevenLabs or Twilio (R21). No key = 503 by name.
+  const ownerTalk = createOwnerTalk({
+    model: env.anthropic.apiKey ? anthropicTalkModel(env.anthropic.apiKey) : null,
+    reads: talkReadsFrom({
+      api,
+      quo: () => ({ status: quoIntake.status(), calls: quoIntake.list() }),
+      stormLaw: () => stormLaw.status(),
+      mode: () => (dataLinksSim() ? 'sim' : dataLinksLive() ? 'live' : 'cut'),
+    }),
+  });
   if (quoApi && env.quoApiKey) {
     outreach = new OutreachEngine({
       quo: quoApi,
@@ -897,6 +939,27 @@ export function createArborRequestHandler() {
         res.writeHead(200, { 'content-type': 'text/xml', 'cache-control': 'no-store' });
         return res.end('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
       }
+      // ═══ R31 — Bouncie's two PUBLIC doors, each with its own lock ═══
+      // The sign-in callback: it only finishes a sign-in Arbo started behind
+      // the owner key (single-use state, ten minutes). The page never repeats
+      // the code or the state, and is never cached or sent on as a referrer.
+      if (req.method === 'GET' && url.pathname === '/bouncie/callback') {
+        const r = await bouncie.finishConnect({ code: url.searchParams.get('code'), state: url.searchParams.get('state') });
+        res.writeHead(r.status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
+        return res.end(callbackPage(r));
+      }
+      // Live updates: the key Mike chose, checked in constant time before the
+      // body is read. An authentic call is answered 200 even when its data is
+      // dropped, so Bouncie never switches the webhook off. send() sets no
+      // Authorization header — Bouncie would take one as a new webhook key.
+      if (req.method === 'POST' && url.pathname === '/webhooks/bouncie') {
+        const out = await bouncie.handleWebhook(
+          { authorization: req.headers.authorization, xBouncie: req.headers['x-bouncie-authorization'] },
+          () => readBouncieBody(req), // over 1 MB: drained, dropped and counted — still a 200, never a reset
+        );
+        return send(out.status, out.body);
+      }
+      // ═══ end Bouncie (public) ═══
       if (url.pathname.startsWith('/api/') && !apiAuthorized()) {
         // D89: with no CREW_ACCESS_KEY there is no crew key to ask for. Say so
         // by name, so the crew page does not send the office looking for one
@@ -925,6 +988,13 @@ export function createArborRequestHandler() {
       // admin key like every /api route — the crew key never opens it.
       if (req.method === 'GET' && url.pathname === '/api/storm/law') {
         return send(200, await stormLaw.status());
+      }
+      // R30: Talk — one turn of Mike's spoken conversation. Behind the admin
+      // key like every /api route (the crew key never opens it), and locked
+      // with no APP_ACCESS_KEY at all: customer names ride the answers (R24).
+      if (req.method === 'POST' && url.pathname === '/api/talk') {
+        if (!env.appAccessKey) return send(401, { error: 'no_app_key', message: 'APP_ACCESS_KEY is not set — Talk is locked until it is.' });
+        return send(...unpack(await ownerTalk.handle(await readJson(req))));
       }
       if (req.method === 'GET' && url.pathname === '/api/brief/audio' && !vendorLinked('elevenlabs')) {
         return send(503, vendorCutBody('elevenlabs'));
@@ -1208,6 +1278,34 @@ export function createArborRequestHandler() {
       if (req.method === 'GET' && url.pathname === '/api/fleet/units') {
         return send(...unpack(await api.fleetUnits()));
       }
+      // ═══ R31 — Bouncie, OWNER ONLY. The gate above lets the crew key
+      // into /api/crew/* alone, and with no APP_ACCESS_KEY these stay locked
+      // even while the database is cut — truck positions are not "nothing to leak". ═══
+      if (url.pathname === '/api/bouncie' || url.pathname === '/api/bouncie/connect' || url.pathname === '/api/fleet/positions') {
+        if (!env.appAccessKey) return send(401, { error: 'no_app_key', message: 'APP_ACCESS_KEY is not set — truck tracking is locked until it is.' });
+        if (req.method === 'GET' && url.pathname === '/api/bouncie') return send(200, await bouncie.status());
+        if (req.method === 'POST' && url.pathname === '/api/bouncie/connect') {
+          const c = bouncie.beginConnect();
+          return c.ok
+            ? send(200, { authorizeUrl: c.authorizeUrl })
+            : send(503, { error: c.error, message: 'BOUNCIE_CLIENT_ID and BOUNCIE_CLIENT_SECRET are not on Railway yet.' });
+        }
+        // MAP HOOK: the upcoming map screen reads this same route — per-truck
+        // lat/lon, age and state. The Fleet card reads it too, but never shows a coordinate.
+        if (req.method === 'GET' && url.pathname === '/api/fleet/positions') {
+          let units: { ok: true; units: UnitLite[] } | { ok: false; error: string };
+          try {
+            const f = await api.fleetUnits();
+            const b = f.body as { units?: UnitLite[]; error?: string };
+            units = f.status === 200 && Array.isArray(b.units) ? { ok: true, units: b.units } : { ok: false, error: b.error ?? 'unreadable' };
+          } catch (err) {
+            // The Fleet list could not be read: trucks still list, unmatched, and the reason is named.
+            units = { ok: false, error: err instanceof LinkCutError ? 'link_cut' : 'unreadable' };
+          }
+          return send(200, await bouncie.positions(units));
+        }
+      }
+      // ═══ end Bouncie (owner) ═══
       if (req.method === 'POST' && url.pathname === '/api/fleet/breakdown') {
         return send(...unpack(await api.reportBreakdown((await readJson(req)) as Record<string, unknown>)));
       }
