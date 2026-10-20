@@ -5,9 +5,16 @@
 // the approvals it asks for.
 //
 // The surface is deliberately narrow: start a session with its one first
-// message, read its events, and send a tool CONFIRMATION. There is no method
-// that sends a second user.message, edits an agent, or touches a vault — a
-// caller cannot ask for what the type cannot express.
+// message, find a session Arbo already started (by its key), read its events,
+// read whether the environment is Limited, and send a tool CONFIRMATION.
+// There is no method that sends a second user.message, edits an agent or an
+// environment, or touches a vault — a caller cannot ask for what the type
+// cannot express.
+//
+// The two POSTs (create, confirm) are sent ONCE: the SDK's own retry would
+// re-send a request that may already have landed (a second session for one
+// item; a confirmation re-sent to an event no longer waiting). Arbo retries
+// them itself, after checking what landed.
 //
 // Tests inject a fake AssistantApi; nothing here is reached without a key.
 
@@ -61,8 +68,20 @@ export interface EventStream {
   close(): void;
 }
 
+/** What Arbo needs to know about the environment before it starts anything. */
+export interface EnvironmentInfo {
+  /** 'cloud' or 'self_hosted'. */
+  type: string;
+  /** 'limited' or 'unrestricted' for a cloud environment; null otherwise. */
+  networking: string | null;
+  archived: boolean;
+}
+
 export interface AssistantApi {
   createSession(input: CreateSessionInput): Promise<{ id: string }>;
+  /** A session of this agent, created at or after `sinceIso`, whose metadata.arbo_key is `key` — or null when there is none. */
+  findSession(agentId: string, key: string, sinceIso: string): Promise<{ id: string } | null>;
+  describeEnvironment(environmentId: string): Promise<EnvironmentInfo>;
   sendConfirmation(sessionId: string, confirmation: ToolConfirmation): Promise<void>;
   /** Live SSE. Open it BEFORE listEvents — the stream has no replay. */
   openStream(sessionId: string): Promise<EventStream>;
@@ -103,15 +122,40 @@ export function createAnthropicAssistantApi(apiKey: string): AssistantApi {
         budget: { type: 'limit', max_list_cost: { amount: String(input.budgetCents), currency: 'USD' } },
       };
       try {
-        const s = await client.beta.sessions.create(params as Parameters<typeof client.beta.sessions.create>[0]);
+        const s = await client.beta.sessions.create(params as Parameters<typeof client.beta.sessions.create>[0], { maxRetries: 0 });
         return { id: s.id };
+      } catch (err) {
+        throw normalise(err);
+      }
+    },
+    async findSession(agentId, key, sinceIso) {
+      // Five minutes of slack for clock drift between Railway and Anthropic.
+      const since = new Date(Date.parse(sinceIso) - 5 * 60_000).toISOString();
+      try {
+        for await (const s of client.beta.sessions.list({ agent_id: agentId, 'created_at[gte]': since, order: 'asc', include_archived: true })) {
+          if (s.metadata?.arbo_key === key) return { id: s.id };
+        }
+        return null;
+      } catch (err) {
+        throw normalise(err);
+      }
+    },
+    async describeEnvironment(environmentId) {
+      try {
+        const e = await client.beta.environments.retrieve(environmentId);
+        const cfg = e.config as { type?: string; networking?: { type?: string } };
+        return {
+          type: typeof cfg?.type === 'string' ? cfg.type : 'unknown',
+          networking: cfg?.type === 'cloud' && typeof cfg.networking?.type === 'string' ? cfg.networking.type : null,
+          archived: Boolean(e.archived_at),
+        };
       } catch (err) {
         throw normalise(err);
       }
     },
     async sendConfirmation(sessionId, confirmation) {
       try {
-        await client.beta.sessions.events.send(sessionId, { events: [confirmation] });
+        await client.beta.sessions.events.send(sessionId, { events: [confirmation] }, { maxRetries: 0 });
       } catch (err) {
         throw normalise(err);
       }

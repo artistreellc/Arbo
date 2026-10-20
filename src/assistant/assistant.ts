@@ -3,19 +3,33 @@
 // creates in the Claude Console from the config he approves. This module is
 // Arbo's side of it:
 //
-//   - STARTS sessions when something arrives: a Quo text, missed call or
-//     finished call (one session per item, never two), a sweep every 30
-//     minutes 7am–9pm ET, and the crew-route summary at 6:30am ET;
+//   - STARTS sessions — exactly four kinds, and the agent's prompt names the
+//     same four: a Quo text, missed call or finished INBOUND call (one session
+//     per item, never two — a create whose answer was lost is found by its key
+//     and adopted, not made again); a Gmail sweep every 30 minutes 7am–9pm ET
+//     over a named window; the crew-route summary at 6:30am ET; and the daily
+//     office check at 7am ET Monday–Saturday (Mike, 2026-10-20: "One daily
+//     office check") — weather for today's and tomorrow's jobs, invoices
+//     unpaid past their terms, equipment due, anything waiting on Mike;
+//   - starts NOTHING until the agent's environment reads back as Limited
+//     networking — an environment it could not read is named, never "ready";
 //   - WATCHES each session's events (stream + history, deduped — a dropped
 //     stream never loses an event) and turns every call the agent pauses on
-//     into an Approval card in the owner app;
+//     into an Approval card in the owner app. Only the session's own end (or
+//     a 404) finishes a watch: an outage is retried every minute at most and
+//     named while it lasts; a session paused at its budget stays watched;
 //   - SENDS Mike's decision back as user.tool_confirmation — the only event
-//     Arbo ever sends into a running session.
+//     Arbo ever sends into a running session. It also sends one decision of
+//     its own: a Gmail send by draft id is refused at once (Gmail would send
+//     the saved draft and ignore the words on the card), never shown as a card.
 //
 // What it cannot do: answer a live phone call (Sona/Quo still does), create
 // or change the agent, or decide anything for Mike. Every email, text,
 // payment, Drive write and calendar booking waits for his tap — that is set
-// in the agent's permission policies (always_ask) and surfaces here.
+// in the agent's permission policies (always_ask) and surfaces here. A
+// customer text he allows outside 8am–9pm ET is refused here by name
+// (quiet_hours), unless it answers that customer's own text or call or goes
+// to one of his crew numbers (ARBO_AGENT_CREW_NUMBERS).
 //
 // Law it keeps: OFF unless ARBO_AGENT is exactly 'live' (like
 // ARBO_DATA_LINKS); a missing key or id is NAMED, never a quiet no-op (§1B);
@@ -26,7 +40,7 @@
 import { assistantEnv } from '../env.js';
 import { etOffsetMs, etToday } from '../lib/etDay.js';
 import { AssistantApiError, createAnthropicAssistantApi, type AgentEvent, type AssistantApi, type EventStream } from './client.js';
-import { classify, clip, describeToolCall, toolLabel, type ApprovalDetail } from './describe.js';
+import { classify, clip, describeToolCall, draftIdOf, textRecipients, toolLabel, type ApprovalDetail } from './describe.js';
 import { AssistantStore, type ActivityItem, type ActivityKind, type Approval, type QueuedTrigger, type SessionRec, type StoredApproval, type Trigger } from './store.js';
 
 /** At most this many sessions WORKING at once; the rest queue, in order. A session parked on Mike's OK does not hold a slot. */
@@ -39,22 +53,59 @@ const SWEEP_UNTIL = 21 * 60;
 const ROUTE_AT = 6 * 60 + 30;
 /** A redeploy across 6:30 still sends the route summary — until 8:00, then that day is skipped. */
 const ROUTE_UNTIL = 8 * 60;
+/** The daily office check: 7am ET. */
+const OFFICE_AT = 7 * 60;
+/** A redeploy across 7:00 still runs it — until 10:00; a day it could not run by then is NAMED as missed. */
+const OFFICE_UNTIL = 10 * 60;
+/** Monday–Saturday (0 = Sunday). Never Sunday unless Mike says. */
+const OFFICE_DAYS = new Set([1, 2, 3, 4, 5, 6]);
+/** TCPA quiet hours for customer texts: they may go out from 8:00 until 21:00 ET. */
+const TEXTS_FROM = 8 * 60;
+const TEXTS_UNTIL = 21 * 60;
 const TICK_MS = 60_000;
 /** Waits between session-start retries after Anthropic refuses or is unreachable. */
 const START_BACKOFF_MS = [60_000, 2 * 60_000, 5 * 60_000, 15 * 60_000, 30 * 60_000];
-/** Waits between stream reconnects; this many quick failures in a row and the session is named lost. */
+/** Waits between stream reconnects, then every minute (the last) for as long as it takes; this many quick failures in a row and the loss is named. */
 const RECONNECT_MS = [1_000, 2_000, 5_000, 15_000, 30_000, 60_000, 60_000, 60_000];
 /** A stream that stayed open this long before dropping was healthy — the failure count starts over. */
 const HEALTHY_STREAM_MS = 60_000;
+/** This long without reaching a session at all and the loss is named, however slowly each try fails. */
+const LOST_AFTER_MS = 5 * 60_000;
+/** A Limited environment, once read back, is trusted this long before Arbo reads it again (every minute while it is not). */
+const ENV_RECHECK_MS = 15 * 60_000;
 const NOTE_CAP = 2000;
 /** Incoming call states that mean nobody — not Mike, not Sona — picked up. */
 const MISSED_STATUSES = new Set(['missed', 'no-answer', 'busy', 'canceled', 'abandoned']);
 
+/** What the agent is told when it tries to send a Gmail draft by its id. Refused at once; never a card. */
+export const DRAFT_ID_REFUSAL = 'Put To, Subject and the full Body in the call; a draft id is never sent';
+
 const ROUTE_MESSAGE = "Prepare each crew's route summary for today and request approval to text it.";
-const sweepMessage = (sinceIso: string): string =>
-  `Check Gmail (including website form emails) and Quo for anything new since ${sinceIso} that no earlier session handled; handle each, then stop.`;
+/** Gmail only — Quo items each start their own session. The window ends when the sweep is sent; the next one starts there. */
+const sweepMessage = (sinceIso: string, untilIso: string): string =>
+  `Sweep job from Arbo: check Gmail for emails that arrived between ${sinceIso} and ${untilIso}, including website contact-form and quote-request emails. Treat each one as its own item and handle each per your instructions. Do not work Quo texts or calls — Arbo starts a separate session for each of those. Then stop.`;
+const WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+/** 0 = Sunday, for an ET date (YYYY-MM-DD). */
+const weekdayOf = (day: string): number => new Date(`${day}T12:00:00Z`).getUTCDay();
+/** The daily office check — the four things Mike asked for, a report, and every send still his to allow. */
+const officeMessage = (day: string): string => [
+  `Daily office check from Arbo for ${WEEKDAY[weekdayOf(day)]} ${day}. Look, report, then stop:`,
+  "1. Weather: the forecast for today's and tomorrow's jobs and estimates on the calendar. Flag any storm, high wind, heavy rain or other hazard to outdoor work, with a suggested new day. Never move an event.",
+  "2. Unpaid invoices: Square invoices unpaid past their due date. List each one. A reminder to a customer may be requested by email — it waits for Mike's OK, points to the invoice and never restates the amount. A text reminder before 8am goes in your update instead.",
+  '3. Equipment: trucks, chippers and other equipment due for service soon, from the equipment log in Drive.',
+  '4. Waiting on Mike: anything in Gmail, Quo, Calendar or Drive that needs his decision or his call.',
+  'Finish with one short update under four headings — Weather, Unpaid invoices, Equipment, Waiting on you. Say plainly what you could not read: "I couldn\'t read it" is never "there\'s nothing there".',
+].join('\n');
 
 type Config = ReturnType<typeof assistantEnv>;
+
+/** Today's office check, in one line for the app. Null when none is due today (before 7am, or a Sunday). */
+export interface OfficeCheckStatus {
+  /** ET date (YYYY-MM-DD). */
+  day: string;
+  state: 'queued' | 'working' | 'waiting' | 'done' | 'error' | 'missed';
+  line: string;
+}
 
 export interface AssistantStatus {
   state: 'off' | 'not_set_up' | 'ready' | 'error';
@@ -62,6 +113,7 @@ export interface AssistantStatus {
   reason: string | null;
   sessionsOpen: number;
   lastEventAt: string | null;
+  officeCheck: OfficeCheckStatus | null;
 }
 
 export interface RouteAnswer {
@@ -115,15 +167,30 @@ function apiErrorLine(err: unknown): string {
 
 const statusOf = (err: unknown): string => (err instanceof AssistantApiError && err.status !== null ? String(err.status) : 'no answer');
 
+/** The request may have landed even though it failed: no answer, a timeout, a conflict, a rate limit, or their side. */
+function mayHaveLanded(err: unknown): boolean {
+  const st = err instanceof AssistantApiError ? err.status : null;
+  return st === null || st === 408 || st === 409 || st === 429 || st >= 500;
+}
+
+/** The last 10 digits of a phone number — how two spellings of one number are compared. Never logged. */
+const tail10 = (v: string): string | null => {
+  const d = v.replace(/\D/g, '');
+  return d.length >= 10 ? d.slice(-10) : null;
+};
+
 /**
- * An email or text that went out, or a Square call that changes money. Drive
- * and calendar are left out on purpose: their read tools share the server and
- * would cry wolf. Square reads ride the same one tool as its writes, so only
- * a write-shaped method counts.
+ * An email or text that went out, a calendar write, or a Square call that
+ * changes money — each should have waited for Mike. Drive is left out on
+ * purpose: its reads share the server and would cry wolf. A calendar READ is
+ * not a write; every calendar write waits (Mike, 2026-10-20: "Each booking
+ * waits for my OK"). Square reads ride the same one tool as its writes, so
+ * only a write-shaped method counts.
  */
 function sentWithoutAsking(ev: AgentEvent): boolean {
   const kind = classify(ev.mcp_server_name, ev.name ?? '');
   if (kind === 'email' || kind === 'text') return true;
+  if (kind === 'calendar') return !/^(list|get|search|suggest|find|query|free)/i.test(ev.name ?? '');
   if (kind !== 'payment') return false;
   const method = `${ev.name ?? ''} ${typeof ev.input?.method === 'string' ? ev.input.method : ''}`;
   return /create|pay|publish|send|update|cancel|refund|charge|complete|delete/i.test(method);
@@ -137,6 +204,8 @@ interface QuoItem {
   eventId: string | null;
   label: string;
   message: string;
+  /** Last 10 digits of the customer whose own text or call this is — kept off the message, the title and the log. */
+  contact: string | null;
 }
 
 const s = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
@@ -149,6 +218,8 @@ interface CallInfo {
   direction: string | null;
   conversationId: string | null;
   at: string | null;
+  /** Last 10 digits of the caller. */
+  from: string | null;
 }
 
 function itemMessage(what: string, eventId: string | null, lines: Array<[string, string | null]>): string {
@@ -163,8 +234,9 @@ function itemMessage(what: string, eventId: string | null, lines: Array<[string,
 
 /**
  * The Quo deliveries that start a session: an inbound text, a missed call,
- * and a finished call's summary or transcript. The message names the item by
- * Quo ids only — the agent reads the words itself, through its Quo tools.
+ * and a finished INBOUND call's summary or transcript. The message names the
+ * item by Quo ids only — the agent reads the words itself, through its Quo
+ * tools. Our own outgoing texts and calls (Mike calling back) start nothing.
  */
 export function quoItemFrom(event: unknown, calls: Map<string, CallInfo>): QuoItem | null {
   if (typeof event !== 'object' || event === null) return null;
@@ -180,6 +252,7 @@ export function quoItemFrom(event: unknown, calls: Map<string, CallInfo>): QuoIt
         itemKey: `quo:message:${id}`,
         eventId,
         label: 'quo text',
+        contact: tail10(s(o.from) ?? ''),
         message: itemMessage('an inbound text', eventId, [
           ['Message id', id],
           ['Conversation id', s(o.conversationId)],
@@ -191,7 +264,7 @@ export function quoItemFrom(event: unknown, calls: Map<string, CallInfo>): QuoIt
     case 'call.completed': {
       const id = s(o.id);
       if (!id) return null;
-      const info: CallInfo = { direction: s(o.direction), conversationId: s(o.conversationId), at: s(o.createdAt) };
+      const info: CallInfo = { direction: s(o.direction), conversationId: s(o.conversationId), at: s(o.createdAt), from: tail10(s(o.from) ?? '') };
       calls.set(id, info);
       while (calls.size > 500) {
         const oldest = calls.keys().next().value;
@@ -205,6 +278,7 @@ export function quoItemFrom(event: unknown, calls: Map<string, CallInfo>): QuoIt
         itemKey: `quo:call:${id}`,
         eventId,
         label: 'quo missed call',
+        contact: info.from,
         message: itemMessage('a missed call', eventId, [
           ['Call id', id],
           ['Conversation id', info.conversationId],
@@ -223,10 +297,14 @@ export function quoItemFrom(event: unknown, calls: Map<string, CallInfo>): QuoIt
       // finished one (or the summary) starts the session.
       if (transcript && ((s(o.status) && o.status !== 'completed') || !Array.isArray(o.dialogue))) return null;
       const info = calls.get(callId);
+      // Our own outgoing call (Mike calling a customer back from Quo) is not an
+      // item — the same rule as an outgoing text and call.completed above.
+      if (info?.direction && info.direction !== 'incoming') return null;
       return {
         itemKey: `quo:call:${callId}`,
         eventId,
         label: transcript ? 'quo call transcript' : 'quo call summary',
+        contact: info?.from ?? null,
         message: itemMessage(transcript ? "a finished call's transcript" : "a finished call's summary", eventId, [
           ['Call id', callId],
           ['Conversation id', info?.conversationId ?? s(o.conversationId)],
@@ -257,6 +335,15 @@ export class Assistant {
   private readonly watchers = new Map<string, Promise<void>>();
   private readonly streams = new Map<string, EventStream>();
   private readonly deciding = new Set<string>();
+  /** Mike's own decision, seen echoed on the stream while decide() still waited for Anthropic's answer — proof it landed. */
+  private readonly echoed = new Map<string, 'allow' | 'deny'>();
+  /** Draft-id sends being refused right now (one refusal per ask). */
+  private readonly refusing = new Set<string>();
+  /** Sessions Arbo cannot reach right now — still retried every minute; named on the status line. */
+  private readonly lostTouch = new Set<string>();
+  /** Whether the agent's environment read back as Limited networking, and when. Null = not read yet: nothing starts. */
+  private envState: { ok: boolean; reason: string | null; at: number } | null = null;
+  private envChecking: Promise<void> | null = null;
   private readonly calls = new Map<string, CallInfo>();
   private timer: NodeJS.Timeout | null = null;
 
@@ -291,7 +378,7 @@ export class Assistant {
   status(): AssistantStatus {
     const c = this.cfg();
     const missing = missingNames(c);
-    const base = { missing, sessionsOpen: this.openSessions().length, lastEventAt: this.store.data.lastEventAt };
+    const base = { missing, sessionsOpen: this.openSessions().length, lastEventAt: this.store.data.lastEventAt, officeCheck: null };
     if (!c.on) {
       return { state: 'off', reason: 'ARBO_AGENT is not "live" — the assistant is OFF and starts nothing. Set ARBO_AGENT=live in Railway to turn it on.', ...base };
     }
@@ -301,12 +388,36 @@ export class Assistant {
     if (this.store.unreadable) {
       return { state: 'error', reason: `Arbo could not read its assistant store (${this.store.unreadable}). Nothing starts until it can; the file was left untouched.`, ...base };
     }
-    if (this.lastApiError) return { state: 'error', reason: this.lastApiError, ...base };
+    const on = { ...base, officeCheck: this.officeCheck() };
+    if (!this.envState) return { state: 'error', reason: 'Checking that the agent environment is Limited networking — nothing starts until it is confirmed.', ...on };
+    if (!this.envState.ok) return { state: 'error', reason: this.envState.reason, ...on };
+    if (this.lastApiError) return { state: 'error', reason: this.lastApiError, ...on };
+    if (this.lostTouch.size) {
+      return { state: 'error', reason: `Arbo has lost touch with ${this.lostTouch.size} session(s) and is still trying every minute — anything they ask for reaches the app once it reconnects.`, ...on };
+    }
     return {
       state: 'ready',
       reason: this.store.where === 'memory' ? 'Approvals are kept in memory only — the storage disk could not be written, so a redeploy forgets them.' : null,
-      ...base,
+      ...on,
     };
+  }
+
+  /** Today's office check as the app shows it (§1B: a day it could not run is said, never a quiet nothing). */
+  private officeCheck(): OfficeCheckStatus | null {
+    const day = etToday(new Date(this.now()));
+    const d = this.store.data;
+    const key = `office:${day}`;
+    if (d.officeMissedDay === day) {
+      return { day, state: 'missed', line: "Today's office check did not run — the assistant was off, not set up or not running between 7 and 10am ET. It runs again at 7am on the next day that is not a Sunday." };
+    }
+    if (d.lastOfficeDay !== day) return null;
+    if (d.queue.some((q) => q.key === key)) return { day, state: 'queued', line: "Today's office check is waiting its turn to start." };
+    const rec = d.sessions.find((x) => x.key === key);
+    if (!rec) return { day, state: 'error', line: "Today's office check could not start — see More → Assistant." };
+    if (rec.state === 'working') return { day, state: 'working', line: "Today's office check is running." };
+    if (rec.state === 'waiting') return { day, state: 'waiting', line: "Today's office check is waiting — on your OK, or paused at its budget. See More → Assistant." };
+    if (rec.state === 'done') return { day, state: 'done', line: "Today's office check is done — its report is in More → Assistant." };
+    return { day, state: 'error', line: "Today's office check stopped before it finished — see More → Assistant." };
   }
 
   /** The 503 every assistant route answers when it cannot serve. */
@@ -318,23 +429,80 @@ export class Assistant {
     return null;
   }
 
+  // ── the environment ──
+
+  private envDue(): boolean {
+    const e = this.envState;
+    if (!e) return true;
+    return this.now() - e.at >= (e.ok ? ENV_RECHECK_MS : TICK_MS);
+  }
+
+  /**
+   * Reads the agent's environment back and records whether it is a cloud
+   * environment on Limited networking (the hosts list in the setup guide).
+   * Nothing starts until it is. One read at a time; never throws.
+   */
+  async checkEnvironment(): Promise<void> {
+    if (this.envChecking) return this.envChecking;
+    const c = this.ready();
+    const api = this.api();
+    if (!c || !api) return;
+    this.envChecking = (async () => {
+      try {
+        const e = await api.describeEnvironment(c.environmentId!);
+        let reason: string | null = null;
+        if (e.archived) reason = 'The agent environment (ARBO_AGENT_ENVIRONMENT_ID) is archived — nothing starts. Create a new one: docs/ASSISTANT_SETUP.md, Step 3.';
+        else if (e.type !== 'cloud') reason = `The agent environment is "${e.type}", not a cloud environment — nothing starts. See docs/ASSISTANT_SETUP.md, Step 3.`;
+        else if (e.networking !== 'limited') reason = `The agent environment's networking is "${e.networking ?? 'not set'}", not Limited — nothing starts until it is. Set it to Limited: docs/ASSISTANT_SETUP.md, Step 3.`;
+        const was = this.envState;
+        this.envState = { ok: reason === null, reason, at: this.now() };
+        if (reason && (!was || was.ok)) console.error('[assistant] environment is not a Limited cloud environment (or is archived) — nothing starts');
+        if (!reason && was && !was.ok) console.log('[assistant] environment confirmed Limited — starting');
+      } catch (err) {
+        this.envState = { ok: false, reason: `Arbo could not read the agent environment — ${apiErrorLine(err)}. Nothing starts until it can confirm Limited networking.`, at: this.now() };
+        console.error(`[assistant] environment not read — Anthropic ${statusOf(err)}; nothing starts`);
+      }
+    })().finally(() => {
+      this.envChecking = null;
+    });
+    return this.envChecking;
+  }
+
+  private async environmentOk(): Promise<boolean> {
+    if (this.envDue()) await this.checkEnvironment();
+    return Boolean(this.envState?.ok);
+  }
+
   // ── routes ──
+
+  /** Why a text may not go out now (TCPA quiet hours), or null when it may. Worked out when Mike looks and when he taps. */
+  private quietHold(a: StoredApproval): string | null {
+    const nowMs = this.now();
+    const mins = etMinutes(nowMs);
+    if (mins >= TEXTS_FROM && mins < TEXTS_UNTIL) return null;
+    // Not held: a reply to the customer whose own text or call started this
+    // session, or a text to one of Mike's crew phones. Anything Arbo cannot
+    // tell — no recipient it can read — is held.
+    const crew = new Set(this.cfg().crewNumbers);
+    const replyTo = this.store.data.sessions.find((x) => x.id === a.sessionId)?.replyTo ?? null;
+    const to = (a.textTo ?? []).map(tail10);
+    if (to.length && to.every((t) => t !== null && (crew.has(t) || t === replyTo))) return null;
+    return `It is ${etClock(nowMs)} ET — a text can go to a customer only from 8am to 9pm (TCPA quiet hours). Nothing was sent — it is still waiting: allow it after 8am, or deny it. A reply to the customer whose own text or call started this, or a text to a number in ARBO_AGENT_CREW_NUMBERS, is not held.`;
+  }
 
   approvals(): RouteAnswer {
     const g = this.gate();
     if (g) return g;
     const nowMs = this.now();
-    const mins = etMinutes(nowMs);
-    const quiet = mins < 8 * 60 || mins >= 21 * 60;
     const list: Approval[] = this.store.data.approvals
       .filter((a) => !a.decided)
       .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt))
       .map((a) => {
         const details: ApprovalDetail[] = [...a.details];
         // Worked out when Mike looks, not when it was asked: what matters is
-        // the time the text would go out.
-        if (a.kind === 'text' && quiet) {
-          details.push({ label: 'Heads-up', value: `It is ${etClock(nowMs)} ET — outside 8am–9pm. A text to a customer must wait until 8am (TCPA quiet hours); a text to your own crew is fine.` });
+        // the time the text would go out. Same rule as the refusal at Allow.
+        if (a.kind === 'text' && this.quietHold(a)) {
+          details.push({ label: 'Heads-up', value: `It is ${etClock(nowMs)} ET — outside 8am–9pm. Arbo holds a customer text until 8am (TCPA quiet hours): Allow is refused until then. A reply to the customer whose own text or call started this, or a text to your crew (ARBO_AGENT_CREW_NUMBERS), is not held.` });
         }
         return { id: a.id, sessionId: a.sessionId, tool: a.tool, kind: a.kind, summary: a.summary, details, requestedAt: a.requestedAt };
       });
@@ -348,6 +516,18 @@ export class Assistant {
     return { status: 200, body: { items } };
   }
 
+  /** A user.tool_confirmation for this tool call in the session's history: its result, null when there is none, 'unknown' when the history could not be read. */
+  private async confirmationIn(api: AssistantApi, sessionId: string, toolUseId: string): Promise<'allow' | 'deny' | null | 'unknown'> {
+    try {
+      for await (const e of api.listEvents(sessionId)) {
+        if (e.type === 'user.tool_confirmation' && e.tool_use_id === toolUseId && (e.result === 'allow' || e.result === 'deny')) return e.result;
+      }
+      return null;
+    } catch {
+      return 'unknown';
+    }
+  }
+
   async decide(id: string, decision: 'allow' | 'deny', note?: string): Promise<RouteAnswer> {
     const g = this.gate();
     if (g) return g;
@@ -356,34 +536,80 @@ export class Assistant {
     if (a.decided || this.deciding.has(id)) return { status: 409, body: { error: 'already_decided' } };
     const api = this.api();
     if (!api) return { status: 503, body: { error: 'assistant_not_set_up' } };
+    // TCPA quiet hours are enforced here, not only shown: Allow on a customer
+    // text outside 8am–9pm ET is refused by name and the card keeps waiting.
+    if (decision === 'allow' && a.kind === 'text') {
+      const held = this.quietHold(a);
+      if (held) {
+        console.log(`[assistant] ${id} held — a text outside 8am–9pm ET; nothing sent`);
+        return { status: 409, body: { error: 'quiet_hours', line: held } };
+      }
+    }
     const cleanNote = typeof note === 'string' && note.trim() ? note.trim().slice(0, NOTE_CAP) : undefined;
     this.deciding.add(id);
+    let landed: 'allow' | 'deny';
     try {
-      await api.sendConfirmation(a.sessionId, {
-        type: 'user.tool_confirmation',
-        tool_use_id: id,
-        result: decision,
-        ...(decision === 'deny' ? { deny_message: cleanNote ?? 'Mike did not approve this.' } : {}),
-      });
-    } catch (err) {
-      // A session that has truly ended can never take this decision: close
-      // the card by name rather than leave it waiting forever. Anything else
-      // (a blip, their side) keeps it waiting for another tap.
-      const rec = this.store.data.sessions.find((x) => x.id === a.sessionId);
-      const gone = rec && this.finished(rec) && err instanceof AssistantApiError && (err.status === 400 || err.status === 404);
-      if (gone) {
-        this.store.data.approvals = this.store.data.approvals.filter((x) => x.id !== id);
-        this.activity_(a.sessionId, 'error', `Closed without sending — the session ended before your decision could reach it: ${a.summary}`, { tool: a.tool });
-        this.store.save();
-        console.error(`[assistant] decision on ${id} NOT delivered — session ${a.sessionId} has ended (${statusOf(err)}); card closed`);
-        return { status: 502, body: { error: 'send_failed', line: 'That session has ended, so nothing was sent and the card is closed. If it still needs doing, it needs doing by hand.' } };
+      try {
+        await api.sendConfirmation(a.sessionId, {
+          type: 'user.tool_confirmation',
+          tool_use_id: id,
+          result: decision,
+          ...(decision === 'deny' ? { deny_message: cleanNote ?? 'Mike did not approve this.' } : {}),
+        });
+        landed = decision;
+      } catch (err) {
+        // It may have landed anyway (the answer was lost; or a re-send met an
+        // event no longer waiting): the echo seen on the stream, or the
+        // session's own history, says — before anything is called unsent.
+        const found = this.echoed.get(id) ?? (await this.confirmationIn(api, a.sessionId, id));
+        if (found === 'allow' || found === 'deny') {
+          landed = found;
+          console.log(`[assistant] decision on ${id} reached the session although Anthropic answered ${statusOf(err)}`);
+        } else {
+          // A session that has truly ended can never take this decision: close
+          // the card by name rather than leave it waiting forever. Anything else
+          // (a blip, their side) keeps it waiting for another tap.
+          const rec = this.store.data.sessions.find((x) => x.id === a.sessionId);
+          const gone = rec && this.finished(rec) && err instanceof AssistantApiError && (err.status === 400 || err.status === 404);
+          if (gone) {
+            this.store.data.approvals = this.store.data.approvals.filter((x) => x.id !== id);
+            const unread = found === 'unknown'; // its history could not be read either: say only what is known
+            this.activity_(a.sessionId, 'error', unread
+              ? `Closed — the session has ended and Arbo could not read its history, so it cannot say whether your decision reached it first: ${a.summary}`
+              : `Closed without sending — the session ended before your decision could reach it: ${a.summary}`, { tool: a.tool });
+            this.store.save();
+            console.error(`[assistant] decision on ${id} — session ${a.sessionId} has ended (${statusOf(err)}${unread ? ', history unreadable' : ''}); card closed`);
+            return {
+              status: 502,
+              body: {
+                error: 'send_failed',
+                line: unread
+                  ? 'That session has ended and Arbo could not read its history, so it cannot say whether your answer reached it first. The card is closed — check Gmail, Quo or Square before you do it by hand.'
+                  : 'That session has ended, so nothing was sent and the card is closed. If it still needs doing, it needs doing by hand.',
+              },
+            };
+          }
+          if (found === 'unknown') {
+            console.error(`[assistant] decision on ${id} — Anthropic ${statusOf(err)} and the history could not be read; still waiting`);
+            return { status: 502, body: { error: 'send_failed', line: `${apiErrorLine(err)}. Arbo could not check whether your ${decision === 'allow' ? 'OK' : 'no'} reached it — tap ↻ to see if it is still waiting before you tap again.` } };
+          }
+          console.error(`[assistant] decision on ${id} NOT delivered — Anthropic ${statusOf(err)}; it is still waiting`);
+          return { status: 502, body: { error: 'send_failed', line: `${apiErrorLine(err)}. Nothing was ${decision === 'allow' ? 'allowed' : 'denied'} — it is still waiting.` } };
+        }
       }
-      console.error(`[assistant] decision on ${id} NOT delivered — Anthropic ${statusOf(err)}; it is still waiting`);
-      return { status: 502, body: { error: 'send_failed', line: `${apiErrorLine(err)}. Nothing was ${decision === 'allow' ? 'allowed' : 'denied'} — it is still waiting.` } };
     } finally {
       this.deciding.delete(id);
+      this.echoed.delete(id);
     }
-    a.decided = { decision, at: new Date(this.now()).toISOString(), by: 'mike', ...(cleanNote ? { note: cleanNote } : {}) };
+    const at = new Date(this.now()).toISOString();
+    if (landed !== decision) {
+      // Answered another way first (the Console): that answer is the one that stands.
+      a.decided = { decision: landed, at, by: 'elsewhere' };
+      this.activity_(a.sessionId, 'decided', `${landed === 'allow' ? 'Allowed' : 'Denied'} outside the app: ${a.summary}`, { tool: a.tool });
+      this.store.save();
+      return { status: 409, body: { error: 'already_decided' } };
+    }
+    a.decided = { decision, at, by: 'mike', ...(cleanNote ? { note: cleanNote } : {}) };
     this.activity_(a.sessionId, 'decided', `You ${decision === 'allow' ? 'allowed' : 'denied'}: ${a.summary}${cleanNote ? ` — “${cleanNote}”` : ''}`, { tool: a.tool });
     // The session resumes on the decision; if Arbo is not watching it (it
     // lost touch, or this is after a restart), watch it again. Marked
@@ -424,41 +650,70 @@ export class Assistant {
       if (!this.ready()) return;
       const item = quoItemFrom(JSON.parse(rawBody), this.calls);
       if (!item) return;
-      this.enqueue({ trigger: 'quo', label: item.label, message: item.message, keys: [item.itemKey, ...(item.eventId ? [`quo:event:${item.eventId}`] : [])] });
+      this.enqueue({
+        trigger: 'quo',
+        label: item.label,
+        message: item.message,
+        keys: [item.itemKey, ...(item.eventId ? [`quo:event:${item.eventId}`] : [])],
+        ...(item.contact ? { replyTo: item.contact } : {}),
+      });
     } catch (err) {
       console.error('[assistant] Quo event not read:', err instanceof Error ? err.name : 'error');
     }
   }
 
   /** Queue a session unless one of its keys was already started or queued. Persisted before anything starts. */
-  private enqueue(t: { trigger: Trigger; label: string; message: string; keys: string[] }): boolean {
+  private enqueue(t: { trigger: Trigger; label: string; message: string; keys: string[]; replyTo?: string }): boolean {
     const d = this.store.data;
     if (t.keys.some((k) => d.processed.includes(k))) return false;
     d.processed.push(...t.keys);
     const at = new Date(this.now()).toISOString();
     if (d.queue.length >= QUEUE_CAP) {
-      this.activity_('', 'error', `Not started — ${QUEUE_CAP} items are already waiting to start (${t.label}). The next sweep checks Gmail and Quo for it.`);
+      this.activity_('', 'error', `Not started — ${QUEUE_CAP} items are already waiting to start (${t.label}). Nothing else will pick it up: check it by hand.`);
       console.error(`[assistant] queue full — 1 ${t.label} not started (${QUEUE_CAP} waiting)`);
       this.store.save();
       return false;
     }
-    const q: QueuedTrigger = { key: t.keys[0]!, trigger: t.trigger, label: t.label, title: `Arbo · ${t.label} · ${at.slice(0, 16)}Z`, message: t.message, queuedAt: at };
+    const q: QueuedTrigger = {
+      key: t.keys[0]!,
+      trigger: t.trigger,
+      label: t.label,
+      title: `Arbo · ${t.label} · ${at.slice(0, 16)}Z`,
+      message: t.message,
+      queuedAt: at,
+      ...(t.replyTo ? { replyTo: t.replyTo } : {}),
+    };
     d.queue.push(q);
     this.store.save();
     void this.pump();
     return true;
   }
 
-  /** The clock: the 30-minute sweep (7am–9pm ET) and the 6:30am crew routes. */
+  /** The clock: the 6:30am crew routes, the 7am office check (Mon–Sat), and the 30-minute Gmail sweep (7am–9pm ET). */
   tick(): void {
     if (!this.ready()) return;
     const nowMs = this.now();
     const mins = etMinutes(nowMs);
     const d = this.store.data;
     const day = etToday(new Date(nowMs));
+    // The environment is read again when due — every minute while it is not Limited.
+    if (this.envDue()) void this.checkEnvironment();
     if (mins >= ROUTE_AT && mins < ROUTE_UNTIL && d.lastRouteDay !== day) {
       d.lastRouteDay = day;
       this.enqueue({ trigger: 'route', label: 'crew routes', message: ROUTE_MESSAGE, keys: [`route:${day}`] });
+    }
+    // The daily office check (Mike, 2026-10-20: "One daily office check"):
+    // once, 7–10am ET, Monday to Saturday. A day it could not run is named.
+    if (OFFICE_DAYS.has(weekdayOf(day)) && d.lastOfficeDay !== day) {
+      if (mins >= OFFICE_AT && mins < OFFICE_UNTIL) {
+        d.lastOfficeDay = day;
+        this.enqueue({ trigger: 'office', label: 'office check', message: officeMessage(day), keys: [`office:${day}`] });
+      } else if (mins >= OFFICE_UNTIL && d.officeMissedDay !== day) {
+        d.officeMissedDay = day;
+        this.activity_('', 'error', "Today's office check did not run — the assistant was off, not set up or not running between 7 and 10am ET. It runs again at 7am on the next day that is not a Sunday.");
+        this.store.save();
+        console.error(`[assistant] office check for ${day} did not run — missed its 7–10am ET window`);
+      }
     }
     // One sweep at a time: not while one is queued or still working (a sweep
     // parked on Mike's OK does not hold the next one back).
@@ -469,22 +724,23 @@ export class Assistant {
         const since = Number.isFinite(last) ? new Date(last).toISOString() : new Date(nowMs - SWEEP_EVERY_MS).toISOString();
         const at = new Date(nowMs).toISOString();
         d.lastSweepAt = at;
-        this.enqueue({ trigger: 'sweep', label: 'sweep', message: sweepMessage(since), keys: [`sweep:${at}`] });
+        this.enqueue({ trigger: 'sweep', label: 'sweep', message: sweepMessage(since, at), keys: [`sweep:${at}`] });
       }
     }
     // enqueue() saved anything it queued; this retries a start that is backing off.
     void this.pump();
   }
 
-  /** Boot: name the state, re-attach to sessions still open, start the clock. */
+  /** Boot: name the state, read the environment, re-attach to sessions still open, start the clock. */
   start(): void {
-    const st = this.status();
-    if (st.state === 'off') console.log('[assistant] OFF — ARBO_AGENT is not "live"; nothing starts');
-    else if (st.state === 'not_set_up') console.error(`[assistant] NOT SET UP — missing: ${st.missing.join(', ')}; nothing starts`);
+    const c = this.cfg();
+    if (!c.on) console.log('[assistant] OFF — ARBO_AGENT is not "live"; nothing starts');
+    else if (missingNames(c).length) console.error(`[assistant] NOT SET UP — missing: ${missingNames(c).join(', ')}; nothing starts`);
     else if (this.store.unreadable) console.error('[assistant] store UNREADABLE — nothing starts; the file was left untouched');
     else {
       const open = this.openSessions();
-      console.log(`[assistant] ready — ${open.length} session(s) to re-attach, ${this.pending()} approval(s) waiting, ${this.store.data.queue.length} queued`);
+      console.log(`[assistant] on — ${open.length} session(s) to re-attach, ${this.pending()} approval(s) waiting, ${this.store.data.queue.length} queued; reading the environment before anything starts`);
+      void this.checkEnvironment();
       for (const rec of open) this.watch(rec);
     }
     if (!this.timer) {
@@ -510,19 +766,41 @@ export class Assistant {
           const cfg = this.ready();
           const api = this.api();
           if (!cfg || !api) break;
+          if (!(await this.environmentOk())) break; // named on the status line; read again within a minute
           const q = d.queue[0]!;
-          let id: string;
+          const key = q.key.slice(0, 500);
+          let id: string | null = null;
+          let adopted = false;
+          let creating = false;
           try {
-            ({ id } = await api.createSession({
-              agentId: cfg.agentId!,
-              environmentId: cfg.environmentId!,
-              vaultId: cfg.vaultId!,
-              budgetCents: cfg.budgetCents!,
-              title: q.title,
-              metadata: { arbo_trigger: q.trigger, arbo_key: q.key.slice(0, 500) },
-              firstMessage: q.message,
-            }));
+            // A create that may already have landed (its answer was lost, or
+            // the process stopped mid-create) is looked up by its key first —
+            // one item is one session, never two. A lookup that fails is a
+            // failed start, never "there is none" (§1B).
+            if (q.triedAt) {
+              id = (await api.findSession(cfg.agentId!, key, q.queuedAt))?.id ?? null;
+              adopted = id !== null;
+            }
+            if (id === null) {
+              q.triedAt = new Date(this.now()).toISOString();
+              this.store.save();
+              creating = true;
+              ({ id } = await api.createSession({
+                agentId: cfg.agentId!,
+                environmentId: cfg.environmentId!,
+                vaultId: cfg.vaultId!,
+                budgetCents: cfg.budgetCents!,
+                title: q.title,
+                metadata: { arbo_trigger: q.trigger, arbo_key: key },
+                firstMessage: q.message,
+              }));
+            }
           } catch (err) {
+            // A definitive refusal made nothing: the next try creates without a lookup.
+            if (creating && !mayHaveLanded(err)) {
+              delete q.triedAt;
+              this.store.save();
+            }
             this.lastApiError = apiErrorLine(err);
             this.startFailures += 1;
             this.retryAt = this.now() + START_BACKOFF_MS[Math.min(this.startFailures - 1, START_BACKOFF_MS.length - 1)]!;
@@ -532,11 +810,24 @@ export class Assistant {
           this.lastApiError = null;
           this.startFailures = 0;
           d.queue.shift();
-          const rec: SessionRec = { id, trigger: q.trigger, label: q.label, startedAt: new Date(this.now()).toISOString(), state: 'working', seen: [] };
+          if (id === null || d.sessions.some((x) => x.id === id)) {
+            this.store.save(); // already recorded: nothing more to start
+            continue;
+          }
+          const rec: SessionRec = {
+            id,
+            trigger: q.trigger,
+            label: q.label,
+            startedAt: new Date(this.now()).toISOString(),
+            state: 'working',
+            seen: [],
+            key,
+            ...(q.replyTo ? { replyTo: q.replyTo } : {}),
+          };
           d.sessions.push(rec);
-          this.activity_(id, 'started', `Started — ${q.label}`);
+          this.activity_(id, 'started', adopted ? `Started — ${q.label} (its session had already started; Arbo picked it up)` : `Started — ${q.label}`);
           this.store.save();
-          console.log(`[assistant] session ${id} started (${q.label})`);
+          console.log(`[assistant] session ${id} ${adopted ? 'adopted' : 'started'} (${q.label})`);
           this.watch(rec);
         }
       } while (this.pumpAgain);
@@ -556,6 +847,7 @@ export class Assistant {
       .finally(() => {
         this.watchers.delete(rec.id);
         this.streams.delete(rec.id);
+        this.lostTouch.delete(rec.id);
         void this.pump();
       });
     this.watchers.set(rec.id, run);
@@ -573,16 +865,20 @@ export class Assistant {
   /**
    * The consolidation pattern: open the stream FIRST, then read the history,
    * then tail the stream — deduped by event id, so the gap between a drop and
-   * a reconnect never loses an event. Reconnects until the session finishes.
+   * a reconnect never loses an event. Reconnects until the session finishes:
+   * only its own events (or a 404) finish it. An outage is retried, the wait
+   * capped at a minute, and named on the status line while it lasts.
    */
   private async runWatch(rec: SessionRec): Promise<void> {
     const seen = new Set(rec.seen);
     let quickFailures = 0;
+    let lastReachedAt = this.now();
     while (!this.finished(rec)) {
       const api = this.api();
       if (!api) return; // switched off or unset mid-run: re-attached at the next boot
       const openedAt = this.now();
       let stream: EventStream | null = null;
+      let reached = false;
       try {
         stream = await api.openStream(rec.id);
         this.streams.set(rec.id, stream);
@@ -590,6 +886,9 @@ export class Assistant {
           this.handle(rec, ev, seen);
           if (this.finished(rec)) break;
         }
+        reached = true;
+        lastReachedAt = this.now();
+        this.backInTouch(rec);
         if (!this.finished(rec)) {
           for await (const ev of stream.events) {
             this.handle(rec, ev, seen);
@@ -607,19 +906,71 @@ export class Assistant {
       }
       if (this.finished(rec)) break;
       quickFailures = this.now() - openedAt >= HEALTHY_STREAM_MS ? 0 : quickFailures + 1;
-      if (quickFailures > RECONNECT_MS.length) {
-        this.finish(rec, 'error', `Arbo lost touch with this session after ${quickFailures} tries — open ${rec.id} in the Claude Console. Anything waiting on your OK is still here.`);
-        console.error(`[assistant] session ${rec.id} — lost touch after ${quickFailures} reconnects`);
-        break;
+      // Named lost after many quick failures, or after LOST_AFTER_MS with no
+      // reach at all (an outage where each try hangs before it fails).
+      const lost = quickFailures > RECONNECT_MS.length || this.now() - lastReachedAt >= LOST_AFTER_MS;
+      if (!reached && lost && !this.lostTouch.has(rec.id)) {
+        this.lostTouch.add(rec.id);
+        this.activity_(rec.id, 'error', `Arbo lost touch with this session (${rec.label}) — still trying every minute. Anything it asks for meanwhile shows up here once Arbo reconnects; if this stays, open ${rec.id} in the Claude Console.`);
+        this.store.save();
+        console.error(`[assistant] session ${rec.id} — lost touch after ${quickFailures} quick reconnects; still trying every minute`);
       }
-      await this.sleep(RECONNECT_MS[Math.max(0, quickFailures - 1)] ?? 60_000);
+      await this.sleep(RECONNECT_MS[Math.min(Math.max(0, quickFailures - 1), RECONNECT_MS.length - 1)]!);
     }
+  }
+
+  private backInTouch(rec: SessionRec): void {
+    if (!this.lostTouch.delete(rec.id)) return;
+    this.activity_(rec.id, 'info', `Back in touch with this session (${rec.label}) — anything it asked for meanwhile is shown.`);
+    this.store.save();
+    console.log(`[assistant] session ${rec.id} — back in touch`);
   }
 
   private finish(rec: SessionRec, state: 'done' | 'error', text: string): void {
     rec.state = state;
     this.activity_(rec.id, state === 'done' ? 'done' : 'error', text);
     this.store.save();
+  }
+
+  /**
+   * A Gmail send by draft id: Gmail would send the saved draft as it is and
+   * ignore the To, Subject and Body a card would show. It never reaches Mike —
+   * refused at once with the rule. The event is remembered only once the
+   * refusal has landed, so a restart tries again; one that cannot be
+   * delivered is named.
+   */
+  private async refuseDraftSend(rec: SessionRec, eventId: string, tool: string, draftId: string, at: string): Promise<void> {
+    this.refusing.add(eventId);
+    try {
+      for (let attempt = 0; ; attempt++) {
+        const api = this.api();
+        if (!api || this.finished(rec)) return;
+        let landed = false;
+        try {
+          await api.sendConfirmation(rec.id, { type: 'user.tool_confirmation', tool_use_id: eventId, result: 'deny', deny_message: DRAFT_ID_REFUSAL });
+          landed = true;
+        } catch {
+          const found = await this.confirmationIn(api, rec.id, eventId);
+          landed = found === 'allow' || found === 'deny';
+        }
+        if (landed) {
+          if (!rec.seen.includes(eventId)) rec.seen.push(eventId);
+          this.activity_(rec.id, 'tool', `Refused at once: a send by draft id (${tool}, draft ${draftId}). Gmail sends a draft as saved and ignores the words in the request, so you could not have seen what would go out. The agent was told to put To, Subject and the full Body in the call.`, { tool, permission: 'deny', at });
+          this.store.save();
+          console.log(`[assistant] refused a send by draft id in ${rec.id} (${eventId})`);
+          return;
+        }
+        if (attempt + 1 >= RECONNECT_MS.length) {
+          this.activity_(rec.id, 'error', `Arbo could not deliver its refusal of a send by draft id (${tool}) — the session is still waiting on it. Deny it in the Claude Console (${rec.id}).`, { tool });
+          this.store.save();
+          console.error(`[assistant] could not deliver the draft-id refusal in ${rec.id} (${eventId})`);
+          return;
+        }
+        await this.sleep(RECONNECT_MS[attempt]!);
+      }
+    } finally {
+      this.refusing.delete(eventId);
+    }
   }
 
   /**
@@ -642,23 +993,42 @@ export class Assistant {
       case 'agent.tool_use':
       case 'agent.mcp_tool_use': {
         if (!isNew) break;
-        remember();
         const tool = toolLabel(ev);
         if (ev.evaluated_permission === 'ask') {
+          // Never a card: refused at once (see refuseDraftSend). Not
+          // remembered here — only once the refusal has landed.
+          const draftId = draftIdOf(ev);
+          if (draftId !== null) {
+            if (!this.refusing.has(ev.id)) void this.refuseDraftSend(rec, ev.id, tool, draftId, at);
+            break;
+          }
+          remember();
           if (!this.store.data.approvals.some((a) => a.id === ev.id)) {
             const card = describeToolCall(ev);
-            const ap: StoredApproval = { id: ev.id, sessionId: rec.id, tool: card.tool, kind: card.kind, summary: card.summary, details: card.details, requestedAt: at, decided: null };
+            const ap: StoredApproval = {
+              id: ev.id,
+              sessionId: rec.id,
+              tool: card.tool,
+              kind: card.kind,
+              summary: card.summary,
+              details: card.details,
+              requestedAt: at,
+              ...(card.kind === 'text' ? { textTo: textRecipients(ev.input) } : {}),
+              decided: null,
+            };
             this.store.data.approvals.push(ap);
             this.activity_(rec.id, 'waiting', `Waiting for your OK: ${card.summary}`, { tool, permission: 'ask', at });
             console.log(`[assistant] ${this.pending()} approval(s) waiting — new: ${card.kind} in ${rec.id}`);
           }
         } else if (ev.evaluated_permission === 'deny') {
+          remember();
           this.activity_(rec.id, 'tool', `${tool} was refused by Anthropic's safety check — it did not run`, { tool, permission: 'deny', at });
         } else {
+          remember();
           this.activity_(rec.id, 'tool', `Used ${tool}`, { tool, permission: 'allow', at });
-          // R28: every send waits for Mike. One that RAN without asking means
-          // the agent's permission policy is wrong — after the fact, but named,
-          // never silent.
+          // R28: every send and every booking waits for Mike. One that RAN
+          // without asking means the agent's permission policy is wrong —
+          // after the fact, but named, never silent.
           if (sentWithoutAsking(ev)) {
             this.activity_(rec.id, 'error', `${tool} ran WITHOUT your OK — the agent's permission policy for it is not "always ask". Fix the agent in the Claude Console before it sends again.`, { tool, permission: 'allow', at });
             console.error(`[assistant] WARNING ${rec.id}: ${tool} (${classify(ev.mcp_server_name, ev.name ?? '')}) ran without approval — check the agent's permission policy`);
@@ -677,9 +1047,15 @@ export class Assistant {
         if (!isNew) break;
         remember();
         const a = this.store.data.approvals.find((x) => x.id === ev.tool_use_id);
-        if (a && !a.decided && !this.deciding.has(a.id) && (ev.result === 'allow' || ev.result === 'deny')) {
-          a.decided = { decision: ev.result, at, by: 'elsewhere' };
-          this.activity_(rec.id, 'decided', `${ev.result === 'allow' ? 'Allowed' : 'Denied'} outside the app: ${a.summary}`, { tool: a.tool, at });
+        if (a && !a.decided && (ev.result === 'allow' || ev.result === 'deny')) {
+          // Mike's own decision echoed while decide() still waits for its
+          // answer: kept as proof it landed. Otherwise it was answered
+          // somewhere else (the Console).
+          if (this.deciding.has(a.id)) this.echoed.set(a.id, ev.result);
+          else {
+            a.decided = { decision: ev.result, at, by: 'elsewhere' };
+            this.activity_(rec.id, 'decided', `${ev.result === 'allow' ? 'Allowed' : 'Denied'} outside the app: ${a.summary}`, { tool: a.tool, at });
+          }
         }
         break;
       }
@@ -708,27 +1084,37 @@ export class Assistant {
         break;
       case 'session.status_idle': {
         const why = ev.stop_reason?.type;
-        if (why === 'requires_action') {
-          if (rec.state !== 'waiting') {
-            rec.state = 'waiting';
-            changed = true;
+        // Only these two finish a session from an idle. Anything else —
+        // waiting on Mike, paused at its budget (it resumes on its own when
+        // the budget is raised), a reason Arbo does not know — is parked and
+        // still watched.
+        if (why === 'end_turn' || why === 'retries_exhausted') {
+          if (isNew) remember();
+          rec.state = why === 'end_turn' ? 'done' : 'error';
+          changed = true;
+          if (!isNew) break;
+          if (why === 'end_turn') {
+            this.activity_(rec.id, 'done', `Finished — ${rec.label}`, { at });
+            console.log(`[assistant] session ${rec.id} done`);
+          } else {
+            this.activity_(rec.id, 'error', `Stopped — Anthropic gave up after repeated errors (${rec.label})`, { at });
+            console.error(`[assistant] session ${rec.id} stopped: retries_exhausted`);
           }
           break;
         }
-        if (isNew) remember();
-        rec.state = why === 'end_turn' ? 'done' : 'error';
-        changed = true;
-        if (!isNew) break;
-        if (why === 'end_turn') {
-          this.activity_(rec.id, 'done', `Finished — ${rec.label}`, { at });
-          console.log(`[assistant] session ${rec.id} done`);
-        } else if (why === 'budget_reached') {
+        if (rec.state !== 'waiting') {
+          rec.state = 'waiting';
+          changed = true;
+        }
+        if (why === 'requires_action' || !isNew) break;
+        remember();
+        if (why === 'budget_reached') {
           const c = this.cfg();
-          this.activity_(rec.id, 'error', `Stopped at its $${((c.budgetCents ?? 300) / 100).toFixed(2)} budget — nothing more runs in this session (${rec.label}). Raise or remove its budget in the Claude Console to let it finish.`, { at });
-          console.error(`[assistant] session ${rec.id} stopped at its budget`);
+          this.activity_(rec.id, 'error', `Paused at its $${((c.budgetCents ?? 300) / 100).toFixed(2)} budget (${rec.label}). Raise or remove its budget in the Claude Console and it picks up where it stopped — anything it then asks for shows up here.`, { at });
+          console.error(`[assistant] session ${rec.id} paused at its budget — still watched`);
         } else {
-          this.activity_(rec.id, 'error', `Stopped — ${why === 'retries_exhausted' ? 'Anthropic gave up after repeated errors' : `it ended (${why ?? 'no reason given'})`} (${rec.label})`, { at });
-          console.error(`[assistant] session ${rec.id} stopped: ${why ?? 'unknown'}`);
+          this.activity_(rec.id, 'error', `Paused — it stopped for a reason Arbo does not know (${why ?? 'none given'}) (${rec.label}). Arbo keeps watching it; open ${rec.id} in the Claude Console.`, { at });
+          console.error(`[assistant] session ${rec.id} idle (${why ?? 'unknown'}) — still watched`);
         }
         break;
       }

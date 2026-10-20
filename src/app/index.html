@@ -1746,9 +1746,11 @@ function assistantReread() {
 }
 
 // The approval sheet: everything Mike needs to decide, then two big buttons. A
-// charge asks twice and says its amount on the button; a no can carry one line
-// for Arbo. With nothing to check (no details, or a charge with no amount) the
-// Approve button stays off — deny is always open.
+// Square ask asks twice — the second tap at least 600 ms after the first, so a
+// double-tap never charges — and says its amount on the button; a no can carry
+// one line for Arbo. With nothing to check (no details) the Approve button
+// stays off; a Square call with no amount in it (a read, an invoice publish) is
+// warned by name and still Mike's to allow. Deny is always open.
 // A detail with one of these labels, and any long value, scrolls in its own box.
 const APPROVAL_BOX = /^(body|message|text|note|notes|content|description)$/i;
 function openApproval(a) {
@@ -1756,6 +1758,7 @@ function openApproval(a) {
   const body = $('approval-body');
   body.replaceChildren();
   $('approval').classList.add('show');
+  $('approval').dataset.ask = a.id; // which ask the sheet shows — a late answer for another never closes it
   sheetOpened('approval');
   const meta = el('div', 'approval-meta');
   meta.appendChild(approvalChip(a.kind));
@@ -1773,16 +1776,19 @@ function openApproval(a) {
   }
   const pay = a.kind === 'payment';
   const amt = details.find((d) => /^amount$/i.test(String(d.label)));
-  const amount = amt && amt.value !== undefined && amt.value !== null ? String(amt.value).trim() : '';
+  const raw = amt && amt.value !== undefined && amt.value !== null ? String(amt.value).trim() : '';
+  // An amount holds a digit: the server's "No amount in this request." is not one.
+  const amount = /\d/.test(raw) ? raw : '';
   const money = /^\d/.test(amount) ? '$' + amount : amount;
   // §1B: what Arbo did not send is named, and it is never approved blind.
-  const blocked = !details.length ? 'Arbo sent nothing to check for this one, so it can’t be approved here. Deny it if you can’t tell what it is.'
-    : pay && !amount ? 'Arbo didn’t say how much this charge is, so it can’t be approved here. Deny it and tell Arbo to show the amount.' : '';
-  if (blocked) body.appendChild(el('div', 'feed-state unread', blocked));
+  const blocked = !details.length ? 'Arbo sent nothing to check for this one, so it can’t be approved here. Deny it if you can’t tell what it is.' : '';
+  // A Square call with no amount is warned by name — never a garbled "charge No amount…" — and stays Mike's to decide.
+  const warn = !blocked && pay && !amount ? 'Arbo didn’t show an amount for this Square call. Read the details above before you allow it.' : '';
+  if (blocked || warn) body.appendChild(el('div', 'feed-state unread', blocked || warn));
   const out = el('div', 'errline');
   body.appendChild(out);
   const decide = el('div', 'adecide');
-  const yes = el('button', 'actbtn' + (pay ? ' charge' : ''), pay ? (amount ? 'Approve — charge ' + money : 'Approve — amount not shown') : 'Approve');
+  const yes = el('button', 'actbtn' + (pay ? ' charge' : ''), pay ? (amount ? 'Approve — charge ' + money : 'Approve — no amount in this request') : 'Approve');
   yes.disabled = !!blocked;
   const noteWrap = el('div', 'field');
   noteWrap.hidden = true;
@@ -1805,6 +1811,13 @@ function openApproval(a) {
     try {
       await api('/api/assistant/approvals/' + encodeURIComponent(a.id), { method: 'POST', body: why ? { decision: decision, note: why } : { decision: decision } });
     } catch (e) {
+      if (e && e.code === 409 && e.message === 'quiet_hours') {
+        // TCPA quiet hours: Arbo held the text. Said in the server's words; the ask stays open (Deny now, Allow after 8am).
+        yes.disabled = !!blocked;
+        no.disabled = false;
+        out.textContent = e.line || 'It is outside 8am–9pm ET, so Arbo holds a customer text until 8am. Nothing was sent — it is still waiting.';
+        return;
+      }
       if (e && (e.code === 409 || e.code === 404)) {
         // Answered somewhere else, or no longer waiting: said, and the lists are read again. The buttons stay off.
         out.textContent = e.code === 409 ? 'Already decided — reading the list again.' : 'This one is no longer waiting — reading the list again.';
@@ -1818,10 +1831,12 @@ function openApproval(a) {
       out.textContent = (e && e.line) || (e && e.code ? 'Arbo didn’t take your answer — it is still waiting. Try again.' : 'Couldn’t reach Arbo — your answer may not have arrived. Tap ↻ to see if it is still waiting.');
       return;
     }
-    closeSheet('approval');
-    approvalDone(a.id, approvalAnswered(a, decision, why));
+    // Close only the sheet that still shows THIS ask: Mike may have closed it mid-send and opened another.
+    if ($('approval').dataset.ask === a.id && $('approval').classList.contains('show')) closeSheet('approval');
+    // A Square call with no amount (a lookup, an invoice publish) is never said back as "will charge it".
+    approvalDone(a.id, approvalAnswered(pay && !amount ? { kind: 'other' } : a, decision, why));
   };
-  if (pay) armTwice(yes, 'Tap again to charge ' + money, () => send('allow'));
+  if (pay) armTwice(yes, amount ? 'Tap again to charge ' + money : 'Tap again to approve', () => send('allow'), 600);
   else yes.addEventListener('click', () => send('allow'));
   no.addEventListener('click', () => {
     // The first tap opens the one-line note; the second sends the no, with or without it.
@@ -1836,15 +1851,17 @@ function openApproval(a) {
 $('approval-close').addEventListener('click', () => closeSheet('approval'));
 
 // Today's "Waiting for your OK" card: under the alarms, above the run. Off or
-// not set up: nothing here. A read that failed: ONE named line. A problem the
-// assistant reports is named on the card.
+// not set up: nothing here. A read that failed: ONE named line — the status
+// read too, so an assistant in error never hides behind an empty list. A
+// problem the assistant reports is named on the card, and so is where today's
+// office check stands (Mike, 2026-10-20: "One daily office check").
 let ASSIST_TODAY_GEN = 0;
 async function fillAssistToday(slot) {
   const gen = ++ASSIST_TODAY_GEN;
   const [st, ap] = await Promise.allSettled([api('/api/assistant/status'), api('/api/assistant/approvals')]);
   if (gen !== ASSIST_TODAY_GEN) return; // a newer read owns the card
   slot.replaceChildren();
-  const s = st.status === 'fulfilled' ? st.value : null;
+  const s = st.status === 'fulfilled' && st.value && typeof st.value.state === 'string' && st.value.state ? st.value : null; // no state is a read that failed
   if (s && (s.state === 'off' || s.state === 'not_set_up')) return;
   const why = ap.status === 'rejected' ? ap.reason || {} : {};
   if (why.code === 401) return; // the key wall is the brief's to show
@@ -1853,7 +1870,8 @@ async function fillAssistToday(slot) {
   const list = ap.status === 'fulfilled' && ap.value && Array.isArray(ap.value.approvals) ? ap.value.approvals : null;
   if (!list) { slot.appendChild(el('div', 'feed-state unread', 'Assistant: couldn’t read what’s waiting. ' + RETRY)); return; }
   if (list.length) slot.appendChild(el('div', 'panel-title', 'Waiting for your OK'));
-  if (s && s.state === 'error') slot.appendChild(el('div', 'feed-state unread', 'Assistant: ' + (s.reason ? String(s.reason).replace(/\.\s*$/, '') : 'something is wrong and Arbo didn’t say what') + '. Open More → Assistant.'));
+  if (!s) { if (!(st.reason && st.reason.code === 401)) slot.appendChild(feedLine(st.status === 'rejected' ? st.reason : null, 'Assistant status')); }
+  else if (s.state === 'error') slot.appendChild(el('div', 'feed-state unread', 'Assistant: ' + (s.reason ? String(s.reason).replace(/\.\s*$/, '') : 'something is wrong and Arbo didn’t say what') + '. Open More → Assistant.'));
   for (const a of list.slice(0, 4)) slot.appendChild(approvalRow(a));
   if (list.length > 4) {
     const more = el('button', 'hudbtn approw-all', 'All ' + list.length + ' waiting →');
@@ -1861,6 +1879,9 @@ async function fillAssistToday(slot) {
     more.addEventListener('click', () => { switchTab('assistant'); renderAssistant(); });
     slot.appendChild(more);
   }
+  // Today's office check in the server's words: a day it could not run, or that stopped, is named in amber.
+  const oc = s && s.officeCheck && typeof s.officeCheck.line === 'string' && s.officeCheck.line ? s.officeCheck : null;
+  if (oc) slot.appendChild(el('div', oc.state === 'missed' || oc.state === 'error' ? 'feed-state unread' : 'storm-muted', oc.line));
 }
 
 // The assistant's switches and a failed read, each in its own words (§1B):
@@ -1927,13 +1948,14 @@ async function renderAssistant() {
   rules(askSlot, 'What it asks you first', '', [
     'Every email, before it goes out.',
     'Every text, before it goes out. Texts to customers also need their consent, stop for good on STOP, and only go 8am–9pm ET.',
+    'Every calendar booking. A guest is named loudly — Google emails them an invite.',
     'Every Drive write. It never deletes or shares a file.',
     'Every Square invoice or charge.',
   ]);
   rules(ownSlot, 'What it does on its own', ' own', [
     'Reads your inbox, texts and calls.',
     'Drafts — nothing a draft says goes out without your OK.',
-    'Books calendar times inside your rules.',
+    'One office check a day, 7am Monday to Saturday: weather for today’s and tomorrow’s jobs, unpaid invoices, equipment due, what waits on you. It reports here; anything it wants to send still asks.',
     'Never edits, moves or deletes an event.',
   ]);
   const [st, ap, act] = await Promise.allSettled([api('/api/assistant/status'), api('/api/assistant/approvals'), api('/api/assistant/activity')]);
@@ -1948,6 +1970,8 @@ async function renderAssistant() {
     row.appendChild(chip(label, tone));
     row.appendChild(el('span', '', assistStateLine(s)));
     stSlot.appendChild(row);
+    const oc = s.officeCheck && typeof s.officeCheck.line === 'string' && s.officeCheck.line ? s.officeCheck : null;
+    if (oc) stSlot.appendChild(el('div', oc.state === 'missed' || oc.state === 'error' ? 'feed-state unread' : 'storm-muted', oc.line));
   }
   waitSlot.appendChild(el('div', 'panel-title', 'Waiting for your OK'));
   const list = ap.status === 'fulfilled' && ap.value && Array.isArray(ap.value.approvals) ? ap.value.approvals : null;
@@ -3248,17 +3272,23 @@ async function renderRosterList(slot) {
 }
 
 // A one-way action asks twice: the first tap arms it and says what it will do,
-// the second tap within 4 seconds does it. Left alone, it disarms.
-function armTwice(btn, armedText, run) {
+// the second tap within 4 seconds does it. Left alone, it disarms. minGap (ms,
+// optional): a second tap sooner than that after arming — a double-tap, a bump
+// in the truck — is ignored and the button stays armed, so the armed line is
+// on screen long enough to read. Only the assistant's payment button sets it.
+function armTwice(btn, armedText, run, minGap) {
   const label = btn.textContent;
   let t = 0;
+  let armedAt = 0;
   btn.addEventListener('click', () => {
     if (!btn.classList.contains('armed')) {
       btn.classList.add('armed');
       btn.textContent = armedText;
+      armedAt = Date.now();
       t = setTimeout(() => { btn.classList.remove('armed'); btn.textContent = label; }, 4000);
       return;
     }
+    if (minGap && Date.now() - armedAt < minGap) return;
     clearTimeout(t);
     btn.classList.remove('armed');
     btn.textContent = label;

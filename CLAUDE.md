@@ -107,6 +107,11 @@ the prompts and makes the calls; your job is to build.
   carve-outs, both structural: R18 lets Arbo CREATE unconfirmed calendar
   holds, never edit; R22 lets Arbo TEXT via Quo through the compliance gate,
   never email.)
+  *R28 carve-out (Mike, 2026-10-20):* the hosted assistant (`agents/arbo/`,
+  `src/assistant/`) sends email, texts and Square invoices/payments only on
+  Mike's per-item OK in the Arbo app, and may only CREATE calendar events,
+  each on Mike's OK — never edit, move or delete one. Arbo's own code still
+  never sends email.
 - **No customer PII in chat output or logs** — counts and ids only (§4.3).
 - **Deploy is manual.** Auto-deploy stays OFF.
 

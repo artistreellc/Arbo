@@ -116,7 +116,6 @@ const RETRY = pageConst<string>('RETRY');
 const plural = pageFn<(n: number, one: string, many?: string) => string>('plural', {});
 const feedKind = pageFn<(e: unknown) => string>('feedKind', { LINKS: 'live' });
 const feedLine = pageFn<(e: unknown, what: string, tail?: string) => N>('feedLine', { el, feedKind, FEED_WORD, RETRY }, oneLine('function feedLine('));
-const armTwice = pageFn<(btn: N, armed: string, run: () => unknown) => void>('armTwice', {});
 // The page's own no-break helper: a phone number or code section never splits at its hyphen.
 const nb = new Function(`return ${/const nb = (\(s\) => [^\n]+);/.exec(html)![1]}`)() as (s: string) => string;
 const WJ = '\u2060';
@@ -150,22 +149,28 @@ const PAYMENT: Approval = {
 };
 
 // ---------- the sheet, opened against a faked server ----------
+// `answer` is what the POST answers: a value, an Error it throws, or a
+// function returning either (for an answer that arrives late). The page's
+// armTwice runs on a fake clock, so a test says how long Mike took between taps.
 function sheet(answer: unknown = { ok: true }) {
   const nodes: Record<string, N> = { approval: el('div', 'sheet'), 'approval-title': el('div'), 'approval-body': el('div') };
   const sent: Array<{ path: string; body: unknown }> = [];
   const log: string[] = [];
+  const clock = { t: 1_000_000 };
+  const timedArm = pageFn<(btn: N, armed: string, run: () => unknown, minGap?: number) => void>('armTwice', { Date: { now: () => clock.t } });
   const open = pageFn<(a: unknown) => void>('openApproval', {
     $: (id: string) => nodes[id],
     el,
     document: { createElement: (t: string) => el(t) },
     sheetOpened: (id: string) => log.push('opened:' + id),
     closeSheet: (id: string) => log.push('closed:' + id),
-    approvalChip, fmtWhen, armTwice, approvalAnswered, APPROVAL_BOX, nb,
+    approvalChip, fmtWhen, armTwice: timedArm, approvalAnswered, APPROVAL_BOX, nb,
     api: async (path: string, opts: { method: string; body: unknown }) => {
       expect(opts.method).toBe('POST');
       sent.push({ path, body: opts.body });
-      if (answer instanceof Error) throw answer;
-      return answer;
+      const a = typeof answer === 'function' ? await (answer as () => unknown)() : answer;
+      if (a instanceof Error) throw a;
+      return a;
     },
     assistantReread: () => log.push('reread'),
     showKeywall: () => log.push('keywall'),
@@ -173,8 +178,28 @@ function sheet(answer: unknown = { ok: true }) {
   });
   const body = nodes['approval-body']!;
   const btn = (re: RegExp) => body.all().find((n) => n.tag === 'button' && re.test(n.textContent))!;
-  return { open, nodes, body, sent, log, btn, out: () => body.querySelector('.errline')!, note: () => body.all().find((n) => n.tag === 'input')! };
+  /** Mike waits this long (ms) before his next tap. */
+  const wait = (ms: number) => { clock.t += ms; };
+  return { open, nodes, body, sent, log, btn, wait, out: () => body.querySelector('.errline')!, note: () => body.all().find((n) => n.tag === 'input')! };
 }
+/** What the server really sends for a Square call with no amount (describePayment always adds the Amount row). */
+const NO_AMOUNT: Approval = {
+  id: 'sevt_pay0', sessionId: 'sesn_2', tool: 'square.make_api_request', kind: 'payment',
+  summary: 'Square: invoices publish',
+  details: [
+    { label: 'Square call', value: 'invoices · publish' },
+    { label: 'Amount', value: 'No amount in this request.' },
+    { label: 'Customer', value: 'Not named in this request.' },
+    { label: 'Request', value: '{\n "invoice_id": "INVsim1",\n "version": 1\n}' },
+  ],
+  requestedAt: '2026-10-20T13:12:00Z',
+};
+const TEXT: Approval = {
+  id: 'sevt_text1', sessionId: 'sesn_3', tool: 'quo.send-message', kind: 'text',
+  summary: 'Text +17575550142: Hi, this is Art-is-Tree. Reply STOP to opt out.',
+  details: [{ label: 'Number', value: '+17575550142' }, { label: 'Message', value: 'Hi, this is Art-is-Tree. Reply STOP to opt out.' }],
+  requestedAt: '2026-10-21T02:30:00Z',
+};
 
 describe('R28 — what kind of ask it is: one chip per kind, through chip()', () => {
   it('payment wears the alarm tone, email and text amber, drive / calendar / other context', () => {
@@ -307,28 +332,97 @@ describe('R28 — the approval sheet', () => {
     expect(s.sent).toEqual([]); // the first tap only arms it
     expect(yes.textContent).toBe('Tap again to charge $450.00');
     expect(yes.has('armed')).toBe(true);
+    s.wait(700); // long enough to have read the armed line
     await yes.click();
     expect(s.sent).toEqual([{ path: '/api/assistant/approvals/sevt_pay1', body: { decision: 'allow' } }]);
     expect(s.log.slice(1)).toEqual(['closed:approval', 'done:sevt_pay1:Approved — Arbo will charge it now.']);
     // The armed button turns the alarm colour, so the second tap is never by accident.
     expect(css).toContain('.actbtn.charge.armed{background:var(--emergency);color:var(--on-emergency)}');
-    expect(fnSrc('openApproval')).toContain("if (pay) armTwice(yes, 'Tap again to charge ' + money, () => send('allow'));");
+    expect(fnSrc('openApproval')).toContain("if (pay) armTwice(yes, amount ? 'Tap again to charge ' + money : 'Tap again to approve', () => send('allow'), 600);");
   });
 
-  it('a bare number gets its dollar sign; a charge with no amount can never be approved here — deny still can', async () => {
+  it('a quick double-tap (a bump in the truck) never charges: the second tap must come 600 ms after the armed line shows', async () => {
+    const s = sheet();
+    s.open(PAYMENT);
+    const yes = s.btn(/^Approve/);
+    await yes.click();
+    s.wait(80); // a double-tap
+    await yes.click();
+    expect(s.sent).toEqual([]);
+    expect(yes.textContent).toBe('Tap again to charge $450.00'); // still armed, still saying what it will do
+    expect(yes.has('armed')).toBe(true);
+    s.wait(700);
+    await yes.click();
+    expect(s.sent).toEqual([{ path: '/api/assistant/approvals/sevt_pay1', body: { decision: 'allow' } }]);
+    // Only the payment button waits: the roster and retire buttons keep their old behaviour.
+    const plain = el('button', '', 'Retire');
+    const ran: string[] = [];
+    pageFn<(btn: N, armed: string, run: () => unknown, minGap?: number) => void>('armTwice', { Date: { now: () => 5 } })(plain, 'Tap again', () => ran.push('ran'));
+    await plain.click(); await plain.click();
+    expect(ran).toEqual(['ran']);
+  });
+
+  it('a bare number gets its dollar sign; a Square call with no amount says so plainly — a warning, never a garbled "charge"', async () => {
     const s1 = sheet();
     s1.open({ ...PAYMENT, details: [{ label: 'amount', value: '1200' }] });
     expect(s1.btn(/^Approve/).textContent).toBe('Approve — charge $1200');
+    // The server's real shape: an Amount row that says there is none.
     const s = sheet();
-    s.open({ ...PAYMENT, details: [{ label: 'Customer', value: 'SIM-Alder' }] });
+    s.open(NO_AMOUNT);
     const yes = s.btn(/^Approve/);
-    expect(yes.textContent).toBe('Approve — amount not shown');
-    expect(yes.disabled).toBe(true);
-    expect(s.body.querySelector('.feed-state')!.textContent).toBe('Arbo didn’t say how much this charge is, so it can’t be approved here. Deny it and tell Arbo to show the amount.');
-    await yes.click(); await yes.click();
+    expect(yes.textContent).toBe('Approve — no amount in this request');
+    expect(yes.textContent).not.toMatch(/charge No amount/i);
+    expect(yes.disabled).toBe(false); // a Square read or an invoice publish carries no amount: Mike decides it, warned
+    const warn = s.body.querySelector('.feed-state')!;
+    expect(warn.className).toBe('feed-state unread');
+    expect(warn.textContent).toBe('Arbo didn’t show an amount for this Square call. Read the details above before you allow it.');
+    await yes.click();
+    expect(yes.textContent).toBe('Tap again to approve'); // still asks twice
     expect(s.sent).toEqual([]);
-    await s.btn(/^Deny/).click(); await s.btn(/^Deny/).click();
-    expect(s.sent).toEqual([{ path: '/api/assistant/approvals/sevt_pay1', body: { decision: 'deny' } }]);
+    s.wait(700);
+    await yes.click();
+    expect(s.sent).toEqual([{ path: '/api/assistant/approvals/sevt_pay0', body: { decision: 'allow' } }]);
+    expect(s.log).toContain('done:sevt_pay0:Approved — Arbo will do it now.'); // never "will charge it" when nothing says a charge
+    // No Amount row at all is the same: no amount, warned, two taps.
+    const bare = sheet();
+    bare.open({ ...PAYMENT, details: [{ label: 'Customer', value: 'SIM-Alder' }] });
+    expect(bare.btn(/^Approve/).textContent).toBe('Approve — no amount in this request');
+    const d = sheet();
+    d.open(NO_AMOUNT);
+    await d.btn(/^Deny/).click(); await d.btn(/^Deny/).click();
+    expect(d.sent).toEqual([{ path: '/api/assistant/approvals/sevt_pay0', body: { decision: 'deny' } }]);
+  });
+
+  it('a late answer for one ask never closes the sheet of another ask Mike has since opened', async () => {
+    let release: (v: unknown) => void = () => {};
+    const s = sheet(() => new Promise((r) => { release = r; }));
+    s.open(EMAIL);
+    const approveA = s.btn(/^Approve$/);
+    const pending = approveA.click(); // slow signal: A's answer is still on its way…
+    await flush();
+    s.open(PAYMENT); // …Mike closes A and opens B
+    expect(s.nodes.approval!.dataset.ask).toBe('sevt_pay1');
+    release({ ok: true });
+    await pending;
+    expect(s.log).not.toContain('closed:approval'); // B stays open
+    expect(s.log).toContain('done:sevt_email1:Approved — Arbo will send it now.'); // A's row still gives way
+    // The sheet that still shows the ask closes as before.
+    const same = sheet();
+    same.open(EMAIL);
+    expect(same.nodes.approval!.dataset.ask).toBe('sevt_email1');
+    await same.btn(/^Approve$/).click();
+    expect(same.log).toContain('closed:approval');
+  });
+
+  it('a text Allow held by quiet hours (409 quiet_hours) says the server’s line and keeps the ask open — never "Already decided"', async () => {
+    const line = 'It is 10:30 PM ET — a text can go to a customer only from 8am to 9pm (TCPA quiet hours). Nothing was sent — it is still waiting: allow it after 8am, or deny it.';
+    const s = sheet(fail(409, 'quiet_hours', line));
+    s.open(TEXT);
+    await s.btn(/^Approve$/).click();
+    expect(s.out().textContent).toBe(line);
+    expect(s.log).toEqual(['opened:approval']); // no re-read, no close, no done line
+    expect(s.btn(/^Approve$/).disabled).toBe(false);
+    expect(s.btn(/^Deny/).disabled).toBe(false);
   });
 
   it('an ask with no details is named, and never approved blind', () => {
@@ -388,7 +482,7 @@ describe('R28 — the approval sheet', () => {
     const s = sheet(fail(502, 'send_failed', 'Gmail refused the send — the address bounced. Nothing went out.'));
     s.open(PAYMENT);
     const yes = s.btn(/^Approve/);
-    await yes.click(); await yes.click();
+    await yes.click(); s.wait(700); await yes.click();
     expect(s.out().textContent).toBe('Gmail refused the send — the address bounced. Nothing went out.');
     expect(s.log).toEqual(['opened:approval']); // no close, no done line
     expect(yes.disabled).toBe(false);
@@ -469,7 +563,7 @@ function today(status: Answer, approvals: Answer) {
   const slot = el('div', 'slot assist');
   const log: string[] = [];
   const fill = pageFn<(s: N) => Promise<void>>('fillAssistToday', {
-    ASSIST_TODAY_GEN: 0, el, RETRY,
+    ASSIST_TODAY_GEN: 0, el, RETRY, feedLine,
     api: async (p: string) => {
       const a = p === '/api/assistant/status' ? status : p === '/api/assistant/approvals' ? approvals : fail(404);
       if (a instanceof Error) throw a;
@@ -539,6 +633,34 @@ describe('R28 — Today: "Waiting for your OK"', () => {
     const t = today(fail(undefined), fail(503, 'unreadable')); // both reads failed: still one line
     await t.run();
     expect(t.slot.children).toHaveLength(1);
+  });
+
+  it('a status read that failed is named too — an assistant in error never hides behind an empty list (§1B)', async () => {
+    const line = 'feed-state unread:Assistant status: ' + FEED_WORD.unread + '. ' + RETRY;
+    for (const st of [fail(500), new TypeError('Failed to fetch'), { nope: true }]) {
+      const t = today(st, { approvals: [] });
+      await t.run();
+      expect(t.slot.children.map((n) => n.className + ':' + n.textContent), JSON.stringify(st)).toEqual([line]);
+    }
+    const rows = today(fail(500), { approvals: many(1) });
+    await rows.run();
+    expect(rows.slot.children.map((n) => n.className + ':' + n.textContent)).toEqual(['panel-title:Waiting for your OK', line, 'approw:Ask 0']);
+    const key = today(fail(401, 'unauthorized'), { approvals: [] }); // the key wall says that one
+    await key.run();
+    expect(key.slot.children).toHaveLength(0);
+  });
+
+  it('the daily office check says where it stands on Today: done, running, or a day it could not run — named, in its own words', async () => {
+    const said = async (state: string, line: string, approvals: Answer = { approvals: [] }) => {
+      const t = today({ ...READY, officeCheck: { day: '2026-10-20', state, line } }, approvals);
+      await t.run();
+      return t.slot.children.map((n) => n.className + ':' + n.textContent);
+    };
+    expect(await said('done', 'Today’s office check is done — its report is in More → Assistant.')).toEqual(['storm-muted:Today’s office check is done — its report is in More → Assistant.']);
+    expect(await said('working', 'Today’s office check is running.')).toEqual(['storm-muted:Today’s office check is running.']);
+    expect(await said('missed', 'Today’s office check did not run.')).toEqual(['feed-state unread:Today’s office check did not run.']);
+    expect(await said('error', 'Today’s office check could not start.')).toEqual(['feed-state unread:Today’s office check could not start.']);
+    expect(await said('done', 'Done.', { approvals: many(1) })).toEqual(['panel-title:Waiting for your OK', 'approw:Ask 0', 'storm-muted:Done.']);
   });
 
   it('a problem the assistant reports is named on the card, with the rows still there to decide', async () => {
@@ -623,13 +745,14 @@ describe('R28 — the Assistant desk', () => {
     expect(lines('What it asks you first')).toEqual([
       'Every email, before it goes out.',
       'Every text, before it goes out. Texts to customers also need their consent, stop for good on STOP, and only go 8am–9pm ET.',
+      'Every calendar booking. A guest is named loudly — Google emails them an invite.',
       'Every Drive write. It never deletes or shares a file.',
       'Every Square invoice or charge.',
     ]);
     expect(lines('What it does on its own')).toEqual([
       'Reads your inbox, texts and calls.',
       'Drafts — nothing a draft says goes out without your OK.',
-      'Books calendar times inside your rules.',
+      'One office check a day, 7am Monday to Saturday: weather for today’s and tomorrow’s jobs, unpaid invoices, equipment due, what waits on you. It reports here; anything it wants to send still asks.',
       'Never edits, moves or deletes an event.',
     ]);
     expect(d.slot('What it does on its own').querySelector('ul')!.className).toBe('asst-list own');
@@ -654,6 +777,19 @@ describe('R28 — the Assistant desk', () => {
     // At 320px the line drops under its chip, so a variable name never breaks mid-word.
     expect(css).toContain('.asst-state{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;');
     expect(css).toContain('.asst-state span:last-child{flex:1 1 220px;min-width:0;overflow-wrap:anywhere}');
+  });
+
+  it('the status block carries today’s office check line under the state, in its own words', async () => {
+    const d = desk({ ...READY, officeCheck: { day: '2026-10-20', state: 'missed', line: 'Today’s office check did not run.' } }, { approvals: [] }, { items: [] });
+    await d.run();
+    expect(d.slot('Status').children.map((n) => n.className).slice(1)).toEqual(['asst-state', 'feed-state unread']);
+    expect(d.slot('Status').children[2]!.textContent).toBe('Today’s office check did not run.');
+    const ok = desk({ ...READY, officeCheck: { day: '2026-10-20', state: 'done', line: 'Done.' } }, { approvals: [] }, { items: [] });
+    await ok.run();
+    expect(ok.slot('Status').children[2]!.className + ':' + ok.slot('Status').children[2]!.textContent).toBe('storm-muted:Done.');
+    const none = desk(READY, { approvals: [] }, { items: [] });
+    await none.run();
+    expect(none.slot('Status').children).toHaveLength(2); // nothing due today: no line
   });
 
   it('a status Arbo could not read is named, never drawn as off (§1B)', async () => {

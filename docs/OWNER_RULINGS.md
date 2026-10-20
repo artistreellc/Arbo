@@ -741,6 +741,85 @@ where he did not say (Mike may change any):
    Before crews rely on it, a Spanish-speaking crew member reads the safety
    briefing and the quiz on a phone and says it reads right.
 
+## R28 — The hosted assistant inside Arbo (Mike, 2026-10-20)
+
+Mike pasted a Claude Managed Agent ("Arbo") with every Gmail, Calendar, Drive
+and Quo tool on "auto" — it could send, write and delete with nobody looking.
+Mike, verbatim: *"Make it safe, then set it up"*. His three overrides, verbatim:
+*"Send email (with your OK)"*, *"Square invoices and payments"*, *"Book times on
+the calendar"* — and where the approvals live: *"put it in the arbo app"*. Later
+the same day, two answers: calendar bookings — *"Each booking waits for my
+OK"*; proactive duties — *"One daily office check"*.
+
+What this changes:
+1. **The assistant is a hosted agent Mike runs from his own Claude Console**,
+   pasted from `agents/arbo/agent.yaml`. Arbo's server starts its sessions and
+   carries its approvals; it never creates or edits the agent. OFF unless
+   `ARBO_AGENT` is exactly `live` (fail-closed, like `ARBO_DATA_LINKS`). Steps:
+   `docs/ASSISTANT_SETUP.md`.
+2. **Every send waits for Mike's tap in the Arbo app** — every email, text,
+   calendar booking, Drive write and Square call (reads included, until
+   Square's tool list has been seen). It is set in the agent's permission
+   policies (`always_ask`), not only its prompt, and a send that ever ran
+   unasked is named in Activity. A Gmail send by draft id never reaches Mike:
+   Arbo refuses it at once (Gmail would send the saved draft and ignore the
+   words on the card).
+3. **Calendar: create only, each booking on Mike's OK.** Never edit, move or
+   delete. A guest is named first and loudly on the card, because Google emails
+   them an invitation. An estimate hold is titled "Arbo HOLD (unconfirmed, Mike
+   confirms Friday): …" (R18, R14).
+4. **Exactly four things start it, and its prompt names the same four:** each
+   inbound Quo text, missed call or finished call (one session each — Mike's
+   own calls back start nothing); a Gmail sweep every 30 minutes 7am–9pm ET; the
+   crew-route summaries at 6:30am ET; and **the daily office check at 7am ET,
+   Monday to Saturday** — weather for today's and tomorrow's jobs, invoices
+   unpaid past their terms, equipment due for service, and anything waiting on
+   Mike. The office check reports in the app (its report in Activity, one line
+   on Today); anything it wants to send still waits for his OK; a day it could
+   not run is named on Today, never a quiet nothing (§1B). No switch of its own
+   beyond `ARBO_AGENT`.
+5. **TCPA quiet hours are enforced at Allow:** a customer text Mike allows
+   before 8am or after 9pm ET is refused by name (`quiet_hours`) and keeps
+   waiting — unless it answers that customer's own text or call, or goes to a
+   number in `ARBO_AGENT_CREW_NUMBERS`.
+
+Defaults Claude used where Mike did not say (he may change any):
+- Opus 5.5 at medium effort (his paste said low).
+- Gmail: saving a new draft runs unasked; changing an existing draft (his
+  included) is off.
+- Web search and web fetch reach only the listed sites (weather, the four
+  cities, Virginia agencies, VA811, Dominion, OSHA/ISA/TCIA standards,
+  suppliers, two job boards) — in the tool settings and the Limited environment
+  both — and Arbo starts nothing until it reads the environment back as Limited.
+- The office check: 7am ET, Monday to Saturday, never Sunday.
+- A text the agent starts (an offer, a review request, an invoice reminder)
+  names Art-is-Tree and ends "Reply STOP to opt out." (R22's identity and
+  opt-out).
+- Not running, because nothing starts them: seasonal and storm outreach,
+  staffing flags, supplier price comparisons. The setup guide says so.
+- The agent has no voice; Talk (R30, read-only) is the hands-free path.
+
+Also standing with it (each a one-line change on Mike's word): a customer is
+never told the $500 minimum (his paste allowed it; R3/R14 stand); every text
+waits for his OK, crew texts included; every Drive write waits; it never
+deletes or shares a file.
+
+Open — Mike's call, not a build's: the 2pm estimate routing from his paste is
+not in (R14's timing stands); the question is in the setup guide.
+
+What did NOT move: §3 — the assistant never touches Arbo's database; the links
+stay cut and nothing is imported. R4 — Arbo's own sweeps stay read-only. Arbo's
+own code still never sends email and never edits a calendar; the hosted agent
+sends only in Mike's own accounts, one item at a time, on his OK. Never price,
+never diagnose, never promise a date, the three permit words and never
+"clear". Logs stay counts-and-ids (§4.3). Deploys stay manual.
+
+*Carried by:* `agents/arbo/agent.yaml`, `src/assistant/*`, `src/env.ts`
+(`assistantEnv`), `src/server.ts` (`/api/assistant/*`, the Quo hand-off),
+`src/app/index.html` (the approvals card, sheet and desk),
+`docs/ASSISTANT_SETUP.md`, `test/assistantConfig.test.ts`,
+`test/assistant.test.ts`, `test/assistantUi.test.ts`.
+
 ## R29 — The layout review answers: Direction B, and sixteen more (Mike, 2026-10-20)
 
 *(R28, the hosted assistant, is filed with its own build.)*

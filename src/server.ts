@@ -2040,9 +2040,11 @@ export function startServer(port: number) {
     ? `[links] CUT while Sona handles calls (R21): ${cutNow.join(', ')} — set ARBO_LINK_<NAME>=live to reconnect`
     : '[links] ElevenLabs and Twilio links live');
   if (!env.quoApiKey) console.error('[quo] DISABLED — no QUO_API_KEY. Sona calls are not reaching Arbo (this is not zero calls).');
-  // R28: the business assistant's clock (30-minute sweeps 7am–9pm ET, crew
-  // routes at 6:30am ET) and its re-attach to sessions still open. It names
-  // its own state in the boot log — OFF, NOT SET UP, or ready.
+  // R28: the business assistant's clock (crew routes at 6:30am ET, the daily
+  // office check at 7am ET Mon–Sat, 30-minute Gmail sweeps 7am–9pm ET) and its
+  // re-attach to sessions still open. It names its own state in the boot log —
+  // OFF, NOT SET UP, or on — and reads its environment back as Limited
+  // networking before anything starts.
   currentAssistant?.start();
   // §8A.6f: the agents run on their own clock, not only when Mike taps.
   startAgentScheduler(

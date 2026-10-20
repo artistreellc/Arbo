@@ -181,6 +181,11 @@ export const env = {
  * 'live', read raw — 'LIVE', 'true', ' live' or unset all leave it OFF.
  * The key is the same ANTHROPIC_API_KEY through the same accessor as
  * env.anthropic.apiKey. Values are never logged — only which NAMES are missing.
+ *
+ * ARBO_AGENT_CREW_NUMBERS (optional, comma-separated): Mike's crew phones. A
+ * text to one of them is not held by the 8am–9pm ET quiet hours at Allow
+ * (TCPA covers customers, not his own crew). Unset = no number is a crew
+ * number, so every early or late text waits for 8am (fail closed).
  */
 export function assistantEnv(): {
   on: boolean;
@@ -190,11 +195,18 @@ export function assistantEnv(): {
   vaultId: string | undefined;
   /** Whole cents; null when the variable is set but is not a dollar amount above 0. */
   budgetCents: number | null;
+  /** Last 10 digits of each crew phone in ARBO_AGENT_CREW_NUMBERS; anything shorter is dropped. */
+  crewNumbers: string[];
 } {
   const rawBudget = get('ARBO_AGENT_SESSION_BUDGET_USD');
   const budgetCents = rawBudget === undefined
     ? 300
     : /^\d+(\.\d{1,2})?$/.test(rawBudget) && Number(rawBudget) > 0 ? Math.round(Number(rawBudget) * 100) : null;
+  const crewNumbers = (get('ARBO_AGENT_CREW_NUMBERS') ?? '')
+    .split(',')
+    .map((n) => n.replace(/\D/g, ''))
+    .filter((d) => d.length >= 10)
+    .map((d) => d.slice(-10));
   return {
     on: process.env.ARBO_AGENT === 'live',
     apiKey: get('ANTHROPIC_API_KEY'),
@@ -202,6 +214,7 @@ export function assistantEnv(): {
     environmentId: get('ARBO_AGENT_ENVIRONMENT_ID'),
     vaultId: get('ARBO_AGENT_VAULT_ID'),
     budgetCents,
+    crewNumbers,
   };
 }
 

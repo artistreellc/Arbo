@@ -64,7 +64,18 @@ class FakeApi implements AssistantApi {
   history = new Map<string, AgentEvent[]>();
   channels = new Map<string, Channel>();
   createError: AssistantApiError | null = null;
+  /** The create reaches Anthropic and the session IS made — then the answer is lost. */
+  createLostAnswer: AssistantApiError | null = null;
   sendError: AssistantApiError | null = null;
+  /** The confirmation reaches the session (and lands in its history) — then the answer is lost. */
+  sendLandsThenThrows: AssistantApiError | null = null;
+  /** While true, every stream open fails fast (an outage). */
+  down = false;
+  env: { type: string; networking: string | null; archived: boolean } = { type: 'cloud', networking: 'limited', archived: false };
+  envError: AssistantApiError | null = null;
+  envReads = 0;
+  finds: Array<{ agentId: string; key: string; sinceIso: string }> = [];
+  findError: AssistantApiError | null = null;
   private n = 0;
   async createSession(input: CreateSessionInput): Promise<{ id: string }> {
     if (this.createError) throw this.createError;
@@ -72,13 +83,37 @@ class FakeApi implements AssistantApi {
     this.n += 1;
     const id = `sesn_sim${this.n}`;
     this.history.set(id, []);
+    if (this.createLostAnswer) {
+      const e = this.createLostAnswer;
+      this.createLostAnswer = null;
+      throw e;
+    }
     return { id };
+  }
+  async findSession(agentId: string, key: string, sinceIso: string): Promise<{ id: string } | null> {
+    this.finds.push({ agentId, key, sinceIso });
+    if (this.findError) throw this.findError;
+    const i = this.created.findIndex((c) => c.metadata.arbo_key === key);
+    return i === -1 ? null : { id: `sesn_sim${i + 1}` };
+  }
+  async describeEnvironment(): Promise<{ type: string; networking: string | null; archived: boolean }> {
+    this.envReads += 1;
+    if (this.envError) throw this.envError;
+    return this.env;
   }
   async sendConfirmation(sessionId: string, confirmation: ToolConfirmation): Promise<void> {
     if (this.sendError) throw this.sendError;
     this.sent.push({ sessionId, confirmation });
+    if (this.sendLandsThenThrows) {
+      const e = this.sendLandsThenThrows;
+      this.sendLandsThenThrows = null;
+      this.emit(sessionId, { id: `sevt_echo_${confirmation.tool_use_id}`, type: 'user.tool_confirmation', tool_use_id: confirmation.tool_use_id, result: confirmation.result });
+      await new Promise((r) => setTimeout(r, 10)); // the echo is read while the answer is still on its way
+      throw e;
+    }
   }
   async openStream(id: string): Promise<EventStream> {
+    if (this.down) throw new AssistantApiError(503, 'overloaded');
     this.opened.push(id);
     const ch = new Channel();
     this.channels.set(id, ch);
@@ -96,9 +131,9 @@ class FakeApi implements AssistantApi {
 }
 
 type Cfg = ReturnType<typeof assistantEnv>;
-const READY: Cfg = { on: true, apiKey: 'sim-key', agentId: 'agent_sim', environmentId: 'env_sim', vaultId: 'vlt_sim', budgetCents: 300 };
+const READY: Cfg = { on: true, apiKey: 'sim-key', agentId: 'agent_sim', environmentId: 'env_sim', vaultId: 'vlt_sim', budgetCents: 300, crewNumbers: [] };
 
-function make(opts: { cfg?: Partial<Cfg>; dir?: string; now?: () => number; api?: FakeApi } = {}) {
+function make(opts: { cfg?: Partial<Cfg>; dir?: string; now?: () => number; api?: FakeApi; sleep?: (ms: number) => Promise<void> } = {}) {
   const api = opts.api ?? new FakeApi();
   const dir = opts.dir ?? mkdtempSync(join(tmpdir(), 'arbo-asst-'));
   const a = new Assistant({
@@ -106,10 +141,17 @@ function make(opts: { cfg?: Partial<Cfg>; dir?: string; now?: () => number; api?
     makeApi: () => api,
     store: new AssistantStore(dir),
     ...(opts.now ? { now: opts.now } : {}),
-    sleep: async () => {},
+    sleep: opts.sleep ?? (async () => {}),
   });
   return { a, api, dir };
 }
+/** A real (short) wait, so a retry loop yields to the test's own timers. */
+const tinySleep = () => new Promise<void>((r) => setTimeout(r, 2));
+type Card = { id: string; kind: string; summary: string; details: Array<{ label: string; value: string }> };
+const cards = (a: Assistant) => (a.approvals().body as { approvals: Card[] }).approvals;
+const acts = (a: Assistant) => (a.activity().body as { items: Array<{ sessionId: string; kind: string; text: string; tool?: string; permission?: string }> }).items;
+/** A session history that cannot be read: the first read fails with `err`. */
+const unreadableHistory = (err: Error) => (): AsyncIterable<AgentEvent> => ({ [Symbol.asyncIterator]: () => ({ next: () => Promise.reject(err) }) });
 
 // ─── fake Quo deliveries (SIM people only) ──────────────────────────────
 
@@ -441,7 +483,7 @@ describe("Mike's decision goes back as user.tool_confirmation on the sevt_ id", 
     expect(await a.decide('sevt_two', 'allow')).toEqual({ status: 409, body: { error: 'already_decided' } });
   });
 
-  it('the session finishing, failing, or stopping at its budget is named in the activity', async () => {
+  it('the session finishing, failing, or pausing at its budget is named in the activity — a budget pause is parked, not finished', async () => {
     const { a, api } = make();
     for (let i = 1; i <= 3; i++) a.noteQuoEvent(quoText(`EVf${i}`, `ACf${i}`));
     await vi.waitFor(() => expect(api.created).toHaveLength(3));
@@ -450,15 +492,47 @@ describe("Mike's decision goes back as user.tool_confirmation on the sevt_ id", 
     api.emit('sesn_sim2', { id: 'sevt_err', type: 'session.error', error: { type: 'mcp_authentication_failed_error', mcp_server_name: 'gmail', message: 'token expired' } });
     api.emit('sesn_sim2', idle('sevt_e2', 'retries_exhausted'));
     api.emit('sesn_sim3', idle('sevt_e3', 'budget_reached'));
-    await vi.waitFor(() => expect(a.store.data.sessions.every((s) => s.state === 'done' || s.state === 'error')).toBe(true));
+    await vi.waitFor(() => expect(a.store.data.sessions.map((s) => s.state)).toEqual(['done', 'error', 'waiting']));
     const items = (a.activity().body as { items: Array<{ sessionId: string; kind: string; text: string }> }).items;
     expect(items.find((i) => i.sessionId === 'sesn_sim1' && i.kind === 'message')!.text).toBe('Drafted a reply for Mike to approve.');
     expect(items.find((i) => i.sessionId === 'sesn_sim1' && i.kind === 'done')).toBeTruthy();
     expect(items.find((i) => i.sessionId === 'sesn_sim2' && i.kind === 'error' && /mcp_authentication_failed_error \(gmail\)/.test(i.text))).toBeTruthy();
     expect(items.find((i) => i.sessionId === 'sesn_sim2' && i.kind === 'error' && /gave up/.test(i.text))).toBeTruthy();
-    expect(items.find((i) => i.sessionId === 'sesn_sim3' && /\$3\.00 budget/.test(i.text))).toBeTruthy();
-    expect(a.store.data.sessions.map((s) => s.state)).toEqual(['done', 'error', 'error']);
-    expect(a.status().sessionsOpen).toBe(0);
+    expect(items.find((i) => i.sessionId === 'sesn_sim3' && /\$3\.00 budget/.test(i.text))!.text).toMatch(/picks up where it stopped/);
+    expect(a.status().sessionsOpen).toBe(1); // parked at its budget: still open, still watched
+    expect(a.isWatching('sesn_sim3')).toBe(true);
+  });
+
+  it('a session paused at its budget is still watched: after Mike raises the budget, its next ask reaches the app', async () => {
+    const { a, api } = make();
+    a.noteQuoEvent(quoText('EVbud', 'ACbud'));
+    await vi.waitFor(() => expect(api.created).toHaveLength(1));
+    api.emit('sesn_sim1', idle('sevt_b1', 'budget_reached'));
+    await vi.waitFor(() => expect(a.store.data.sessions[0]!.state).toBe('waiting'));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(a.isWatching('sesn_sim1')).toBe(true);
+    // Mike raises the budget in the Console: the session resumes on its own and asks.
+    api.emit('sesn_sim1', { id: 'sevt_b2', type: 'session.status_running' });
+    api.emit('sesn_sim1', askEmail('sevt_b3'));
+    api.emit('sesn_sim1', idle('sevt_b4', 'requires_action'));
+    await vi.waitFor(() => expect(cards(a).map((c) => c.id)).toEqual(['sevt_b3']));
+  });
+
+  it('a session paused at its budget is re-attached after a redeploy', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'arbo-asst-'));
+    const first = make({ dir });
+    first.a.noteQuoEvent(quoText('EVbr', 'ACbr'));
+    await vi.waitFor(() => expect(first.api.created).toHaveLength(1));
+    first.api.emit('sesn_sim1', idle('sevt_br1', 'budget_reached'));
+    await vi.waitFor(() => expect(first.a.store.data.sessions[0]!.state).toBe('waiting'));
+    const api2 = new FakeApi();
+    api2.history.set('sesn_sim1', [...first.api.history.get('sesn_sim1')!]);
+    const second = make({ dir, api: api2, now: () => Date.parse('2026-10-21T03:00:00.000Z') }); // 11 PM ET: no clock jobs
+    second.a.start();
+    await vi.waitFor(() => expect(api2.opened).toContain('sesn_sim1'));
+    api2.emit('sesn_sim1', askEmail('sevt_br2'));
+    await vi.waitFor(() => expect(cards(second.a).map((c) => c.id)).toEqual(['sevt_br2']));
+    expect(acts(second.a).filter((i) => /budget/.test(i.text))).toHaveLength(1); // the replay did not repeat the line
   });
 
   it('a send that ran WITHOUT asking (a wrong permission policy) is named — reads are not', async () => {
@@ -506,6 +580,298 @@ describe("Mike's decision goes back as user.tool_confirmation on the sevt_ id", 
     await vi.waitFor(() => expect((a.approvals().body as { approvals: unknown[] }).approvals).toHaveLength(2));
     const waiting = (a.activity().body as { items: Array<{ kind: string }> }).items.filter((i) => i.kind === 'waiting');
     expect(waiting).toHaveLength(2);
+  });
+});
+
+describe('R28 review fixes — what Mike sees is what happens', () => {
+  it('a Gmail send by draft id never becomes a card: it is refused at once, with the rule, and named', async () => {
+    const { a, api } = make();
+    a.noteQuoEvent(quoText('EVdr', 'ACdr'));
+    await vi.waitFor(() => expect(api.created).toHaveLength(1));
+    // Gmail would send draft r-123 as saved and ignore this To / Subject / Body.
+    api.emit('sesn_sim1', { id: 'sevt_draft', type: 'agent.mcp_tool_use', mcp_server_name: 'gmail', name: 'send_message', evaluated_permission: 'ask', input: { draftId: 'r-123', to: [SIM.email], subject: 'Your proposal', body: 'clean words' } });
+    api.emit('sesn_sim1', idle('sevt_dri', 'requires_action'));
+    await vi.waitFor(() => expect(api.sent).toHaveLength(1));
+    expect(api.sent[0]).toEqual({ sessionId: 'sesn_sim1', confirmation: { type: 'user.tool_confirmation', tool_use_id: 'sevt_draft', result: 'deny', deny_message: 'Put To, Subject and the full Body in the call; a draft id is never sent' } });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(cards(a)).toHaveLength(0);
+    expect(acts(a).find((x) => /draft id/.test(x.text))).toMatchObject({ kind: 'tool', permission: 'deny', tool: 'gmail.send_message' });
+    await vi.waitFor(() => expect(a.store.data.sessions[0]!.seen).toContain('sevt_draft')); // delivered: a replay never refuses it twice
+  });
+
+  it('a draft-id refusal that cannot be delivered is named, and still never a card', async () => {
+    const { a, api } = make();
+    a.noteQuoEvent(quoText('EVdr2', 'ACdr2'));
+    await vi.waitFor(() => expect(api.created).toHaveLength(1));
+    api.sendError = new AssistantApiError(503, 'overloaded');
+    api.emit('sesn_sim1', { id: 'sevt_draft2', type: 'agent.mcp_tool_use', mcp_server_name: 'gmail', name: 'send_message', evaluated_permission: 'ask', input: { draftId: 'r-9' } });
+    await vi.waitFor(() => expect(acts(a).some((x) => x.kind === 'error' && /could not deliver/.test(x.text))).toBe(true));
+    expect(cards(a)).toHaveLength(0);
+    expect(a.store.data.sessions[0]!.seen).not.toContain('sevt_draft2'); // a restart tries again
+  });
+
+  it('a calendar booking that RAN without asking is named — a calendar read is not', async () => {
+    const { a, api } = make();
+    a.noteQuoEvent(quoText('EVcal', 'ACcal'));
+    await vi.waitFor(() => expect(api.created).toHaveLength(1));
+    api.emit('sesn_sim1', { id: 'sevt_c1', type: 'agent.mcp_tool_use', mcp_server_name: 'google-calendar-calendarmcp', name: 'list_events', evaluated_permission: 'allow', input: {} });
+    api.emit('sesn_sim1', { id: 'sevt_c2', type: 'agent.mcp_tool_use', mcp_server_name: 'google-calendar-calendarmcp', name: 'create_event', evaluated_permission: 'allow', input: { summary: 'x' } });
+    await vi.waitFor(() => expect(a.store.data.sessions[0]!.seen).toContain('sevt_c2'));
+    const warned = acts(a).filter((x) => x.kind === 'error' && /WITHOUT your OK/.test(x.text));
+    expect(warned.map((w) => w.tool)).toEqual(['google-calendar-calendarmcp.create_event']);
+  });
+
+  it('a booking with guests says so loudly: Google emails each one an invite', () => {
+    const cal = describeToolCall({ mcp_server_name: 'calendar', name: 'create_event', input: { summary: 'Arbo HOLD (unconfirmed, Mike confirms Friday): Estimate', startTime: '2026-10-24T09:00:00', endTime: '2026-10-24T09:30:00', attendees: [{ email: SIM.email }], attendeeEmails: ['other@example.com'] } });
+    expect(cal.summary).toBe(`Calendar: Arbo HOLD (unconfirmed, Mike confirms Friday): Estimate — 2026-10-24T09:00:00 — EMAILS AN INVITE TO ${SIM.email}, other@example.com`);
+    expect(cal.details[0]!.label).toBe('Heads-up');
+    expect(cal.details[0]!.value).toMatch(/^Google will EMAIL an invitation to sim\.brooks@example\.com, other@example\.com/);
+    expect(cal.details).toContainEqual({ label: 'Guests — Google emails each one an invite', value: `${SIM.email}, other@example.com` });
+    expect(cal.details.some((d) => d.label === 'attendeeEmails')).toBe(false);
+    const quiet = describeToolCall({ mcp_server_name: 'calendar', name: 'create_event', input: { summary: 'Arbo: job', startTime: 's', endTime: 'e' } });
+    expect(quiet.details.some((d) => /invitation/.test(d.value))).toBe(false);
+  });
+
+  it("an outgoing call's summary or transcript starts nothing — Mike calling a customer back is not an item", async () => {
+    const { a, api } = make();
+    a.noteQuoEvent(quoCall('EVo2', 'ACout2', { direction: 'outgoing', status: 'completed', answeredAt: '2026-10-20T15:00:05.000Z' }));
+    a.noteQuoEvent(quoSummary('EVo3', 'ACout2'));
+    a.noteQuoEvent(quoTranscript('EVo4', 'ACout2'));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(api.created).toHaveLength(0);
+    expect(a.store.data.queue).toHaveLength(0);
+  });
+});
+
+describe('quiet hours are enforced at Allow (TCPA, 8am–9pm ET)', () => {
+  async function textAsk(nowMs: number, to: string, cfg: Partial<Cfg> = {}) {
+    const made = make({ now: () => nowMs, cfg });
+    made.a.noteQuoEvent(quoText('EVqh', 'ACqh')); // SIM-Brooks texted in from SIM.phone
+    await vi.waitFor(() => expect(made.api.created).toHaveLength(1));
+    made.api.emit('sesn_sim1', { id: 'sevt_txt', type: 'agent.mcp_tool_use', mcp_server_name: 'quo', name: 'send-message', evaluated_permission: 'ask', input: { from: '+17576069432', to, content: 'Hi, this is Art-is-Tree. Reply STOP to opt out.' } });
+    await vi.waitFor(() => expect(cards(made.a)).toHaveLength(1));
+    return made;
+  }
+  const LATE = Date.parse('2026-10-21T02:30:00.000Z'); // 10:30 PM ET
+
+  it('10:30 PM: Allow on a text to anyone else is a 409 quiet_hours — nothing sent, still waiting; Deny still works', async () => {
+    const { a, api } = await textAsk(LATE, '+17575550142');
+    const r = await a.decide('sevt_txt', 'allow');
+    expect(r.status).toBe(409);
+    expect(r.body).toMatchObject({ error: 'quiet_hours' });
+    expect((r.body as { line: string }).line).toMatch(/^It is 10:30 PM ET/);
+    expect((r.body as { line: string }).line).toMatch(/Nothing was sent — it is still waiting/);
+    expect(api.sent).toHaveLength(0);
+    expect(cards(a)).toHaveLength(1);
+    expect((await a.decide('sevt_txt', 'deny')).status).toBe(200);
+  });
+
+  it('a reply to the customer who texted in, and a text to a listed crew number, are not held', async () => {
+    const reply = await textAsk(LATE, SIM.phone);
+    expect((await reply.a.decide('sevt_txt', 'allow')).status).toBe(200);
+    expect(cards(reply.a)).toHaveLength(0);
+    const crew = await textAsk(LATE, '+17575550188', { crewNumbers: ['7575550188'] });
+    expect((await crew.a.decide('sevt_txt', 'allow')).status).toBe(200);
+    // The heads-up on the card follows the same rule: none on either of these.
+    const reply2 = await textAsk(LATE, SIM.phone);
+    expect(cards(reply2.a)[0]!.details.some((d) => d.label === 'Heads-up')).toBe(false);
+  });
+
+  it('at 10 AM nothing is held', async () => {
+    const { a } = await textAsk(Date.parse('2026-10-21T14:00:00.000Z'), '+17575550142');
+    expect((await a.decide('sevt_txt', 'allow')).status).toBe(200);
+  });
+
+  it('ARBO_AGENT_CREW_NUMBERS is read as the last 10 digits of each number; junk is dropped', () => {
+    const saved = { ...process.env };
+    try {
+      process.env.ARBO_AGENT_CREW_NUMBERS = '+1 (757) 555-0188, 757.555.0199, nope, 12345';
+      expect(assistantEnv().crewNumbers).toEqual(['7575550188', '7575550199']);
+      delete process.env.ARBO_AGENT_CREW_NUMBERS;
+      expect(assistantEnv().crewNumbers).toEqual([]);
+    } finally {
+      process.env = saved;
+    }
+  });
+});
+
+describe('a decision that reached the session is never reported as still waiting', () => {
+  async function withAsks() {
+    const made = make({ now: () => Date.parse('2026-10-21T14:00:00.000Z') });
+    made.a.noteQuoEvent(quoText('EVec', 'ACec'));
+    await vi.waitFor(() => expect(made.api.created).toHaveLength(1));
+    made.api.emit('sesn_sim1', askEmail('sevt_one'));
+    made.api.emit('sesn_sim1', askEmail('sevt_two', 'Second.'));
+    made.api.emit('sesn_sim1', idle('sevt_i', 'requires_action'));
+    await vi.waitFor(() => expect(cards(made.a)).toHaveLength(2));
+    return made;
+  }
+
+  it('the echo seen on the stream while the answer was lost proves it landed: 200, and the card closes', async () => {
+    const { a, api } = await withAsks();
+    api.sendLandsThenThrows = new AssistantApiError(400, 'event is not awaiting confirmation');
+    expect(await a.decide('sevt_one', 'allow')).toEqual({ status: 200, body: { ok: true } });
+    expect(cards(a).map((c) => c.id)).toEqual(['sevt_two']);
+    expect(acts(a)[0]!.text).toMatch(/^You allowed: Email/);
+  });
+
+  it('with no echo on the stream, the session history settles it', async () => {
+    const { a, api } = await withAsks();
+    api.sendConfirmation = async (sessionId, c) => {
+      api.history.get(sessionId)!.push({ id: 'sevt_hist', type: 'user.tool_confirmation', tool_use_id: c.tool_use_id, result: c.result });
+      throw new AssistantApiError(502, 'bad gateway');
+    };
+    expect(await a.decide('sevt_two', 'deny', 'not this one')).toEqual({ status: 200, body: { ok: true } });
+    expect(cards(a).map((c) => c.id)).toEqual(['sevt_one']);
+  });
+
+  it('a send that truly did not land is still a 502 that keeps the card', async () => {
+    const { a, api } = await withAsks();
+    api.sendError = new AssistantApiError(500, 'upstream');
+    expect((await a.decide('sevt_one', 'allow')).status).toBe(502);
+    expect(cards(a)).toHaveLength(2);
+  });
+
+  it('a history Arbo could not read is never taken as "it did not land": the 502 says it could not check', async () => {
+    const { a, api } = await withAsks(); // the watcher is tailing the stream now, so only decide() reads the history
+    api.sendError = new AssistantApiError(502, 'bad gateway');
+    api.listEvents = unreadableHistory(new AssistantApiError(503, 'overloaded'));
+    const r = await a.decide('sevt_one', 'allow');
+    expect(r.status).toBe(502);
+    expect((r.body as { line: string }).line).toMatch(/could not check whether your OK reached it/);
+    expect((r.body as { line: string }).line).not.toMatch(/Nothing was allowed/);
+    expect(cards(a)).toHaveLength(2);
+  });
+
+  it('a decision on a session that has ended closes the card — and says only what is known when its history is unreadable', async () => {
+    const { a, api } = await withAsks();
+    api.emit('sesn_sim1', { id: 'sevt_gone', type: 'session.deleted' });
+    await vi.waitFor(() => expect(a.store.data.sessions[0]!.state).toBe('error'));
+    await vi.waitFor(() => expect(a.isWatching('sesn_sim1')).toBe(false));
+    api.sendError = new AssistantApiError(404, 'not found');
+    api.listEvents = unreadableHistory(new AssistantApiError(404, 'not found'));
+    const r = await a.decide('sevt_one', 'allow');
+    expect(r.status).toBe(502);
+    expect((r.body as { line: string }).line).toMatch(/cannot say whether your answer reached it first/);
+    expect(cards(a).map((c) => c.id)).toEqual(['sevt_two']);
+  });
+
+  it('the SDK never re-sends a create or a confirmation on its own (maxRetries 0)', () => {
+    const src = readFileSync(new URL('../src/assistant/client.ts', import.meta.url), 'utf8');
+    expect(src).toMatch(/client\.beta\.sessions\.create\(params as [^,]+, \{ maxRetries: 0 \}\)/);
+    expect(src).toContain('client.beta.sessions.events.send(sessionId, { events: [confirmation] }, { maxRetries: 0 })');
+  });
+});
+
+describe('one Quo item is one session — even when the create answer is lost', () => {
+  it('a create that reached Anthropic but lost its answer is found by its key and adopted — never made twice', async () => {
+    let now = Date.parse('2026-10-21T03:00:00.000Z');
+    const api = new FakeApi();
+    api.createLostAnswer = new AssistantApiError(null, 'socket hang up');
+    const { a } = make({ api, now: () => now });
+    a.noteQuoEvent(quoText('EVad', 'ACad'));
+    await vi.waitFor(() => expect(a.status().reason ?? '').toMatch(/Could not reach Anthropic/));
+    expect(api.created).toHaveLength(1); // it WAS made
+    expect(a.store.data.queue[0]!.triedAt).toBeTruthy();
+    now += 61_000;
+    a.tick();
+    await vi.waitFor(() => expect(a.store.data.sessions).toHaveLength(1));
+    expect(api.created).toHaveLength(1); // never a second
+    expect(api.finds[0]).toEqual({ agentId: 'agent_sim', key: 'quo:message:ACad', sinceIso: '2026-10-21T03:00:00.000Z' }); // since it was queued
+    expect(a.store.data.sessions[0]!.id).toBe('sesn_sim1');
+    expect(a.isWatching('sesn_sim1')).toBe(true);
+    expect(a.store.data.queue).toHaveLength(0);
+    expect(acts(a).some((x) => /already started/.test(x.text))).toBe(true);
+  });
+
+  it('a lookup that fails is never read as "none exists": nothing new is created', async () => {
+    let now = Date.parse('2026-10-21T03:00:00.000Z');
+    const api = new FakeApi();
+    api.createLostAnswer = new AssistantApiError(504, 'gateway timeout');
+    const { a } = make({ api, now: () => now });
+    a.noteQuoEvent(quoText('EVad2', 'ACad2'));
+    await vi.waitFor(() => expect(api.created).toHaveLength(1));
+    api.findError = new AssistantApiError(503, 'overloaded');
+    now += 61_000;
+    a.tick();
+    await vi.waitFor(() => expect(api.finds).toHaveLength(1));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(api.created).toHaveLength(1);
+    expect(a.store.data.queue).toHaveLength(1);
+    expect(a.status().state).toBe('error');
+  });
+
+  it('a definitive refusal (401) made nothing, so the next try creates without a lookup', async () => {
+    let now = Date.parse('2026-10-21T03:00:00.000Z');
+    const api = new FakeApi();
+    api.createError = new AssistantApiError(401, 'invalid x-api-key');
+    const { a } = make({ api, now: () => now });
+    a.noteQuoEvent(quoText('EVad3', 'ACad3'));
+    await vi.waitFor(() => expect(a.status().reason ?? '').toMatch(/answered 401/));
+    expect(a.store.data.queue[0]!.triedAt).toBeUndefined();
+    api.createError = null;
+    now += 61_000;
+    a.tick();
+    await vi.waitFor(() => expect(api.created).toHaveLength(1));
+    expect(api.finds).toHaveLength(0);
+  });
+
+  it('at boot, the item that was being created when the process stopped is looked up first', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'arbo-asst-'));
+    let now = Date.parse('2026-10-21T03:00:00.000Z');
+    const api = new FakeApi();
+    api.createLostAnswer = new AssistantApiError(null, 'SIGTERM mid-create');
+    const first = make({ dir, api, now: () => now });
+    first.a.noteQuoEvent(quoText('EVboot', 'ACboot'));
+    await vi.waitFor(() => expect(api.created).toHaveLength(1));
+    // A redeploy: same disk, and Anthropic still has the session the first process made.
+    const api2 = new FakeApi();
+    api2.created.push(api.created[0]!);
+    api2.history.set('sesn_sim1', []);
+    now += 61_000;
+    const second = make({ dir, api: api2, now: () => now });
+    second.a.start();
+    await vi.waitFor(() => expect(second.a.store.data.sessions.map((s) => s.id)).toEqual(['sesn_sim1']));
+    expect(api2.created).toHaveLength(1); // adopted, not made again
+  });
+});
+
+describe('a short outage never ends a session', () => {
+  it('it keeps trying (capped at 60 s), names the loss once, and the next ask still reaches the app', async () => {
+    const sleeps: number[] = [];
+    const api = new FakeApi();
+    const { a } = make({ api, sleep: async (ms) => { sleeps.push(ms); await tinySleep(); } });
+    a.noteQuoEvent(quoText('EVlt', 'AClt'));
+    await vi.waitFor(() => expect(api.opened).toEqual(['sesn_sim1']));
+    api.down = true;
+    api.channels.get('sesn_sim1')!.close(); // the stream drops, and Anthropic is unreachable
+    await vi.waitFor(() => expect(a.status().state).toBe('error'), { timeout: 4000 });
+    expect(a.status().reason).toMatch(/lost touch with 1 session/);
+    expect(a.store.data.sessions[0]!.state).toBe('working'); // not finished
+    await vi.waitFor(() => expect(sleeps.length).toBeGreaterThan(12), { timeout: 4000 });
+    expect(Math.max(...sleeps)).toBe(60_000);
+    expect(acts(a).filter((x) => /lost touch/i.test(x.text))).toHaveLength(1);
+    // The outage ends; meanwhile the session asked for something.
+    api.emit('sesn_sim1', askEmail('sevt_after'));
+    api.down = false;
+    await vi.waitFor(() => expect(cards(a).map((c) => c.id)).toEqual(['sevt_after']), { timeout: 4000 });
+    await vi.waitFor(() => expect(a.status().state).toBe('ready'));
+    expect(acts(a).some((x) => /Back in touch/.test(x.text))).toBe(true);
+  });
+
+  it('an outage where every try hangs over a minute before it fails is named too (after 5 minutes unreached)', async () => {
+    let now = Date.parse('2026-10-21T03:00:00.000Z');
+    const api = new FakeApi();
+    const { a } = make({ api, now: () => now, sleep: tinySleep });
+    a.noteQuoEvent(quoText('EVhang', 'AChang'));
+    await vi.waitFor(() => expect(api.opened).toEqual(['sesn_sim1']));
+    api.openStream = async () => {
+      now += 70_000; // each try hangs 70 s, then fails
+      throw new AssistantApiError(504, 'gateway timeout');
+    };
+    api.channels.get('sesn_sim1')!.close();
+    await vi.waitFor(() => expect(a.status().reason ?? '').toMatch(/lost touch with 1 session/), { timeout: 4000 });
+    expect(a.store.data.sessions[0]!.state).toBe('working');
   });
 });
 
@@ -566,7 +932,8 @@ describe('status names every state', () => {
   it("ready → error with Anthropic's answer named → ready again once a start succeeds", async () => {
     let now = Date.parse('2026-10-21T03:00:00.000Z'); // 11 PM ET — outside the sweep window, so only the Quo item starts
     const { a, api } = make({ now: () => now });
-    expect(a.status()).toEqual({ state: 'ready', missing: [], reason: null, sessionsOpen: 0, lastEventAt: null });
+    await a.checkEnvironment(); // boot reads the environment first (start() does this)
+    expect(a.status()).toEqual({ state: 'ready', missing: [], reason: null, sessionsOpen: 0, lastEventAt: null, officeCheck: null });
     api.createError = new AssistantApiError(401, 'invalid x-api-key');
     a.noteQuoEvent(quoText('EVs', 'ACs'));
     await vi.waitFor(() => expect(a.status().state).toBe('error'));
@@ -584,9 +951,9 @@ describe('status names every state', () => {
   });
 });
 
-describe('the clock: a sweep every 30 minutes 7am–9pm ET, crew routes at 6:30am ET', () => {
-  it('starts each on time, names the window since the last sweep, and never doubles up', async () => {
-    let now = Date.parse('2026-10-20T10:31:00.000Z'); // 6:31 AM EDT
+describe('the clock: crew routes at 6:30am ET, the office check at 7am Mon–Sat, a Gmail sweep every 30 minutes 7am–9pm ET', () => {
+  it('starts each on time, names each sweep’s window, and never doubles up', async () => {
+    let now = Date.parse('2026-10-20T10:31:00.000Z'); // Tue 6:31 AM EDT
     const { a, api } = make({ now: () => now });
     a.tick();
     await vi.waitFor(() => expect(api.created).toHaveLength(1));
@@ -594,29 +961,140 @@ describe('the clock: a sweep every 30 minutes 7am–9pm ET, crew routes at 6:30a
     now = Date.parse('2026-10-20T10:45:00.000Z');
     a.tick();
     await new Promise((r) => setTimeout(r, 20));
-    expect(api.created).toHaveLength(1); // once a day, and no sweep before 7
-    now = Date.parse('2026-10-20T11:00:00.000Z'); // 7:00 AM
+    expect(api.created).toHaveLength(1); // once a day, and nothing else before 7
+    now = Date.parse('2026-10-20T11:00:00.000Z'); // 7:00 AM: the office check, then the first sweep
     a.tick();
-    await vi.waitFor(() => expect(api.created).toHaveLength(2));
-    expect(api.created[1]!.firstMessage).toBe('Check Gmail (including website form emails) and Quo for anything new since 2026-10-20T10:30:00.000Z that no earlier session handled; handle each, then stop.');
+    await vi.waitFor(() => expect(api.created).toHaveLength(3));
+    expect(api.created.map((c) => c.metadata.arbo_trigger)).toEqual(['route', 'office', 'sweep']);
+    // The sweep is Gmail only, over a window that ends when it was sent — the next one starts there.
+    expect(api.created[2]!.firstMessage).toBe('Sweep job from Arbo: check Gmail for emails that arrived between 2026-10-20T10:30:00.000Z and 2026-10-20T11:00:00.000Z, including website contact-form and quote-request emails. Treat each one as its own item and handle each per your instructions. Do not work Quo texts or calls — Arbo starts a separate session for each of those. Then stop.');
+    expect(api.created[2]!.firstMessage).not.toMatch(/Quo for anything new/);
     now = Date.parse('2026-10-20T11:20:00.000Z');
     a.tick();
     await new Promise((r) => setTimeout(r, 20));
-    expect(api.created).toHaveLength(2);
+    expect(api.created).toHaveLength(3);
     now = Date.parse('2026-10-20T11:30:00.000Z'); // 7:30 AM — but the 7:00 sweep is still working
     a.tick();
     await new Promise((r) => setTimeout(r, 20));
-    expect(api.created).toHaveLength(2); // one sweep at a time
-    api.emit('sesn_sim2', idle('sevt_sw1', 'end_turn'));
-    await vi.waitFor(() => expect(a.store.data.sessions[1]!.state).toBe('done'));
+    expect(api.created).toHaveLength(3); // one sweep at a time
+    api.emit('sesn_sim3', idle('sevt_sw1', 'end_turn'));
+    await vi.waitFor(() => expect(a.store.data.sessions[2]!.state).toBe('done'));
     now = Date.parse('2026-10-20T11:31:00.000Z');
     a.tick();
-    await vi.waitFor(() => expect(api.created).toHaveLength(3));
-    expect(api.created[2]!.firstMessage).toContain('since 2026-10-20T11:00:00.000Z');
+    await vi.waitFor(() => expect(api.created).toHaveLength(4));
+    expect(api.created[3]!.firstMessage).toContain('between 2026-10-20T11:00:00.000Z and 2026-10-20T11:31:00.000Z');
     now = Date.parse('2026-10-21T01:31:00.000Z'); // 9:31 PM — after the window
     a.tick();
     await new Promise((r) => setTimeout(r, 20));
-    expect(api.created).toHaveLength(3);
+    expect(api.created).toHaveLength(4);
+  });
+
+  it('a full queue names what was not started and that nothing else will pick it up — never "the next sweep checks Quo"', async () => {
+    const { a, api } = make();
+    api.createError = new AssistantApiError(503, 'overloaded'); // nothing starts, so the queue fills
+    for (let i = 0; i < 101; i++) a.noteQuoEvent(quoText(`EVfull${i}`, `ACfull${i}`));
+    await vi.waitFor(() => expect(acts(a).some((x) => /^Not started/.test(x.text))).toBe(true));
+    const line = acts(a).find((x) => /^Not started/.test(x.text))!.text;
+    expect(line).not.toMatch(/sweep checks Gmail and Quo/);
+    expect(line).toMatch(/check it by hand/);
+  });
+});
+
+describe('the daily office check (Mike, 2026-10-20: "One daily office check")', () => {
+  it('7am ET Mon–Sat: ONE session asking for weather, unpaid invoices, equipment and what waits on Mike — once a day, sends still wait', async () => {
+    let now = Date.parse('2026-10-24T11:05:00.000Z'); // Sat 7:05 AM EDT
+    const { a, api } = make({ now: () => now });
+    a.tick();
+    await vi.waitFor(() => expect(api.created.some((c) => c.metadata.arbo_trigger === 'office')).toBe(true));
+    const office = api.created.filter((c) => c.metadata.arbo_trigger === 'office');
+    expect(office).toHaveLength(1);
+    expect(office[0]!.metadata.arbo_key).toBe('office:2026-10-24');
+    const m = office[0]!.firstMessage;
+    expect(m).toMatch(/^Daily office check from Arbo for Saturday 2026-10-24\./);
+    expect(m).toContain("1. Weather: the forecast for today's and tomorrow's jobs and estimates on the calendar.");
+    expect(m).toContain('2. Unpaid invoices: Square invoices unpaid past their due date.');
+    expect(m).toContain('3. Equipment: trucks, chippers and other equipment due for service');
+    expect(m).toContain('4. Waiting on Mike:');
+    expect(m).toContain("waits for Mike's OK");
+    expect(m).toContain('"I couldn\'t read it" is never "there\'s nothing there"');
+    const id = `sesn_sim${api.created.indexOf(office[0]!) + 1}`;
+    expect(a.status().officeCheck).toMatchObject({ day: '2026-10-24', state: 'working' });
+    now += 2 * 60 * 60_000; // 9:05 — still inside the window: never a second one
+    a.tick();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(api.created.filter((c) => c.metadata.arbo_trigger === 'office')).toHaveLength(1);
+    api.emit(id, { id: 'sevt_oc1', type: 'agent.message', content: [{ type: 'text', text: 'Weather: clear both days. Unpaid invoices: none past due. Equipment: chipper due in 9 days. Waiting on you: nothing.' }] });
+    api.emit(id, idle('sevt_oc2', 'end_turn'));
+    await vi.waitFor(() => expect(a.status().officeCheck).toMatchObject({ state: 'done' }));
+    expect(a.status().officeCheck!.line).toMatch(/done — its report is in More → Assistant/);
+    expect(acts(a).some((x) => x.sessionId === id && x.kind === 'message')).toBe(true); // the report itself is in Activity
+  });
+
+  it('never on Sunday', async () => {
+    const now = Date.parse('2026-10-25T11:05:00.000Z'); // Sun 7:05 AM EDT
+    const { a, api } = make({ now: () => now });
+    a.tick();
+    await vi.waitFor(() => expect(api.created.length).toBeGreaterThan(0)); // the sweep still runs
+    expect(api.created.some((c) => c.metadata.arbo_trigger === 'office')).toBe(false);
+    expect(a.status().officeCheck).toBeNull();
+    expect(acts(a).some((x) => /office check/.test(x.text))).toBe(false);
+  });
+
+  it('a day it could not run is NAMED — in Activity once, and on the status line — never a quiet nothing (§1B)', async () => {
+    let now = Date.parse('2026-10-20T15:00:00.000Z'); // Tue 11:00 AM — Arbo was not up between 7 and 10
+    const { a, api } = make({ now: () => now });
+    a.tick();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(api.created.some((c) => c.metadata.arbo_trigger === 'office')).toBe(false);
+    expect(a.status().officeCheck).toMatchObject({ day: '2026-10-20', state: 'missed' });
+    expect(a.status().officeCheck!.line).toMatch(/did not run/);
+    now += 30 * 60_000;
+    a.tick();
+    expect(acts(a).filter((x) => x.kind === 'error' && /office check did not run/.test(x.text))).toHaveLength(1);
+  });
+
+  it('off: no office check at all', async () => {
+    const now = Date.parse('2026-10-24T11:05:00.000Z');
+    const { a, api } = make({ now: () => now, cfg: { on: false } });
+    a.tick();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(api.created).toHaveLength(0);
+    expect(a.status()).toMatchObject({ state: 'off', officeCheck: null });
+  });
+});
+
+describe('the environment must be Limited networking before anything starts', () => {
+  it('Unrestricted: named as an error, nothing starts; once fixed, the waiting item starts', async () => {
+    let now = Date.parse('2026-10-21T03:00:00.000Z'); // 11 PM — no clock jobs
+    const api = new FakeApi();
+    api.env = { type: 'cloud', networking: 'unrestricted', archived: false };
+    const { a } = make({ api, now: () => now });
+    a.noteQuoEvent(quoText('EVenv', 'ACenv'));
+    await vi.waitFor(() => expect(a.status().reason ?? '').toMatch(/not Limited/));
+    expect(a.status().state).toBe('error');
+    expect(api.created).toHaveLength(0);
+    expect(a.store.data.queue).toHaveLength(1); // kept, not dropped
+    api.env = { type: 'cloud', networking: 'limited', archived: false };
+    now += 61_000;
+    a.tick();
+    await vi.waitFor(() => expect(api.created).toHaveLength(1));
+    expect(a.status().state).toBe('ready');
+  });
+
+  it('an environment Arbo could not read, or one that is archived, is an error by name — never ready', async () => {
+    const api = new FakeApi();
+    api.envError = new AssistantApiError(500, 'upstream');
+    const { a } = make({ api });
+    expect(a.status().state).toBe('error'); // not checked yet: not ready
+    expect(a.status().reason).toMatch(/Checking/);
+    await a.checkEnvironment();
+    expect(a.status().state).toBe('error');
+    expect(a.status().reason).toMatch(/could not read the agent environment/);
+    api.envError = null;
+    api.env = { type: 'cloud', networking: 'limited', archived: true };
+    const b = make({ api }).a;
+    await b.checkEnvironment();
+    expect(b.status().reason).toMatch(/archived/);
   });
 });
 

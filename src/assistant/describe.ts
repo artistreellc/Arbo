@@ -273,17 +273,51 @@ function describeCalendar(c: Card, name: string): string {
   if (/update|delete|move|patch|remove/.test(n)) {
     c.add('Heads-up', 'Arbo never edits, moves or deletes an existing calendar event (R18, R28). Deny this.');
   }
+  // Guests come first, and loud: Google EMAILS each one an invitation with
+  // the title, time, place and description — an email Mike approves here.
+  // Both of the tool's guest fields count (attendeeEmails is deprecated, not gone).
+  const guests = [show('attendees', c.get('attendees')), show('attendeeEmails', c.get('attendeeEmails'))].filter(Boolean).join(', ');
+  if (guests) {
+    c.add('Heads-up', `Google will EMAIL an invitation to ${guests} — with this title, time, place and description. Arbo's rule is no guests: deny unless you mean to invite them.`);
+    c.add('Guests — Google emails each one an invite', guests);
+  }
+  const invites = guests ? ` — EMAILS AN INVITE TO ${guests}` : '';
   const title = c.field('Title', 'summary');
   const start = c.field('Start', 'startTime');
   c.field('End', 'endTime');
   c.field('Time zone', 'timeZone');
   c.field('Where', 'location');
   c.field('Description', 'description');
-  c.field('Guests', 'attendees');
   c.field('Calendar', 'calendarId');
   const eventId = c.field('Event', 'eventId');
-  if (n === 'create_event') return `Calendar: ${title || '(no title)'}${start ? ` — ${start}` : ''}`;
-  return `Calendar: ${name.replace(/_/g, ' ')}${eventId ? ` ${eventId}` : ''}${title ? ` “${title}”` : ''}`;
+  if (n === 'create_event') return `Calendar: ${title || '(no title)'}${start ? ` — ${start}` : ''}${invites}`;
+  return `Calendar: ${name.replace(/_/g, ' ')}${eventId ? ` ${eventId}` : ''}${title ? ` “${title}”` : ''}${invites}`;
+}
+
+/**
+ * The draft id on a Gmail send, or null. Gmail sends a saved draft AS SAVED
+ * and ignores the To, Subject and Body in the same call — so a card could
+ * never show what would really go out. Arbo refuses these at once (R28).
+ */
+export function draftIdOf(ev: Pick<AgentEvent, 'name' | 'mcp_server_name' | 'input'>): string | null {
+  if (classify(ev.mcp_server_name, ev.name ?? '') !== 'email' || !isRecord(ev.input)) return null;
+  for (const k of ['draftId', 'draft_id']) {
+    const v = ev.input[k];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  return null;
+}
+
+/** A text's recipients as the call names them. An unknown shape gives none — and none is never exempt from quiet hours. */
+export function textRecipients(input: unknown): string[] {
+  if (!isRecord(input)) return [];
+  const out: string[] = [];
+  for (const k of ['to', 'recipients', 'to_numbers']) {
+    const v = input[k];
+    if (typeof v === 'string' && v.trim()) out.push(v.trim());
+    else if (Array.isArray(v)) for (const x of v) if (typeof x === 'string' && x.trim()) out.push(x.trim());
+  }
+  return out;
 }
 
 export interface DescribedCall {

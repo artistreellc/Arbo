@@ -1,7 +1,8 @@
 // R28: what the assistant must not forget across a redeploy — the approvals
 // waiting on Mike, the last 300 things it did, the Quo events it already
 // started a session for (so one event never starts two), the sessions it is
-// still watching, and the triggers queued behind the three-at-once cap.
+// still watching, the triggers queued behind the three-at-once cap, and the
+// days the daily office check ran or was missed.
 //
 // Same shape as the Learn desk's LessonBook and the Google token store: one
 // JSON file on the storage disk (ARBO_SECRET_DIR, else /data), written
@@ -20,7 +21,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ApprovalDetail, ApprovalKind } from './describe.js';
 
-export type Trigger = 'quo' | 'sweep' | 'route';
+export type Trigger = 'quo' | 'sweep' | 'route' | 'office';
 
 export interface Approval {
   /** The sevt_ id of the paused agent.tool_use / agent.mcp_tool_use event. */
@@ -34,6 +35,8 @@ export interface Approval {
 }
 
 export interface StoredApproval extends Approval {
+  /** A text's recipients as the call names them — for the quiet-hours check at Allow. Never logged, never sent to the app. */
+  textTo?: string[];
   decided: null | {
     decision: 'allow' | 'deny';
     at: string;
@@ -43,7 +46,8 @@ export interface StoredApproval extends Approval {
   };
 }
 
-export type ActivityKind = 'started' | 'tool' | 'waiting' | 'decided' | 'message' | 'done' | 'error';
+/** 'info' = Arbo's own note that is not a problem (e.g. back in touch with a session). */
+export type ActivityKind = 'started' | 'tool' | 'waiting' | 'decided' | 'message' | 'done' | 'error' | 'info';
 
 export interface ActivityItem {
   at: string;
@@ -64,6 +68,10 @@ export interface SessionRec {
   state: 'working' | 'waiting' | 'done' | 'error';
   /** Ids of events already acted on, so a re-attach never repeats an activity line. */
   seen: string[];
+  /** The dedupe key it was started for (e.g. 'quo:message:AC…', 'office:2026-10-20') — ids and dates only. */
+  key?: string;
+  /** Last 10 digits of the customer whose own text or call started it — a reply to them is not held by quiet hours. */
+  replyTo?: string;
 }
 
 export interface QueuedTrigger {
@@ -73,6 +81,10 @@ export interface QueuedTrigger {
   title: string;
   message: string;
   queuedAt: string;
+  /** Set (and saved) just before each create: a create whose answer was lost is looked up by its key before another is made. */
+  triedAt?: string;
+  /** Carried onto the session — see SessionRec.replyTo. */
+  replyTo?: string;
 }
 
 export interface AssistantState {
@@ -86,6 +98,10 @@ export interface AssistantState {
   lastSweepAt: string | null;
   /** ET date (YYYY-MM-DD) of the last 6:30 crew-route session. */
   lastRouteDay: string | null;
+  /** ET date of the last daily office check queued (7am, Mon–Sat). */
+  lastOfficeDay: string | null;
+  /** ET date whose office check was named as missed — so it is said once. */
+  officeMissedDay: string | null;
   lastEventAt: string | null;
 }
 
@@ -105,6 +121,8 @@ const fresh = (): AssistantState => ({
   queue: [],
   lastSweepAt: null,
   lastRouteDay: null,
+  lastOfficeDay: null,
+  officeMissedDay: null,
   lastEventAt: null,
 });
 
@@ -141,6 +159,8 @@ export class AssistantStore {
         queue: arr<QueuedTrigger>(p.queue),
         lastSweepAt: strOrNull(p.lastSweepAt),
         lastRouteDay: strOrNull(p.lastRouteDay),
+        lastOfficeDay: strOrNull(p.lastOfficeDay),
+        officeMissedDay: strOrNull(p.officeMissedDay),
         lastEventAt: strOrNull(p.lastEventAt),
       };
       this.where = 'disk';
