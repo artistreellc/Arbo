@@ -895,6 +895,12 @@ export function createArborRequestHandler() {
         // (and a crew phone does not end up holding Mike's key instead).
         return send(401, { error: url.pathname.startsWith('/api/crew/') && env.appAccessKey && !env.crewAccessKey ? 'crew_key_not_set' : 'unauthorized' });
       }
+      // R26 (defence in depth): the office's look-only crew preview sends
+      // x-arbo-preview: 1 on every request. A crew route that is not a read is
+      // refused here, whatever key came with it — the page refuses it first.
+      if (url.pathname.startsWith('/api/crew/') && req.headers['x-arbo-preview'] === '1' && req.method !== 'GET') {
+        return send(403, { error: 'preview_read_only' });
+      }
       if (req.method === 'GET' && url.pathname === '/api/brief') {
         return send(...unpack(await api.brief(url.searchParams.get('from') ?? '', url.searchParams.get('to') ?? '')));
       }

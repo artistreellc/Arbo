@@ -86,7 +86,11 @@ describe('the crew door (§8C.1) — one app, two doors', () => {
 
   it('keeps work orders behind the gate — the day cannot open unbriefed', () => {
     // The renderer refuses to draw work orders until GATE.unlocked is true.
-    expect(html).toMatch(/if \(!GATE\.unlocked\)/);
+    // Deliberately updated (R26, 2026-10-20): the one exception is the office's
+    // look-only preview, which reads the day with every action switched off
+    // (test/r26_crew-preview.test.ts). It runs only on the office key, so on a
+    // crew phone ?preview=1 reads nothing and the gate still stands.
+    expect(html).toMatch(/if \(!GATE\.unlocked && !PREVIEW\)/);
     expect(html).toContain('Your work orders unlock after the safety briefing');
   });
 

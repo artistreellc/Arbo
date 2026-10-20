@@ -4229,7 +4229,10 @@ function renderMore() {
   tile('i-book', 'Book', 'Estimates & prep', () => switchTab('book'));
   tile('i-queue', 'Queue', 'Follow-ups & loops', () => switchTab('followups'));
   tile('i-numbers', 'Numbers', 'Which areas & ads pay', () => switchTab('perf'));
-  tile('i-crew', 'Crew', 'What the crew sees', () => window.open('/crew', '_blank', 'noopener'));
+  // R26: look only — the crew's page, on this app's key, and it cannot sign,
+  // file or clock in. Same tab on purpose: an installed iPhone app keeps its
+  // own saved data, so a new tab might not have the key.
+  tile('i-crew', 'Crew', 'What the crew sees', () => { location.href = '/crew?preview=1'; });
   const talk = tile('i-message', 'Talk', 'Voice with Arbo', () => window.open('/talk', '_blank', 'noopener'));
   // R21: the same switch Today reads. While Arbo's own line is cut the tile
   // says so instead of opening a page that can only say "off". A status Arbo
