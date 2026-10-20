@@ -1000,6 +1000,8 @@ async function stormBanner() {
     if (worst.headline) box.appendChild(el('small', '', worst.headline));
     const nr = s.atRisk.length;
     if (nr) box.appendChild(el('small', '', plural(nr, 'booked stop') + (nr === 1 ? ' falls' : ' fall') + ' inside the alert window — consider moving ' + (nr === 1 ? 'it' : 'them') + ' early.'));
+    // H4: the check sees Arbo's own bookings only — a stop that is only on the Google Calendar is not checked, and that is said.
+    if (s.atRiskScope === 'arbo_tables_only' && !s.atRiskUnread) box.appendChild(el('small', '', 'Checked against Arbo\u2019s own bookings only \u2014 your Google Calendar isn\u2019t read here, so check it for stops in the window.'));
     // The schedule could not be read (R30 review): the alert shows, and no stops at risk is never implied (§1B).
     if (s.atRiskUnread) box.appendChild(el('small', '', 'Arbo couldn’t check which booked stops fall inside the alert window.'));
     return box;
@@ -2512,6 +2514,8 @@ async function renderToday() {
     return;
   }
   const s = brief.summary;
+  // H4: the brief reads Arbo's own estimate and job rows; Mike's Google Calendar is not read (his call).
+  const onlyArbo = brief.scheduleSource === 'arbo_tables_only';
   setTile(jobsTile, s.jobs || 0); setTile(estTile, s.estimates || 0);
   // A safety flag takes the first slot of the grid: emergencies (stops and leads, setEmergencies), then flagged stops.
   if (s.redFlagCount) hud.prepend(tile(s.redFlagCount, s.redFlagCount === 1 ? 'flagged stop' : 'flagged stops', 'hot wide'));
@@ -2530,9 +2534,11 @@ async function renderToday() {
       // Clock time past each stop's slot — nothing records a stop as done (D85).
       // The run is in route order, not clock order: the next stop is the earliest time still ahead.
       const next = timed.filter((st) => Date.parse(st.timeIso) >= nowMs).sort((a, b) => Date.parse(a.timeIso) - Date.parse(b.timeIso))[0];
-      HERO.legend('stops', next ? 'next ' + fmtWhen(next.timeIso) : !s.totalStops ? 'none today' : timed.length ? 'all times passed' : 'no times set');
+      // H4: an empty list is "none in Arbo", never "none today" — the Google Calendar is not read here.
+      HERO.legend('stops', next ? 'next ' + fmtWhen(next.timeIso) : !s.totalStops ? (onlyArbo ? 'none in Arbo' : 'none today') : timed.length ? 'all times passed' : 'no times set');
     }
-    sysSet('schedule', 'ok', s.totalStops + ' stops');
+    // H4: Arbo's own bookings are not the day — never marked healthy as if they were.
+    sysSet('schedule', onlyArbo ? 'warn' : 'ok', onlyArbo ? s.totalStops + ' in Arbo \u00b7 Calendar not read' : s.totalStops + ' stops');
   }
 
   if (s.zipRun && s.zipRun.length) {
@@ -2543,7 +2549,18 @@ async function renderToday() {
   }
 
   if (!brief.stops.length) {
-    day.appendChild(state('Nothing on the books today', 'New bookings land here automatically.'));
+    // H4: never "Nothing on the books" over a calendar Arbo does not read — the gap is named, and the real calendar is one tap away.
+    const none = onlyArbo
+      ? state('No bookings in Arbo today', 'Arbo only sees bookings made in Arbo \u2014 your Google Calendar isn\u2019t read here, so your real day may not be empty.')
+      : state('Nothing on the books today', 'New bookings land here automatically.');
+    if (onlyArbo) {
+      const calBtn = el('button', 'hudbtn', 'Open the Calendar tab');
+      calBtn.prepend(icon('i-calendar'));
+      calBtn.style.margin = '14px 0 0';
+      calBtn.addEventListener('click', () => { switchTab('cal'); renderCalendar(); });
+      none.appendChild(calBtn);
+    }
+    day.appendChild(none);
     return;
   }
   day.appendChild(el('div', 'panel-title', 'Today’s run'));

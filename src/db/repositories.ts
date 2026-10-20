@@ -1239,10 +1239,12 @@ export async function listAgentRuns(limit = 20): Promise<unknown[]> {
 }
 
 // ============================================================================
-// Calendar surface (§3.22 / §6M2.3) — the app shows MIKE'S Google Calendar,
-// not a schedule of its own. These rows are the mirror the hourly sweep keeps
-// in step with Google (his manual moves win, always); each carries its
-// calendar_event_id so the app can deep-link straight into the real event.
+// Calendar surface (§3.22 / §6M2.3) — the app shows MIKE'S Google Calendar
+// (the Calendar tab is Google's own page, R2), not a schedule of its own.
+// These rows are Arbo's OWN estimate and job tables. Nothing keeps them in
+// step with Google and Arbo does not read his calendar (H4, audit
+// 2026-10-20: the "mirror the hourly sweep keeps" never existed). A job row
+// may carry a calendar_event_id for a deep link; that is all.
 // ============================================================================
 export interface CalendarEventRow {
   id: string;

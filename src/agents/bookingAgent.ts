@@ -127,6 +127,12 @@ export interface BookingAgentResult {
   newlyRaised: number;
   llm: 'not_configured' | 'available';
   status: 'ok' | 'error';
+  /**
+   * H4 (audit 2026-10-20): what was checked — Arbo's own estimate and job
+   * rows. Mike's Google Calendar is NOT read (his call whether it should
+   * be), so "0 issues" can never mean "his day has no clash".
+   */
+  scope: 'arbo_tables_only';
 }
 
 async function alreadyRaisedKeys(now: Date): Promise<Set<string>> {
@@ -180,10 +186,10 @@ export async function runBookingAgent(now = new Date()): Promise<BookingAgentRes
       const ok = await emitSafe('booking.issue.raised', { key: issue.key, kind: issue.kind, stopIds: issue.stopIds, line: issue.line }, 'booking-agent');
       if (ok) raised++;
     }
-    await run.finish({ status: 'ok', outputSummary: `stops=${stops.length} issues=${issues.length} newly_raised=${raised} llm=${llm}` });
-    return { agent: 'booking', stopsChecked: stops.length, issues: issues.length, newlyRaised: raised, llm, status: 'ok' };
+    await run.finish({ status: 'ok', outputSummary: `stops=${stops.length} issues=${issues.length} newly_raised=${raised} llm=${llm} scope=arbo_tables_only calendar_not_read` });
+    return { agent: 'booking', stopsChecked: stops.length, issues: issues.length, newlyRaised: raised, llm, status: 'ok', scope: 'arbo_tables_only' };
   } catch (err) {
     await run.finish({ status: 'error', outputSummary: err instanceof Error ? err.message : 'error' });
-    return { agent: 'booking', stopsChecked: 0, issues: 0, newlyRaised: 0, llm, status: 'error' };
+    return { agent: 'booking', stopsChecked: 0, issues: 0, newlyRaised: 0, llm, status: 'error', scope: 'arbo_tables_only' };
   }
 }

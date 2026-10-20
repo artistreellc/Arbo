@@ -196,7 +196,7 @@ export interface DataSource {
   agentRuns?(limit: number): Promise<unknown[]>;
   /** §8A.6b: fire-and-forget event emission (must never break a write). */
   emit?(type: string, payload: Record<string, unknown>): Promise<boolean>;
-  /** §3.22: Mike's Google Calendar, mirrored — the app's calendar surface. */
+  /** Arbo's OWN estimate and job rows in a window — NOT a mirror of Mike's Google Calendar, which Arbo does not read (H4). */
   calendarEvents?(fromIso: string, toIso: string): Promise<unknown[]>;
   /** §6F crew surface: the day's jobs with the site facts a crew may see. */
   crewJobs?(fromIso: string, toIso: string): Promise<CrewJobSource[]>;
@@ -472,7 +472,11 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       }
       const stops = await source.stopsBetween(fromIso, toIso);
       const brief: MorningBrief = buildMorningBrief(stops);
-      return { status: 200, body: brief };
+      // H4 (audit 2026-10-20): these stops are Arbo's OWN estimate and job
+      // rows. Mike's Google Calendar is not read here (whether to read it is
+      // his call), so an empty list is "nothing booked in Arbo", never "an
+      // empty day" — said on the body so no screen can claim the whole day.
+      return { status: 200, body: { ...brief, scheduleSource: 'arbo_tables_only', calendarRead: false } };
     },
 
     /** GET /api/leads — inbox with the quiet hot/warm/cool read (§3.14). */
@@ -675,7 +679,9 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
           atRiskUnread = true;
         }
       }
-      return { status: 200, body: { alerts, atRisk, ...(atRiskUnread ? { atRiskUnread } : {}) } };
+      // H4: "stops at risk" checks Arbo's own bookings only — a stop that is
+      // only on Mike's Google Calendar is not seen, and the body says so.
+      return { status: 200, body: { alerts, atRisk, atRiskScope: 'arbo_tables_only', calendarRead: false, ...(atRiskUnread ? { atRiskUnread } : {}) } };
     },
 
     /**
@@ -915,9 +921,12 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
     },
 
     /**
-     * GET /api/calendar?from=ISO&to=ISO — THE CALENDAR. These are Mike's own
-     * Google Calendar events (mirrored hourly, his manual moves win — §3.22);
-     * Arbo never creates a calendar of its own and never writes to his.
+     * GET /api/calendar?from=ISO&to=ISO — Arbo's OWN estimate and job rows in
+     * the window. NOT Mike's Google Calendar: nothing mirrors it into these
+     * tables and Arbo does not read it (H4, audit 2026-10-20 — the old
+     * calendar-mirror label was never true). His real calendar is the
+     * Calendar tab, Google's own page (R2). Arbo never writes to it beyond
+     * R18's unconfirmed holds.
      */
     async calendar(fromIso: string, toIso: string): Promise<ApiResult> {
       if (!source.ready() || !source.calendarEvents) return { status: 503, body: { error: gap(source.calendarEvents) } };
@@ -929,7 +938,9 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
         body: {
           events: await source.calendarEvents(fromIso, toIso),
           calendarId: 'artistreeofvirginia@gmail.com',
-          source: 'google_calendar_mirror',
+          // H4: the honest source — Arbo's tables only; the Google Calendar is not read.
+          source: 'arbo_tables_only',
+          calendarRead: false,
           readOnly: true,
         },
       };

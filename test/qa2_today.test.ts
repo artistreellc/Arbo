@@ -176,7 +176,7 @@ describe('T1: the hero says each fact once', () => {
 
   it('the stops legend names the next stop by the clock (route order is not clock order)', () => {
     expect(today).toContain(".sort((a, b) => Date.parse(a.timeIso) - Date.parse(b.timeIso))[0]");
-    expect(today).toContain("next ? 'next ' + fmtWhen(next.timeIso) : !s.totalStops ? 'none today' : timed.length ? 'all times passed' : 'no times set'");
+    expect(today).toContain("next ? 'next ' + fmtWhen(next.timeIso) : !s.totalStops ? (onlyArbo ? 'none in Arbo' : 'none today') : timed.length ? 'all times passed' : 'no times set'");
     expect(today).toContain('nothing records a stop as done (D85)');
     expect(today).toContain("(s.emergencies || s.redFlagCount) ? 'hot' : ''");
     expect(today).toContain("plural(s.totalStops, 'stop') + ' today'");

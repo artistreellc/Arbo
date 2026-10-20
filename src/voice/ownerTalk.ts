@@ -452,11 +452,16 @@ function crewSection(r: Read): Section {
 function stopsSection(r: Read, detail: boolean, now: number): Section {
   const name = "Today's stops";
   if (r.feed !== 'read') return gap(name, r.feed, 'an empty day');
-  const b = r.body as { stops?: unknown; summary?: { jobs?: number; estimates?: number } } | null;
+  const b = r.body as { stops?: unknown; summary?: { jobs?: number; estimates?: number }; scheduleSource?: unknown } | null;
   if (!b || !Array.isArray(b.stops)) return gap(name, 'unread', 'an empty day');
   const stops = b.stops as StopLike[];
-  if (!stops.length) return { lines: ["Today's stops: none on the schedule for today."], missing: null };
-  const lines = [`Today's stops, in route order: ${stops.length} — ${plural(b.summary?.jobs ?? 0, 'job')} and ${plural(b.summary?.estimates ?? 0, 'estimate')}.`];
+  // H4: these are Arbo's own bookings — the Google Calendar is not read, so "none" is never the day.
+  const onlyArbo = b.scheduleSource === 'arbo_tables_only';
+  if (!stops.length) {
+    return { lines: [onlyArbo ? "Today's stops: none booked in Arbo. Your Google Calendar isn't read here, so that is not an empty day — check the calendar." : "Today's stops: none on the schedule for today."], missing: null };
+  }
+  const lines = [`Today's stops${onlyArbo ? " in Arbo's bookings" : ''}, in route order: ${stops.length} — ${plural(b.summary?.jobs ?? 0, 'job')} and ${plural(b.summary?.estimates ?? 0, 'estimate')}.`];
+  if (onlyArbo) lines.push("Your Google Calendar isn't read here — a stop booked only there is not in this list.");
   const cap = detail ? 12 : 6;
   for (const s of stops.slice(0, cap)) {
     const flags = s.redFlags?.length ? ` — ${s.redFlags.join(' and ')}` : '';
@@ -503,6 +508,10 @@ function stormSection(r: Read, now: number): Section {
   // Stops at risk are only counted when the schedule was read; zero here would be a guess.
   const atRisk = Array.isArray(b.atRisk) ? b.atRisk.length : 0;
   if (atRisk > 0) lines.push(`${plural(atRisk, 'stop')} in the next 48 hours ${atRisk === 1 ? 'falls' : 'fall'} inside an alert.`);
+  // H4: checked against Arbo's own bookings only — said, so zero is never read as "no stop at risk".
+  if ((b as { atRiskScope?: unknown }).atRiskScope === 'arbo_tables_only' && (b as { atRiskUnread?: unknown }).atRiskUnread !== true) {
+    lines.push("Stops inside the alert were checked against Arbo's own bookings only — your Google Calendar isn't read here.");
+  }
   // api.storm could not read the schedule: the alert stands, the stops at risk are unknown (R30 review).
   if ((b as { atRiskUnread?: unknown }).atRiskUnread === true) {
     lines.push("Arbo couldn't check which stops fall inside the alert — that is not zero stops at risk.");

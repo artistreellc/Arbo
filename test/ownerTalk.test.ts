@@ -180,7 +180,7 @@ describe('Talk tools — read-only, and a feed it could not read is NAMED (§1B)
     expect(update).toMatch(/\n- SIM-Alder, Test: aerial rescue \(expired\)/);
     // The practice data has no contract file: an unreadable day, never an empty one.
     expect(update).toContain('Work orders: Arbo could not read the contract file, so nothing is dispatched as a work order. That is not an empty day — it is an unreadable one.');
-    expect(update).toContain("Today's stops, in route order: 2 — 2 jobs and 0 estimates.");
+    expect(update).toContain("Today's stops in Arbo's bookings, in route order: 2 — 2 jobs and 0 estimates.");
     expect(update).toMatch(/- Stop 1: job in Virginia Beach, .*, SIM-Alder, Test — POWER LINES\./);
     // Customer phone numbers and street addresses never reach the brain.
     expect(update).not.toMatch(PHONE);
