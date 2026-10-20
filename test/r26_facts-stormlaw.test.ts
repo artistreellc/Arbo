@@ -20,9 +20,10 @@ import {
   judgeDeclarations,
   GOVERNOR_NOTE,
   OPENFEMA_PAGE,
-  OPENFEMA_URL,
+  openFemaUrl,
   STORM_LAW_CACHE_MS,
   STORM_LAW_FLAG,
+  STORM_LAW_TAIL_DAYS,
   STORM_LAW_TIMEOUT_MS,
   type StormLawFetch,
   type StormLawStatus,
@@ -257,6 +258,7 @@ function fakeFetch(answer: { ok?: boolean; status?: number; body?: unknown; thro
   return { fn, calls };
 }
 const fema = (rows: Row[]) => ({ metadata: { skip: 0, top: OPENFEMA_PAGE }, DisasterDeclarationsSummaries: rows });
+const FEMA_BASE = 'https://www.fema.gov/api/open/v2/DisasterDeclarationsSummaries?';
 
 function expectNoPrice(s: StormLawStatus): void {
   const text = JSON.stringify(s);
@@ -265,12 +267,35 @@ function expectNoPrice(s: StormLawStatus): void {
 }
 
 describe('storm-law flag — what FEMA says', () => {
-  it('asks OpenFEMA, read-only, for open Virginia incidents', async () => {
-    expect(OPENFEMA_URL.startsWith('https://www.fema.gov/api/open/v2/DisasterDeclarationsSummaries?$filter=')).toBe(true);
-    expect(decodeURIComponent(OPENFEMA_URL)).toContain("state eq 'VA' and incidentEndDate eq null");
+  it('asks OpenFEMA, read-only, for Virginia incidents open or ended within the last 30 days — dated from the injected clock', async () => {
+    const at = new Date('2026-10-20T12:00:00Z');
+    const url = openFemaUrl(at);
+    expect(url.startsWith(FEMA_BASE + '$filter=')).toBe(true);
+    expect(decodeURIComponent(url)).toContain("state eq 'VA' and (incidentEndDate eq null or incidentEndDate ge '2026-09-20T12:00:00.000Z')");
+    expect(url.endsWith(`&$top=${OPENFEMA_PAGE}`)).toBe(true);
+    expect(STORM_LAW_TAIL_DAYS).toBe(30);
     const { fn, calls } = fakeFetch({ body: fema([]) });
-    await createStormLawCheck(fn).status();
-    expect(calls).toEqual([OPENFEMA_URL]);
+    await createStormLawCheck(fn, () => at).status();
+    expect(calls).toEqual([url]);
+    // Built per read, never once at load: a later clock asks from a later date.
+    expect(decodeURIComponent(openFemaUrl(new Date('2026-11-01T00:00:00Z')))).toContain("incidentEndDate ge '2026-10-02T00:00:00.000Z'");
+  });
+
+  it('the statute’s 30-day tail (§ 59.1-526 (ii)): an incident that ended within 30 days still flags; one that ended earlier does not', async () => {
+    const now = new Date('2026-10-12T12:00:00Z');
+    // FEMA often declares after the incident period has already closed (declared 10-08 for an incident that ended 10-03).
+    const hurricane = (end: unknown) => fema([row({ disasterNumber: 4901, declarationType: 'DR', declarationTitle: 'HURRICANE', declarationDate: '2026-10-08T00:00:00.000Z', incidentEndDate: end })]);
+    expect(judgeDeclarations(hurricane('2026-10-03T00:00:00.000Z'), now)).toEqual({
+      state: 'active', declarations: [{ number: 4901, title: 'HURRICANE', declared: '2026-10-08T00:00:00.000Z' }], reason: null,
+    });
+    // Thirty days to the millisecond still counts; a millisecond more does not.
+    expect(judgeDeclarations(hurricane('2026-09-12T12:00:00.000Z'), now).state).toBe('active');
+    expect(judgeDeclarations(hurricane('2026-09-12T11:59:59.999Z'), now).state).toBe('none');
+    // Through the check, the date is the injected clock's — not the machine's.
+    const soon = fakeFetch({ body: hurricane('2026-10-03T00:00:00.000Z') });
+    expect(await createStormLawCheck(soon.fn, () => now).status()).toMatchObject({ state: 'active', flag: STORM_LAW_FLAG });
+    const late = fakeFetch({ body: hurricane('2026-10-03T00:00:00.000Z') });
+    expect(await createStormLawCheck(late.fn, () => new Date('2026-11-02T00:00:00.001Z')).status()).toMatchObject({ state: 'none', flag: null });
   });
 
   it('active: a declaration covering the four cities is ONE declaration, and the one sentence', async () => {
@@ -308,9 +333,12 @@ describe('storm-law flag — what FEMA says', () => {
     expect(judgeDeclarations(fema([row({ designatedArea: 'Pamunkey Indian Tribe', fipsCountyCode: '000' })])).state).toBe('none');
   });
 
-  it('a row FEMA should not have sent never counts: another state, or an incident already closed', () => {
-    expect(judgeDeclarations(fema([row({ state: 'NC', designatedArea: 'Statewide', fipsCountyCode: '000' })])).state).toBe('none');
-    expect(judgeDeclarations(fema([row({ incidentEndDate: '2026-02-01T00:00:00.000Z' })])).state).toBe('none');
+  it('a row FEMA should not have sent never counts: another state, or an incident that ended more than 30 days ago', () => {
+    const now = new Date('2026-10-20T12:00:00Z');
+    expect(judgeDeclarations(fema([row({ state: 'NC', designatedArea: 'Statewide', fipsCountyCode: '000' })]), now).state).toBe('none');
+    expect(judgeDeclarations(fema([row({ incidentEndDate: '2026-02-01T00:00:00.000Z' })]), now).state).toBe('none');
+    // An end date Arbo cannot read on a row for somewhere else changes nothing for the four cities.
+    expect(judgeDeclarations(fema([{ ...ELSEWHERE, incidentEndDate: 'soon' }]), now).state).toBe('none');
   });
 
   it('a fire management (FM) grant is not a President\'s declaration; EM and DR are', () => {
@@ -331,6 +359,9 @@ describe('storm-law flag — §1B: a failed read is named "unreadable", never "n
     ['an entry that is not an object', { body: fema([42 as unknown as Row]) }, /could not read/],
     ['a row with no area at all', { body: fema([row({ designatedArea: undefined, fipsCountyCode: undefined })]) }, /without saying where/],
     ['a covering row with no number', { body: fema([row({ disasterNumber: '3631' })]) }, /service cities that Arbo could not read/],
+    // Neither guessed open nor guessed past the 30-day tail.
+    ['a covering row whose incident end is not a date', { body: fema([row({ incidentEndDate: 'not a date' })]) }, /incident end Arbo could not read/],
+    ['a covering row whose incident end is not text', { body: fema([row({ incidentEndDate: 20261003 })]) }, /incident end Arbo could not read/],
   ];
   for (const [name, answer, reason] of failures) {
     it(`${name} → unreadable, with its reason, no flag, the Governor note`, async () => {
@@ -361,6 +392,34 @@ describe('storm-law flag — §1B: a failed read is named "unreadable", never "n
       expect(s.state).toBe('unreadable');
       expect(s.reason).toMatch(/did not answer in time/);
       expect(s.flag).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('one deadline covers the whole read: a FEMA that answers but never finishes its body is named unreadable on time', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    try {
+      let calls = 0;
+      const fn: StormLawFetch = async () => {
+        calls += 1;
+        return { ok: true, status: 200, json: () => new Promise<never>(() => {}) }; // headers, then the body stalls
+      };
+      const check = createStormLawCheck(fn);
+      const answers: StormLawStatus[] = [];
+      void check.status().then((s) => answers.push(s));
+      void check.status().then((s) => answers.push(s)); // a second ask shares the one stalled read
+      await vi.advanceTimersByTimeAsync(STORM_LAW_TIMEOUT_MS - 1);
+      expect(answers).toEqual([]);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(answers).toHaveLength(2);
+      for (const s of answers) {
+        expect(s.state).toBe('unreadable');
+        expect(s.reason).toMatch(/did not answer in time/);
+        expect(s.flag).toBeNull();
+        expect(s.governorNote).toBe(GOVERNOR_NOTE);
+      }
+      expect(calls).toBe(1);
     } finally {
       vi.useRealTimers();
     }
@@ -442,7 +501,7 @@ describe('GET /api/storm/law', () => {
       const url = String(input);
       if (url.startsWith('http://127.0.0.1:')) return realFetch(input, init);
       outside.push(url);
-      if (url === OPENFEMA_URL) {
+      if (url.startsWith(FEMA_BASE)) {
         return Promise.resolve(new Response(JSON.stringify(fema(FOUR_CITIES)), { status: 200, headers: { 'content-type': 'application/json' } }));
       }
       return Promise.resolve(new Response('no network in tests', { status: 599 }));
@@ -462,10 +521,14 @@ describe('GET /api/storm/law', () => {
       expect(body.flag).toBe(STORM_LAW_FLAG);
       expect(body.declarations).toEqual([{ number: 3631, title: 'SEVERE WINTER STORM', declared: '2026-01-23T00:00:00.000Z' }]);
       expect(body.governorNote).toBe(GOVERNOR_NOTE);
-      expect(outside).toEqual([OPENFEMA_URL]);
+      // One FEMA read, dated from the server's own clock (30 days back from now).
+      expect(outside).toHaveLength(1);
+      expect(decodeURIComponent(outside[0]!)).toMatch(
+        /^https:\/\/www\.fema\.gov\/api\/open\/v2\/DisasterDeclarationsSummaries\?\$filter=state eq 'VA' and \(incidentEndDate eq null or incidentEndDate ge '\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z'\)&\$top=1000$/,
+      );
       // Second ask within the hour: served from the cache, FEMA not asked again.
       expect((await get('admin-k')).status).toBe(200);
-      expect(outside).toEqual([OPENFEMA_URL]);
+      expect(outside).toHaveLength(1);
     } finally {
       srv.close();
       vi.unstubAllGlobals();

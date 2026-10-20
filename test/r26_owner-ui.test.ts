@@ -8,6 +8,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { loadAppHtml } from '../src/server/appPage.js';
 import { SECTION_AGENTS } from '../src/agents/sections.js';
+import { GOVERNOR_NOTE } from '../src/ops/stormLaw.js';
 
 const html = loadAppHtml();
 const css = html.slice(0, html.indexOf('</style>'));
@@ -397,7 +398,16 @@ describe('R26 qa-x10 — Today: the place on screen and the emergencies count', 
     // Links cut, the brief returns early: anything after it never renders in production.
     expect(today.indexOf('emergencyLeads().then(')).toBeGreaterThan(-1);
     expect(today.indexOf('emergencyLeads().then(')).toBeLessThan(briefFetch);
-    expect(today.indexOf('stormLawFlag().then(')).toBeLessThan(briefFetch);
+    expect(today.indexOf('stormLawFlag(alerting).then(')).toBeGreaterThan(-1);
+    expect(today.indexOf('stormLawFlag(alerting).then(')).toBeLessThan(briefFetch);
+  });
+
+  it('the law flag learns whether NWS has an alert out from the storm banner’s own read — never a second one', () => {
+    expect(today).toContain('const alerting = stormBanner().then((b) => { if (b) stormSlot.appendChild(b); return !!b; });');
+    expect(today.indexOf('const alerting = stormBanner()')).toBeLessThan(today.indexOf('stormLawFlag(alerting)'));
+    // The banner returns its card only when the feed named at least one alert.
+    expect(fnSrc('stormBanner')).toContain('if (!na) return null;');
+    expect(html.split("api('/api/storm')").length - 1).toBe(1);
   });
 
   it('an unread leads feed is named on Today in the shared feed words', () => {
@@ -528,29 +538,47 @@ describe('R26 — Leads flags a Spanish speaker and keeps the tab badge current'
 
 // ---------- the owner-only storm price-law flag ----------
 describe('R26 — the storm price-law flag on Today (owner only)', () => {
-  const flag = (api: () => Promise<unknown>, LINKS = 'live') => pageFn<() => Promise<N | null>>('stormLawFlag', {
+  const flag = (api: () => Promise<unknown>, LINKS = 'live') => pageFn<(alerting?: Promise<boolean>) => Promise<N | null>>('stormLawFlag', {
     api, LINKS_READY: Promise.resolve(LINKS), feedKind: feedKindWith(LINKS), feedLine, el, document,
   });
+  // The server's own sentence: the Governor's half of the law is in no feed Arbo can read.
+  const GOV = GOVERNOR_NOTE;
+  const NO_FEED = 'Governor declarations are not in any feed Arbo can read.';
+  const alert = Promise.resolve(true);
+  const calm = Promise.resolve(false);
 
-  it('active: one amber card — never the alarm — with the declaration titles', async () => {
-    const box = await flag(async () => ({ state: 'active', declarations: [{ title: 'SIM Tropical Storm declaration' }, 'SIM County emergency', { title: '' }] }))();
+  it('active: one amber card — never the alarm — with the declaration titles, then the Governor note', async () => {
+    const box = await flag(async () => ({ state: 'active', governorNote: GOV, declarations: [{ title: 'SIM Tropical Storm declaration' }, 'SIM County emergency', { title: '' }] }))(calm);
     expect(box!.className).toBe('late');
     expect(box!.children[0]!.textContent).toBe('Virginia post-disaster price law in effect — check with counsel');
-    expect(box!.children.slice(1).map((c) => c.tag + ':' + c.textContent)).toEqual(['small:SIM Tropical Storm declaration', 'small:SIM County emergency']);
-    const none = await flag(async () => ({ state: 'active' }))();
-    expect(none!.children).toHaveLength(1);
-    // An odd declarations field never costs Mike the flag itself.
+    expect(box!.children.slice(1).map((c) => c.tag + ':' + c.textContent)).toEqual(['small:SIM Tropical Storm declaration', 'small:SIM County emergency', 'small:' + GOV]);
+    // No titles: the sentence and the note.
+    const none = await flag(async () => ({ state: 'active', governorNote: GOV }))();
+    expect(none!.children.map((c) => c.textContent)).toEqual(['Virginia post-disaster price law in effect — check with counsel', GOV]);
+    // An odd declarations field — or no note from the server — never costs Mike the flag or the note.
     const odd = await flag(async () => ({ state: 'active', declarations: { title: 'x' } }))();
     expect(odd!.className).toBe('late');
-    expect(odd!.children).toHaveLength(1);
+    expect(odd!.children.map((c) => c.textContent)).toEqual(['Virginia post-disaster price law in effect — check with counsel', NO_FEED]);
   });
 
-  it('none: nothing. Unreadable — or a state this page does not know — is named, never read as "no declaration" (§1B)', async () => {
-    expect(await flag(async () => ({ state: 'none' }))()).toBeNull();
-    const unread = await flag(async () => ({ state: 'unreadable' }))();
-    expect(unread!.className).toBe('feed-state unread');
-    expect(unread!.textContent).toBe('Storm price law: couldn’t read it. ' + RETRY);
-    expect((await flag(async () => ({ state: 'later' }))())!.className).toBe('feed-state unread');
+  it('none on a calm day: nothing. None while NWS has an alert out: one muted line naming what Arbo cannot see', async () => {
+    expect(await flag(async () => ({ state: 'none', governorNote: GOV }))()).toBeNull();
+    expect(await flag(async () => ({ state: 'none', governorNote: GOV }))(calm)).toBeNull();
+    const line = await flag(async () => ({ state: 'none', governorNote: GOV }))(alert);
+    expect(line!.className).toBe('storm-muted'); // help text: the FEMA read itself succeeded
+    expect(line!.textContent).toBe('Storm price law: no open FEMA declaration. ' + GOV);
+    expect(line!.children).toEqual([]);
+    const bare = await flag(async () => ({ state: 'none' }))(alert);
+    expect(bare!.textContent).toBe('Storm price law: no open FEMA declaration. ' + NO_FEED);
+  });
+
+  it('unreadable — or a state this page does not know — is named, never read as "no declaration" (§1B), storm or calm', async () => {
+    for (const weather of [undefined, calm, alert]) {
+      const unread = await flag(async () => ({ state: 'unreadable', governorNote: GOV }))(weather);
+      expect(unread!.className).toBe('feed-state unread');
+      expect(unread!.textContent).toBe('Storm price law: couldn’t read it. ' + RETRY);
+      expect((await flag(async () => ({ state: 'later' }))(weather))!.className).toBe('feed-state unread');
+    }
   });
 
   it('not built on this server (404 / not_built), or the key wall: nothing. A read that failed: named.', async () => {
