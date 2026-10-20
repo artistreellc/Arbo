@@ -165,6 +165,40 @@ export const env = {
   },
 } as const;
 
+/**
+ * R28 (Mike, 2026-10-20: "Make it safe, then set it up" / "put it in the arbo
+ * app"): the business assistant — a Claude Managed Agent Mike creates in the
+ * Claude Console; Arbo starts its sessions and carries its approvals.
+ *
+ * Read at CALL time, never cached, so a restart or a test sees the truth.
+ * The switch is exactly like ARBO_DATA_LINKS: ARBO_AGENT must be exactly
+ * 'live', read raw — 'LIVE', 'true', ' live' or unset all leave it OFF.
+ * The key is the same ANTHROPIC_API_KEY through the same accessor as
+ * env.anthropic.apiKey. Values are never logged — only which NAMES are missing.
+ */
+export function assistantEnv(): {
+  on: boolean;
+  apiKey: string | undefined;
+  agentId: string | undefined;
+  environmentId: string | undefined;
+  vaultId: string | undefined;
+  /** Whole cents; null when the variable is set but is not a dollar amount above 0. */
+  budgetCents: number | null;
+} {
+  const rawBudget = get('ARBO_AGENT_SESSION_BUDGET_USD');
+  const budgetCents = rawBudget === undefined
+    ? 300
+    : /^\d+(\.\d{1,2})?$/.test(rawBudget) && Number(rawBudget) > 0 ? Math.round(Number(rawBudget) * 100) : null;
+  return {
+    on: process.env.ARBO_AGENT === 'live',
+    apiKey: get('ANTHROPIC_API_KEY'),
+    agentId: get('ARBO_AGENT_ID'),
+    environmentId: get('ARBO_AGENT_ENVIRONMENT_ID'),
+    vaultId: get('ARBO_AGENT_VAULT_ID'),
+    budgetCents,
+  };
+}
+
 /** Which integration groups have real credentials present (booleans only). */
 export function integrationStatus(): Record<string, boolean> {
   return {
