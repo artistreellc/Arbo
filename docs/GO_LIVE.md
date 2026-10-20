@@ -44,9 +44,9 @@ shows "the crew door key isn't set up yet — ask Mike" and asks for nothing
 
 ## 4. Go-live switches (Mike only, one by one)
 
-- [ ] **Reconnect Google** — Settings → Google (Gmail read, calendar holds, Drive read).
+- [ ] **Reconnect Google, read-only (R33)** — the steps are in §8 below. Arbo now asks Google to *read* Gmail, the calendar and Drive, and nothing else; calendar holds are off.
 - [ ] **Open the data links one at a time** after each passes its verification (`docs/DATA_LINKS.md`, R19). The app runs fully with them cut; opening one is never an optimisation.
-- [ ] **Quo texting registration** (A2P) before any R22 text goes out.
+- [ ] **Quo is read-only (R33)** — Arbo texts no one and changes nothing in Quo. The R22 text comes back only if you say so and `ARBO_QUO_SEND` is set to exactly `live` on Railway (then a deploy); Quo's texting registration (A2P) still has to be approved before any text goes out. Nothing to do while you want it read-only.
 - [ ] **Bouncie truck tracking** (R31) — built and switched off. Steps in `docs/BOUNCIE.md`: the Bouncie portal app with Client ID `arbo-app` and the Redirect URI `https://arbor-server-production.up.railway.app/api/bouncie/callback` → `BOUNCIE_CLIENT_ID` / `BOUNCIE_CLIENT_SECRET` and `ARBO_LINK_CREDENTIALS=live` (the sealed sign-in row — Mike, 2026-10-20: "Yes, allow the sign-in row"; migration 0021 is applied live 2026-10-20) → deploy → Settings → Connect Bouncie → `BOUNCIE_WEBHOOK_KEY` → deploy → turn on the webhook in the Bouncie portal → `ARBO_LINK_BOUNCIE=live` when ready. Arbo renews the sign-in once a day ("Keep the sign-in alive"); `BOUNCIE_API_KEY` is not needed and can be deleted. Owner only; the crew door never shows it.
 - [ ] **The business assistant (R28)** — built and switched off. Steps in `docs/ASSISTANT_SETUP.md`, in order: Console → Agents → Arbo → Edit → Raw → paste `agents/arbo/agent.yaml` → Save · a vault with the five accounts (Gmail, Calendar, Drive, Quo, Square) · a cloud environment on **Limited** networking with the listed hosts · on Railway `ARBO_AGENT_ID`, `ARBO_AGENT_ENVIRONMENT_ID`, `ARBO_AGENT_VAULT_ID` (optional `ARBO_AGENT_SESSION_BUDGET_USD`, `ARBO_AGENT_CREW_NUMBERS`) · deploy · `ARBO_AGENT=live` · deploy. Once on, exactly four things start it: each inbound Quo text, missed call or finished call; a Gmail sweep every 30 minutes 7am–9pm ET; the crew summaries at 6:30am ET; and the **daily office check at 7am ET, Monday to Saturday** (weather for today's and tomorrow's jobs, invoices unpaid past their terms, equipment due for service, anything waiting on you — its report on Today and in Activity; no switch of its own). Every email, text, calendar booking, Drive write and Square call waits for your OK in the app; a customer text allowed before 8am or after 9pm ET is refused until 8.
 - [ ] **`ANTHROPIC_API_KEY`** on Railway turns the agents' brain from "offline — deterministic" to Opus.
@@ -129,3 +129,47 @@ After `ARBO_AGENT=live` and the deploy (§4), check in the app:
 - [ ] **A booking**: every calendar booking waits for your Allow. If a card
       ever names a guest, Google would email them an invite — deny it unless
       you mean it.
+
+## 8. Reconnect Google read-only (R33, 2026-10-20)
+
+Mike: *"Connect Google as a read only"*. Arbo now asks Google for three READ
+permissions and nothing else. Until you reconnect, Arbo keeps using the older
+sign-in — which Google still lets create calendar events — but Arbo's code
+refuses every write anyway, so nothing changes in your account either way.
+Reconnecting makes Google itself hold the line.
+
+1. **Remove the old sign-in first (recommended).** On a computer or phone
+   signed in to the business Google account: **myaccount.google.com →
+   Security → Your connections to third-party apps & services → Arbo →
+   Delete all connections** (the app may show under the name on your Google
+   sign-in screen). Leave every other app alone — Claude (the business
+   assistant's own connection), Zapier and the rest are separate. This retires
+   the old permission that could create calendar events. Gmail reading in Arbo
+   pauses from here until step 4 — do the steps together.
+2. **In Arbo: More → Settings → Google → Open Google.** Google's screen will
+   list **exactly these three**:
+   - *View your email messages and settings*
+   - *See and download any calendar you can access using your Google Calendar*
+   - *See and download all your Google Drive files*
+
+   If it lists anything else — send email, edit or delete calendar events,
+   change Drive files — **don't approve it**; tell Claude.
+3. **Approve.** You land on a page that will not load (`http://localhost/…`).
+   Copy its whole address.
+4. **Paste it into the box in Settings → Google and tap Connect** within a few
+   minutes (the code expires). It should say *"Connected read-only. Gmail, the
+   calendar and Drive are read again — saved on the storage disk."* The card
+   shows a green **READ-ONLY** chip and the three permissions.
+5. **Optional tidy-up on Railway:** the variable `GMAIL_OAUTH_REFRESH_TOKEN` is
+   the older sign-in, used only when Arbo has none saved. After step 1 it no
+   longer works; you can delete it.
+
+What you'll see afterwards: each Sona call that wants an estimate says
+*"Calendar holds are off — Google is connected read-only (Mike, 2026-10-20).
+Sona's requested time is shown on the call card for you to book."* — book it
+yourself. The deploy log says `[google] READ-ONLY (R33)` and
+`[calendar] holds OFF`.
+
+The business assistant (R28) has its own Google connection in your Claude
+Console vault; this does not change it — every send or booking it makes
+still waits for your OK in the app (see `docs/PHONE_SETUP.md`, "Quo read-only").

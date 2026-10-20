@@ -1,8 +1,14 @@
 // R22: the one outbound path. Pins: one recipient per POST, raw key in
 // Authorization, every documented Quo refusal named, and a refusal log that
 // carries the reason only — never the number, never the words (§4.3).
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createQuoSender, MAX_CONTENT_CHARS } from '../src/integrations/quoSend.js';
+
+// R33 (Mike, 2026-10-20: "connect quo as read only"): every send is refused
+// unless ARBO_QUO_SEND is exactly 'live' — pinned in test/r33ReadOnly.test.ts.
+// These pin the sender as it runs once Mike turns sends back on.
+beforeEach(() => { vi.stubEnv('ARBO_QUO_SEND', 'live'); });
+afterEach(() => { vi.unstubAllEnvs(); });
 
 const TO = '+17575550142';
 const FROM = '+17576069432';

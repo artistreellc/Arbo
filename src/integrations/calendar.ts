@@ -43,6 +43,15 @@
 // Google Calendar filing (brief §5A #9). Auth-agnostic, like the Drive module:
 // pass a CalendarApi implementation (live Google API in prod, a fake in tests).
 // ARBOR books estimates/jobs with the correct colorId and never double-books.
+//
+// R33 (Mike, 2026-10-20: "Connect Google as a read only"): the live
+// implementation's two writes — createEvent (the R18 hold) and
+// updateEventColor (the D36 won-estimate recolor) — REFUSE before anything
+// leaves Arbo, not even a token is minted. A token granted before R33 still
+// carries calendar.events; it is used read-only all the same. listEvents
+// (a GET) keeps working.
+
+import { GOOGLE_READ_ONLY, GoogleReadOnlyError } from './readOnly.js';
 
 export interface CalendarEventInput {
   calendarId: string;
@@ -97,6 +106,7 @@ export function createGoogleCalendarApi(getAccessToken: () => Promise<string>): 
       return (data.items ?? []).map(fromGoogle);
     },
     async createEvent(input) {
+      if (GOOGLE_READ_ONLY) throw new GoogleReadOnlyError('calendar.create'); // R33 — before the token, before the fetch
       const body = {
         summary: input.summary,
         description: input.description,
@@ -115,6 +125,7 @@ export function createGoogleCalendarApi(getAccessToken: () => Promise<string>): 
       return fromGoogle((await res.json()) as GoogleEvent);
     },
     async updateEventColor(calendarId, eventId, colorId) {
+      if (GOOGLE_READ_ONLY) throw new GoogleReadOnlyError('calendar.recolor'); // R33 — the D36 PATCH is off
       const res = await fetch(
         `${BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
         {

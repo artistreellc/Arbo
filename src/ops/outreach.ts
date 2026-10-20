@@ -42,6 +42,14 @@
 //      registered, daily cap) pause the whole queue and are named on screen.
 // §4.3: logs carry counts, ids and reasons — never a number or the words.
 // Numbers appear only in the keywalled app (R17).
+//
+// R33 (Mike, 2026-10-20: "connect quo as read only"): ALL of the above is
+// PAUSED while ARBO_QUO_SEND is not exactly 'live' (src/integrations/
+// readOnly.ts) — Mike's word only. The catch-up (his tap and the boot
+// switch) and the follow-ups queue nothing and answer 'quo_read_only'; a
+// text that somehow reached the queue is refused before the sender, and the
+// sender refuses on its own. Finding who has not heard back is a READ and
+// keeps working, so Mike can text them from the Quo app himself.
 
 import type { Guardrails } from '../config/guardrails.schema.js';
 import type { LegalConfig } from '../config/legal.schema.js';
@@ -49,6 +57,7 @@ import { inspectMessage } from '../binder/policyEngine.js';
 import { clampToQuietHours } from './followUps.js';
 import { QuoHttpError, type QuoApi, type QuoCall, type QuoMessage } from '../integrations/quo.js';
 import type { QuoSender } from '../integrations/quoSend.js';
+import { quoWritesLive } from '../integrations/readOnly.js';
 import type { SonaExtractor } from './quoExtract.js';
 import { normalizeCallerId } from '../reception/callMemory.js';
 
@@ -494,6 +503,11 @@ export class OutreachEngine {
       this.record({ at: iso(nowMs), kind: item.kind, number: item.number, conversationId: item.conversationId, outcome: 'refused', detail: 'no_sender', messageId: null, status: null });
       return 'skipped';
     }
+    if (!quoWritesLive()) {
+      // R33 — nothing queues while read-only; this is the second door, before the sender's own.
+      this.record({ at: iso(nowMs), kind: item.kind, number: item.number, conversationId: item.conversationId, outcome: 'refused', detail: 'quo_read_only', messageId: null, status: null });
+      return 'skipped';
+    }
     const text = this.template();
     let res = await this.deps.sender.send({ from: line.number, to: item.number, content: text });
     if (!res.ok && res.reason === 'rate_limited') {
@@ -525,6 +539,8 @@ export class OutreachEngine {
    * (the boot switch) is. Returns what was queued and why the rest was not.
    */
   async runCatchup(trigger: 'mike' | 'auto'): Promise<{ ran: boolean; queued: number; skipped: Record<string, number>; reason?: string }> {
+    // R33 — first: read-only is the answer whatever else is true (no line, a bad template).
+    if (!quoWritesLive()) return { ran: false, queued: 0, skipped: {}, reason: 'quo_read_only' };
     if (!this.line) return { ran: false, queued: 0, skipped: {}, reason: 'quo_not_wired' };
     const tv = this.verifyTemplate();
     if (!tv.ok) return { ran: false, queued: 0, skipped: {}, reason: `template: ${tv.problems.join('; ')}` };
@@ -548,7 +564,7 @@ export class OutreachEngine {
 
   /** Hourly: every inquiry older than 48h with no estimate and no text from us. */
   async followUpTick(): Promise<number> {
-    if (!this.line || !this.deps.enabled() || !this.verifyTemplate().ok) return 0;
+    if (!quoWritesLive() || !this.line || !this.deps.enabled() || !this.verifyTemplate().ok) return 0;
     const candidates = await this.buildCandidates(CATCHUP_WINDOW_DAYS);
     const cutoff = iso(this.now() - FOLLOWUP_MIN_AGE_MS);
     let queued = 0;
@@ -590,6 +606,8 @@ export class OutreachEngine {
     for (const c of this.lastCandidates) if (c.skip) bySkip[c.skip] = (bySkip[c.skip] ?? 0) + 1;
     return {
       wired: this.line !== null,
+      /** R33: true while Quo is read-only — nothing is texted; the app disables its send buttons. */
+      readOnly: !quoWritesLive(),
       fromNumber: this.line?.number ?? null,
       senderPresent: this.deps.sender !== null,
       autoFollowUps: this.deps.enabled(),

@@ -135,8 +135,9 @@ export interface CallRecordEntry {
    * Whether a calendar hold was ATTEMPTED for this call. 'attempted' means
    * fired, not confirmed — the insert is async and a failure lands in the
    * server log, not back in this record. Honest label over a pleasing one.
+   * 'read_only' (R33): Google is connected read-only — no hold, on purpose.
    */
-  calendarHold: 'attempted' | 'no_writer' | 'not_requested';
+  calendarHold: 'attempted' | 'no_writer' | 'not_requested' | 'read_only';
 }
 
 const RECORDS_CAP = 200;

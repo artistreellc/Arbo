@@ -21,7 +21,7 @@ describe('the one-time code', () => {
     expect(codeFrom('')).toBeNull();
   });
 
-  it('the consent link asks for read Gmail, calendar holds, read Drive — offline, with consent, back to localhost', () => {
+  it('the consent link asks to read Gmail, the calendar and Drive (R33: read-only) — offline, with consent, back to localhost', () => {
     const u = new URL(consentUrl('CLIENT'));
     expect(u.searchParams.get('scope')!.split(' ')).toEqual(GOOGLE_SCOPES);
     expect(GOOGLE_SCOPES.join(' ')).not.toMatch(/gmail\.send|gmail\.modify|auth\/drive(?!\.readonly)|mail\.google\.com/);

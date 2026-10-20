@@ -23,6 +23,13 @@
 // webhook missed is still learned. A call from BEFORE this process started
 // is learned WITHOUT a calendar hold — an earlier deploy may already have
 // filed it, and holds are never duplicated or edited.
+//
+// R33 (Mike, 2026-10-20: "Connect Google as a read only"): calendar holds
+// are OFF. A Sona caller who wants an estimate is learned and kept exactly as
+// before, but the writer is never called — the call says 'read_only', and
+// the card shows the time the caller asked for, for Mike to book. Outreach
+// asks this intake (holdsLive, bookedFromHolds) whether Sona booked anyone,
+// so a hold that did not happen is never taken for a booking.
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Guardrails } from '../config/guardrails.schema.js';
@@ -35,6 +42,7 @@ import { parseRequestedWindow } from './requestedWindow.js';
 import type { SonaCallFacts, SonaExtractor } from './quoExtract.js';
 import { verifySvixSignature } from './webhooks.js';
 import { QuoHttpError, type QuoApi } from '../integrations/quo.js';
+import { GOOGLE_READ_ONLY, quoWritesLive } from '../integrations/readOnly.js';
 
 /** Quo signs with a millisecond timestamp; reject anything older than 5 minutes. */
 const TOLERANCE_MS = 5 * 60 * 1000;
@@ -120,7 +128,8 @@ export interface QuoDialogueLine {
   text: string;
 }
 
-export type HoldOutcome = 'attempted' | 'no_writer' | 'not_requested' | 'hangup' | 'extraction_unavailable' | 'not_sona' | 'learned_only';
+/** 'read_only' (R33): the caller wants an estimate and Google is connected read-only — no hold, on purpose. */
+export type HoldOutcome = 'attempted' | 'no_writer' | 'not_requested' | 'hangup' | 'extraction_unavailable' | 'not_sona' | 'learned_only' | 'read_only';
 
 export interface QuoCallEntry {
   callId: string;
@@ -150,6 +159,12 @@ export interface QuoIntakeDeps {
   callMemory: CallMemory;
   callRecords: CallRecordStore;
   calendarHold: ((hold: CallHold) => Promise<void>) | null;
+  /**
+   * May a hold be written to Google at all? Defaults to "no" while Google is
+   * connected read-only (R33) — the server never passes it. Only a test of
+   * the dormant hold path, or the day Mike rules holds back on, sets it.
+   */
+  googleWrites?: boolean;
   /** Where Quo texts go — the shared Texts list. */
   onText: (t: { at: string; messageSid: string | null; from: string | null; body: string; media: Array<{ url: string; contentType: string | null }> }) => void;
   /** A delivery receipt for a text Arbo sent (R22) — status only. */
@@ -191,7 +206,9 @@ export class QuoIntake {
   private readonly dropped: Record<string, number> = {};
   private readonly bootMs: number;
   private sweep: { lastAt: string | null; learned: number; pending: number; error: string | null; unreadable: string | null } = { lastAt: null, learned: 0, pending: 0, error: null, unreadable: null };
-  private registration: { state: 'not_configured' | 'pending' | 'ok' | 'failed'; detail: string } = {
+  private readonly googleWrites: boolean;
+  /** 'read_only' (R33): Arbo would not create or replace a webhook Quo is missing — named, never 'failed'. */
+  private registration: { state: 'not_configured' | 'pending' | 'ok' | 'failed' | 'read_only'; detail: string } = {
     state: 'not_configured',
     // Owner words: this shows on Today and Calls. The variable name stays in the boot log.
     detail: 'Quo isn’t connected to Arbo yet — Sona’s calls are not reaching Arbo. That doesn’t mean no calls came in.',
@@ -201,6 +218,12 @@ export class QuoIntake {
     this.deps = deps;
     this.now = deps.now ?? (() => Date.now());
     this.bootMs = this.now();
+    this.googleWrites = deps.googleWrites ?? !GOOGLE_READ_ONLY;
+  }
+
+  /** Does a Sona caller who wants an estimate get a calendar hold? False while Google is read-only (R33). */
+  holdsLive(): boolean {
+    return this.googleWrites && this.deps.calendarHold !== null;
   }
 
   /** Name an event Arbo verified but did not use. Reason and payload KEY names only — never values (§4.3). */
@@ -209,7 +232,7 @@ export class QuoIntake {
     console.error(`[quo] event not used — ${reason}${keys ? ` (payload keys: ${keys.slice(0, 20).join(',')})` : ''}`);
   }
 
-  setRegistration(state: 'pending' | 'ok' | 'failed', detail: string, keys: string[] = [], ownNumbers: string[] = []): void {
+  setRegistration(state: 'pending' | 'ok' | 'failed' | 'read_only', detail: string, keys: string[] = [], ownNumbers: string[] = []): void {
     this.registration = { state, detail };
     if (keys.length) this.keys = keys;
     if (ownNumbers.length) this.ownNumbers = new Set(ownNumbers.map((n) => normalizeCallerId(n) ?? n));
@@ -429,6 +452,7 @@ export class QuoIntake {
 
     if (!facts.wantsEstimate) e.hold = 'not_requested';
     else if (!opts.fileHold) e.hold = 'learned_only';
+    else if (!this.googleWrites) e.hold = 'read_only'; // R33 — the writer is never called
     else if (!this.deps.calendarHold) e.hold = 'no_writer';
     else {
       e.hold = 'attempted';
@@ -445,7 +469,7 @@ export class QuoIntake {
       emergency: facts.emergency,
       turns: e.dialogue.length,
       ...(window ? { requestedWindow: window.label } : {}),
-      calendarHold: e.hold === 'attempted' ? 'attempted' : e.hold === 'not_requested' ? 'not_requested' : 'no_writer',
+      calendarHold: e.hold === 'attempted' ? 'attempted' : e.hold === 'not_requested' ? 'not_requested' : e.hold === 'read_only' ? 'read_only' : 'no_writer',
     });
     console.error(`[quo] sona call processed (${e.source}) — hold ${e.hold}, ${e.slips.length} slip(s)${facts.emergency ? ', EMERGENCY' : ''}`);
   }
@@ -573,10 +597,31 @@ export class QuoIntake {
       slips: sona.reduce((n, c) => n + c.slips.length, 0),
       callsWithSlips: sona.filter((c) => c.slips.length > 0).length,
       holdsAttempted: sona.filter((c) => c.hold === 'attempted').length,
+      /** R33: 'read_only' = off on purpose (Google is read-only) — never "0 holds filed". */
+      holds: (!this.googleWrites ? 'read_only' : this.deps.calendarHold ? 'on' : 'no_writer') as 'read_only' | 'on' | 'no_writer',
+      /** R33: Quo writes — 'read_only' unless ARBO_QUO_SEND is exactly 'live'. */
+      quoWrites: (quoWritesLive() ? 'live' : 'read_only') as 'live' | 'read_only',
       hangups: sona.filter((c) => c.hold === 'hangup').length,
       learnedFromRecord: all.filter((c) => c.source === 'quo_record').length,
       notUsed: { ...this.dropped },
       quoRecord: { ...this.sweep },
     };
   }
+}
+
+/**
+ * The callers Sona booked an estimate hold for, as normalized numbers — only
+ * a hold that was actually ATTEMPTED counts. A 'read_only' call (R33), a
+ * learned-after-the-fact call, or a call with no writer is never a booking,
+ * so outreach never skips someone as "estimate booked" for a hold that did
+ * not happen.
+ */
+export function bookedFromHolds(calls: QuoCallEntry[]): Set<string> {
+  const booked = new Set<string>();
+  for (const c of calls) {
+    if (c.hold !== 'attempted' || !c.from) continue;
+    const n = c.from.replace(/[^\d+]/g, '');
+    if (n) booked.add(n);
+  }
+  return booked;
 }

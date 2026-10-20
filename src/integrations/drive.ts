@@ -55,6 +55,14 @@
 // token (service account or stored OAuth). This module is auth-agnostic — pass
 // a `DriveApi` implementation. The live folder tree for the pilot property was
 // created under the real "ARBOR Clients" root (id in ARBOR_DRIVE_ROOT_FOLDER_ID).
+//
+// R33 (Mike, 2026-10-20: "Connect Google as a read only"): createFolder is a
+// WRITE (POST /drive/v3/files makes a new folder — it is not a files.list),
+// so the live implementation refuses it before anything leaves Arbo.
+// findFolder (a GET) keeps working. Nothing in the running app calls either
+// today; the refusal is here so nothing can.
+
+import { GOOGLE_READ_ONLY, GoogleReadOnlyError } from './readOnly.js';
 
 export const PROPERTY_SUBFOLDERS = ['Estimates', 'Signed Contracts', 'Job Photos', 'Documents'] as const;
 export type PropertySubfolder = (typeof PROPERTY_SUBFOLDERS)[number];
@@ -126,6 +134,7 @@ export function createGoogleDriveApi(getAccessToken: () => Promise<string>): Dri
       return f ? { id: f.id, title: f.name, parentId } : null;
     },
     async createFolder(title, parentId) {
+      if (GOOGLE_READ_ONLY) throw new GoogleReadOnlyError('drive.createFolder'); // R33 — before the token, before the fetch
       const res = await fetch('https://www.googleapis.com/drive/v3/files?fields=id,name', {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...(await authHeader()) },

@@ -4,7 +4,12 @@
 // the same code guard as Arbo's voice; the calendar hold is filed Mike's
 // way; hang-ups, unreadable calls, and calls Mike answered file nothing;
 // no customer number or words reach the logs (§4.3); unwired is NAMED (§1B).
-import { describe, it, expect, vi } from 'vitest';
+// R33 (Mike, 2026-10-20: "Connect Google as a read only and connect quo as
+// read only"): holds and webhook registration are OFF by default — pinned in
+// test/r33ReadOnly.test.ts. Here they are pinned as they run once Mike turns
+// them back on (`googleWrites: true`, ARBO_QUO_SEND=live), so the paused
+// paths stay correct.
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -55,6 +60,7 @@ function harness(opts: { facts?: SonaCallFacts | Error; withHold?: boolean } = {
     callMemory: memory,
     callRecords: records,
     calendarHold: opts.withHold === false ? null : async (h) => { holds.push(h); },
+    googleWrites: true, // the dormant R18 path (R33 keeps it off in the app)
     onText: (t) => texts.push(t),
     now: () => NOW,
   });
@@ -90,6 +96,9 @@ describe('verifyQuoSignature', () => {
 });
 
 describe('Quo API client — registers only Arbo’s own webhooks, and cannot send', () => {
+  // Registering webhooks is a Quo write: pinned as it runs once Mike sets ARBO_QUO_SEND=live (R33).
+  beforeEach(() => { vi.stubEnv('ARBO_QUO_SEND', 'live'); });
+  afterEach(() => { vi.unstubAllEnvs(); });
   function fakeApi(existing: QuoWebhook[]) {
     const deleted: string[] = [];
     const created: string[] = [];
@@ -235,7 +244,7 @@ describe('learning from Quo — no call dropped in silence (Mike, 2026-09-24: "N
     const extract = vi.fn(async () => { if (opts.facts instanceof Error) throw opts.facts; return opts.facts ?? FACTS; });
     const intake = new QuoIntake({
       guardrails: loadAllConfig().guardrails, extractor: { extract }, callMemory: new CallMemory(), callRecords: new CallRecordStore(),
-      calendarHold: async (h) => { holds.push(h); }, onText: () => {}, now: () => now, sleep: async () => {},
+      calendarHold: async (h) => { holds.push(h); }, googleWrites: true, onText: () => {}, now: () => now, sleep: async () => {},
     });
     intake.setRegistration('ok', 'test', [KEY], [QUO_NUMBER]);
     const api: QuoApi = {

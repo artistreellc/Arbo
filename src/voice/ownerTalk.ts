@@ -344,6 +344,9 @@ function sonaSection(q: QuoRead | null, detail: boolean, now: number): Section {
   } else if (st.registration.state === 'pending') {
     lines.push(`${name}: still connecting to Quo — calls may not be reaching Arbo yet. That is not zero calls.`);
     missing = `${name}: still connecting to Quo`;
+  } else if (st.registration.state === 'read_only') {
+    // R33: off on purpose — Quo is read-only, so a webhook it lacks is not created. Not a failure.
+    lines.push(`${name}: Quo is read-only, so Arbo won't add a webhook Quo is missing — it reads the calls from Quo's own record instead, every 10 minutes.`);
   }
   if (!st.reading) lines.push("Arbo has no AI key to read Sona's calls — they are kept but not checked, so a rule slip can be missed.");
   const rec = st.quoRecord;
@@ -368,8 +371,10 @@ function sonaSection(q: QuoRead | null, detail: boolean, now: number): Section {
     const city = safe(c.facts?.city, '');
     lines.push(`- Emergency call: ${safe(c.facts?.name, 'a caller who gave no name')}${city ? ` in ${city}` : ''}, ${when(c.at, now)}. Call back from the Arbo app.`);
   }
-  if (detail) lines.push(`Sona calls Arbo holds: ${sona.length}. Calendar holds filed: ${st.holdsAttempted}. Hang-ups: ${st.hangups}.`);
-  if (!sona.length && st.registration.state === 'ok' && !rec.error && !rec.unreadable) {
+  // R33: holds off on purpose is said as off — never "Calendar holds filed: 0".
+  const holdsSaid = st.holds === 'read_only' ? "Calendar holds: off — Google is connected read-only, so book the time the caller asked for yourself" : `Calendar holds filed: ${st.holdsAttempted}`;
+  if (detail) lines.push(`Sona calls Arbo holds: ${sona.length}. ${holdsSaid}. Hang-ups: ${st.hangups}.`);
+  if (!sona.length && (st.registration.state === 'ok' || st.registration.state === 'read_only') && !rec.error && !rec.unreadable) {
     lines.push(rec.lastAt ? "No Sona calls in the last 7 days — checked against Quo's own record." : "Wired — still reading Sona's calls from Quo.");
   }
   return { lines, missing };

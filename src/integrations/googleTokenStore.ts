@@ -8,6 +8,9 @@
 // token is held in memory and the app SAYS it lasts only until the next
 // restart (§1B) — never a quiet "connected".
 //
+// R33 (Mike, 2026-10-20): the consent asks for READ-ONLY scopes only — see
+// GOOGLE_PERMISSIONS below.
+//
 // `googleCreds()` hands the existing token provider a creds object whose
 // `refreshToken` is read at every refresh: the stored token wins, the
 // Railway variable GMAIL_OAUTH_REFRESH_TOKEN is the fallback. A new grant
@@ -80,12 +83,32 @@ export function googleCreds(
   };
 }
 
-/** The scopes Arbo asks for — read Gmail, create calendar holds (R18), read Drive (R24). Nothing that sends or deletes. */
-export const GOOGLE_SCOPES = [
-  'https://www.googleapis.com/auth/gmail.readonly',
-  'https://www.googleapis.com/auth/calendar.events',
-  'https://www.googleapis.com/auth/drive.readonly',
+/**
+ * What Arbo asks Google for — READ ONLY, three permissions, nothing else
+ * (R33, Mike 2026-10-20: "Connect Google as a read only"). Read Gmail (R17),
+ * read the calendar, read Drive (R24). Nothing that sends, writes, moves or
+ * deletes: `calendar.events` (the R18 hold) is no longer asked for.
+ * `googleSays` is the line Google's own consent screen shows for each, so
+ * the Settings card and the steps say exactly what Mike will see.
+ */
+export const GOOGLE_PERMISSIONS: ReadonlyArray<{ scope: string; what: string; googleSays: string }> = [
+  { scope: 'https://www.googleapis.com/auth/gmail.readonly', what: 'Read Gmail', googleSays: 'View your email messages and settings' },
+  { scope: 'https://www.googleapis.com/auth/calendar.readonly', what: 'Read the calendar', googleSays: 'See and download any calendar you can access using your Google Calendar' },
+  { scope: 'https://www.googleapis.com/auth/drive.readonly', what: 'Read Drive', googleSays: 'See and download all your Google Drive files' },
 ];
+
+/** The scopes on the consent link — exactly the three above. */
+export const GOOGLE_SCOPES: string[] = GOOGLE_PERMISSIONS.map((p) => p.scope);
+
+/**
+ * Scopes a grant carries beyond what Arbo asked for (e.g. `calendar.events`
+ * from a consent made before R33). Named so the app can say it; Arbo uses
+ * such a token read-only all the same — the write paths refuse in code
+ * (src/integrations/readOnly.ts), not by trusting the scope.
+ */
+export function extraScopes(granted: string[]): string[] {
+  return granted.filter((s) => s && !GOOGLE_SCOPES.includes(s));
+}
 
 /** Mike's OAuth client is a Desktop client: Google sends him to http://localhost with the code. */
 export const GOOGLE_REDIRECT = 'http://localhost';
