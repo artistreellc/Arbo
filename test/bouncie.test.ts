@@ -1321,8 +1321,10 @@ describe('the callback at /api/bouncie/callback — one Redirect URI, written on
     expect(html).not.toContain('bouncie/callback');
     // The callback is answered BEFORE the /api key gate — Bouncie's redirect carries no key.
     // (Audit M1/L1: the gate is now `if (url.pathname.startsWith('/api/')) { … checkApiDoor(…) }`.)
-    const gateAt = server.indexOf('const door = checkApiDoor(');
+    // (Wave 1 merge: /health/feeds — not under /api — calls checkApiDoor too, so the pin finds the /api gate itself.)
+    const gateAt = server.indexOf("if (url.pathname.startsWith('/api/')) {");
     expect(gateAt).toBeGreaterThan(-1);
+    expect(server.indexOf('const door = checkApiDoor(', gateAt) - gateAt).toBeLessThan(600); // the door is the gate's body
     expect(server.indexOf('url.pathname === BOUNCIE_CALLBACK_PATH')).toBeLessThan(gateAt);
     // And the docs Mike follows carry the same address and Client ID.
     const doc = read('../docs/BOUNCIE.md');
