@@ -1520,9 +1520,14 @@ function emergencyLeadCard(l) {
 
 // Owner only: while a declared disaster is in effect, Virginia's post-disaster
 // price law (Va. Code 59.1-526/527) applies. Arbo never prices, so this is an
-// awareness flag for Mike — amber, never an alarm. Nothing shows when no
-// declaration is in effect, or when this server has no such read yet (404 / not built).
-async function stormLawFlag() {
+// awareness flag for Mike — amber, never an alarm. Arbo reads only FEMA's half:
+// 'none' means "no open FEMA declaration", never "no emergency" — a Governor's
+// declaration is in no feed. So the server's Governor note rides the active
+// card, and on 'none' it is one muted line while NWS has an alert out for the
+// area (alerting: true from the storm banner's own read, never a second one).
+// A calm day with no FEMA declaration shows nothing, and so does a server with
+// no such read yet (404 / not built).
+async function stormLawFlag(alerting) {
   let d;
   try { d = await api('/api/storm/law'); }
   catch (e) {
@@ -1530,7 +1535,8 @@ async function stormLawFlag() {
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
     return feedKind(e) === 'unset' ? null : feedLine(e, 'Storm price law');
   }
-  if (d.state === 'none') return null;
+  const note = typeof d.governorNote === 'string' && d.governorNote ? d.governorNote : 'Governor declarations are not in any feed Arbo can read.';
+  if (d.state === 'none') return (await alerting) === true ? el('div', 'storm-muted', 'Storm price law: no open FEMA declaration. ' + note) : null;
   // 'unreadable', or a state this page does not know: named, never read as "no declaration" (§1B).
   if (d.state !== 'active') return feedLine(null, 'Storm price law');
   const box = el('div', 'late');
@@ -1539,6 +1545,7 @@ async function stormLawFlag() {
     const title = typeof x === 'string' ? x : x && x.title;
     if (title) box.appendChild(el('small', '', title));
   }
+  box.appendChild(el('small', '', note));
   return box;
 }
 
@@ -1551,7 +1558,8 @@ async function renderToday() {
   heroLoops();
   const stormSlot = el('div', 'slot plain');
   v.appendChild(stormSlot);
-  stormBanner().then((b) => { if (b) stormSlot.appendChild(b); });
+  // true when the banner drew a card: the NWS feed named at least one alert. The law flag reuses it.
+  const alerting = stormBanner().then((b) => { if (b) stormSlot.appendChild(b); return !!b; });
   // R26: an EMERGENCY lead sits right under the storm alert and above the run,
   // then the owner's storm price-law flag. Their places are set before any read;
   // the leads read starts below, once the tiles it counts into exist. The alarm
@@ -1561,7 +1569,7 @@ async function renderToday() {
   v.appendChild(emgSlot);
   const lawSlot = el('div', 'slot plain');
   v.appendChild(lawSlot);
-  stormLawFlag().then((b) => { if (b) lawSlot.appendChild(b); });
+  stormLawFlag(alerting).then((b) => { if (b) lawSlot.appendChild(b); });
   // The day's run, then the instruments, sit right under a storm alert — their
   // place on screen is chosen here, before any fetch, not left to whichever
   // fetch returns early. display:contents keeps every child in the desktop grid.
