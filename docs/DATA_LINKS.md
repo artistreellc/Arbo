@@ -119,7 +119,10 @@ Mike rules — never a variable flipped on the way past.
 `GET /api/links` → `notSaved`, kinds and counts only; resets on a redeploy):
 - the hourly sweep still runs every agent (R4: sweeps are read-only by rule);
   their `agent_run` rows are not written — the runs are kept in memory, marked
-  `saved: false`, and the Today tile says "not saved — read-only";
+  `saved: false`, and the Today tile says "not saved — read-only". An agent
+  that needs a kept-cut link fails by name every run (booking and collections
+  need `jobs`, permitting needs `permits` — never "0 screens missing"), and the
+  safety agent names an empty crew roster as a blind spot, never an all-clear;
 - bus events and the permitting agent's cursor are not written (the cursor
   re-reads the same batch next hour — once a sweep, never a loop);
 - `GET /api/forecast` and `GET /api/location/day` still answer; their
@@ -131,6 +134,12 @@ Mike rules — never a variable flipped on the way past.
 (`src/ops/leadAge.ts`) lights no EMERGENCY alarm, no tab badge, no "Call back
 needed" and no open loop, and Talk does not list it. It shows on Leads under
 "Older leads", with its date and no Call back button.
+
+**An empty lead list is not an empty inbox.** Nothing in the app files a lead
+(R4 — Mike handles them), so on real data Leads says "New leads are not in
+Arbo" (Sona's are in Quo, website and ad leads in Gmail) instead of "No new
+leads", and Talk says the lead list is not fed instead of "none open". Only the
+practice data (`sim`) still says "No new leads".
 
 **What it does NOT change.** Nothing is imported (§3). R18 calendar holds, R22
 texts, the Quo intake and study, Bouncie and the webhooks run on their own

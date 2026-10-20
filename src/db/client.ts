@@ -178,6 +178,11 @@ export function getDb(): SupabaseClient {
     const raw = _client;
     _guarded = new Proxy(raw, {
       get(target, prop) {
+        // A handle taken while 'live' must not outlive 'live' (R-READONLY door
+        // review): once the master is anything else it answers to the door in
+        // force NOW — read-only's door, or getDb()'s own "CUT" refusal. In live
+        // this is always false, so live behaves exactly as before.
+        if (!dataLinksLive()) return Reflect.get(getDb(), prop) as unknown;
         if (prop === 'from') {
           return (table: string) => {
             const link = linkForTable(table);
@@ -260,8 +265,11 @@ const EMBED = /([A-Za-z_][A-Za-z0-9_]*)\s*(?:![A-Za-z0-9_]+)?\s*\(/g;
  * linked table is refused — fails closed, exactly like an unmapped root table.
  */
 function assertEmbedsReadable(columns: unknown): void {
+  // Not a plain string (a String object, an array …): the wire check reads
+  // the select PostgREST will actually get (readOnlyFetch), so it is checked there.
   if (typeof columns !== 'string') return;
-  for (const m of columns.matchAll(EMBED)) {
+  // A quoted name is still a name: "job"(id) embeds job.
+  for (const m of columns.replace(/"/g, '').matchAll(EMBED)) {
     const relation = m[1] as string;
     // A known table stays itself; a foreign-key column (`property_id`) names the table it points at.
     const table = (linkForTable(relation) !== null || !relation.endsWith('_id')) ? relation : relation.slice(0, -3);
@@ -270,11 +278,39 @@ function assertEmbedsReadable(columns: unknown): void {
   }
 }
 
-/** The wire, read-only: GET and HEAD go out; every other method is refused before it leaves. */
+/**
+ * The wire, read-only: GET and HEAD go out; every other method is refused before it leaves.
+ * And a GET/HEAD is an ALLOW-LIST, not a pass: it may only read `/rest/v1/<a readable table>`
+ * on this project's own host, and every embed in the select PostgREST will actually get
+ * (after any chained .select(), quotes and all) must be readable too — so a builder that
+ * was re-pointed, or a select the door above could not see, still cannot leave.
+ */
 function readOnlyFetch(input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]): Promise<Response> {
   // The method from init, else from a Request object, else GET (a bare URL or string is a GET).
   const fromRequest = typeof input === 'object' && input !== null && 'method' in input ? input.method : undefined;
   const method = String(init?.method ?? fromRequest ?? 'GET').toUpperCase();
   if (method !== 'GET' && method !== 'HEAD') return Promise.reject(new ReadOnlyError(`HTTP ${method}`));
+  try {
+    assertReadableUrl(input);
+  } catch (err) {
+    // A refused READ answers as a 403 at once. Not a rejection: postgrest-js
+    // retries a rejected GET three times (seconds of waiting for a sure "no").
+    const message = err instanceof Error ? err.message : 'Read refused at the read-only door.';
+    return Promise.resolve(new Response(JSON.stringify({ code: 'ARBO_LINK_CUT', message }), {
+      status: 403, headers: { 'content-type': 'application/json' },
+    }));
+  }
   return fetch(input, init);
+}
+
+/** Throws (LinkCutError) unless this URL reads a readable table, with readable embeds, on our own host. */
+function assertReadableUrl(input: Parameters<typeof fetch>[0]): void {
+  const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  const url = new URL(raw);
+  const base = new URL(env.supabase.url as string);
+  const onRest = url.origin === base.origin && url.pathname.startsWith('/rest/v1/');
+  const table = onRest ? url.pathname.slice('/rest/v1/'.length) : '';
+  const link = linkForTable(table);
+  if (!link || !linkOpen(link)) throw new LinkCutError(table || 'not a table', link);
+  for (const select of url.searchParams.getAll('select')) assertEmbedsReadable(select);
 }

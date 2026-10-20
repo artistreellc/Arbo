@@ -218,6 +218,65 @@ describe('read-only: the door reads the named links and refuses every write by n
     expect(Object.is(client.getDb(), ro)).toBe(true);
     expect(() => client.getDb().from('lead').insert({})).toThrow(links.ReadOnlyError);
   });
+
+  // Door review, finding 1: a live handle kept across a switch must not outlive 'live'.
+  it('a handle taken while "live" cannot write once the master is "readonly" — it answers to the door in force NOW', async () => {
+    const { client, links } = await boot('live', { ARBO_LINK_LEADS: 'live' });
+    const stale = client.getDb();
+    process.env.ARBO_DATA_LINKS = 'readonly';
+    expect(() => stale.from('lead').insert({ status: 'qualified' })).toThrow(links.ReadOnlyError);
+    expect(() => stale.from('contact').delete()).toThrow(links.ReadOnlyError); // contacts was never opened in live
+    expect(() => stale.rpc('anything')).toThrow(links.ReadOnlyError);
+    // A read through the stale handle still goes out — through the read-only door.
+    net.rows.lead = [{ id: 'SIM-lead-1' }];
+    expect((await stale.from('lead').select('id')).data).toEqual([{ id: 'SIM-lead-1' }]);
+    // Cut (any other value) refuses the stale handle outright.
+    process.env.ARBO_DATA_LINKS = 'off';
+    expect(() => stale.from('lead')).toThrow(/CUT/);
+    expect(() => stale.rpc('anything')).toThrow(/CUT/);
+    expect(writesThatLeft()).toEqual([]);
+    expect(net.reqs).toEqual([{ method: 'GET', table: 'lead' }]);
+  });
+
+  // Door review, finding 2: the wire itself is an allow-list — only a select of a
+  // readable table, with every embed readable, leaves. A refused read answers a
+  // 403 at once (a rejected GET would be retried three times by postgrest-js).
+  // Loose on purpose: the client's own types parse select strings at the type level.
+  type Read = PromiseLike<{ error: { message: string } | null; data: unknown }>;
+  type Builder = Read & { select: (columns: string) => Builder; url: URL };
+  type Db = { from: (table: string) => Builder };
+  it('a quoted embed is refused at the door by name, the same as an unquoted one', async () => {
+    const { client } = await boot('readonly');
+    expect(() => client.getDb().from('lead').select('id, "job"(id)')).toThrow(/Data link 'jobs' stays CUT/);
+    expect(net.reqs).toEqual([]);
+  });
+
+  it.each<[string, (db: Db) => unknown]>([
+    ['a second select chained on, embedding a kept-cut table', (db) => db.from('lead').select('id').select('id, job(id)')],
+    ['a second select chained on, with a quoted embed', (db) => db.from('lead').select('id').select('id, "job"(id)')],
+    ['a column list that is not a plain string', (db) => db.from('lead').select(new String('id, job(id)') as unknown as string)],
+    ['a read builder pointed at an rpc', (db) => Object.assign(db.from('lead').select('id'), { url: new URL(`${SUPA}/rest/v1/rpc/fn`) })],
+    ['a read builder pointed at an edge function', (db) => Object.assign(db.from('lead').select('id'), { url: new URL(`${SUPA}/functions/v1/f`) })],
+    ['a read builder pointed at a kept-cut table', (db) => Object.assign(db.from('lead').select('id'), { url: new URL(`${SUPA}/rest/v1/permit_correspondence?select=id`) })],
+    ['a read builder pointed off the Supabase host', (db) => Object.assign(db.from('lead').select('id'), { url: new URL('https://elsewhere.example/rest/v1/lead?select=id') })],
+  ])('the wire refuses %s — nothing is sent, and the refusal is immediate', async (_what, build) => {
+    const { client } = await boot('readonly');
+    const t0 = Date.now();
+    const r = await (build(client.getDb() as unknown as Db) as Read);
+    expect(r.error?.message).toMatch(/CUT|belongs to no data link/);
+    expect(r.data).toBeNull();
+    expect(Date.now() - t0).toBeLessThan(1_000);
+    expect(net.reqs).toEqual([]);
+  });
+
+  it('the wire allow-list still lets every real read through: a select, its readable embeds, a HEAD count', async () => {
+    const { client } = await boot('readonly');
+    const db = client.getDb();
+    expect((await db.from('lead').select('id, contact:contact_id(name, phones), property:property_id (id, city)')).error).toBeNull();
+    expect((await db.from('property').select('id, trees:tree(count)')).error).toBeNull();
+    expect((await db.from('lead').select('*', { count: 'exact', head: true })).error).toBeNull();
+    expect(net.reqs).toEqual([{ method: 'GET', table: 'lead' }, { method: 'GET', table: 'property' }, { method: 'HEAD', table: 'lead' }]);
+  });
 });
 
 // ═══ 2. Background writers degrade to a named "not saved" state ═════════════
@@ -292,6 +351,46 @@ describe('read-only: every background writer degrades by name — no crash, no l
     }
     // The permitting agent read the bus and said its cursor was not saved.
     expect(runs.find((x) => x.agent === 'permitting')!.output_summary).toContain('cursor=not_saved_read_only');
+  });
+
+  // Behaviour review, finding 2: read-only opens the (empty) crew link — the
+  // hourly safety agent must not read an empty roster as an all-clear.
+  it('the hourly safety agent over the real, empty roster names it — empty blindSpots is the only all-clear', async () => {
+    await boot('readonly');
+    const { runSafetyAgent } = await import('../src/agents/safetyAgent.js');
+    const r = await runSafetyAgent({ activeAlerts: async () => [] }, new Date('2026-10-20T15:00:00Z'));
+    expect(r.status).toBe('ok');
+    expect(r.certs.feed).toBe('ok');
+    expect(r.blindSpots).toEqual(['certifications: crew roster is empty — no one to check, not an all-clear']);
+    expect(writesThatLeft()).toEqual([]);
+  });
+
+  it('the safety agent with someone on the roster does not say the roster is empty', async () => {
+    await boot('readonly');
+    net.rows.crew_member = [{ id: 'SIM-crew-1', name: 'SIM-Climber', role: 'climber', active: true }];
+    const { runSafetyAgent } = await import('../src/agents/safetyAgent.js');
+    const r = await runSafetyAgent({ activeAlerts: async () => [] }, new Date('2026-10-20T15:00:00Z'));
+    expect(r.blindSpots.join('|')).not.toContain('roster is empty');
+    expect(writesThatLeft()).toEqual([]);
+  });
+
+  // Behaviour review, finding 3: permits is kept cut, so the permitting agent
+  // cannot check screens — it must say so every run, not "0 missing" whenever
+  // no recent lead happens to make it look.
+  it('the permitting agent with no recent leads still names permits as cut — never "ok, 0 screens missing"', async () => {
+    await boot('readonly');
+    const { runPermittingAgent } = await import('../src/agents/permittingAgent.js');
+    const { unsavedAgentRuns } = await import('../src/binder/agentRun.js');
+    const r = await runPermittingAgent(new Date('2026-10-20T15:00:00Z'));
+    expect(r.status).toBe('error');
+    const run = unsavedAgentRuns(5).find((x) => x.agent === 'permitting')!;
+    expect(run.status).toBe('error');
+    expect(run.output_summary).toContain("Data link 'permits' stays CUT in read-only mode");
+    expect(run.output_summary).not.toContain('screens_missing=0');
+    // It still says the bus cursor was not saved (the same batch is read again next run).
+    expect(run.output_summary).toContain('cursor=not_saved_read_only');
+    expect(net.reqs.some((q) => q.table === 'permit')).toBe(false);
+    expect(writesThatLeft()).toEqual([]);
   });
 
   it('a Quo (Sona) call goes through the intake untouched — the database is never asked', async () => {
@@ -589,6 +688,15 @@ describe('read-only: the app and the crew page say it plainly', () => {
     return m[0];
   };
   const LINE = 'Read-only: Arbo can look but not save. Nothing was written.';
+
+  // Behaviour review, finding 5: R22 also texts with no tap (ARBO_OUTREACH /
+  // ARBO_OUTREACH_CATCHUP), and read-only does not switch it — the ruling says so.
+  it('the draft ruling words R22 truthfully: automatic only on its own switches, and read-only does not switch it', () => {
+    const rulings = readFileSync(new URL('../docs/OWNER_RULINGS.md', import.meta.url), 'utf8');
+    const ro = rulings.slice(rulings.indexOf('## R-READONLY')).replace(/\s+/g, ' ');
+    expect(ro).not.toContain("texting only via R22 behind `inspectMessage` and Mike's tap;");
+    expect(ro).toContain("texting only via R22 behind `inspectMessage` (Mike's tap, or automatically only while `ARBO_OUTREACH=live` or `ARBO_OUTREACH_CATCHUP=live`) — read-only mode does not switch it;");
+  });
 
   it('the app and the server carry the same plain line', async () => {
     const { READ_ONLY_LINE } = await import('../src/db/links.js');

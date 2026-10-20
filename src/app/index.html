@@ -2340,16 +2340,25 @@ async function renderLeads() {
     return;
   }
   leadsTabBadge(null, data.leads.filter((l) => l.isEmergency && l.status !== 'qualified').length); // the same count as emergencyLeads
+  // §1B: nothing in the app files a lead (R4 — Mike handles them), so on real
+  // data an empty list is an UNFED list, not an empty inbox. Only the practice
+  // data is the whole world, and only there does "No new leads" tell the truth.
+  const practice = (await LINKS_READY) === 'simulation';
+  const notFed = 'Arbo doesn’t receive new leads yet — Sona’s are in Quo, and website and ad leads are in Gmail. This is not an empty inbox.';
   if (!data.leads.length) {
     // R4: Mike handles the leads — this screen promises no ingestion.
-    v.appendChild(state('No new leads', 'Nothing waiting right now.'));
+    v.appendChild(practice ? state('No new leads', 'Nothing waiting right now.') : state('New leads are not in Arbo', notFed));
     return;
   }
   // R-READONLY: a lead older than 14 days (the server marks it `older`) is
   // never new work: it sits below the rest under its own heading, with its
   // date, and carries no alarm, no call-back label and no Call back button.
   // Whether anyone is contacted is Mike's call, never Arbo's.
-  if (!data.leads.some((l) => !l.older)) v.appendChild(state('No new leads', 'Nothing new waiting right now. Older leads are below, for the record.'));
+  if (!data.leads.some((l) => !l.older)) {
+    v.appendChild(practice
+      ? state('No new leads', 'Nothing new waiting right now. Older leads are below, for the record.')
+      : state('New leads are not in Arbo', notFed + ' Older rows from the database are below, for the record.'));
+  }
   const rank = { hot: 0, warm: 1, cool: 2 };
   const leads = [...data.leads].sort((a, b) =>
     (!!a.older - !!b.older) ||

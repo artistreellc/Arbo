@@ -302,14 +302,23 @@ function modeLine(mode: TalkMode): string | null {
   return null;
 }
 
-function leadsSection(r: Read, now: number): Section {
+function leadsSection(r: Read, now: number, mode: TalkMode): Section {
   const name = 'Emergency leads';
   if (r.feed !== 'read') return gap(name, r.feed, 'zero');
   const leads = (r.body as { leads?: unknown } | null)?.leads;
   if (!Array.isArray(leads)) return gap(name, 'unread', 'zero');
   // The app's own rule: an emergency Mike marked Good has been acted on.
   const open = (leads as LeadLike[]).filter((l) => l.isEmergency && l.status !== 'qualified');
-  if (!open.length) return { lines: ['Emergency leads: none open right now.'], missing: null };
+  // §1B: nothing in the app files a lead (R4), so on real data an empty list is
+  // an UNFED list, never "none". Only the practice data is the whole world.
+  if (!open.length) {
+    return {
+      lines: [mode === 'sim'
+        ? 'Emergency leads: none open right now.'
+        : "Emergency leads: Arbo's lead list is not fed yet — new leads are in Quo and Gmail, so this is not zero."],
+      missing: null,
+    };
+  }
   const lines = [`Emergency leads open: ${open.length}.`];
   for (const l of open.slice(0, 5)) {
     const permit = leadPermit(l);
@@ -533,7 +542,7 @@ export function createTalkTools(reads: TalkReads, opts: { now?: () => number; re
         ]);
         return {
           text: say([
-            leadsSection(leads, t), sonaSection(quo(), false, t), trucksSection(fleet, false), crewSection(safety),
+            leadsSection(leads, t, reads.mode()), sonaSection(quo(), false, t), trucksSection(fleet, false), crewSection(safety),
             stopsSection(brief, false, t), workOrdersSection(orders, t), stormSection(weather, t), stormLawSection(flag),
           ], true),
           error: false,

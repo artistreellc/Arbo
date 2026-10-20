@@ -929,9 +929,11 @@ Defaults Claude used where Mike did not say (Mike may change any):
 What did NOT move: §3 — nothing is imported; sweeps stay read-only (R4); email
 never; calendar edits never (R18 holds only — the R18 hold path is Google, not
 this database, and is not switched by this mode); texting only via R22 behind
-`inspectMessage` and Mike's tap; logs stay counts-and-ids (§4.3); the `/api`
-door still needs `APP_ACCESS_KEY` (read-only real rows are never keyless);
-the crew door stays shut without `CREW_ACCESS_KEY`; deploys stay manual.
+`inspectMessage` (Mike's tap, or automatically only while `ARBO_OUTREACH=live`
+or `ARBO_OUTREACH_CATCHUP=live`) — read-only mode does not switch it; logs stay
+counts-and-ids (§4.3); the `/api` door still needs `APP_ACCESS_KEY` (read-only
+real rows are never keyless); the crew door stays shut without
+`CREW_ACCESS_KEY`; deploys stay manual.
 
 *Carried by:* `src/db/client.ts` (`dataLinksReadOnly`, `canWrite`,
 `readOnlyDb`), `src/db/links.ts` (`READ_ONLY_KEPT_CUT`, `ReadOnlyError`),

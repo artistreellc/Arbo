@@ -476,6 +476,22 @@ describe('R30 review — a part of a feed Arbo could not read is still NAMED (§
     expect((await createTalkTools(okReads()).run('arbo_update')).text).toContain('Every feed answered.');
   });
 
+  // R-READONLY behaviour review, finding 1: nothing in the app files a lead (R4),
+  // so an empty emergency list on real data is an unfed list — never "none open".
+  it('live or read-only: no emergency lead in Arbo\'s list says the list is not fed — never "none open right now"', async () => {
+    for (const mode of ['live', 'readonly'] as const) {
+      const text = (await createTalkTools(okReads({ mode: () => mode })).run('arbo_update')).text;
+      expect(text, mode).toContain("Emergency leads: Arbo's lead list is not fed yet — new leads are in Quo and Gmail, so this is not zero.");
+      expect(text, mode).not.toContain('none open right now');
+      expect(text, mode).toContain('Every feed answered.'); // the list itself was read; it is just not fed
+    }
+  });
+
+  it('practice data keeps "none open right now" — the simulation is the whole world there', async () => {
+    const text = (await createTalkTools(okReads({ mode: () => 'sim' })).run('arbo_update')).text;
+    expect(text).toContain('Emergency leads: none open right now.');
+  });
+
   it('an active alert is still spoken when the stops lookup fails (cut link or database error) — the stops at risk are named unread, not zero', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const { LinkCutError } = await import('../src/db/links.js');
