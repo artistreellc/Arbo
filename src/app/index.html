@@ -2523,6 +2523,8 @@ async function renderToday() {
   const s = brief.summary;
   // H4: the brief reads Arbo's own estimate and job rows; Mike's Google Calendar is not read (his call).
   const onlyArbo = brief.scheduleSource === 'arbo_tables_only';
+  // H4: the top numbers count Arbo's own bookings too \u2014 labelled so, never "0 jobs today" over a calendar Arbo does not read.
+  if (onlyArbo) { jobsTile.querySelector('span').textContent = 'jobs in Arbo'; estTile.querySelector('span').textContent = 'estimates in Arbo'; }
   setTile(jobsTile, s.jobs || 0); setTile(estTile, s.estimates || 0);
   // A safety flag takes the first slot of the grid: emergencies (stops and leads, setEmergencies), then flagged stops.
   if (s.redFlagCount) hud.prepend(tile(s.redFlagCount, s.redFlagCount === 1 ? 'flagged stop' : 'flagged stops', 'hot wide'));
@@ -2536,7 +2538,7 @@ async function renderToday() {
       // A red count says why on its own tile — the strongest reason, as a count (never a name).
       // Every emergency stop is also a flagged stop, so emergencies go first.
       const flagNote = s.emergencies ? plural(s.emergencies, 'emergency', 'emergencies') : s.redFlagCount ? s.redFlagCount + ' flagged' : '';
-      HERO.stat('stops', s.totalStops, (s.emergencies || s.redFlagCount) ? 'hot' : '', plural(s.totalStops, 'stop') + ' today', flagNote);
+      HERO.stat('stops', s.totalStops, (s.emergencies || s.redFlagCount) ? 'hot' : '', plural(s.totalStops, 'stop') + (onlyArbo ? ' in Arbo today' : ' today'), flagNote);
       HERO.ring('stops', s.totalStops ? passed / s.totalStops : 0);
       // Clock time past each stop's slot — nothing records a stop as done (D85).
       // The run is in route order, not clock order: the next stop is the earliest time still ahead.

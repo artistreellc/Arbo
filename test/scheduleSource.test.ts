@@ -60,6 +60,19 @@ describe('H4 — the schedule says whose bookings it is', () => {
     expect(html).toContain("if (s.atRiskScope === 'arbo_tables_only' && !s.atRiskUnread)");
   });
 
+  // Lane B verification: the card under them said "No bookings in Arbo today",
+  // but the top numbers still read "0 stops today", "0 jobs today" and
+  // "0 estimates today" — the confident zero, one line higher.
+  it('Today’s top numbers say "in Arbo" too — never "0 stops today" / "0 jobs today" over a calendar Arbo does not read', () => {
+    const html = src('src/app/index.html').replace(/\\u([0-9a-fA-F]{4})/g, (_, h: string) => String.fromCharCode(parseInt(h, 16)));
+    const fill = html.slice(html.indexOf("const onlyArbo = brief.scheduleSource === 'arbo_tables_only';"), html.indexOf('if (s.zipRun && s.zipRun.length) {'));
+    expect(fill).toContain("if (onlyArbo) { jobsTile.querySelector('span').textContent = 'jobs in Arbo'; estTile.querySelector('span').textContent = 'estimates in Arbo'; }");
+    expect(fill).toContain("plural(s.totalStops, 'stop') + (onlyArbo ? ' in Arbo today' : ' today')");
+    expect(fill).not.toContain("plural(s.totalStops, 'stop') + ' today'");
+    // The relabel runs before the numbers land, so a 0 is never shown under "today".
+    expect(fill.indexOf("'jobs in Arbo'")).toBeLessThan(fill.indexOf('setTile(jobsTile, s.jobs || 0)'));
+  });
+
   it('Talk says the same out loud', () => {
     const talk = src('src/voice/ownerTalk.ts');
     expect(talk).toContain("Today's stops: none booked in Arbo. Your Google Calendar isn't read here, so that is not an empty day — check the calendar.");

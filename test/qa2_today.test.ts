@@ -179,7 +179,8 @@ describe('T1: the hero says each fact once', () => {
     expect(today).toContain("next ? 'next ' + fmtWhen(next.timeIso) : !s.totalStops ? (onlyArbo ? 'none in Arbo' : 'none today') : timed.length ? 'all times passed' : 'no times set'");
     expect(today).toContain('nothing records a stop as done (D85)');
     expect(today).toContain("(s.emergencies || s.redFlagCount) ? 'hot' : ''");
-    expect(today).toContain("plural(s.totalStops, 'stop') + ' today'");
+    // H4: "today" only when the day is really read; Arbo's own bookings say "in Arbo today".
+    expect(today).toContain("plural(s.totalStops, 'stop') + (onlyArbo ? ' in Arbo today' : ' today')");
   });
 });
 
