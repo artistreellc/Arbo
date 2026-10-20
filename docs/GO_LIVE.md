@@ -49,7 +49,8 @@ shows "the crew door key isn't set up yet — ask Mike" and asks for nothing
 - [ ] **Quo texting registration** (A2P) before any R22 text goes out.
 - [ ] **`ANTHROPIC_API_KEY`** on Railway turns the agents' brain from "offline — deterministic" to Opus.
 - [ ] **`CLAUDE_CODE_OAUTH_TOKEN`** repo secret (turns on the automated PR review job).
-- [ ] **Migrations 0016–0020** are committed but not applied to the live database (§3: schema changes there are Mike's call). Apply them before the links they serve open — 0020 (brake/steering hold) before the equipment link, or a brake report fails to save instead of holding the unit.
+- [ ] **The Supabase project `arbor` is PAUSED** (INACTIVE, seen 2026-10-20). Nothing reads it while the links are cut, but a paused project can only be restored for a limited time — restore it (Supabase dashboard → the project → Restore) before that window closes, or the kept rows (§3) are at risk.
+- [ ] **Migration 0020** (brake/steering hold) is committed, not applied — the database is paused. Apply it after the restore and before the equipment link opens, or a brake report fails to save instead of holding the unit. (0016–0019 are already applied, `docs/DATA_LINKS.md` step 1.)
 
 ## 5. Held for Mike (not decided by a build)
 
