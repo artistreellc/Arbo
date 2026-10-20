@@ -156,7 +156,8 @@ describe('Q1 — a failed read has one title shape: "X — <feed word>"', () => 
 
   it('the twin sheet names a failed read in the shared words and sends a lost key to the keywall', () => {
     const t = twin();
-    expect(t).toContain("if (e.code === 401) { $('twin').classList.remove('show'); return showKeywall(); }");
+    // The sheet is a back step (Mike, 2026-10-20): a lost key steps back past it, then the keywall.
+    expect(t).toContain("if (e.code === 401) { closeSheet('twin'); return showKeywall(); }");
     expect(t).toContain("feedState(e, 'This property', 'a property with no history', 'Close this and tap the property again.')");
     expect(t.indexOf('await LINKS_READY;')).toBeLessThan(t.indexOf("feedState(e, 'This property'"));
   });

@@ -160,13 +160,17 @@ header.scrolled{border-bottom-color:var(--hairline)}
   background:radial-gradient(120% 120% at 30% 20%,#2A6B57 0%,#1B4D3E 45%,#0E2A21 100%);color:#E9C877;box-shadow:var(--shadow-pop)}
 .brand .micon{width:26px;height:26px}
 .brand > span{display:flex;flex-direction:column;line-height:1}
-.brand small{font-family:var(--sans);font-size:10.5px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:var(--gold-6);margin-top:5px}
+.brand small{font-family:var(--sans);font-size:10.5px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:var(--gold-6);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand.has-back > span{min-width:0}.brand.has-back small{letter-spacing:.14em}
 #dateline{display:none}
 .hbtns{display:flex;gap:8px}
-#refresh,#settings-btn,.iconbtn{
+#refresh,#settings-btn,#back-btn,.iconbtn{
   width:44px;height:44px;min-height:44px;border:1px solid var(--border);border-radius:14px;background:var(--card);
   color:var(--forest);display:inline-grid;place-items:center;box-shadow:0 1px 2px rgba(20,40,30,.05)}
-#refresh .hico,#settings-btn .hico,.iconbtn .hico{width:21px;height:21px}
+#refresh .hico,#settings-btn .hico,#back-btn .hico,.iconbtn .hico{width:21px;height:21px}
+#back-btn{width:auto;display:inline-flex;align-items:center;gap:2px;padding:0 14px 0 8px;font:650 16px/1 var(--sans);letter-spacing:0}
+#back-btn .hico{transform:scaleX(-1)}
+#back-btn[hidden],.brand.has-back .mark{display:none}
 #refresh.spin .hico{animation:spin .8s var(--ease)}
 @keyframes spin{to{transform:rotate(360deg)}}
 
@@ -342,6 +346,11 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 .storm{background:var(--emergency-bg);border:1px solid color-mix(in srgb,var(--emergency) 28%,transparent);color:color-mix(in srgb,var(--emergency) 75%,var(--ink-1));
   border-radius:var(--r-md);padding:13px 16px;margin-bottom:12px;font-weight:600;font-size:14px;line-height:1.45}
 .storm small{display:block;font-weight:500;opacity:.9;margin-top:4px}
+.storm .sliplink{display:flex;width:100%;min-height:44px;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;padding:10px 12px;
+  border-radius:12px;border:1px solid color-mix(in srgb,var(--emergency) 40%,transparent);background:var(--card);color:inherit;font:inherit;font-weight:600;text-align:left}
+.storm .sliplink::after{content:'\203A';font-size:22px;line-height:1;flex:none}
+.card.flash{animation:cardflash 1.8s var(--ease)}
+@keyframes cardflash{0%,40%{box-shadow:0 0 0 3px var(--emergency)}100%{box-shadow:none}}
 .storm-muted{color:var(--ink-3);font-size:13.5px;line-height:1.55;margin-bottom:12px;text-wrap:pretty}
 /* A feed Arbo could not read (§1B) — its own row, never styled like a help tip.
    The dot follows FEED_TONE: amber filled = not set up, grey = cut or not simulated
@@ -557,7 +566,7 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 <header id="appbar">
   <div class="hrow">
     <div>
-      <div class="brand"><span class="mark"><svg class="micon" aria-hidden="true"><use href="#i-ring"/></svg></span><span><span id="apptitle">ARBO</span><small id="appsub">Art-is-Tree</small></span></div>
+      <div class="brand"><button id="back-btn" title="Back" hidden><svg class="hico" aria-hidden="true"><use href="#i-chevron"/></svg><span>Back</span></button><span class="mark"><svg class="micon" aria-hidden="true"><use href="#i-ring"/></svg></span><span><span id="apptitle">ARBO</span><small id="appsub">Art-is-Tree</small></span></div>
       <div id="dateline"></div>
     </div>
     <div class="hbtns">
@@ -1115,6 +1124,33 @@ function fillQuoSlots(reads, slots) {
 // ---------- Sona via Quo (Mike, 2026-09-24: "let sona handle it for a while while arbo learns from it") ----------
 // One renderer, two places: Today shows the latest few, Calls shows them all
 // with transcripts. A Quo that is not wired is NAMED, never a quiet zero (§1B).
+// Which of Mike's rules a Sona slip broke, in his words (the guard's rule ids).
+function slipRuleLabel(rule) {
+  const words = {
+    'no-price': 'Gave a price',
+    'no-diagnosis': 'Diagnosed a tree over the phone',
+    'no-date-promise': 'Promised a day or time',
+    'no-financial-authority': 'Offered a discount or free work',
+    'forbidden-term': 'Said a word Arbo never says',
+    'opus-read': 'Arbo\u2019s read of the call flagged it',
+  };
+  return words[rule] || 'Broke a rule (' + rule + ')';
+}
+// Open one Sona call on Calls, where every call is listed with its transcript.
+function openSonaCall(callId) {
+  switchTab('calls');
+  let tries = 0;
+  const look = () => {
+    const card = [...document.querySelectorAll('#view-calls [data-sona-call]')].find((n) => n.dataset.sonaCall === callId);
+    if (card) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.classList.remove('flash'); void card.offsetWidth; card.classList.add('flash');
+      return;
+    }
+    if (++tries < 30) setTimeout(look, 150); // Calls may still be drawing
+  };
+  look();
+}
 async function sonaPanel(limit, withTranscripts) {
   let d;
   try { d = await api('/api/quo'); }
@@ -1140,8 +1176,23 @@ async function sonaPanel(limit, withTranscripts) {
   if (!st.reading) {
     wrap.appendChild(el('div', 'storm', 'Arbo cannot read Sona calls right now (no model key) — calls are kept, but no calendar holds are filed.'));
   }
+  const sona = d.calls.filter((c) => c.handledBy === 'sona');
   if (st.callsWithSlips > 0) {
-    wrap.appendChild(el('div', 'storm', 'Sona broke your rules on ' + plural(st.callsWithSlips, 'call') + ' — see the red cards. Call those customers back.'));
+    // Mike, 2026-10-20: "it doesnt say which one … is it clickable". Each call is
+    // a row that says who, when and which rule, and opens that call's red card.
+    const box = el('div', 'storm');
+    box.appendChild(el('div', '', 'Sona broke your rules on ' + plural(st.callsWithSlips, 'call') + ' — tap one to see what she said, then call them back.'));
+    const slipCalls = sona.filter((c) => c.slips.length);
+    for (const c of slipCalls) {
+      const f = c.facts || {};
+      const rules = [...new Set(c.slips.map((sl) => slipRuleLabel(sl.rule)))].join(', ');
+      const row = el('button', 'sliplink', (f.name || c.from || 'Caller') + ' · ' + fmtTime(c.at) + ' · ' + rules);
+      row.addEventListener('click', () => openSonaCall(c.callId));
+      box.appendChild(row);
+    }
+    // Calls older than the ones Arbo still holds are counted but cannot be opened: said, not hidden.
+    if (slipCalls.length < st.callsWithSlips) box.appendChild(el('div', '', plural(st.callsWithSlips - slipCalls.length, 'older call is', 'older calls are') + ' only in Quo now.'));
+    wrap.appendChild(box);
   }
   const rec = st.quoRecord || {};
   if (rec.error) {
@@ -1153,7 +1204,6 @@ async function sonaPanel(limit, withTranscripts) {
   if (notUsed.length) {
     wrap.appendChild(el('div', 'storm', 'Quo sent ' + plural(notUsed.reduce((n, [, k]) => n + k, 0), 'event') + ' Arbo could not use (' + notUsed.map(([r, k]) => k + ' ' + r).join(', ') + ') \u2014 Arbo reads those calls from Quo\u2019s record instead.'));
   }
-  const sona = d.calls.filter((c) => c.handledBy === 'sona');
   if (withTranscripts) {
     wrap.appendChild(el('div', 'storm-muted', plural(st.sonaCalls, 'Sona call') + ' learned (' + (st.learnedFromRecord || 0) + ' read from Quo\u2019s record, last 7 days) \u00b7 ' + plural(st.holdsAttempted, 'calendar hold') + ' filed \u00b7 ' + plural(st.hangups, 'hang-up') + ' \u00b7 ' + st.callsWithSlips + ' with rule slips.'));
   }
@@ -1172,9 +1222,15 @@ async function sonaPanel(limit, withTranscripts) {
     learned_only: 'Learned from Quo\u2019s record after the fact \u2014 Arbo filed no hold. If they want an estimate, book it yourself.',
     not_sona: '',
   };
-  for (const c of sona.slice(0, limit)) {
+  const urgent = (c) => c.slips.length > 0 || !!(c.facts && c.facts.emergency);
+  const order = withTranscripts ? sona : [...sona.filter(urgent), ...sona.filter((c) => !urgent(c))];
+  const shown = order.slice(0, limit);
+  // Calls keeps every red call even past its limit, so a row on Today always finds its card.
+  if (withTranscripts) for (const c of order.slice(limit)) if (urgent(c)) shown.push(c);
+  for (const c of shown) {
     const f = c.facts || {};
     const card = el('div', 'card' + (c.slips.length || f.emergency ? ' emergency' : ''));
+    card.dataset.sonaCall = c.callId;
     const top = el('div', 'toprow');
     top.appendChild(el('div', 'who', f.name || c.from || 'Caller'));
     top.appendChild(el('div', 'when', fmtTime(c.at)));
@@ -1188,14 +1244,14 @@ async function sonaPanel(limit, withTranscripts) {
     if (c.summary && c.summary.length) card.appendChild(el('div', 'scope', c.summary.join(' ')));
     else if (f.treeDetails) card.appendChild(el('div', 'scope', f.treeDetails));
     if (f.requestedTime) card.appendChild(el('div', 'scope', 'Asked for: ' + f.requestedTime));
-    for (const sl of c.slips) card.appendChild(el('div', 'storm', 'Sona said: \u201c' + sl.said + '\u201d'));
+    for (const sl of c.slips) card.appendChild(el('div', 'storm', slipRuleLabel(sl.rule) + ' — Sona said: \u201c' + sl.said + '\u201d'));
     if (holdText[c.hold]) card.appendChild(el('div', 'storm-muted', holdText[c.hold]));
     const actions = el('div', 'actions');
     if (c.from) { const call = el('a', 'callbtn', 'Call back'); call.href = 'tel:' + c.from; actions.appendChild(call); }
     card.appendChild(actions);
     if (withTranscripts && c.dialogue.length) {
       const det = document.createElement('details');
-      det.appendChild(el('summary', '', 'Transcript (' + c.dialogue.length + ' lines)'));
+      det.appendChild(el('summary', '', 'Transcript (' + plural(c.dialogue.length, 'line') + ')'));
       for (const line of c.dialogue) det.appendChild(el('div', 'addr', (line.speaker === 'agent' ? 'Sona: ' : line.speaker === 'mike' ? 'You: ' : 'Caller: ') + line.text));
       card.appendChild(det);
     }
@@ -1784,8 +1840,8 @@ function loopCard(o) {
 }
 
 // ---------- Yard check (§6J2: the pricing instrument, internal only) ----------
-function openYard() { $('yard').classList.add('show'); }
-$('yard-close').addEventListener('click', () => $('yard').classList.remove('show'));
+function openYard() { $('yard').classList.add('show'); sheetOpened('yard'); }
+$('yard-close').addEventListener('click', () => closeSheet('yard'));
 $('y-go').addEventListener('click', async () => {
   const out = $('y-out');
   out.replaceChildren();
@@ -2254,11 +2310,12 @@ async function openTwin(id, title) {
   const body = $('twin-body');
   body.replaceChildren();
   $('twin').classList.add('show');
+  sheetOpened('twin');
   let t;
   try {
     t = await api('/api/properties/' + id);
   } catch (e) {
-    if (e.code === 401) { $('twin').classList.remove('show'); return showKeywall(); }
+    if (e.code === 401) { closeSheet('twin'); return showKeywall(); }
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
     // §1B: a twin Arbo could not read is named, never drawn as a lot with no history.
     body.appendChild(feedState(e, 'This property', 'a property with no history', 'Close this and tap the property again.'));
@@ -2322,7 +2379,7 @@ async function openTwin(id, title) {
     }
   }
 }
-$('twin-close').addEventListener('click', () => $('twin').classList.remove('show'));
+$('twin-close').addEventListener('click', () => closeSheet('twin'));
 
 // ---------- Calls (§29 review loop: every conversation, your verdict) ----------
 async function renderCalls() {
@@ -3696,8 +3753,9 @@ function openBreakdown(u) {
   $('bd-down').checked = false;
   $('bd-out').replaceChildren();
   $('bd').classList.add('show');
+  sheetOpened('bd');
 }
-$('bd-close').addEventListener('click', () => $('bd').classList.remove('show'));
+$('bd-close').addEventListener('click', () => closeSheet('bd'));
 $('bd-go').addEventListener('click', async () => {
   const out = $('bd-out');
   out.replaceChildren();
@@ -5223,6 +5281,7 @@ function setAppSub() {
 }
 
 function switchTab(which) {
+  navPush(which);
   for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf', 'settings', 'more', 'permits', 'agents', 'measure', 'learn']) {
     $('view-' + t).classList.toggle('active', which === t);
     const tb = $('tab-' + t); // Settings opens from the header gear — it has no nav tab
@@ -5233,7 +5292,93 @@ function switchTab(which) {
   $('apptitle').textContent = VIEW_TITLES[which] || 'ARBO';
   CUR_TAB = which;
   setAppSub();
+  navShowBack();
   window.scrollTo(0, 0);
+}
+
+// BACK (Mike, 2026-10-20: "the app itself needs to have a back button"). The
+// installed app has no browser bar, so every screen and every sheet is a step in
+// the phone's own history: the ‹ in the header, Android's back button and a
+// browser's back all walk the same steps. With no step behind (a reload, a
+// home-screen shortcut, the crew preview's way back) a More desk lands on More
+// and anything else on Today.
+const NAV_PARENT = { book: 'more', followups: 'more', perf: 'more', permits: 'more', agents: 'more', measure: 'more', learn: 'more', settings: 'today' };
+const SHEETS = ['twin', 'yard', 'bd'];
+let NAV_QUIET = false; // true while a back step is drawn — drawing it must not add a new step
+function navPush(which) {
+  if (NAV_QUIET) return;
+  const st = history.state || {};
+  if (st.v === which && !st.sheet) return;
+  try {
+    // Where the screen being left was scrolled to, so stepping back lands there.
+    history.replaceState(Object.assign({}, st, { v: st.v || CUR_TAB, y: window.scrollY }), '');
+    history.pushState({ v: which, d: (st.d || 0) + 1 }, '', '#' + which);
+  } catch (e) { /* history refused (a sandboxed frame): the dock still works */ }
+}
+function navShowBack() {
+  // Everywhere except the screen the app opened on: a step behind, or a parent to land on.
+  const back = CUR_TAB !== 'today' || ((history.state || {}).d || 0) > 0;
+  $('back-btn').hidden = !back;
+  $('back-btn').closest('.brand').classList.toggle('has-back', back);
+}
+// A screen drawn by stepping back keeps what it showed (an agents run, a typed
+// ZIP); only one never drawn yet is drawn now. More is always redrawn, as its tab does.
+const NAV_DRAW = { more: () => renderMore(), settings: () => renderSettings(), permits: () => renderPermits(), agents: () => renderAgents(), measure: () => renderMeasure(), learn: () => renderLearn() };
+function navShow(which) {
+  NAV_QUIET = true;
+  try {
+    if (NAV_DRAW[which] && (which === 'more' || !$('view-' + which).hasChildNodes())) NAV_DRAW[which]();
+    switchTab(which);
+  } finally { NAV_QUIET = false; }
+}
+function navBack() {
+  const open = SHEETS.find((id) => $(id).classList.contains('show'));
+  if (open) { closeSheet(open); return; }
+  const st = history.state || {};
+  if (st.d > 0) { history.back(); return; }
+  const parent = NAV_PARENT[CUR_TAB] || 'today';
+  navShow(parent);
+  try { history.replaceState({ v: parent, d: 0 }, '', '#' + parent); } catch (e) { /* ignore */ }
+}
+// A sheet is a step too: Android's back closes it instead of leaving the screen.
+function sheetOpened(id) {
+  if (NAV_QUIET) return;
+  const st = history.state || {};
+  if (st.sheet === id) return;
+  try { history.pushState({ v: CUR_TAB, d: (st.d || 0) + 1, sheet: id }, '', '#' + CUR_TAB); } catch (e) { /* ignore */ }
+}
+function closeSheet(id) {
+  if ((history.state || {}).sheet === id) history.back(); // the step back closes it
+  else $(id).classList.remove('show');
+}
+window.addEventListener('popstate', (ev) => {
+  const st = ev.state || {};
+  // Stepping back past a sheet closes it; stepping forward never reopens one.
+  for (const id of SHEETS) if (st.sheet !== id) $(id).classList.remove('show');
+  const want = st.v && Object.prototype.hasOwnProperty.call(VIEW_TITLES, st.v) ? st.v : 'today';
+  if (want === CUR_TAB) { navShowBack(); return; }
+  navShow(want);
+  window.scrollTo(0, st.y || 0);
+});
+$('back-btn').addEventListener('click', navBack);
+// iPhone (Mike, 2026-10-20: "this is for iphone"): a home-screen app gets no
+// swipe-back from iOS, so a swipe right that starts at the left edge steps
+// back. Only in the installed app — in Safari, iOS already does this and a
+// second back would skip a screen.
+const STANDALONE = window.navigator.standalone === true || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+if (STANDALONE) {
+  let edge = null;
+  document.addEventListener('touchstart', (e) => {
+    const t = e.touches[0];
+    edge = e.touches.length === 1 && t.clientX < 20 ? { x: t.clientX, y: t.clientY } : null;
+  }, { passive: true });
+  document.addEventListener('touchend', (e) => {
+    if (!edge) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - edge.x, dy = Math.abs(t.clientY - edge.y);
+    edge = null;
+    if (dx > 70 && dy < 60 && !$('keywall').classList.contains('show')) navBack();
+  }, { passive: true });
 }
 for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf']) {
   $('tab-' + t).addEventListener('click', () => switchTab(t));
@@ -5284,8 +5429,10 @@ netState();
     if (want === 'agents') renderAgents();
     if (want === 'measure') renderMeasure();
     if (want === 'learn') renderLearn();
-    switchTab(want);
+    NAV_QUIET = true;
+    try { switchTab(want); } finally { NAV_QUIET = false; }
   }
+  try { history.replaceState({ v: CUR_TAB, d: 0 }, '', '#' + CUR_TAB); } catch (e) { /* ignore */ }
 }
 refreshAll();
 setInterval(autoRefresh, 60000);
