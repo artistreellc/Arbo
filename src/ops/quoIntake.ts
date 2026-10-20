@@ -51,8 +51,10 @@ const CALL_CAP = 150;
 const MIN_CALLER_WORDS = 3;
 /** Quo call states while a call is still live — its transcript cannot exist yet. */
 const LIVE_CALL = new Set(['queued', 'initiated', 'ringing', 'in-progress']);
-/** Most calls one reconcile pass reads — never a runaway on a busy week. */
+/** Most calls one reconcile pass reads — never a runaway on a busy week. Past it, the unread threads are counted and shown (M10). */
 const RECONCILE_CAP = 100;
+/** A reconcile pass this long covers the whole week (the boot read). */
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 /** A transcript still absent/failed this long after the call will not appear. */
 const SETTLE_MS = 30 * 60 * 1000;
 /** Quo allows 10 requests a second; reading its record stays well under that. */
@@ -241,7 +243,16 @@ export class QuoIntake {
   /** Events verified and then NOT used, by reason — never silence (§1B). */
   private readonly dropped: Record<string, number> = {};
   private readonly bootMs: number;
-  private sweep: { lastAt: string | null; learned: number; pending: number; error: string | null; unreadable: string | null } = { lastAt: null, learned: 0, pending: 0, error: null, unreadable: null };
+  /**
+   * threadsNotRead: customer threads the last pass did not reach because it
+   * hit RECONCILE_CAP. weekThreadsNotRead: the same, from the last pass that
+   * covered the whole week (the boot read) — the 10-minute passes look back
+   * a day only, so that shortfall stands until a week pass finishes under
+   * the cap (M10: a capped read is never presented as the whole week).
+   */
+  private sweep: { lastAt: string | null; learned: number; pending: number; error: string | null; unreadable: string | null; threadsNotRead: number; weekThreadsNotRead: number | null; callCap: number } = {
+    lastAt: null, learned: 0, pending: 0, error: null, unreadable: null, threadsNotRead: 0, weekThreadsNotRead: null, callCap: RECONCILE_CAP,
+  };
   private readonly googleWrites: boolean;
   private textsHook = false;
   /** 'read_only' (R33): Arbo would not create or replace a webhook Quo is missing — named, never 'failed'. */
@@ -596,16 +607,27 @@ export class QuoIntake {
     let examined = 0;
     let unreadable = 0;
     let unreadableWhy: string | null = null;
+    // M10: threads the cap kept this pass from reading — counted, never silent.
+    let notRead = 0;
     try {
-      const convs = await paced(() => api.listConversations({ phoneNumberId, updatedAfterIso: sinceIso }));
+      const convs = (await paced(() => api.listConversations({ phoneNumberId, updatedAfterIso: sinceIso })))
+        // Most recent first: when the cap bites, the oldest go unread — and are counted.
+        .sort((a, b) => (b.lastActivityAt ?? b.updatedAt ?? '').localeCompare(a.lastActivityAt ?? a.updatedAt ?? ''));
       for (const conv of convs) {
-        if (conv.participants.length !== 1 || examined >= RECONCILE_CAP) continue;
+        if (conv.participants.length !== 1) continue;
+        if (examined >= RECONCILE_CAP) {
+          notRead += 1;
+          continue;
+        }
         const participant = conv.participants[0]!;
         const calls = (await paced(() => api.listCalls({ phoneNumberId, participant, createdAfterIso: sinceIso })))
           .filter((c) => c.direction === 'incoming')
           .sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''));
         for (const c of calls) {
-          if (examined >= RECONCILE_CAP) break;
+          if (examined >= RECONCILE_CAP) {
+            notRead += 1; // this thread was cut short
+            break;
+          }
           const known = this.calls.get(c.id);
           // Re-read ONLY a webhook entry filed as "not Sona's" when Quo says she
           // answered — once. Never loop on Arbo's own record read.
@@ -661,8 +683,15 @@ export class QuoIntake {
         }
       }
       await this.queue;
-      this.sweep = { lastAt: new Date(nowMs).toISOString(), learned: this.sweep.learned + learned, pending, error: null, unreadable: unreadable ? `${unreadable} call(s) could not be read (${unreadableWhy})` : null };
-      if (learned || pending || unreadable) console.error(`[quo] read Quo's record — learned ${learned} call(s), ${pending} not ready yet, ${unreadable} unreadable`);
+      const wholeWeek = windowMs >= WEEK_MS;
+      this.sweep = {
+        lastAt: new Date(nowMs).toISOString(), learned: this.sweep.learned + learned, pending, error: null,
+        unreadable: unreadable ? `${unreadable} call(s) could not be read (${unreadableWhy})` : null,
+        threadsNotRead: notRead,
+        weekThreadsNotRead: wholeWeek ? notRead : this.sweep.weekThreadsNotRead,
+        callCap: RECONCILE_CAP,
+      };
+      if (learned || pending || unreadable || notRead) console.error(`[quo] read Quo's record — learned ${learned} call(s), ${pending} not ready yet, ${unreadable} unreadable${notRead ? `, ${notRead} thread(s) NOT read (cap ${RECONCILE_CAP} calls)` : ''}`);
     } catch (err) {
       const why = err instanceof Error ? err.message : 'error';
       this.sweep = { ...this.sweep, lastAt: new Date(nowMs).toISOString(), error: why };

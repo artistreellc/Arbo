@@ -116,7 +116,13 @@ const tail10 = (v: string | null | undefined): string | null => {
 };
 const LIVE_CALL = new Set(['queued', 'initiated', 'ringing', 'in-progress']);
 const PACE_MS = 150;
-const CONVERSATION_CAP = 60;
+/**
+ * Most customer threads one pass studies — the most recent first. When the
+ * week holds more, the screens say "the 60 most recent of N" (M10): a capped
+ * read is never presented as the whole week. Raising it is a model-spend
+ * call (each changed thread is one Opus read), so it stays Mike's.
+ */
+export const CONVERSATION_CAP = 60;
 const THREAD_CHAR_CAP = 12_000;
 const DRIVE_FILES = 6;
 /** Attachments listed on one note; the rest are counted and named. */
@@ -164,8 +170,13 @@ export class QuoStudy {
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly byConversation = new Map<string, { key: string; note: StudyNote }>();
   private readonly transcripts = new Map<string, QuoTranscriptLine[]>();
-  private state: { lastAt: string | null; read: number; unchanged: number; failed: number; quoError: string | null; driveError: string | null; driveFiles: number } = {
-    lastAt: null, read: 0, unchanged: 0, failed: 0, quoError: null, driveError: null, driveFiles: 0,
+  /**
+   * threadsInWindow / threadsStudied (M10): how many customer threads the
+   * window held and how many this pass studied — they differ only when the
+   * cap bit, and then the app says so. null until a pass has listed Quo.
+   */
+  private state: { lastAt: string | null; read: number; unchanged: number; failed: number; quoError: string | null; driveError: string | null; driveFiles: number; threadsInWindow: number | null; threadsStudied: number | null } = {
+    lastAt: null, read: 0, unchanged: 0, failed: 0, quoError: null, driveError: null, driveFiles: 0, threadsInWindow: null, threadsStudied: null,
   };
   private running = false;
 
@@ -211,13 +222,15 @@ export class QuoStudy {
       } else driveError = 'not connected — no Google sign-in on the server';
       const log = logLinesOf(files);
       const convs = await this.paced(() => this.deps.quo.listConversations({ phoneNumberId, updatedAfterIso: sinceIso }));
-      let seen = 0;
-      for (const conv of convs) {
-        if (conv.participants.length !== 1 || seen >= CONVERSATION_CAP) continue;
-        const number = conv.participants[0]!;
-        const t10 = tail10(number);
-        if (!t10 || own.has(t10)) continue;
-        seen += 1;
+      // Every customer thread in the window, MOST RECENT FIRST — so when the
+      // cap bites, what goes unread is the oldest, and the count is named (M10).
+      const threads = convs
+        .filter((conv) => conv.participants.length === 1)
+        .map((conv) => ({ conv, number: conv.participants[0]!, t10: tail10(conv.participants[0]) }))
+        .filter((t): t is { conv: typeof t.conv; number: string; t10: string } => t.t10 !== null && !own.has(t.t10))
+        .sort((a, b) => (b.conv.lastActivityAt ?? b.conv.updatedAt ?? '').localeCompare(a.conv.lastActivityAt ?? a.conv.updatedAt ?? ''));
+      const studied = threads.slice(0, CONVERSATION_CAP);
+      for (const { conv, number, t10 } of studied) {
         try {
           const r = await this.studyOne(conv.id, number, t10, phoneNumberId, sinceIso, log, nowMs);
           if (r === 'read') read += 1;
@@ -227,7 +240,11 @@ export class QuoStudy {
           failed += 1;
         }
       }
-      this.state = { lastAt: new Date(nowMs).toISOString(), read: this.state.read + read, unchanged, failed, quoError: null, driveError, driveFiles: files.length };
+      // A note whose thread has left the window is not "in the last 7 days" (M10).
+      const inWindow = new Set(threads.map((t) => t.conv.id));
+      for (const id of [...this.byConversation.keys()]) if (!inWindow.has(id)) this.byConversation.delete(id);
+      this.state = { lastAt: new Date(nowMs).toISOString(), read: this.state.read + read, unchanged, failed, quoError: null, driveError, driveFiles: files.length, threadsInWindow: threads.length, threadsStudied: studied.length };
+      if (threads.length > studied.length) console.error(`[study] capped — studied the ${studied.length} most recent of ${threads.length} customer threads; ${threads.length - studied.length} not read this pass`);
     } catch (err) {
       this.state = { ...this.state, lastAt: new Date(nowMs).toISOString(), failed, quoError: err instanceof Error ? err.message : 'error', driveError, driveFiles: files.length };
       console.error(`[study] Quo could not be read — ${this.state.quoError}. Notes are from the last good read.`);

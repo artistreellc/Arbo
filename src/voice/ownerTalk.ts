@@ -393,7 +393,10 @@ function sonaSection(q: QuoRead | null, detail: boolean, now: number): Section {
     holdsSaid = `Calendar holds: off — Google is connected read-only, so you book estimates yourself${who.length ? `: ${who.join('; ')}` : ''}`;
   }
   if (detail) lines.push(`Sona calls Arbo holds: ${sona.length}. ${holdsSaid}. Hang-ups: ${st.hangups}.`);
-  if (!sona.length && (st.registration.state === 'ok' || st.registration.state === 'read_only') && !rec.error && !rec.unreadable) {
+  // M10: the week's read stopped at its cap — the calls Arbo holds are not the whole week.
+  const weekShort = rec.weekThreadsNotRead ?? 0;
+  if (weekShort > 0) lines.push(`Arbo has not read all of this week's calls yet — ${plural(weekShort, 'older customer thread', 'older customer threads')} not read, so this is not the whole week.`);
+  if (!sona.length && (st.registration.state === 'ok' || st.registration.state === 'read_only') && !rec.error && !rec.unreadable && weekShort === 0) {
     lines.push(rec.lastAt ? "No Sona calls in the last 7 days — checked against Quo's own record." : "Wired — still reading Sona's calls from Quo.");
   }
   return { lines, missing };
