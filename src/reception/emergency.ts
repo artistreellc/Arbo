@@ -45,6 +45,8 @@
 // an alert to Mike. Deterministic so it can't be missed. Biased toward catching:
 // a false ping to Mike is acceptable; a missed emergency is not.
 
+import { foldAccents } from './language.js';
+
 export interface EmergencyResult {
   isEmergency: boolean;
   reason: string | null;
@@ -52,7 +54,8 @@ export interface EmergencyResult {
 
 const STRUCTURE = '(roof|car|house|home|garage|shed|vehicle|truck|deck|fence|structure|building|porch)';
 
-// Unambiguous emergencies.
+// Unambiguous emergencies. Tested on accent-folded text (language.ts), which
+// leaves English as it was and lets the Spanish lines below use plain \b.
 const HARD: Array<{ re: RegExp; reason: string }> = [
   { re: new RegExp(`\\b(fell|fallen|falling|came down|crashed|collapsed|landed|toppled|smashed)\\b[^.]{0,40}\\b${STRUCTURE}\\b`, 'i'), reason: 'tree down on a structure/vehicle' },
   { re: /\b(power ?line|powerline|electrical wire)\b[^.]{0,30}\b(down|touching|on it|tangled|arcing|sparking)\b/i, reason: 'power line involved' },
@@ -64,18 +67,52 @@ const HARD: Array<{ re: RegExp; reason: string }> = [
   { re: /\b(not moving|not breathing|unconscious|passed out|bleeding bad(ly)?)\b|\bfell (out of|from) (the|a) tree\b/i, reason: 'person in danger' },
   { re: /\bblock(ing|ed)?\b[^.]{0,20}\b(driveway|road|street|exit|door)\b/i, reason: 'access blocked' },
   { re: /\bemergency\b/i, reason: 'caller said emergency' },
+  // R26: Spanish-speaking callers ("un árbol se cayó sobre mi casa", "hay
+  // cables en el suelo", "alguien está herido"). Recognised only — Arbo
+  // still answers in English (Mike's call, language.ts).
+  { re: /\b(cayo|caido|caida|cayeron|tumbo)\b[^.]{0,40}\b(casa|techo|carro|coche|auto|camioneta|camion|garaje|cochera|edificio|porche)\b/i, reason: 'tree down on a structure/vehicle' },
+  { re: /\b(cables?|lineas?|alambres?)\b[^.]{0,30}\b(caidos?|caidas?|en el suelo|en el piso|chispas|chispea\w*|tocando|colgando|sueltos?|sueltas?|quemando)\b|\b(cables?|lineas?|alambres?) (electric[oa]s?|de luz|de la luz|de electricidad|de alta tension)\b/i, reason: 'power line involved' },
+  { re: /\b(herid[oa]s?|lastimad[oa]s?|atrapad[oa]s?|sangrando|inconsciente|no se mueve|no respira)\b/i, reason: 'person in danger' },
+  { re: /\bemergencia\b/i, reason: 'caller said emergency' },
 ];
 
 // A tree resting on a structure — emergency unless the call is clearly routine.
 const REST_ON = new RegExp(`\\btree\\b[^.]{0,20}\\bon (my|the|a|top of)\\b[^.]{0,20}${STRUCTURE}`, 'i');
 const ROUTINE = /\b(trim|prune|trimmed|pruned|cut back|hedge|quote|estimate|schedule|appointment)\b/i;
 
+/** Every emergency reason in the text, in HARD order, then a resting tree. */
+function emergencyReasons(text: string): string[] {
+  const t = foldAccents(text);
+  const reasons = HARD.filter(({ re }) => re.test(t)).map(({ reason }) => reason);
+  if (REST_ON.test(t) && !ROUTINE.test(t)) reasons.push('tree on a structure/vehicle');
+  return reasons;
+}
+
 export function detectEmergency(text: string): EmergencyResult {
-  for (const { re, reason } of HARD) {
-    if (re.test(text)) return { isEmergency: true, reason };
-  }
-  if (REST_ON.test(text) && !ROUTINE.test(text)) {
-    return { isEmergency: true, reason: 'tree on a structure/vehicle' };
-  }
-  return { isEmergency: false, reason: null };
+  const [reason] = emergencyReasons(text);
+  return reason ? { isEmergency: true, reason } : { isEmergency: false, reason: null };
+}
+
+/**
+ * R26 (Mike, 2026-10-20) — which of his safety lines the caller hears
+ * (guardrails.emergency.safetyLines). The 911 line when a person is or may
+ * be in danger: someone hurt, trapped or not moving — and, by default, a
+ * tree down on a house or vehicle, where someone may be inside (the line
+ * itself says "if anyone is hurt"). The Dominion line when a power line is
+ * involved. Both when both. A blocked drive alone, or the bare word
+ * "emergency", gets neither — Mike is still alerted.
+ */
+export interface SafetyCalls {
+  call911: boolean;
+  callDominion: boolean;
+}
+
+const MAY_HURT_SOMEONE = new Set(['person in danger', 'tree down on a structure/vehicle', 'tree on a structure/vehicle']);
+
+export function emergencySafetyCalls(text: string): SafetyCalls {
+  const reasons = emergencyReasons(text);
+  return {
+    call911: reasons.some((r) => MAY_HURT_SOMEONE.has(r)),
+    callDominion: reasons.includes('power line involved'),
+  };
 }

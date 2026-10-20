@@ -124,7 +124,8 @@ describe('the two new call questions (Mike, 2026-09-24)', () => {
   });
 
   it('guardrails version bumped for the change', () => {
-    expect(loadGuardrails().version).toBe('2026-09-24');
+    // At least this change's date — R26 (2026-10-20) bumped it again.
+    expect(loadGuardrails().version >= '2026-09-24').toBe(true);
   });
 });
 

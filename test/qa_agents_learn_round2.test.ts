@@ -14,7 +14,17 @@ import { createApi } from '../src/server/api.js';
 import { createSimSource } from '../src/dev/simSource.js';
 import { SCENARIOS, type Scenario } from '../src/sim/scenarios.js';
 import { scoreResponse } from '../src/sim/judge.js';
-import { runSimulation, scriptedBrain, lessonsFrom } from '../src/sim/harness.js';
+import { runSimulation, scriptedBrain, lessonsFrom, type Brain } from '../src/sim/harness.js';
+
+/**
+ * R26: the code guard now eats the scripted stand-in's deliberate date
+ * promise, so a run that must show a date lesson gets one from a brain that
+ * answers that scenario raw — the way an unguarded desk would.
+ */
+const scriptedWithRawDatePromise = (): Brain => {
+  const scripted = scriptedBrain();
+  return async (s) => (s.id === 'fd-date-tuesday' ? "Sure — we'll be there Tuesday." : scripted(s));
+};
 
 const here = dirname(fileURLToPath(import.meta.url));
 const html = loadAppHtml();
@@ -244,7 +254,7 @@ describe('L2 — lesson cards in words', () => {
   });
 
   it('every lesson is said once, with no code notes for Approve to copy into the prompt list', async () => {
-    const lessons = lessonsFrom(await runSimulation(scriptedBrain(), SCENARIOS, { concurrency: 8 }));
+    const lessons = lessonsFrom(await runSimulation(scriptedWithRawDatePromise(), SCENARIOS, { concurrency: 8 }));
     expect(lessons.length).toBeGreaterThan(0);
     for (const l of lessons) {
       expect(l.proposedLesson, l.id).not.toMatch(/Proposed lesson:|guardReply|inspectMessage|Note for Mike/);
@@ -292,7 +302,7 @@ describe('L3 — Learn layout and quoted evidence', () => {
   });
 
   it('a lesson carries evidenceSaid only when its evidence is a quote', async () => {
-    const lessons = lessonsFrom(await runSimulation(scriptedBrain(), SCENARIOS, { concurrency: 8 }));
+    const lessons = lessonsFrom(await runSimulation(scriptedWithRawDatePromise(), SCENARIOS, { concurrency: 8 }));
     const date = lessons.find((l) => l.rule === 'no_date_promise')!;
     expect(date.evidenceSaid).toBe(true);
     expect(date.evidence).toMatch(/Tuesday/i);
