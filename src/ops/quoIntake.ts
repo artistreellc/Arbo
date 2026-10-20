@@ -41,7 +41,7 @@ import { buildEstimateHold, holdErrorCode, type CallHold } from '../reception/es
 import { parseRequestedWindow } from './requestedWindow.js';
 import type { SonaCallFacts, SonaExtractor } from './quoExtract.js';
 import { verifySvixSignature } from './webhooks.js';
-import { QuoHttpError, type QuoApi } from '../integrations/quo.js';
+import { QuoHttpError, type QuoApi, type QuoCall } from '../integrations/quo.js';
 import { GOOGLE_READ_ONLY, quoWritesLive } from '../integrations/readOnly.js';
 
 /** Quo signs with a millisecond timestamp; reject anything older than 5 minutes. */
@@ -627,6 +627,58 @@ export class QuoIntake {
     let unreadableWhy: string | null = null;
     // M10: threads the cap kept this pass from reading — counted, never silent.
     let notRead = 0;
+    // M16: calls this pass has read — the by-id retry below never reads one twice.
+    const seen = new Set<string>();
+    /** Read one call from Quo's record and learn it on the serial queue; what it cannot read is counted. */
+    const readOne = async (c: Pick<QuoCall, 'id' | 'status' | 'aiHandled' | 'createdAt'>, participant: string | null): Promise<void> => {
+      examined += 1;
+      seen.add(c.id);
+      if (LIVE_CALL.has(c.status ?? '')) {
+        pending += 1;
+        return;
+      }
+      let tr: Awaited<ReturnType<QuoApi['getCallTranscript']>>;
+      try {
+        tr = await paced(() => api.getCallTranscript(c.id));
+      } catch (err) {
+        // One unreadable call is skipped and counted — it never stops the
+        // pass (a 404 on one transcript did, 78 times, 2026-09-25). A rate
+        // limit still stops it: no hammering Quo.
+        if (err instanceof QuoHttpError && err.status === 429) throw err;
+        unreadable += 1;
+        unreadableWhy = err instanceof Error ? err.message : 'error';
+        return;
+      }
+      const atMs = Date.parse(c.createdAt ?? '') || nowMs;
+      if (!tr || tr.status !== 'completed' || !tr.dialogue) {
+        const settled = nowMs - atMs > SETTLE_MS && (!tr || tr.status === 'absent' || tr.status === 'failed');
+        if (!settled) {
+          pending += 1; // still being written — tried again next pass
+          return;
+        }
+        // Quo will never write this one: a call too short to transcribe
+        // (absent) or one Quo failed on — kept and NAMED, not skipped.
+        const e = this.entry(c.id);
+        Object.assign(e, {
+          at: c.createdAt ?? e.at, from: participant ?? e.from, status: c.status, aiHandled: c.aiHandled, source: 'quo_record', processed: true,
+          handledBy: c.aiHandled === 'ai-agent' ? 'sona' : 'unknown',
+          hold: tr?.status === 'failed' ? 'extraction_unavailable' : 'hangup',
+        });
+        learned += 1;
+        return;
+      }
+      const dialogue = tr.dialogue.map((l) => ({ identifier: l.identifier, content: l.content, userId: l.userId }));
+      this.queue = this.queue.then(async () => {
+        const e = this.entry(c.id);
+        if (e.processed && !(e.source === 'webhook' && e.handledBy !== 'sona' && c.aiHandled === 'ai-agent') && !readRetryDue(e)) return;
+        Object.assign(e, { at: c.createdAt ?? e.at, from: participant ?? e.from, status: c.status, aiHandled: c.aiHandled, source: 'quo_record', processed: true, dialogue: [], slips: [], facts: null, handledBy: 'unknown' });
+        await this.process(e, dialogue, { fileHold: atMs >= this.bootMs, atMs });
+        learned += 1;
+      }).catch((err) => {
+        // Never leave the shared queue rejected — the next webhook must still run.
+        console.error('[quo] learning one call from Quo\'s record failed:', err instanceof Error ? err.message : 'error');
+      });
+    };
     try {
       const convs = (await paced(() => api.listConversations({ phoneNumberId, updatedAfterIso: sinceIso })))
         // Most recent first: when the cap bites, the oldest go unread — and are counted.
@@ -652,53 +704,18 @@ export class QuoIntake {
           const misread = known?.processed && known.source === 'webhook' && known.handledBy !== 'sona' && c.aiHandled === 'ai-agent';
           // M16: a call the model could not read is read again — a few times, never forever.
           if (known?.processed && !misread && !readRetryDue(known)) continue;
-          examined += 1;
-          if (LIVE_CALL.has(c.status ?? '')) {
-            pending += 1;
-            continue;
-          }
-          let tr: Awaited<ReturnType<QuoApi['getCallTranscript']>>;
-          try {
-            tr = await paced(() => api.getCallTranscript(c.id));
-          } catch (err) {
-            // One unreadable call is skipped and counted — it never stops the
-            // pass (a 404 on one transcript did, 78 times, 2026-09-25). A rate
-            // limit still stops it: no hammering Quo.
-            if (err instanceof QuoHttpError && err.status === 429) throw err;
-            unreadable += 1;
-            unreadableWhy = err instanceof Error ? err.message : 'error';
-            continue;
-          }
-          const atMs = Date.parse(c.createdAt ?? '') || nowMs;
-          if (!tr || tr.status !== 'completed' || !tr.dialogue) {
-            const settled = nowMs - atMs > SETTLE_MS && (!tr || tr.status === 'absent' || tr.status === 'failed');
-            if (!settled) {
-              pending += 1; // still being written — tried again next pass
-              continue;
-            }
-            // Quo will never write this one: a call too short to transcribe
-            // (absent) or one Quo failed on — kept and NAMED, not skipped.
-            const e = this.entry(c.id);
-            Object.assign(e, {
-              at: c.createdAt ?? e.at, from: participant, status: c.status, aiHandled: c.aiHandled, source: 'quo_record', processed: true,
-              handledBy: c.aiHandled === 'ai-agent' ? 'sona' : 'unknown',
-              hold: tr?.status === 'failed' ? 'extraction_unavailable' : 'hangup',
-            });
-            learned += 1;
-            continue;
-          }
-          const dialogue = tr.dialogue.map((l) => ({ identifier: l.identifier, content: l.content, userId: l.userId }));
-          this.queue = this.queue.then(async () => {
-            const e = this.entry(c.id);
-            if (e.processed && !(e.source === 'webhook' && e.handledBy !== 'sona' && c.aiHandled === 'ai-agent') && !readRetryDue(e)) return;
-            Object.assign(e, { at: c.createdAt ?? e.at, from: participant, status: c.status, aiHandled: c.aiHandled, source: 'quo_record', processed: true, dialogue: [], slips: [], facts: null, handledBy: 'unknown' });
-            await this.process(e, dialogue, { fileHold: atMs >= this.bootMs, atMs });
-            learned += 1;
-          }).catch((err) => {
-            // Never leave the shared queue rejected — the next webhook must still run.
-            console.error('[quo] learning one call from Quo\'s record failed:', err instanceof Error ? err.message : 'error');
-          });
+          await readOne(c, participant);
         }
+      }
+      // M16 (wave-1 verify): a call due a retry is read again BY ITS ID, whatever
+      // this pass's window. A model outage during the boot week read left a
+      // days-old call due; the week read still finished whole, the timed passes
+      // narrowed to a day, and that call was never listed again — while every
+      // screen said "trying again". Under the same cap; past it, still due next pass.
+      for (const e of [...this.calls.values()]) {
+        if (!readRetryDue(e) || seen.has(e.callId)) continue;
+        if (examined >= RECONCILE_CAP) break;
+        await readOne({ id: e.callId, status: e.status, aiHandled: e.aiHandled, createdAt: e.at }, e.from);
       }
       await this.queue;
       const wholeWeek = windowMs >= WEEK_MS;

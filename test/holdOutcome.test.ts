@@ -289,6 +289,73 @@ describe('M16 — a call the model could not read is read again; never "booked" 
     expect(c).toMatchObject({ classification: 'customer', skip: 'hold_unknown' });
   });
 
+  // Wave-1 verify: the model failed during the BOOT week read on a call days old; the
+  // week read still finished whole, so the timed passes narrowed to a day and never
+  // listed that call again — while every screen said "trying again". A call due a
+  // retry is read again by its id, whatever the window (both Google modes).
+  for (const googleWrites of [false, true]) {
+    it(`a call the model missed during the boot week read is read again by id once the passes narrow to a day (googleWrites ${googleWrites})`, async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const DAY = 24 * 60 * MIN;
+      let now = NOW;
+      let modelUp = false;
+      const extract = vi.fn(async () => { if (!modelUp) throw new Error('overloaded'); return FACTS; });
+      const intake = new QuoIntake({
+        guardrails: loadAllConfig().guardrails, extractor: { extract }, callMemory: new CallMemory(), callRecords: new CallRecordStore(),
+        calendarHold: async () => ({ eventId: 'ev1' }), googleWrites, onText: () => {}, now: () => now, sleep: async () => {},
+      });
+      // A Quo that honours its time filters, like the real API: the call is 3 days before boot.
+      const at = new Date(NOW - 3 * DAY).toISOString();
+      const reads = { n: 0 };
+      const api: QuoApi = {
+        ...fakeQuo(NOW - 3 * DAY, reads),
+        listConversations: async ({ updatedAfterIso }) => (at >= updatedAfterIso ? [{ id: 'CN1', phoneNumberId: 'PN1', participants: [CALLER], lastActivityAt: at, updatedAt: at }] : []),
+        listCalls: async ({ createdAfterIso }) => (at >= (createdAfterIso ?? '') ? [{ id: 'AC1', direction: 'incoming', status: 'completed', aiHandled: 'ai-agent', createdAt: at, answeredAt: null, completedAt: null }] : []),
+      };
+      await intake.reconcile(api, 'PN1', 7 * DAY); // the boot read (QUO_LEARN_BACKFILL_MS)
+      expect(intake.list()[0]).toMatchObject({ hold: 'extraction_unavailable', extractAttempts: 1 });
+      expect(intake.nextWindowMs(DAY)).toBe(DAY); // the week read finished whole → the timed passes look back a day
+      modelUp = true;
+      now += 10 * MIN;
+      await intake.reconcile(api, 'PN1', intake.nextWindowMs(DAY));
+      expect(extract).toHaveBeenCalledTimes(2);
+      // Learned from before boot: no hold either way — read-only says so by name (R33).
+      expect(intake.list()[0]).toMatchObject({ hold: googleWrites ? 'learned_only' : 'read_only', extractAttempts: 1 });
+      expect(intake.status().readsRetrying).toBe(0);
+      expect(reads.n).toBe(2); // once at boot, once by id — never twice in one pass
+      now += 10 * MIN;
+      await intake.reconcile(api, 'PN1', intake.nextWindowMs(DAY));
+      expect(extract).toHaveBeenCalledTimes(2); // read once it worked — never again
+      expect(reads.n).toBe(2);
+    });
+  }
+
+  it('a call due a retry that has aged past the week is still read again by id, and a pass over the window never reads it twice', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    let fail = true;
+    const reads = { n: 0 };
+    const h = intakeWith({ extract: async () => { if (fail) { fail = false; throw new Error('overloaded'); } return FACTS; } });
+    const api = fakeQuo(NOW + 5 * MIN, reads);
+    h.setNow(NOW + 20 * MIN);
+    await h.intake.reconcile(api, 'PN1', 24 * 60 * MIN);
+    expect(reads.n).toBe(1);
+    // Inside the window: the listing reads it again, and the by-id pass skips it.
+    await h.intake.reconcile(api, 'PN1', 24 * 60 * MIN);
+    expect(reads.n).toBe(2);
+    expect(h.intake.list()[0]!.hold).toBe('filed');
+    // Aged out: Quo lists nothing for the window, yet a retry-due call is still read by id.
+    let failAgain = true;
+    const h2 = intakeWith({ extract: async () => { if (failAgain) { failAgain = false; throw new Error('overloaded'); } return FACTS; } });
+    h2.sonaCall('AC2');
+    await h2.intake.settled();
+    expect(h2.intake.list()[0]).toMatchObject({ hold: 'extraction_unavailable', extractAttempts: 1 });
+    const empty: QuoApi = { ...fakeQuo(NOW), listConversations: async () => [], listCalls: async () => [], getCallTranscript: async (id) => { expect(id).toBe('AC2'); return TALK; } };
+    h2.setNow(NOW + 8 * 24 * 60 * MIN);
+    await h2.intake.reconcile(empty, 'PN1', 24 * 60 * MIN);
+    expect(h2.intake.list()[0]!.hold).toBe('filed');
+    expect(h2.intake.status().readsRetrying).toBe(0);
+  });
+
   it('the Calls card says which try it is on, then that it gave up', () => {
     // R33 merge: the "no hold filed (yet)" clause is said only while holds are on — while Google is
     // read-only no hold is ever filed, so the card does not promise one later.
