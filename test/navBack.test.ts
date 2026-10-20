@@ -205,7 +205,7 @@ describe('three small navigation fixes from the usability audit', () => {
   });
   it('Settings opens from the gear and lights no dock tab', () => {
     const sw = html.slice(html.indexOf('function switchTab('), html.indexOf('\n}', html.indexOf('function switchTab(')));
-    expect(sw).toContain("['book', 'followups', 'perf', 'more', 'permits', 'agents', 'measure', 'learn'].indexOf(which)");
+    expect(sw).toContain("['book', 'followups', 'perf', 'more', 'permits', 'agents', 'measure', 'learn', 'assistant'].indexOf(which)"); // R28: the Assistant desk sits behind More too
     expect(sw).not.toContain("'perf', 'settings', 'more', 'permits', 'agents', 'measure', 'learn'].indexOf(which)");
   });
 });
