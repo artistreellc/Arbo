@@ -316,6 +316,8 @@ export interface CrewJobSource {
   hazardStructures: boolean;
   permitStatus: string | null;
   permitScreenPending?: boolean;
+  /** The permit lookup FAILED — named apart from screen pending, as on /api/leads (§1B). */
+  permitUnreadable?: boolean;
   propertyId: string;
 }
 
@@ -903,6 +905,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
         permitStatus: (['PERMIT_LIKELY', 'REVIEW_NEEDED', 'NO_OVERLAY_VERIFY'] as const)
           .find((s) => s === r.permitStatus) ?? null,
         permitScreenPending: r.permitScreenPending === true,
+        permitUnreadable: r.permitUnreadable === true,
         photoRefs: [],
         briefingId,
       }));
