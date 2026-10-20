@@ -60,6 +60,25 @@ cannot read a cut link, on purpose.
    sim rows near real rows, states a surface would render dangerously — is
    FLAGGED TO MIKE and the link stays shut until he rules. (This is §3's
    lesson as procedure: look at what a door will show BEFORE opening it.)
+   **Paste, never type** (audit M7, 2026-10-20 — a hand-typed count here
+   once said "permits: 0, clean" over 22 rows): the record for this step is
+   the pasted output of the read-only provenance query below, run through
+   the Supabase MCP for each of the link's tables. Counts and timestamps
+   only — never a row's contents (§4.3).
+
+   ```sql
+   -- READ-ONLY provenance for one table. Replace <table>. Writes nothing.
+   select now() as ran_at, '<table>' as tbl, count(*) as rows,
+          min(created_at) as first_written, max(created_at) as last_written
+     from public.<table>;
+   -- Batches: many rows written in the same minute means one writer, not people.
+   select date_trunc('minute', created_at) as batch, count(*) as rows
+     from public.<table> group by 1 having count(*) > 1 order by 2 desc limit 10;
+   ```
+   Plus, for a table that points into a HELD table, the count that does
+   (e.g. `select count(*) from public.property p where exists (select 1 from
+   public.job j where j.property_id = p.id);`). Any batch inside a known
+   incident window (the 2026-08-01 → 08-03 ingestion, §3) is a finding.
 4. **Tests green** for the link's read/write paths (`npm run check`).
 5. **Open it.** Set the link's variable on Railway, deploy manually by full
    SHA, and verify: the boot line names the link as open, and
@@ -71,16 +90,29 @@ cannot read a cut link, on purpose.
 
 | Link | Tables (rows) | Finding |
 |---|---|---|
-| contacts | contact (26), contact_property (0) | clean |
-| properties | property (14), tree (0) | clean |
+| contacts | contact (26), contact_property (0) | ~~clean~~ **FLAGGED (corrected 2026-10-20, audit M7):** 24 of the 26 contacts were written in one batch at 2026-08-02 01:48Z, inside the ingestion window (§3). Mike rules on contacts, properties and the 11 jobs as ONE set. |
+| properties | property (14), tree (0) | ~~clean~~ **FLAGGED (corrected 2026-10-20, audit M7):** 11 of the 14 were created in the same batches as the 11 held `job` rows — each is a held job's property. Same ruling as contacts. |
 | leads | lead (37), campaign (0) | clean |
 | estimates | estimate (0) | clean |
 | jobs | job (**11**), contract (0), … | **HELD — the 11 `job` rows are from the 2026-08 ingestion incident (status `booked`, renders as crew work orders). Mike rules on them before this link opens.** |
-| permits | permit (0), permit_correspondence (0) | clean |
+| permits | permit (0), permit_correspondence (**22**) | ~~clean~~ **HELD (corrected 2026-10-20, audit M7):** this row said 0 — wrong. 22 rows, all written in one batch at 2026-08-01 14:10:56Z: the real permit mail D38 mined from the inbox ("22 real cases … indexed in the live `permit_correspondence` table"). 0 of them link to a property or permit, and the only reader filters on `property_id`, so they render nowhere today. Nothing deleted. Shut until Mike rules (§3: permit mail is not imported without his go). |
 | photos | photo (0) | clean |
 | calls | conversation_log (0), call_log (0) | clean |
 | location | location_ping (0) | clean |
 | crew / equipment / safety / ops | all 0 except event (581), agent_run | clean — event/agent_run rows are Arbo's own audit spine, not customer data |
+
+**Correction, 2026-10-20 (audit M7).** The 2026-09-24 content review above
+was typed by hand and recorded "clean" over three findings: the 22
+`permit_correspondence` rows (D38, a known origin — permit mail mined from
+Gmail on 2026-08-01) and the contacts and properties written in the
+ingestion batches. The counts in the corrections come from the 2026-10-20
+read-only audit (counts and timestamps only); re-run the provenance query in
+step 3 before any of these links opens. **Mike's call, not a build's:**
+- permits — keep, or remove, the 22 D38 rows before the link opens;
+- contacts, properties and the 11 jobs — one ruling for the set (R29 already
+  said "Delete the 11" for the jobs). Note the read-only build READS
+  contacts and properties today; whether those two stay readable until he
+  rules is part of the same question.
 
 **Step 1 (migrations):** 0016–0018 were unapplied at review time — applied
 via the Supabase migration tooling this pass; `list_migrations` now covers
@@ -138,7 +170,7 @@ equipment, safety, ops.
 | calls | Sona's calls live in Quo, not these tables — an empty call log would read as "no calls yet" (R21, §1B). |
 | photos | Nothing in the app files a photo yet — an empty table would read as "no photos" instead of "not built". |
 | jobs | HELD: the 11 mistaken `job` rows (§3, R29). Until a count check shows Mike's delete ran, they would render as booked work orders and open loops. Keeping jobs cut also keeps the Book's property list (it embeds job counts), the brief, the queue, money and crew work orders named as "cut on purpose". |
-| permits | HELD: `permit_correspondence` holds rows no Arbo code writes (0 at the 2026-09-24 check). Step 3 above — shut until Mike says where they came from. |
+| permits | HELD: `permit_correspondence` holds 22 rows no running Arbo code writes — the 2026-09-24 check wrongly recorded 0; they are D38's permit mail mined from Gmail on 2026-08-01 (audit M7). Shut until Mike rules on them. |
 
 Opening one of these in read-only is a one-line change to that list, after
 Mike rules — never a variable flipped on the way past.
