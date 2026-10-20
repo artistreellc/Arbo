@@ -60,7 +60,10 @@ const MAX_PAGES = 5;
 
 export type BouncieHttp = (
   url: string,
-  init: { method: 'GET' | 'POST'; headers: Record<string, string>; body?: string; signal?: RequestInit['signal'] },
+  // redirect 'error': fetch follows a 3xx by default and a 307/308 re-sends the
+  // body — the client secret and the refresh token — to wherever it points.
+  // allowed() checks the first address only, so a redirect is a failure instead.
+  init: { method: 'GET' | 'POST'; headers: Record<string, string>; body?: string; redirect: 'error'; signal?: RequestInit['signal'] },
 ) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
 
 const defaultHttp: BouncieHttp = (url, init) => fetch(url, init);
@@ -188,6 +191,8 @@ interface Truck {
   motion: Motion | null;
   motionAt: number;
   lastAt: number;
+  /** The newest report the webhook carried for this truck (0 = none since restart). */
+  hookAt: number;
   lastTrip: { at: number; miles: number | null; minutes: number | null } | null;
 }
 
@@ -204,8 +209,12 @@ export interface TruckView {
   lat: number | null;
   lon: number | null;
   heading: number | null;
+  /** The last report of any kind (a trip start, a battery reading) — not necessarily a position. */
   reportedAt: string | null;
   ageMinutes: number | null;
+  /** When lat/lon were fixed. The map plots the dot at this age, never at the last report's. */
+  positionAt: string | null;
+  positionAgeMinutes: number | null;
   motion: TruckMotion;
   lastTrip: { endedAt: string; miles: number | null; minutes: number | null } | null;
 }
@@ -252,11 +261,15 @@ export interface UnitLite { id: string; name: string; vinOrSerial?: string | nul
 const normVin = (s: string | null | undefined): string => (s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 const normName = (s: string | null | undefined): string => (s ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
 
+/** A real 17-character VIN (no I, O or Q) — a chipper's or trailer's serial number is not one. */
+const REAL_VIN = /^[A-HJ-NPR-Z0-9]{17}$/;
+
 /**
  * A Bouncie truck belongs to a Fleet unit when its VIN matches the unit's
  * VIN, or — failing that — its Bouncie nickname matches the unit's name.
  * Only when unambiguous: two units or two trucks on the same VIN or name
- * leave every one of them unmatched rather than guessed.
+ * leave every one of them unmatched rather than guessed. Two different real
+ * VINs are evidence AGAINST a pairing, and the same name never overrides them.
  */
 export function matchTrucks<T extends { vin: string | null; name: string | null }>(
   units: UnitLite[],
@@ -282,6 +295,9 @@ export function matchTrucks<T extends { vin: string | null; name: string | null 
     const n = normName(t.name);
     if (!n || truckNames.get(n) !== 1 || unitNames.get(n) !== 1) continue;
     const u = openUnits.find((x) => normName(x.name) === n)!;
+    const uv = normVin(u.vinOrSerial);
+    const tv = normVin(t.vin);
+    if (REAL_VIN.test(uv) && tv && uv !== tv) continue;
     matched.set(u.id, { truck: t, by: 'name' });
     taken.add(t);
   }
@@ -301,7 +317,8 @@ export interface BouncieOptions {
 
 type TokenAnswer =
   | { ok: true; accessToken: string; refreshToken: string | null; expiresInSec: number }
-  | { ok: false; reason: 'rejected' | 'unreachable' | 'bad_answer' };
+  | { ok: false; reason: 'rejected'; status: number }
+  | { ok: false; reason: 'unreachable' | 'bad_answer' };
 
 type TokenOutcome = { ok: true; token: string } | { ok: false; reason: 'not_connected' | 'expired' | 'unreadable' };
 
@@ -332,6 +349,9 @@ export class Bouncie {
     lastAt: null as string | null,
     whileCut: 0,
     lastWhileCutAt: null as string | null,
+    droppedKeysMissing: 0, // authentic, link open, but no BOUNCIE_CLIENT_ID / SECRET: answered and dropped
+    lastAuthenticAt: null as string | null, // the last call that carried the key, whatever happened to it
+    lastRejectedAt: null as string | null, // the last call without it — Settings tells a stranger from a wrong key by these two
     duplicates: 0,
     unknownTypes: 0,
     badEvents: 0,
@@ -366,7 +386,7 @@ export class Bouncie {
   private call(method: 'GET' | 'POST', url: string, headers: Record<string, string>, body?: string) {
     // Structural, not a convention: Arbo reads Bouncie and swaps a sign-in code. It never writes to Bouncie.
     if (!allowed(method, url)) return Promise.reject(new Error('bouncie_call_refused'));
-    return this.http(url, { method, headers, ...(body === undefined ? {} : { body }), signal: globalThis.AbortSignal.timeout(CALL_DEADLINE_MS) });
+    return this.http(url, { method, headers, redirect: 'error', ...(body === undefined ? {} : { body }), signal: globalThis.AbortSignal.timeout(CALL_DEADLINE_MS) });
   }
 
   private async tokenCall(form: Record<string, string>): Promise<TokenAnswer> {
@@ -377,7 +397,7 @@ export class Bouncie {
       return { ok: false, reason: 'unreachable' };
     }
     // 400/401/403 is Bouncie saying no to this code or refresh token. Anything else (429, 5xx) is "try later".
-    if (!res.ok) return { ok: false, reason: res.status === 400 || res.status === 401 || res.status === 403 ? 'rejected' : 'unreachable' };
+    if (!res.ok) return res.status === 400 || res.status === 401 || res.status === 403 ? { ok: false, reason: 'rejected', status: res.status } : { ok: false, reason: 'unreachable' };
     const b = obj(await res.json().catch(() => null));
     if (!b || typeof b.access_token !== 'string' || !b.access_token) return { ok: false, reason: 'bad_answer' };
     const sec = Number(b.expires_in);
@@ -425,10 +445,15 @@ export class Bouncie {
     });
     if (!r.ok || !r.refreshToken) {
       const reason = r.ok ? 'no_refresh_token' : r.reason;
-      console.error(`[bouncie] sign-in swap failed: ${reason}`);
+      const said = !r.ok && r.reason === 'rejected' ? r.status : null; // Bouncie's HTTP status — a number, never a secret
+      console.error(`[bouncie] sign-in swap failed: ${reason}${said === null ? '' : ` (HTTP ${said})`}`);
+      // A wrong Redirect URI fails on Bouncie's own page and never reaches here, so a refusal is a used or
+      // replaced code — or, most likely on a first connect, a client secret pasted wrong.
       return reason === 'unreachable'
         ? { status: 502, ok: false, title: 'Arbo couldn’t reach Bouncie', line: `The sign-in did not finish. Nothing was saved. ${back}` }
-        : { status: 400, ok: false, title: 'Bouncie refused the sign-in', line: `Bouncie did not accept that sign-in code (${reason === 'rejected' ? 'used or replaced by a newer one' : 'its answer was missing the sign-in token'}). Nothing was saved. ${back}` };
+        : said !== null
+          ? { status: 400, ok: false, title: 'Bouncie refused the sign-in', line: `Bouncie said no (HTTP ${said}): the code was already used or replaced, or BOUNCIE_CLIENT_SECRET on Railway doesn’t match the portal. Nothing was saved. ${back}` }
+          : { status: 400, ok: false, title: 'Bouncie refused the sign-in', line: `Bouncie did not accept that sign-in code (its answer was missing the sign-in token). Nothing was saved. ${back}` };
     }
     const now = this.now();
     this.generation++;
@@ -564,7 +589,7 @@ export class Bouncie {
     const t = this.trucks.get(imei);
     if (t) return t;
     if (this.trucks.size >= TRUCK_CAP) return null;
-    const fresh: Truck = { imei, vin: null, name: null, pos: null, motion: null, motionAt: 0, lastAt: 0, lastTrip: null };
+    const fresh: Truck = { imei, vin: null, name: null, pos: null, motion: null, motionAt: 0, lastAt: 0, hookAt: 0, lastTrip: null };
     this.trucks.set(imei, fresh);
     return fresh;
   }
@@ -599,6 +624,12 @@ export class Bouncie {
     if (at > t.lastAt) t.lastAt = at;
   }
 
+  /** A webhook report: the truck's last report, and the last time the live stream spoke for it. */
+  private heard(t: Truck, at: number): void {
+    this.touch(t, at);
+    if (at > t.hookAt) t.hookAt = at;
+  }
+
   private applyVehicle(v: unknown, now: number): void {
     const r = obj(v);
     if (!r || typeof r.imei !== 'string' || !r.imei || r.imei.length > 64) return;
@@ -609,6 +640,11 @@ export class Bouncie {
     const s = obj(r.stats);
     const at = tsOf(s?.lastUpdated, now);
     if (!s || at === null) return;
+    // stats.lastUpdated is when Bouncie's vehicle DOCUMENT last changed, not when
+    // its location was fixed, and that stored location can lag the live stream.
+    // While the webhook has spoken for this truck in the last 15 minutes it is
+    // the better witness: this read only names the truck, it never moves it.
+    if (now - t.hookAt < DRIVING_FRESH_MS) return;
     const loc = obj(s.location); // its street address is never read
     if (loc) this.offerPos(t, loc.lat, loc.lon, loc.heading, at);
     if (typeof s.isRunning === 'boolean') this.offerMotion(t, s.isRunning ? 'driving' : 'parked', at);
@@ -644,7 +680,7 @@ export class Bouncie {
         const g = obj(q.gps);
         this.offerPos(t, g?.lat, g?.lon, g?.heading, at);
         this.offerMotion(t, 'driving', at);
-        this.touch(t, at);
+        this.heard(t, at);
         fresh++;
       }
       return fresh > 0 ? 'kept' : bad === points.length ? 'bad' : 'duplicate';
@@ -675,7 +711,7 @@ export class Bouncie {
       this.offerPos(t, loc?.lat, loc?.lon, loc?.heading, at);
     }
     // battery and mil: counted and timed, nothing else kept.
-    this.touch(t, at);
+    this.heard(t, at);
     return 'kept';
   }
 
@@ -704,6 +740,7 @@ export class Bouncie {
     const viaHeader = sameKey(h.xBouncie, this.opts.webhookKey);
     if (!viaAuth && !viaHeader) {
       this.hook.rejected++;
+      this.hook.lastRejectedAt = new Date(this.now()).toISOString();
       if (this.hook.rejected === 1 || this.hook.rejected % 100 === 0) {
         console.error(`[bouncie] webhook call refused — wrong or missing key (${this.hook.rejected} since restart)`);
       }
@@ -711,11 +748,18 @@ export class Bouncie {
     }
     const raw = await readBody();
     const nowIso = new Date(this.now()).toISOString();
-    if (!bouncieLinked() || !this.configured()) {
-      // Accept-and-drop: Bouncie must not switch the webhook off while Mike is still setting up.
+    this.hook.lastAuthenticAt = nowIso;
+    // Accept-and-drop: Bouncie must not switch the webhook off while Mike is still setting up.
+    // Each drop is counted under its own reason, so Settings never shows a bare "0 kept" for it.
+    if (!bouncieLinked()) {
       this.trucks.clear();
       this.hook.whileCut++;
       this.hook.lastWhileCutAt = nowIso;
+      return { status: 200, body: { ok: true } };
+    }
+    if (!this.configured()) {
+      this.trucks.clear();
+      this.hook.droppedKeysMissing++;
       return { status: 200, body: { ok: true } };
     }
     this.hook.deliveries++;
@@ -756,10 +800,14 @@ export class Bouncie {
 
   private view(t: Truck, now: number): TruckView {
     const age = t.lastAt ? Math.max(0, now - t.lastAt) : null;
+    const posAge = t.pos ? Math.max(0, now - t.pos.at) : null;
+    // "Driving" needs a fresh FIX: a trip start or a battery reading with no
+    // position never makes yesterday's fix look like this minute's. A parked
+    // truck's fix stays true while it sits, so there staleness is "no report at all".
     const motion: TruckMotion =
       t.motion === 'unplugged' ? 'unplugged'
-        : !t.pos || age === null ? 'no_fix'
-          : t.motion === 'driving' ? (age <= DRIVING_FRESH_MS ? 'driving' : 'stale')
+        : posAge === null || age === null ? 'no_fix'
+          : t.motion === 'driving' ? (posAge <= DRIVING_FRESH_MS ? 'driving' : 'stale')
             : age > PARKED_FRESH_MS ? 'stale'
               : t.motion === 'parked' ? 'parked' : 'seen';
     return {
@@ -772,6 +820,8 @@ export class Bouncie {
       heading: t.pos?.heading ?? null,
       reportedAt: t.lastAt ? new Date(t.lastAt).toISOString() : null,
       ageMinutes: age === null ? null : Math.floor(age / 60_000),
+      positionAt: t.pos ? new Date(t.pos.at).toISOString() : null,
+      positionAgeMinutes: posAge === null ? null : Math.floor(posAge / 60_000),
       motion,
       lastTrip: t.lastTrip ? { endedAt: new Date(t.lastTrip.at).toISOString(), miles: t.lastTrip.miles, minutes: t.lastTrip.minutes } : null,
     };

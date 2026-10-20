@@ -525,6 +525,23 @@ async function readRawBody(req: IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
+/**
+ * Bouncie's webhook body, or null when it is over 1 MB. A body over the cap is
+ * read to the end and dropped, never thrown: throwing out of the loop destroys
+ * the socket, so Bouncie would see a reset (and retry, then switch the webhook
+ * off) instead of the 200 every authentic call gets. Only a caller that passed
+ * the key check reaches this.
+ */
+async function readBouncieBody(req: IncomingMessage): Promise<string | null> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    if (size <= 1_000_000) chunks.push(chunk as Buffer);
+  }
+  return size > 1_000_000 ? null : Buffer.concat(chunks).toString('utf8');
+}
+
 async function readJson(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
@@ -924,14 +941,7 @@ export function createArborRequestHandler() {
       if (req.method === 'POST' && url.pathname === '/webhooks/bouncie') {
         const out = await bouncie.handleWebhook(
           { authorization: req.headers.authorization, xBouncie: req.headers['x-bouncie-authorization'] },
-          async () => {
-            try {
-              return await readRawBody(req);
-            } catch (err) {
-              if (err instanceof BadRequestError) return null; // over 1 MB: dropped and counted, still a 200
-              throw err;
-            }
-          },
+          () => readBouncieBody(req), // over 1 MB: drained, dropped and counted — still a 200, never a reset
         );
         return send(out.status, out.body);
       }

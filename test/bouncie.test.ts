@@ -4,7 +4,7 @@
 // positions states, the owner-only routes, and the two page pieces Mike sees.
 // Every value below is made up: no real token, VIN, device or place.
 import { describe, it, expect, vi, afterAll, afterEach } from 'vitest';
-import { createServer, type Server } from 'node:http';
+import { createServer, request, type Server } from 'node:http';
 import { mkdtempSync, readFileSync, statSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -57,10 +57,10 @@ const tmp = () => mkdtempSync(join(tmpdir(), 'arbo-bouncie-'));
 
 /** A fake Bouncie: token grants in order, then whatever `vehicles` says. Every call is recorded. */
 function fakeBouncie(over: { grants?: Array<() => ReturnType<typeof answer> | Promise<ReturnType<typeof answer>>>; vehicles?: (token: string) => ReturnType<typeof answer> } = {}) {
-  const calls: Array<{ url: string; method: string; headers: Record<string, string>; body: Record<string, string> | null }> = [];
+  const calls: Array<{ url: string; method: string; headers: Record<string, string>; body: Record<string, string> | null; redirect: unknown }> = [];
   let g = 0;
   const http: BouncieHttp = async (url: string, init: Init) => {
-    calls.push({ url, method: init.method, headers: init.headers, body: init.body ? JSON.parse(init.body) : null });
+    calls.push({ url, method: init.method, headers: init.headers, body: init.body ? JSON.parse(init.body) : null, redirect: init.redirect });
     if (url === TOKEN_URL) {
       const next = over.grants?.[g++];
       return next ? next() : answer(400, { error: 'invalid_grant' });
@@ -212,12 +212,18 @@ describe('the callback — state checked, single use, and the code swapped serve
     const none = make({ http: fakeBouncie({ grants: [grant(1)] }).http });
     expect(await none.b.finishConnect({ code: null, state: begin(none.b).state })).toMatchObject({ status: 400, title: 'Bouncie did not send a sign-in code' });
     const refused = make({ http: fakeBouncie().http });
-    expect(await refused.b.finishConnect({ code: 'C', state: begin(refused.b).state })).toMatchObject({ status: 400, title: 'Bouncie refused the sign-in' });
+    const no = await refused.b.finishConnect({ code: 'C', state: begin(refused.b).state });
+    expect(no).toMatchObject({ status: 400, title: 'Bouncie refused the sign-in' });
+    // A refusal says what Bouncie answered and names the likeliest cause — a secret pasted wrong — not a redirect
+    // (a wrong redirect fails on Bouncie's own page and never reaches Arbo).
+    expect(no.line).toBe('Bouncie said no (HTTP 400): the code was already used or replaced, or BOUNCIE_CLIENT_SECRET on Railway doesn’t match the portal. Nothing was saved. Go back to Settings in Arbo and tap Connect Bouncie again.');
+    const wrongSecret = make({ http: fakeBouncie({ grants: [() => answer(401, { error: 'invalid_client' })] }).http });
+    expect((await wrongSecret.b.finishConnect({ code: 'C', state: begin(wrongSecret.b).state })).line).toContain('Bouncie said no (HTTP 401)');
     const down = make({ http: async () => { throw new Error('ENOTFOUND'); } });
     expect(await down.b.finishConnect({ code: 'C', state: begin(down.b).state })).toMatchObject({ status: 502, title: 'Arbo couldn’t reach Bouncie' });
     const noRefresh = make({ http: fakeBouncie({ grants: [() => answer(200, { access_token: 'ACCESS-ONLY', expires_in: 3600 })] }).http });
     expect((await noRefresh.b.finishConnect({ code: 'C', state: begin(noRefresh.b).state })).ok).toBe(false);
-    for (const m of [none, refused, down, noRefresh]) {
+    for (const m of [none, refused, wrongSecret, down, noRefresh]) {
       expect(m.b.signInState()).toBe('not_connected');
       expect(existsSync(join(m.dir, 'bouncie-token.json'))).toBe(false);
     }
@@ -396,6 +402,31 @@ describe('Arbo reads Bouncie; it never writes to it', () => {
     // Nothing here touches the database.
     expect(code).not.toMatch(/getDb|supabase|repositories/);
   });
+
+  it('no call follows a redirect — a 3xx can never carry the secret or a refresh token to another host', async () => {
+    process.env.ARBO_LINK_BOUNCIE = 'live';
+    const f = fakeBouncie({ grants: [grant(1), grant(2)], vehicles: () => answer(200, [vehicle()]) });
+    const { b, clock } = await connected({ http: f.http });
+    clock.t = T0 + 3600_000; // the read below refreshes first: sign-in, refresh and read all go through the one door
+    await b.positions(UNITS);
+    expect(f.calls.map((c) => c.url)).toEqual([TOKEN_URL, TOKEN_URL, `${API_BASE}vehicles?limit=10`]);
+    expect(f.calls.map((c) => c.redirect)).toEqual(['error', 'error', 'error']);
+    // And the real door (no fake http) hands the same setting to fetch.
+    const seen: unknown[] = [];
+    vi.stubGlobal('fetch', async (_u: unknown, init?: RequestInit) => {
+      seen.push(init?.redirect);
+      return new Response(JSON.stringify({ access_token: 'ACCESS-FAKE-7', refresh_token: 'REFRESH-FAKE-7', expires_in: 3600 }), { status: 200 });
+    });
+    try {
+      const real = new Bouncie({ clientId: CLIENT, clientSecret: SECRET, webhookKey: HOOK_KEY, dir: tmp() });
+      expect((await real.finishConnect({ code: 'CODE-FAKE-7', state: begin(real).state })).ok).toBe(true);
+    } finally { vi.unstubAllGlobals(); }
+    expect(seen).toEqual(['error']);
+    // A redirect makes fetch throw — and a throw is "couldn't reach Bouncie", nothing saved.
+    const bounced = make({ http: async () => { throw new TypeError('fetch failed: unexpected redirect'); } });
+    expect(await bounced.b.finishConnect({ code: 'C', state: begin(bounced.b).state })).toMatchObject({ status: 502, ok: false });
+    expect(bounced.b.signInState()).toBe('not_connected');
+  });
 });
 
 // ---------- the webhook ----------
@@ -444,11 +475,25 @@ describe('the webhook — 401 for a wrong key, 200 at once for anything authenti
     expect(p.units!.every((u) => u.truck === null)).toBe(true);
   });
 
-  it('with the sign-in keys missing an authentic call is answered 200 and dropped too', async () => {
+  it('with the sign-in keys missing an authentic call is answered 200 and dropped too — counted as that, not as "cut"', async () => {
     process.env.ARBO_LINK_BOUNCIE = 'live';
     const { b } = make({ clientId: null, clientSecret: null });
     expect(await hook(b, tripData([[T0, LAT, LON]]))).toEqual({ status: 200, body: { ok: true } });
-    expect((await b.status()).webhook).toMatchObject({ whileCut: 1, received: 0 });
+    expect((await b.status()).webhook).toMatchObject({ droppedKeysMissing: 1, whileCut: 0, deliveries: 0, received: 0, lastAuthenticAt: iso(T0) });
+    // Cut AND keys missing: the cut is the reason named.
+    delete process.env.ARBO_LINK_BOUNCIE;
+    await hook(b, tripData([[T0, LAT, LON]]));
+    expect((await b.status()).webhook).toMatchObject({ droppedKeysMissing: 1, whileCut: 1 });
+  });
+
+  it('the last refused call and the last authentic one are both timed, so Settings can tell a stranger from a wrong key', async () => {
+    process.env.ARBO_LINK_BOUNCIE = 'live';
+    const { b, clock } = make();
+    expect((await b.status()).webhook).toMatchObject({ lastRejectedAt: null, lastAuthenticAt: null });
+    await hook(b, {}, {});
+    clock.t += min;
+    await hook(b, tripData([[T0, LAT, LON]]));
+    expect((await b.status()).webhook).toMatchObject({ rejected: 1, lastRejectedAt: iso(T0), lastAuthenticAt: iso(T0 + min) });
   });
 
   it('a duplicated tripData point is kept once; a burst out of order never moves a truck backwards', async () => {
@@ -513,6 +558,42 @@ describe('the webhook — 401 for a wrong key, 200 at once for anything authenti
     const t = (await b.positions(UNITS)).units![0]!.truck!;
     expect(t).toMatchObject({ motion: 'no_fix', lat: null, lon: null });
     expect((await b.status()).webhook.received).toBe(3);
+  });
+
+  it('a report with no position never makes an old position look new (positionAt is the fix\'s own time)', async () => {
+    process.env.ARBO_LINK_BOUNCIE = 'live';
+    const { b } = await connected({ http: fakeBouncie({ grants: [grant(1)], vehicles: () => answer(200, []) }).http });
+    const yesterday = T0 - 15 * 60 * min;
+    await hook(b, tripData([[yesterday, 36.9, -75.9]]));
+    await hook(b, { eventType: 'tripEnd', imei: IMEI, vin: VIN, transactionId: 't', end: { timestamp: iso(yesterday + min), timeZone: 'America/New_York', odometer: 1, fuelConsumed: 0.1 } });
+    // This morning: the trip starts, no fix yet.
+    await hook(b, { eventType: 'tripStart', imei: IMEI, vin: VIN, transactionId: 't2', start: { timestamp: iso(T0 - min), timeZone: 'America/New_York', odometer: 2 } });
+    let t = (await b.positions(UNITS)).units![0]!.truck!;
+    expect(t).toMatchObject({ lat: 36.9, positionAt: iso(yesterday), positionAgeMinutes: 15 * 60, reportedAt: iso(T0 - min), ageMinutes: 1 });
+    expect(t.motion).toBe('stale'); // "driving" needs a fresh FIX, not just a fresh report
+    // Parked, then a battery report: the truck's last fix keeps its own age.
+    await hook(b, { eventType: 'tripEnd', imei: IMEI, vin: VIN, transactionId: 't2', end: { timestamp: iso(T0 - 30_000), timeZone: 'America/New_York', odometer: 2, fuelConsumed: 0 } });
+    await hook(b, { eventType: 'battery', imei: IMEI, vin: VIN, battery: { timestamp: iso(T0), value: 'normal' } });
+    t = (await b.positions(UNITS)).units![0]!.truck!;
+    expect(t).toMatchObject({ motion: 'parked', ageMinutes: 0, positionAgeMinutes: 15 * 60 });
+  });
+
+  it('the vehicles read never moves a truck back past a fresh webhook fix; once the webhook is quiet it fills in again', async () => {
+    process.env.ARBO_LINK_BOUNCIE = 'live';
+    const clock = { t: T0 };
+    // Bouncie's vehicle document: updated "now", but its stored location lags behind the live stream.
+    const f = fakeBouncie({ grants: [grant(1)], vehicles: () => answer(200, [vehicle({}, { lastUpdated: iso(clock.t), isRunning: false, location: { lat: 36.0, lon: -76.0, heading: 0 } })]) });
+    const { b } = await connected({ http: f.http, clock });
+    await hook(b, tripData([[T0 - min, 36.9, -75.9]]));
+    let t = (await b.positions(UNITS)).units![0]!.truck!;
+    expect(f.reads()).toHaveLength(1);
+    expect(t).toMatchObject({ lat: 36.9, lon: -75.9, motion: 'driving', positionAt: iso(T0 - min) });
+    expect(t.name).toBe('Bucket truck'); // the read still names the truck
+    // Twenty minutes with nothing from the webhook: the vehicles read is the best there is again.
+    clock.t = T0 + 20 * min;
+    t = (await b.positions(UNITS)).units![0]!.truck!;
+    expect(f.reads()).toHaveLength(2);
+    expect(t).toMatchObject({ lat: 36.0, lon: -76.0, motion: 'parked', positionAt: iso(T0 + 20 * min) });
   });
 
   it('a trip summary is kept short: miles and minutes only', async () => {
@@ -605,6 +686,16 @@ describe('matching a Bouncie truck to a Fleet unit — only when unambiguous', (
     const r2 = matchTrucks([{ id: 'a', name: 'Truck' }], [t(null, 'Truck'), t(null, 'truck')]);
     expect(r2.matched.size).toBe(0);
     expect(r2.unmatched).toHaveLength(2);
+  });
+  it('two different real VINs are evidence against a pairing: the same name never overrides them', () => {
+    const units = [{ id: 'a', name: 'Bucket Truck', vinOrSerial: '1FDUF5HT0BEA00001' }];
+    const r = matchTrucks(units, [t('3ALACWDT9JDJZ0002', 'Bucket Truck')]);
+    expect(r.matched.size).toBe(0);
+    expect(r.unmatched).toHaveLength(1);
+    // A serial number on the unit (a chipper, a trailer) is not a VIN, so it says nothing against the name.
+    expect(matchTrucks([{ id: 'c', name: 'Chip truck', vinOrSerial: 'SN-4471' }], [t('3ALACWDT9JDJZ0002', 'Chip truck')]).matched.get('c')!.by).toBe('name');
+    // A truck Bouncie has no VIN for is matched on its name as before.
+    expect(matchTrucks(units, [t(null, 'bucket truck')]).matched.get('a')!.by).toBe('name');
   });
   it('a unit taken by VIN is not handed a second truck by name', () => {
     const r = matchTrucks([{ id: 'a', name: 'Truck', vinOrSerial: 'V1' }], [t('V1', 'Other'), t(null, 'Truck')]);
@@ -718,6 +809,35 @@ describe('the routes, end to end with a fake Bouncie', () => {
     } finally { unwired.srv.close(); }
   });
 
+  it('an oversized body with the right key is drained and answered 200 — never a reset (2, 5 and 8 MB, streamed in 64 KB chunks)', async () => {
+    const { base, srv } = await serve({ ...KEYS, ARBO_SECRET_DIR: tmp(), ARBO_LINK_BOUNCIE: 'live' });
+    const u = new URL(base);
+    const stream = (bytes: number) => new Promise<number>((resolve, reject) => {
+      const r = request({ host: u.hostname, port: u.port, path: '/webhooks/bouncie', method: 'POST', headers: { authorization: HOOK_KEY, 'content-type': 'application/json' } }, (res) => {
+        res.resume();
+        res.on('end', () => resolve(res.statusCode ?? 0));
+      });
+      r.on('error', reject); // ECONNRESET / EPIPE: Bouncie would see a failure and retry, then switch the webhook off
+      r.setTimeout(10_000, () => r.destroy(new Error(`no answer to a ${bytes}-byte body`))); // a hang is a failure too
+      const chunk = Buffer.alloc(64 * 1024, 0x78);
+      let left = bytes;
+      const pump = (): void => {
+        while (left > 0) {
+          const n = Math.min(left, chunk.length);
+          left -= n;
+          if (!r.write(n === chunk.length ? chunk : chunk.subarray(0, n))) { r.once('drain', pump); return; }
+        }
+        r.end();
+      };
+      pump();
+    });
+    try {
+      for (const mb of [2, 5, 8]) expect(await stream(mb * 1_000_000), `${mb} MB`).toBe(200);
+      const s = await (await realFetch(base + '/api/bouncie', { headers: { 'x-arbor-key': 'admin-k' } })).json() as { webhook: Record<string, number> };
+      expect(s.webhook).toMatchObject({ oversized: 3, deliveries: 3, received: 0 });
+    } finally { srv.close(); }
+  }, 60_000);
+
   it('Connect → callback → positions, with the crew door reading nothing of it and the logs carrying no secret, place or id', async () => {
     const dir = tmp();
     const lines: string[] = [];
@@ -787,6 +907,20 @@ describe('the routes, end to end with a fake Bouncie', () => {
   });
 });
 
+// ---------- the binding rulings file holds rulings only ----------
+describe('the R31 draft waits in docs/BOUNCIE.md, not in the binding rulings file', () => {
+  it('OWNER_RULINGS.md carries no draft entry; BOUNCIE.md holds the draft under "Waiting on Mike"', () => {
+    const rulings = readFileSync(new URL('../docs/OWNER_RULINGS.md', import.meta.url), 'utf8');
+    expect(rulings).not.toMatch(/^## R31\b/m);
+    expect(rulings).not.toMatch(/^## .*DRAFT/m);
+    const doc = readFileSync(new URL('../docs/BOUNCIE.md', import.meta.url), 'utf8');
+    const waiting = doc.slice(doc.indexOf('## Waiting on Mike'));
+    expect(waiting).toContain('### Draft R31');
+    expect(waiting).toContain('*"why dont you build and then i add later"*');
+    expect(doc).not.toContain('Draft in `docs/OWNER_RULINGS.md`');
+  });
+});
+
 // ---------- the page: the Settings card and the Fleet line ----------
 const html = loadAppHtml();
 function fnSrc(name: string): string {
@@ -837,7 +971,10 @@ const TRACK_SAYS = pageConst<Record<string, [string, string]>>('TRACK_SAYS');
 const trackWords = pageFn<(t: unknown, unitId: string) => [string, string]>('trackWords', { FEED_WORD, feedKind, TRACK_SAYS, truckWords });
 const bouncieRows = pageFn<(b: unknown) => Array<[string, string, string]>>('bouncieRows', { plural, fmtWhen, RETRY });
 
-const truck = (over: Record<string, unknown>) => ({ id: 'x', name: 'Bucket truck', vin4: '0001', device4: '9876', lat: LAT, lon: LON, heading: 0, reportedAt: iso(Date.now() - 12 * min), ageMinutes: 12, motion: 'parked', lastTrip: null, ...over });
+const truck = (over: Record<string, unknown>) => {
+  const at = iso(Date.now() - 12 * min);
+  return { id: 'x', name: 'Bucket truck', vin4: '0001', device4: '9876', lat: LAT, lon: LON, heading: 0, reportedAt: at, ageMinutes: 12, positionAt: at, positionAgeMinutes: 12, motion: 'parked', lastTrip: null, ...over };
+};
 const answerFor = (state: string, t: Record<string, unknown> | null = null) => ({ state, units: [{ unitId: 'u1', unitName: 'Bucket truck', match: t ? 'vin' : null, truck: t }], unmatched: [] });
 
 describe('the Fleet card — one line per unit, in words, never a coordinate', () => {
@@ -852,7 +989,7 @@ describe('the Fleet card — one line per unit, in words, never a coordinate', (
       trackWords(answerFor('ok'), 'u1'),
       trackWords(answerFor('ok', truck({})), 'u1'),
       trackWords(answerFor('ok', truck({ motion: 'driving', ageMinutes: 2 })), 'u1'),
-      trackWords(answerFor('ok', truck({ motion: 'stale', reportedAt: '2026-10-17T21:05:00Z', ageMinutes: 4000 })), 'u1'),
+      trackWords(answerFor('ok', truck({ motion: 'stale', reportedAt: '2026-10-17T21:05:00Z', ageMinutes: 4000, positionAt: '2026-10-17T21:05:00Z', positionAgeMinutes: 4000 })), 'u1'),
       trackWords(answerFor('ok', truck({ motion: 'unplugged' })), 'u1'),
       trackWords(answerFor('ok', truck({ motion: 'no_fix', lat: null, lon: null })), 'u1'),
     ];
@@ -880,10 +1017,20 @@ describe('the Fleet card — one line per unit, in words, never a coordinate', (
     for (const w of words) expect(w).not.toMatch(/36\.8|-75\.9|\d+\.\d{3,}/);
   });
 
-  it('a failed read is named in the shared words; no answer yet and a locked route draw nothing rather than guess', () => {
+  it('a failed read is named in the shared words; a locked route is named; no answer yet draws nothing rather than guess', () => {
     expect(trackWords({ failed: { code: 500 } }, 'u1')).toEqual(['Tracking: couldn’t read it', 'feed-state unread']);
-    expect(trackWords({ failed: { code: 401 } }, 'u1')[0]).toBe('');
+    // The Fleet list beside it just read with this same key, so a 401 here is the route's own lock (no APP_ACCESS_KEY).
+    expect(trackWords({ failed: { code: 401 } }, 'u1')).toEqual(['Tracking locked — APP_ACCESS_KEY isn’t set on the server', 'feed-state unset']);
     expect(trackWords(null, 'u1')[0]).toBe('');
+  });
+
+  it('"Last seen" is the age of the position itself — a newer report with no fix never makes it look fresh', () => {
+    // Parked yesterday evening, a battery report this minute: the truck was last SEEN 15 h ago.
+    expect(truckWords(truck({ motion: 'parked', ageMinutes: 0, positionAgeMinutes: 900 }))[0]).toBe('Last seen 15 h ago · parked');
+    expect(truckWords(truck({ motion: 'seen', ageMinutes: 0, positionAgeMinutes: 45 }))[0]).toBe('Last seen 45 min ago');
+    // Stale with the fix older than the last report: says the POSITION is old, and when Bouncie last said anything.
+    const stale = truckWords(truck({ motion: 'stale', reportedAt: iso(Date.now() - min), ageMinutes: 1, positionAt: '2026-10-19T21:00:00Z', positionAgeMinutes: 900 }));
+    expect(stale).toEqual(['No Bouncie position since ' + fmtWhen('2026-10-19T21:00:00Z') + ' · last report 1 min ago', 'feed-state unread']);
   });
 
   it('ages read like a person says them', () => {
@@ -903,7 +1050,7 @@ describe('the Fleet card — one line per unit, in words, never a coordinate', (
     const card = list.appendChild(el('div', 'card'));
     card.appendChild(line);
     const extra = el('div');
-    TRACK = { ...answerFor('ok', truck({ motion: 'driving', ageMinutes: 3 })), unmatched: [truck({ name: null, vin4: null, device4: '4321', motion: 'parked', ageMinutes: 40 })] };
+    TRACK = { ...answerFor('ok', truck({ motion: 'driving', ageMinutes: 3 })), unmatched: [truck({ name: null, vin4: null, device4: '4321', motion: 'parked', ageMinutes: 40, positionAgeMinutes: 40 })] };
     pageFn<(l: N, t: N) => void>('fillTrack', deps())(list, extra);
     expect(line.textContent).toBe('Driving · last report 3 min ago');
     expect(line.className).toBe('storm-muted fleet-track');
@@ -914,6 +1061,13 @@ describe('the Fleet card — one line per unit, in words, never a coordinate', (
     expect(extra.text()).toContain('The fleet list isn’t available, so these aren’t matched to units.');
     expect(extra.text()).toContain('VIN …0001');
     expect(extra.text()).not.toMatch(/36\.8|-75\.9/);
+  });
+
+  it('Settings never waits on Bouncie either: the card fills its own slot while the sections below draw', () => {
+    const src = fnSrc('buildSettings');
+    expect(src).not.toContain('await bouncieSettings(');
+    expect(src).toContain('bouncieSettings(bouncieSlot, () => gen !== settingsGen)');
+    expect(src.indexOf('bouncieSettings(bouncieSlot')).toBeLessThan(src.indexOf("'Data links'"));
   });
 
   it('the Fleet list never waits on Bouncie, and the lifted list function keeps its one new line', () => {
@@ -931,7 +1085,7 @@ describe('Settings → Bouncie (truck tracking) — the sign-in, the link and th
     link: { envVar: 'ARBO_LINK_BOUNCIE', open: true },
     positions: { state: 'ok', readAt: '2026-10-20T13:59:00Z' },
     trucks: { known: 3, lastReportAt: '2026-10-20T13:58:00Z' },
-    webhook: { wired: true, url: BOUNCIE_WEBHOOK_URL, deliveries: 38, received: 40, lastAt: '2026-10-20T13:58:00Z', whileCut: 0, rejected: 0, refusedNotWired: 0, unknownTypes: 0, badEvents: 0, badJson: 0, oversized: 0, overCap: 0 },
+    webhook: { wired: true, url: BOUNCIE_WEBHOOK_URL, deliveries: 38, received: 40, lastAt: '2026-10-20T13:58:00Z', whileCut: 0, droppedKeysMissing: 0, lastAuthenticAt: '2026-10-20T13:58:00Z', rejected: 0, lastRejectedAt: null, refusedNotWired: 0, unknownTypes: 0, badEvents: 0, badJson: 0, oversized: 0, overCap: 0 },
     redirectUri: BOUNCIE_REDIRECT,
   };
   const rows = (over: Record<string, unknown>) => bouncieRows({ ...base, ...over });
@@ -963,8 +1117,43 @@ describe('Settings → Bouncie (truck tracking) — the sign-in, the link and th
     expect(hookRow({})[0]).toEqual(['WIRED', 'good', 'Live updates — 40 updates kept since Arbo last restarted, last heard from ' + fmtWhen('2026-10-20T13:58:00Z') + '.']);
     // Arrived but none readable is not "nothing has arrived": it is WIRED with 0 kept, and the skip is said.
     expect(chips(hookRow({ deliveries: 2, received: 0, unknownTypes: 2 }))).toEqual(['WIRED=good', 'UNREADABLE=watch']);
-    expect(chips(hookRow({ rejected: 2, badJson: 1, unknownTypes: 1 }))).toEqual(['WIRED=good', 'WRONG KEY=stop', 'UNREADABLE=watch']);
-    expect(hookRow({ rejected: 2 })[1]![2]).toBe('2 calls to the webhook came with the wrong key since Arbo last restarted — the key in the Bouncie portal must match BOUNCIE_WEBHOOK_KEY exactly.');
+    expect(chips(hookRow({ rejected: 2, lastRejectedAt: '2026-10-20T13:00:00Z', badJson: 1, unknownTypes: 1 }))).toEqual(['WIRED=good', 'REFUSED=info', 'UNREADABLE=watch']);
+  });
+
+  it('refused calls: a stranger knocking is never a red WRONG KEY while Bouncie’s own updates get through', () => {
+    const hookRow = (w: Record<string, unknown>) => rows({ webhook: { ...base.webhook, ...w } }).slice(2);
+    // Anyone on the internet can POST to the address. Bouncie's own updates got through after the refusals: nothing to change.
+    const after = hookRow({ rejected: 2, lastRejectedAt: '2026-10-20T13:00:00Z' });
+    expect(after.map(([c, tone]) => `${c}=${tone}`)).toEqual(['WIRED=good', 'REFUSED=info']);
+    expect(after[1]![2]).toBe('Refused 2 calls to the webhook without Arbo’s key since Arbo last restarted. Bouncie’s own updates got through after them (last ' + fmtWhen('2026-10-20T13:58:00Z') + '), so they came from someone else — nothing to change.');
+    // A refusal AFTER Bouncie's last update: a watch, not an alarm — a parked truck sends nothing.
+    const since = hookRow({ rejected: 1, lastRejectedAt: '2026-10-20T13:59:00Z' });
+    expect(since.map(([c, tone]) => `${c}=${tone}`)).toEqual(['WIRED=good', 'REFUSED=watch']);
+    expect(since[1]![2]).toBe('Refused 1 call to the webhook without Arbo’s key since Arbo last restarted — the last one after Bouncie’s last update (' + fmtWhen('2026-10-20T13:58:00Z') + '). A parked truck sends nothing, so this is usually someone else knocking; if a truck has driven since then and nothing new arrived, check the key in the Bouncie portal still matches BOUNCIE_WEBHOOK_KEY.');
+    // Nothing authentic at all since the restart: only then is it WRONG KEY, and it still only says to check.
+    const none = hookRow({ deliveries: 0, received: 0, lastAt: null, lastAuthenticAt: null, rejected: 3, lastRejectedAt: '2026-10-20T13:59:00Z' });
+    expect(none.map(([c, tone]) => `${c}=${tone}`)).toEqual(['PENDING=watch', 'WRONG KEY=stop']);
+    expect(none[1]![2]).toBe('Refused 3 calls to the webhook without Arbo’s key since Arbo last restarted, and nothing from Bouncie has got through — if the webhook is on in the Bouncie portal, its key must match BOUNCIE_WEBHOOK_KEY exactly.');
+    for (const r of [after, since]) expect(r.some(([, tone]) => tone === 'stop')).toBe(false);
+  });
+
+  it('updates dropped because the sign-in keys are missing are named — never a green "0 kept" alone', () => {
+    const r = rows({
+      signIn: { state: 'keys_missing', stored: false, where: null, savedAt: null },
+      positions: { state: 'keys_missing', readAt: null },
+      webhook: { ...base.webhook, deliveries: 0, received: 0, lastAt: null, droppedKeysMissing: 3, lastAuthenticAt: '2026-10-20T13:58:00Z' },
+    });
+    expect(chips(r)).toEqual(['NOT SET UP=watch', 'OPEN=good', 'WIRED=good', 'DROPPED=watch']);
+    expect(r[3]![2]).toBe('Bouncie sent 3 updates since Arbo last restarted; each was answered and dropped unread because the Bouncie sign-in keys (BOUNCIE_CLIENT_ID and BOUNCIE_CLIENT_SECRET) aren’t on the server.');
+  });
+
+  it('the new chip words are in the canonical tone list', () => {
+    const words = html.slice(html.indexOf('TONE WORDS (the canonical list)'), html.indexOf('const TONE = {'));
+    const line = (tone: string) => words.slice(words.indexOf(`//   ${tone} = `)).split(/\n\/\/ {3}[a-z]+ = /)[0]!;
+    expect(line('info')).toContain('REFUSED (someone else knocking)');
+    expect(line('watch')).toContain('REFUSED (after Bouncie’s last update)');
+    expect(line('watch')).toContain('DROPPED');
+    expect(line('stop')).toContain('WRONG KEY');
   });
 
   async function card(status: unknown, connect: () => Promise<unknown> = async () => ({ authorizeUrl: 'https://auth.example.invalid/x' })) {

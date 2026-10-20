@@ -740,39 +740,3 @@ where he did not say (Mike may change any):
    second, independent translation pass, and safety text is back-translated.
    Before crews rely on it, a Spanish-speaking crew member reads the safety
    briefing and the quiz on a phone and says it reads right.
-
-## R31 — DRAFT, waits on Mike's confirmation: Bouncie truck tracking, built dormant (Mike, 2026-10-20)
-
-*(R28–R30 are held for the assistant, the layout answers and the Talk button.
-This entry is a draft: it becomes a ruling when Mike confirms it.)*
-
-Mike, verbatim: *"how do i add the bouncie api keys for live tracking"*, then
-*"why dont you build and then i add later"*.
-
-What this would change (as built, all off until Mike acts — `docs/BOUNCIE.md`):
-
-1. **Truck positions for Mike only.** The Bouncie OBD trackers report where
-   each truck is; Arbo shows it on the Fleet card as one line per unit in
-   words (never coordinates on the card) and serves it to the coming map
-   screen from one owner-only route. The crew door and the crew key never
-   reach it; the policy engine already walls `tracking`/`bouncie` off every
-   crew surface (`src/binder/policyEngine.ts`).
-2. **Mike's own switch.** Positions are read and held only while
-   `ARBO_LINK_BOUNCIE` is exactly `live` (fail-closed, like R21). Until then
-   Bouncie's live updates are answered (so Bouncie does not switch the
-   webhook off) and dropped unread, and Settings counts them by name.
-3. **Read only, memory only.** One sign-in (Bouncie's own approval page,
-   started behind the owner key) and GET reads of the vehicle list; the
-   only POST is the sign-in token swap. Nothing is written to Bouncie and
-   nothing goes into Arbo's database. The sign-in is kept on the storage
-   disk (0600), like the Google one (`src/integrations/bouncie.ts`).
-
-What did NOT move: §3 — nothing imported into the database; R4 — sweeps stay
-read-only; §4.3 — logs carry counts and the last 4 of a device id at most,
-never a place or a VIN; agents still cannot send or spend; deploys stay manual.
-
-Flagged for Mike, not decided:
-- Should truck positions follow the office phone's 8am–8pm, Mon–Sat hours,
-  or show around the clock? (Built: around the clock.)
-- Should Arbo keep the Bouncie sign-in alive with a daily refresh while
-  positions are cut? (Built: no — it may need a Reconnect when he turns them on.)

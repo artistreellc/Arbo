@@ -48,8 +48,11 @@ says where things stand.
    - If the page says *That sign-in link is not one Arbo is waiting for*,
      more than ten minutes went by, or Arbo was redeployed in between.
      Tap **Connect Bouncie** again.
-   - If it says *Bouncie refused the sign-in*, check that the Redirect URI
-     in step 4 matches exactly, then tap Connect again.
+   - If it says *Bouncie refused the sign-in* (*Bouncie said no*), check that
+     `BOUNCIE_CLIENT_SECRET` on Railway matches the portal's Client Secret
+     exactly — no space before or after — deploy if you changed it, then tap
+     Connect again. (A wrong Redirect URI shows its error on Bouncie's own
+     page instead, before you ever get back to Arbo.)
 
 ## Part 2 — live updates from the trucks (the webhook)
 
@@ -75,10 +78,14 @@ refusals.
 
     **What you should see:** after the next trip, *Live updates* says
     **WIRED** with a count. While positions are still cut (Part 3), the
-    count shows under **CUT** instead. Arbo answers every update so Bouncie
-    keeps sending, but it keeps nothing.
-    If it says **WRONG KEY**, the key in Bouncie and in Railway are not the
-    same. Fix one of them so they match.
+    count shows under **CUT** instead, and if the Part 1 keys are missing it
+    shows as **DROPPED**. Arbo answers every update so Bouncie keeps sending,
+    but it keeps nothing.
+    If it says **WRONG KEY** — refused calls *and no updates arriving* — the
+    key in Bouncie and in Railway are not the same. Fix one of them so they
+    match. **REFUSED** is different: the webhook address is public, so anyone
+    can knock on it, and Arbo turns them away. While Bouncie's own updates
+    keep getting through, there is nothing to change.
 
 ## Part 3 — turn positions on (when you are ready)
 
@@ -92,15 +99,17 @@ refusals.
 For a line to land on the right unit, give the truck the **same name in
 Bouncie** as the unit has in Arbo, or make sure the unit's **VIN** in Arbo
 matches Bouncie's. A truck Arbo cannot match is listed under *Bouncie trucks
-not matched to a unit*. Arbo never guesses between two units with the same name.
+not matched to a unit*. Arbo never guesses between two units with the same name,
+and never pairs on a name when the unit's VIN and Bouncie's VIN are different.
 
 ## What each line means
 
 | You see | It means |
 |---|---|
-| Last seen 12 min ago · parked | Bouncie's latest report. The truck is not moving. |
-| Driving · last report 2 min ago | A trip is under way and Bouncie is reporting. |
+| Last seen 12 min ago · parked | The truck's last GPS position is 12 minutes old. The truck is not moving. |
+| Driving · last report 2 min ago | A trip is under way, Bouncie is reporting, and its position is under 15 minutes old. |
 | No Bouncie report since Tue 4:10 PM | Nothing for over a day, or a trip went quiet for 15 minutes. It does not say where the truck is now. |
+| No Bouncie position since Tue 4:10 PM · last report 1 min ago | Bouncie is still reporting (a trip start, a battery reading), but its last GPS position is old. It does not say where the truck is now. |
 | Bouncie tracker unplugged since … | The device was pulled from the truck's port. |
 | Bouncie has no position for this truck yet | Bouncie knows the truck but has no GPS fix. |
 | No Bouncie truck matched to this unit | See the matching note above. |
@@ -109,6 +118,7 @@ not matched to a unit*. Arbo never guesses between two units with the same name.
 | Tracking cut on purpose | `ARBO_LINK_BOUNCIE` is not `live`. |
 | Tracking stopped — sign-in expired | Tap **Reconnect Bouncie** in Settings. |
 | Tracking: couldn't read Bouncie just now | Bouncie did not answer. Arbo tries again within a minute. |
+| Tracking locked — APP_ACCESS_KEY isn't set | Truck positions are owner-only, so they stay locked until `APP_ACCESS_KEY` is on Railway. |
 | Bouncie lists no trucks on this account | Bouncie answered and has no vehicles on this account. |
 
 ## How to disconnect
@@ -139,10 +149,48 @@ not matched to a unit*. Arbo never guesses between two units with the same name.
 ## Waiting on Mike (flagged, not decided)
 
 1. **The ruling.** Record "why dont you build and then i add later" as R31,
-   with `ARBO_LINK_BOUNCIE` as your own switch? (Draft in `docs/OWNER_RULINGS.md`.)
+   with `ARBO_LINK_BOUNCIE` as your own switch? (Draft below. It goes into
+   `docs/OWNER_RULINGS.md` only when you confirm it — that file holds rulings,
+   and the next builder treats every entry in it as binding.)
 2. **Hours.** Arbo only takes the office phone's location 8am–8pm, Monday
    to Saturday (`src/ops/locationIntel.ts`). Should truck positions follow
    the same hours, or show around the clock? Today they show whenever
    Bouncie reports.
 3. **Keeping the sign-in alive.** Should Arbo refresh the Bouncie sign-in
    once a day even while positions are cut, so it never lapses? Today it does not.
+
+### Draft R31 — Bouncie truck tracking, built dormant (Mike, 2026-10-20)
+
+*(R28–R30 are held for the assistant, the layout answers and the Talk button.
+This is a draft: it becomes a ruling, in `docs/OWNER_RULINGS.md`, when Mike confirms it.)*
+
+Mike, verbatim: *"how do i add the bouncie api keys for live tracking"*, then
+*"why dont you build and then i add later"*.
+
+What this would change (as built, all off until Mike acts — the steps above):
+
+1. **Truck positions for Mike only.** The Bouncie OBD trackers report where
+   each truck is; Arbo shows it on the Fleet card as one line per unit in
+   words (never coordinates on the card) and serves it to the coming map
+   screen from one owner-only route. The crew door and the crew key never
+   reach it; the policy engine already walls `tracking`/`bouncie` off every
+   crew surface (`src/binder/policyEngine.ts`).
+2. **Mike's own switch.** Positions are read and held only while
+   `ARBO_LINK_BOUNCIE` is exactly `live` (fail-closed, like R21). Until then
+   Bouncie's live updates are answered (so Bouncie does not switch the
+   webhook off) and dropped unread, and Settings counts them by name.
+3. **Read only, memory only.** One sign-in (Bouncie's own approval page,
+   started behind the owner key) and GET reads of the vehicle list; the
+   only POST is the sign-in token swap. Nothing is written to Bouncie and
+   nothing goes into Arbo's database. The sign-in is kept on the storage
+   disk (0600), like the Google one (`src/integrations/bouncie.ts`).
+
+What did NOT move: §3 — nothing imported into the database; R4 — sweeps stay
+read-only; §4.3 — logs carry counts and the last 4 of a device id at most,
+never a place or a VIN; agents still cannot send or spend; deploys stay manual.
+
+Flagged for Mike, not decided:
+- Should truck positions follow the office phone's 8am–8pm, Mon–Sat hours,
+  or show around the clock? (Built: around the clock.)
+- Should Arbo keep the Bouncie sign-in alive with a daily refresh while
+  positions are cut? (Built: no — it may need a Reconnect when he turns them on.)

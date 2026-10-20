@@ -736,12 +736,12 @@ function showSaveFail(box, e) { const n = box.querySelector(':scope > .save-err'
 //     UNREADABLE, MISSING INPUTS, FAIR, LOW, NOT SET UP, NOT WIRED, PENDING, NO EXPIRY DATE, EXPIRES SOON, WEEK UNKNOWN,
 //     OWES THIS WEEK, OVERDUE, DUE NOW, COMING DUE (property), PAST DUE, SECOND NOTICE, LATE FEE, NEEDS ATTENTION,
 //     N OPEN TASKS, SIZE UNKNOWN, CARDS UNKNOWN, BELOW AVERAGE, WAITING ON YOU, IN RPA, FOLLOW-UP, NO-SHOW SAVE,
-//     a non-power CALL FIRST, an unknown crew role, NOT CONNECTED
+//     a non-power CALL FIRST, an unknown crew role, NOT CONNECTED, REFUSED (after Bouncie’s last update), DROPPED
 //   good = READ, OK, GOOD, SOURCED, QUALIFIED, WIRED, OPEN, UP, ABOVE AVERAGE, WEEK DONE, REVIEWED, CONNECTED
 //   info = CUT / LINK CUT, NOT SIMULATED, NOT RUN, NOT BUILT, NO OVERLAY — VERIFY W/ CITY, JOB, ESTIMATE, FIRST-TIMER,
 //     REPEAT, SPANISH SPEAKER, SPAM, COOL, OFF ROSTER, AT AVERAGE, NOT ENOUGH DATA, RENEWAL DUE, SEASONAL, REVIEW ASK,
-//     COMING DUE (growth nudge), + PROOF OF INSURANCE, and every identity tag (city, channel, line, job type, role,
-//     source, money amount, counts, study stages other than WAITING ON YOU)
+//     COMING DUE (growth nudge), + PROOF OF INSURANCE, REFUSED (someone else knocking), and every identity tag
+//     (city, channel, line, job type, role, source, money amount, counts, study stages other than WAITING ON YOU)
 const TONE = { alarm: 't-alarm', stop: 't-stop', watch: 't-watch', good: 't-good', info: 't-info' };
 // A feed state as a tone: a gap on purpose is grey; anything Arbo does not know is amber.
 const FEED_TONE = { cut: 'info', sim: 'info', unset: 'watch', unread: 'watch' };
@@ -3584,19 +3584,28 @@ function agoWords(min) {
   if (min < 2880) return Math.floor(min / 60) + ' h ago';
   return Math.floor(min / 1440) + ' days ago';
 }
-// One truck, one line, [words, look] — never a coordinate.
+// One truck, one line, [words, look] — never a coordinate. "Last seen" is the
+// age of the POSITION (positionAgeMinutes); "last report" is any report at all
+// (ageMinutes) — a trip start or a battery reading carries no position.
 function truckWords(k) {
   const when = fmtWhen(k.reportedAt);
   if (k.motion === 'driving') return ['Driving · last report ' + agoWords(k.ageMinutes), 'storm-muted'];
-  if (k.motion === 'parked') return ['Last seen ' + agoWords(k.ageMinutes) + ' · parked', 'storm-muted'];
-  if (k.motion === 'seen') return ['Last seen ' + agoWords(k.ageMinutes), 'storm-muted'];
+  if (k.motion === 'parked') return ['Last seen ' + agoWords(k.positionAgeMinutes) + ' · parked', 'storm-muted'];
+  if (k.motion === 'seen') return ['Last seen ' + agoWords(k.positionAgeMinutes), 'storm-muted'];
   if (k.motion === 'unplugged') return ['Bouncie tracker unplugged' + (when ? ' since ' + when : ''), 'feed-state unset'];
-  if (k.motion === 'stale') return ['No Bouncie report since ' + (when || 'Arbo last restarted'), 'feed-state unread'];
+  if (k.motion === 'stale') {
+    // The fix older than the last report: say the POSITION is old, and when Bouncie last said anything.
+    if (k.positionAt && k.reportedAt && Date.parse(k.positionAt) < Date.parse(k.reportedAt)) {
+      return ['No Bouncie position since ' + fmtWhen(k.positionAt) + ' · last report ' + agoWords(k.ageMinutes), 'feed-state unread'];
+    }
+    return ['No Bouncie report since ' + (when || 'Arbo last restarted'), 'feed-state unread'];
+  }
   return ['Bouncie has no position for this truck yet', 'feed-state unread'];
 }
 function trackWords(t, unitId) {
   if (!t) return ['', 'storm-muted']; // not read yet: no line rather than a guess
-  if (t.failed) return t.failed.code === 401 ? ['', 'storm-muted'] : ['Tracking: ' + FEED_WORD[feedKind(t.failed)], 'feed-state ' + feedKind(t.failed)];
+  // The Fleet list beside this line just read with the same key, so a 401 here is the route's own lock (no APP_ACCESS_KEY).
+  if (t.failed) return t.failed.code === 401 ? ['Tracking locked — APP_ACCESS_KEY isn’t set on the server', 'feed-state unset'] : ['Tracking: ' + FEED_WORD[feedKind(t.failed)], 'feed-state ' + feedKind(t.failed)];
   if (t.state !== 'ok' && t.state !== 'unreadable') return TRACK_SAYS[t.state] || ['Tracking: ' + FEED_WORD.unread, 'feed-state unread'];
   const u = (t.units || []).find((x) => x.unitId === unitId);
   if (u && u.truck) return truckWords(u.truck);
@@ -3659,12 +3668,22 @@ function bouncieRows(b) {
   if (!w.wired) {
     rows.push(['NOT WIRED', 'watch', 'Live updates — BOUNCIE_WEBHOOK_KEY isn’t set on Railway, so Arbo refuses Bouncie’s live updates; this is not zero updates.'
       + (w.refusedNotWired ? ' Something called the webhook ' + plural(w.refusedNotWired, 'time') + ' since Arbo last restarted.' : '')]);
-  } else if (!w.deliveries && !w.whileCut) {
+  } else if (!w.deliveries && !w.whileCut && !w.droppedKeysMissing) {
     rows.push(['PENDING', 'watch', 'Live updates — the key is set, but nothing has arrived since Arbo last restarted. Turn the webhook on in the Bouncie portal with the address below.']);
   } else {
     rows.push(['WIRED', 'good', 'Live updates — ' + plural(w.received || 0, 'update') + ' kept since Arbo last restarted' + (w.lastAt ? ', last heard from ' + fmtWhen(w.lastAt) : '') + '.']);
   }
-  if (w.rejected) rows.push(['WRONG KEY', 'stop', plural(w.rejected, 'call') + ' to the webhook came with the wrong key since Arbo last restarted — the key in the Bouncie portal must match BOUNCIE_WEBHOOK_KEY exactly.']);
+  if (w.droppedKeysMissing) rows.push(['DROPPED', 'watch', 'Bouncie sent ' + plural(w.droppedKeysMissing, 'update') + ' since Arbo last restarted; each was answered and dropped unread because the Bouncie sign-in keys (BOUNCIE_CLIENT_ID and BOUNCIE_CLIENT_SECRET) aren’t on the server.']);
+  // Anyone on the internet can POST to the webhook address, so a refused call is only a WRONG KEY
+  // when nothing from Bouncie has got through. Bouncie's own calls after the refusals: someone else knocking.
+  if (w.rejected) {
+    const refused = 'Refused ' + plural(w.rejected, 'call') + ' to the webhook without Arbo’s key since Arbo last restarted';
+    const lastOk = w.lastAuthenticAt ? Date.parse(w.lastAuthenticAt) : NaN;
+    const lastNo = w.lastRejectedAt ? Date.parse(w.lastRejectedAt) : NaN;
+    if (Number.isNaN(lastOk)) rows.push(['WRONG KEY', 'stop', refused + ', and nothing from Bouncie has got through — if the webhook is on in the Bouncie portal, its key must match BOUNCIE_WEBHOOK_KEY exactly.']);
+    else if (Number.isNaN(lastNo) || lastOk >= lastNo) rows.push(['REFUSED', 'info', refused + '. Bouncie’s own updates got through after them (last ' + fmtWhen(w.lastAuthenticAt) + '), so they came from someone else — nothing to change.']);
+    else rows.push(['REFUSED', 'watch', refused + ' — the last one after Bouncie’s last update (' + fmtWhen(w.lastAuthenticAt) + '). A parked truck sends nothing, so this is usually someone else knocking; if a truck has driven since then and nothing new arrived, check the key in the Bouncie portal still matches BOUNCIE_WEBHOOK_KEY.']);
+  }
   const skipped = (w.unknownTypes || 0) + (w.badEvents || 0) + (w.badJson || 0) + (w.oversized || 0) + (w.overCap || 0);
   if (skipped) rows.push(['UNREADABLE', 'watch', plural(skipped, 'update') + ' from Bouncie couldn’t be read and were skipped since Arbo last restarted.']);
   return rows;
@@ -3707,7 +3726,7 @@ async function bouncieSettings(v, stale) {
     v.appendChild(out);
   }
   const w = b.webhook || {};
-  if (w.url && (!w.wired || !(w.deliveries || w.whileCut))) v.appendChild(el('div', 'storm-muted', 'Webhook address for the Bouncie portal: ' + w.url));
+  if (w.url && (!w.wired || !(w.deliveries || w.whileCut || w.droppedKeysMissing))) v.appendChild(el('div', 'storm-muted', 'Webhook address for the Bouncie portal: ' + w.url));
 }
 
 // ---------- Fleet (§6E: units, DOWN status, breakdown reports) ----------
@@ -4401,9 +4420,11 @@ async function buildSettings(v, gen) {
     }
   }
 
-  // R31 draft: Bouncie truck tracking. Its own read, so a dead Bouncie never hides the sections around it.
-  await bouncieSettings(v, () => gen !== settingsGen);
-  if (gen !== settingsGen) return;
+  // R31 draft: Bouncie truck tracking, in its own slot and NOT awaited: its read can wait on
+  // Bouncie (an 8 s deadline per call), and the data links below never wait with it.
+  // A card that breaks names itself in its slot (§1B), never a blank.
+  const bouncieSlot = v.appendChild(el('div'));
+  bouncieSettings(bouncieSlot, () => gen !== settingsGen).catch((e) => { if (gen === settingsGen) bouncieSlot.appendChild(feedLine(e, 'Bouncie status')); });
 
   // R19: the data links, one by one. Read-only here on purpose \u2014 a link
   // opens by setting its variable on Railway AFTER its verification passes,
