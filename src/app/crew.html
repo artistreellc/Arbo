@@ -1108,6 +1108,13 @@ if (PREVIEW) {
   bar.appendChild(el('div', '', PREVIEW_BANNER));
   const back = el('a', '', '← Back to the office app');
   back.href = '/app#more';
+  // Step back to the office app as it was left; a fresh visit replaces this
+  // page instead of stacking one, so Back never loops app → preview → app.
+  back.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    if (history.length > 1 && document.referrer.indexOf('/app') !== -1) history.back();
+    else location.replace('/app#more');
+  });
   bar.appendChild(back);
   document.body.appendChild(bar);
 }

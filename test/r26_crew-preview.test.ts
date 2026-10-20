@@ -75,6 +75,9 @@ describe('R26 crew preview — how the page knows it is a preview, and whose key
     expect(boot).toMatch(/^\/\/ R26[^\n]*\nif \(PREVIEW\) \{/);
     expect(boot).toContain("el('div', '', PREVIEW_BANNER)");
     expect(boot).toContain("back.href = '/app#more';");
+    // Back steps back to the office app as it was left; a fresh visit replaces the page (no app → preview → app loop).
+    expect(boot).toContain("if (history.length > 1 && document.referrer.indexOf('/app') !== -1) history.back();");
+    expect(boot).toContain("else location.replace('/app#more');");
   });
 
   it('the switched-off controls are drawn after their panels, inside the boot block', () => {

@@ -198,3 +198,14 @@ describe('a refused save says the server\'s own words', () => {
     expect(html).toContain("out.appendChild(state('Not filed', e.line || ('The report did not save (' + (e.message || 'error') + '). Nothing was changed.')));");
   });
 });
+
+describe('three small navigation fixes from the usability audit', () => {
+  it('the sheets\' close X draws its icon at button size, not the browser\'s 300×150 default', () => {
+    expect(html).toContain('.sheet-head button .hico{width:21px;height:21px}');
+  });
+  it('Settings opens from the gear and lights no dock tab', () => {
+    const sw = html.slice(html.indexOf('function switchTab('), html.indexOf('\n}', html.indexOf('function switchTab(')));
+    expect(sw).toContain("['book', 'followups', 'perf', 'more', 'permits', 'agents', 'measure', 'learn'].indexOf(which)");
+    expect(sw).not.toContain("'perf', 'settings', 'more', 'permits', 'agents', 'measure', 'learn'].indexOf(which)");
+  });
+});

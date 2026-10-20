@@ -167,7 +167,7 @@ header.scrolled{border-bottom-color:var(--hairline)}
 #refresh,#settings-btn,#back-btn,.iconbtn{
   width:44px;height:44px;min-height:44px;border:1px solid var(--border);border-radius:14px;background:var(--card);
   color:var(--forest);display:inline-grid;place-items:center;box-shadow:0 1px 2px rgba(20,40,30,.05)}
-#refresh .hico,#settings-btn .hico,#back-btn .hico,.iconbtn .hico{width:21px;height:21px}
+#refresh .hico,#settings-btn .hico,#back-btn .hico,.iconbtn .hico,.sheet-head button .hico{width:21px;height:21px}
 #back-btn{width:auto;display:inline-flex;align-items:center;gap:2px;padding:0 14px 0 8px;font:650 16px/1 var(--sans);letter-spacing:0}
 #back-btn .hico{transform:scaleX(-1)}
 #back-btn[hidden],.brand.has-back .mark{display:none}
@@ -5317,8 +5317,9 @@ function switchTab(which) {
     const tb = $('tab-' + t); // Settings opens from the header gear — it has no nav tab
     if (tb) tb.classList.toggle('active', which === t);
   }
-  // Book, Queue, Numbers and Settings sit behind More in the dock.
-  $('tab-more').classList.toggle('active', ['book', 'followups', 'perf', 'settings', 'more', 'permits', 'agents', 'measure', 'learn'].indexOf(which) !== -1);
+  // Book, Queue, Numbers and the R25 desks sit behind More in the dock. Settings
+  // opens from the header gear, so it lights no dock tab.
+  $('tab-more').classList.toggle('active', ['book', 'followups', 'perf', 'more', 'permits', 'agents', 'measure', 'learn'].indexOf(which) !== -1);
   $('apptitle').textContent = VIEW_TITLES[which] || 'ARBO';
   CUR_TAB = which;
   setAppSub();
