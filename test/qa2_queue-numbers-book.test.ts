@@ -125,8 +125,9 @@ describe('Q0 — chips speak one tone table', () => {
     expect(queue()).toContain("chip('+ PROOF OF INSURANCE', 'info')");
     expect(book()).toContain("chip(d.state === 'overdue' ? 'OVERDUE' : 'DUE NOW', 'watch')");
     expect(book()).toContain("chip(p.due.state === 'overdue' ? 'OVERDUE' : 'COMING DUE', 'watch')");
-    for (const pin of ["chip('PERMIT LIKELY', 'watch')", "chip('REVIEW NEEDED', 'watch')",
-      "chip('NO OVERLAY — VERIFY W/ CITY', 'info')", "chip('IN RPA', 'watch')"]) expect(twin()).toContain(pin);
+    // R26 (qa-x6): the twin's permit chip is the one label per permit state (PERMIT_STATE via permitChip).
+    for (const pin of ['b.appendChild(permitChip(pr.screen_status));', "chip('IN RPA', 'watch')"]) expect(twin()).toContain(pin);
+    expect(twin()).not.toContain("chip('REVIEW NEEDED'");
   });
 });
 

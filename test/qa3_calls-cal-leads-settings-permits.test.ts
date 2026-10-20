@@ -219,9 +219,12 @@ describe('Leads: a spam Undo holds the minute timer for about 2 minutes, not for
   function mount() {
     const v = el('div');
     const api = async (_path: string, opts?: unknown) => (opts ? { ok: true } : { leads: [lead] });
-    const permitBadge = pageFn<(l: unknown) => Node | null>('permitBadge', { chip });
+    // R26: the permit words come through permitChip (one map); Leads also updates the tab badge.
+    const PERMIT_STATE = new Function(`return ${/^const PERMIT_STATE = (\{.*\});$/m.exec(html)![1]}`)();
+    const permitChip = pageFn<(s: string) => Node>('permitChip', { chip, PERMIT_STATE });
+    const permitBadge = pageFn<(l: unknown) => Node | null>('permitBadge', { permitChip });
     const renderLeads = pageFn<() => Promise<void>>('renderLeads', {
-      $: () => v, el, api, chip, fmtWhen, permitBadge,
+      $: () => v, el, api, chip, fmtWhen, permitBadge, leadsTabBadge: () => {},
       icon: (id: string) => el('svg', 'ico ' + id),
       showKeywall: () => {}, LINKS_READY: Promise.resolve('simulation'),
       state: (t: string) => el('div', 'state', t), feedState: (_e: unknown, w: string) => el('div', 'state', w),

@@ -173,7 +173,8 @@ export const SECTION_AGENTS: readonly SectionAgentDef[] = [
     model: 'claude-opus-5',
   },
   {
-    id: 'yard-boss', name: 'Yard Boss', section: 'Fleet & money',
+    // R26: named by the screen it works on — the fleet & money part of the Queue.
+    id: 'yard-boss', name: 'Yard Boss', section: 'Queue — fleet & money',
     roles: ['#10 Equipment & parts', 'Collections (§4.8, §5B)'],
     carries: ['agents/collectionsAgent', 'fleet (via the read-only units list)'],
     reads: [IN.invoices, IN.fleet],
