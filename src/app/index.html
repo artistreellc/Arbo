@@ -548,6 +548,39 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 .actbtn.alt{background:var(--card);color:var(--ink-1);border:1px solid var(--border);box-shadow:none}
 #view-agents .wide-btn + .feed-state{margin-top:14px}
 .bigcheck{width:26px;height:26px;flex:none;accent-color:var(--forest)}
+/* ── Talk (R30) — Mike's voice line inside Arbo. The header button sits on
+   every screen; the sheet is one huge Start/End, a status line, the last
+   answer, and a typing box when this phone cannot listen. ─────────────── */
+/* Mic over the word, so three buttons still fit beside the name on a 390 px phone. */
+.talk-open{width:auto;min-width:50px;padding:0 7px;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font:700 12px/1 var(--sans);letter-spacing:.02em}
+.talk-open .hico{width:19px;height:19px}
+/* With Talk in the header the name side may shrink (its small line already
+   ends in "…") instead of pushing the whole page sideways. */
+#appbar .hrow > div:first-child{min-width:0}
+#appbar .brand > span{min-width:0}
+#apptitle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hbtns{flex:none}
+.talk-body{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.talk-body [hidden]{display:none}
+.talk-lede{font-size:15px;line-height:1.5;color:var(--ink-2);text-wrap:pretty}
+.talk-go{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;width:100%;min-height:176px;border:0;border-radius:var(--r-xl);
+  background:radial-gradient(120% 120% at 30% 15%,#2F7560 0%,#1B4D3E 52%,#0E2A21 100%);color:#F7EDD2;font:600 32px/1 var(--serif);letter-spacing:.01em;
+  box-shadow:var(--shadow-float),inset 0 1px 0 rgba(255,255,255,.14)}
+.talk-go svg{width:46px;height:46px}
+.talk-go small{font:600 14px/1.2 var(--sans);letter-spacing:.03em;color:#E5C874}
+.talk-go.on{background:var(--card);color:var(--emergency);border:2px solid color-mix(in srgb,var(--emergency) 60%,transparent);box-shadow:var(--shadow-card)}
+.talk-go.on small{color:var(--ink-3)}
+.talk-status{font-size:18px;font-weight:650;line-height:1.4;color:var(--forest);text-align:center;min-height:26px;text-wrap:balance}
+.talk-heard{font-size:14px;line-height:1.45;color:var(--ink-3);padding:0 4px}
+.talk-reply{background:var(--card);border:1px solid var(--hairline);border-radius:var(--r-lg);padding:16px 18px;font-size:17px;line-height:1.55;color:var(--ink-1);box-shadow:var(--shadow-card);text-wrap:pretty}
+.talk-reply.failed{background:var(--emergency-bg);border-color:color-mix(in srgb,var(--emergency) 28%,transparent);color:color-mix(in srgb,var(--emergency) 75%,var(--ink-1))}
+.talk-form{display:flex;flex-direction:column;gap:8px}
+.talk-form label{font-size:13px;font-weight:700;color:var(--ink-2)}
+.talk-row{display:flex;gap:8px;align-items:stretch}
+.talk-row .input{flex:1;min-width:0}
+.talk-row .actbtn{margin-top:0}
+.talk-form small,.talk-foot{font-size:13px;line-height:1.5;color:var(--ink-3)}
+/* ── /Talk */
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -570,6 +603,7 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
       <div id="dateline"></div>
     </div>
     <div class="hbtns">
+      <button id="talk-open" class="iconbtn talk-open" title="Talk" aria-label="Talk — ask Arbo out loud"><svg class="hico" aria-hidden="true"><use href="#i-mic"/></svg><span>Talk</span></button>
       <button id="settings-btn" title="Settings" aria-label="Settings"><svg class="hico" aria-hidden="true"><use href="#i-settings"/></svg></button>
       <button id="refresh" title="Refresh" aria-label="Refresh"><svg class="hico" aria-hidden="true"><use href="#i-refresh"/></svg></button>
     </div>
@@ -646,6 +680,26 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
   </label>
   <button id="bd-go" class="actbtn wide-btn">File the report</button>
   <div id="bd-out"></div>
+</div>
+
+<div id="talk" class="sheet">
+  <div class="sheet-head">
+    <button id="talk-close" aria-label="Close"><svg class="hico" aria-hidden="true"><use href="#i-close"/></svg></button>
+    <div class="brand">TALK</div>
+  </div>
+  <div class="talk-body">
+    <p class="talk-lede">Arbo tells you what needs you, then answers out loud. Ask about today, Sona&rsquo;s calls or the trucks. Say &ldquo;that&rsquo;s all&rdquo; or tap End to finish.</p>
+    <button id="talk-go" class="talk-go" aria-pressed="false"><svg aria-hidden="true"><use href="#i-mic"/></svg><span id="talk-go-label">Start</span><small id="talk-go-hint">Hands-free once it starts</small></button>
+    <div id="talk-status" class="talk-status" role="status" aria-live="polite">Tap Start, then just talk.</div>
+    <div id="talk-heard" class="talk-heard" hidden></div>
+    <div id="talk-reply" class="talk-reply" hidden></div>
+    <form id="talk-form" class="talk-form" hidden>
+      <label for="talk-text">Type, or tap the mic on your keyboard</label>
+      <div class="talk-row"><input id="talk-text" class="input" type="text" enterkeyhint="send" autocomplete="off" autocapitalize="sentences" maxlength="500" placeholder="Ask Arbo&hellip;"><button class="actbtn" type="submit">Send</button></div>
+      <small>Not hands-free here &mdash; two taps a question.</small>
+    </form>
+    <p class="talk-foot">Read-only: Arbo tells you things &mdash; it can&rsquo;t send, book or change anything. Your iPhone does the listening and the speaking.</p>
+  </div>
 </div>
 
 <nav aria-label="Sections">
@@ -823,6 +877,8 @@ async function stormBanner() {
     if (worst.headline) box.appendChild(el('small', '', worst.headline));
     const nr = s.atRisk.length;
     if (nr) box.appendChild(el('small', '', plural(nr, 'booked stop') + (nr === 1 ? ' falls' : ' fall') + ' inside the alert window — consider moving ' + (nr === 1 ? 'it' : 'them') + ' early.'));
+    // The schedule could not be read (R30 review): the alert shows, and no stops at risk is never implied (§1B).
+    if (s.atRiskUnread) box.appendChild(el('small', '', 'Arbo couldn’t check which booked stops fall inside the alert window.'));
     return box;
   } catch (e) {
     // A dead weather feed is reported, never treated as clear skies. The hero
@@ -5327,6 +5383,299 @@ function switchTab(which) {
   window.scrollTo(0, 0);
 }
 
+// ═══ TALK (R30) ═══ Mike, 2026-10-20: "i need their to be a voice feature for
+// when im driving and it can update me" → "no i want to tap a button in arbo
+// and i can talk to it no third party".
+// The iPhone's own speech: SpeechRecognition (Apple's dictation) listens and
+// speechSynthesis speaks. Arbo's brain answers through POST /api/talk and is
+// read-only. The iPhone rules this follows (voice research, 2026-10-20):
+//  · the first speak() happens inside the tap, or iOS silently drops every later one;
+//  · never listen while speaking, and a NEW recognizer every turn;
+//  · watchdogs — an installed app can start() the mic and then never hear a word;
+//  · the screen stays on while it runs; leaving Talk or locking the phone stops it all.
+const TALK_AUDIO_SESSION = 'play-and-record'; // field-test switch: '' leaves the iPhone's audio routing alone
+// `deaf` lasts for this launch: once the mic is REFUSED, the next Start goes straight to typing.
+// A mic that is only busy or silent (a call, Siri, a slow Allow) types for now and is tried again on the next Start.
+// `micOk`: the mic has opened at least once this launch — until then the iPhone may be showing its Allow prompt.
+const TALK = { on: false, busy: false, typing: false, deaf: false, micOk: false, seq: 0, turns: [], rec: null, lock: null, timers: [], dead: 0, quiet: 0 };
+const TALK_END_LINE = {
+  done: 'Ended. Tap Start to talk again.',
+  left: 'Ended.',
+  hidden: 'Paused when the screen locked — tap Start to pick up again.',
+  quiet: 'Stopped listening. Tap Start when you need me.',
+};
+function talkSupport() {
+  return {
+    listen: !!(window.SpeechRecognition || window.webkitSpeechRecognition),
+    speak: !!(window.speechSynthesis && window.SpeechSynthesisUtterance),
+  };
+}
+// Ends the talk only when the WHOLE thing said is an end phrase: "stop" alone
+// ends it, "what's at stop two" is a question. Fillers either side ("Arbo,
+// stop", "no, that's all", "that's it, thanks Arbo", "stop. stop.") come off first.
+function talkEndPhrase(said) {
+  const s = String(said || '').toLowerCase().replace(/[’‘]/g, "'").replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim()
+    .replace(/^(?:(?:hey|ok|okay|no|nope|thanks|thank you|alright|all right|arbo) )+/, '')
+    .replace(/(?: (?:thanks|thank you|arbo|for now|please))+$/, '');
+  return /^(?:stop|end|done|bye|goodbye|good bye|that'?s (?:all|it)|that is (?:all|it)|(?:i'?m|i am|we'?re|all) done|stop (?:talking|listening)|end talk)(?: (?:stop|bye))*$/.test(s);
+}
+// What the voice reads: no markdown, and the permit word's "W/" said as "with".
+function talkSpeech(text) {
+  return String(text || '').replace(/[*_#`>]+/g, '').replace(/\bW\/\s*/g, 'with ').replace(/\s+—\s+/g, ', ').replace(/\s+/g, ' ').trim();
+}
+// Spoken a sentence at a time: a long utterance can stall on iOS.
+function talkSentences(text) {
+  return (talkSpeech(text).match(/[^.!?]+(?:[.!?]+["')\]]*|$)/g) || []).map((p) => p.trim()).filter(Boolean);
+}
+// The language only: iOS then speaks in the voice set on the phone. Picking one
+// from the list would not — iOS marks every voice local and lists them late, so
+// the voice could change mid-talk.
+function talkUtterance(text) {
+  const u = new window.SpeechSynthesisUtterance(text);
+  u.lang = 'en-US';
+  return u;
+}
+function talkStatus(line) {
+  $('talk-status').textContent = line;
+}
+function talkButton() {
+  $('talk-go').classList.toggle('on', TALK.on);
+  $('talk-go').setAttribute('aria-pressed', TALK.on ? 'true' : 'false');
+  $('talk-go-label').textContent = TALK.on ? 'End' : 'Start';
+  $('talk-go-hint').textContent = TALK.on ? 'Tap to stop' : 'Hands-free once it starts';
+}
+function talkLater(fn, ms) {
+  TALK.timers.push(setTimeout(fn, ms));
+}
+function talkStart() {
+  if (TALK.on) return;
+  const can = talkSupport();
+  TALK.on = true; TALK.busy = false; TALK.typing = !can.listen || TALK.deaf; TALK.seq++;
+  TALK.turns = []; TALK.dead = 0; TALK.quiet = 0;
+  // The audio route is set before the first word, so the voice does not switch mid-sentence.
+  try { if (TALK_AUDIO_SESSION && navigator.audioSession) navigator.audioSession.type = TALK_AUDIO_SESSION; } catch (e) { /* the phone's default audio */ }
+  // Inside the tap: this speak() unlocks every later one for the page (iOS).
+  if (can.speak) {
+    try { window.speechSynthesis.speak(talkUtterance('Pulling your update.')); } catch (e) { /* no voice: answers still show as text */ }
+  }
+  try {
+    if (navigator.wakeLock) navigator.wakeLock.request('screen').then((l) => { if (TALK.on) TALK.lock = l; else l.release(); }, () => { /* the screen may dim */ });
+  } catch (e) { /* no screen lock on this phone */ }
+  $('talk-heard').hidden = true;
+  $('talk-reply').hidden = true;
+  $('talk-form').hidden = !TALK.typing;
+  talkButton();
+  talkAsk();
+}
+// One turn with Arbo's brain. Every failure is said out loud and shown — never swallowed.
+async function talkAsk() {
+  const seq = TALK.seq;
+  TALK.busy = true;
+  talkStatus('Thinking…');
+  let reply = null;
+  let line = null;
+  let stop = false;
+  try {
+    const r = await Promise.race([
+      api('/api/talk', { method: 'POST', body: { messages: TALK.turns } }),
+      new Promise((_, no) => setTimeout(() => no(Object.assign(new Error('slow'), { slow: true })), 30000)),
+    ]);
+    if (!r || typeof r.reply !== 'string' || !r.reply.trim()) throw Object.assign(new Error('empty'), { code: 502 });
+    reply = r.reply;
+  } catch (e) {
+    line = talkFailLine(e);
+    stop = !!e && (e.code === 401 || e.message === 'no_model_key'); // a missing key does not fix itself by asking again
+  }
+  if (seq !== TALK.seq) return; // ended while Arbo was thinking
+  if (reply) { TALK.turns.push({ role: 'assistant', text: reply.slice(0, 2000) }); talkTrim(); }
+  talkShowReply(reply || line, !reply);
+  talkStatus(reply ? 'Speaking…' : line);
+  await talkSay(reply || line);
+  if (seq !== TALK.seq) return;
+  TALK.busy = false;
+  if (stop) { talkEnd('failed'); return; }
+  talkNext();
+}
+function talkFailLine(e) {
+  if (e && e.line) return e.line; // the server's own words: no AI key, or the brain did not answer
+  // A 401 is this phone's key, or a server with no app key at all (no_app_key) — the body is not read here, so both are named.
+  if (e && e.code === 401) return 'Talk is locked. Either this phone’s key was not accepted — check it in Settings — or the server has no app key set yet.';
+  if (e && e.slow) return 'Arbo took too long to answer — say it again, or tap End.';
+  if (e && e.code) return 'Arbo’s brain didn’t answer (' + e.code + ') — try again.';
+  return 'Arbo couldn’t reach the server — check your signal, then say it again.';
+}
+function talkShowReply(text, failed) {
+  const box = $('talk-reply');
+  box.hidden = false;
+  box.textContent = text;
+  box.classList.toggle('failed', !!failed);
+}
+// Speak, sentence by sentence; resolves when done. A watchdog moves on when iOS never says 'end'.
+function talkSay(text) {
+  const parts = talkSentences(text);
+  if (!parts.length || !talkSupport().speak) return Promise.resolve();
+  const seq = TALK.seq;
+  return new Promise((resolve) => {
+    let i = 0;
+    const next = () => {
+      if (i >= parts.length || seq !== TALK.seq) { resolve(); return; }
+      const part = parts[i++];
+      const u = talkUtterance(part);
+      let moved = false;
+      let dog = null;
+      const go = () => { if (moved) return; moved = true; clearTimeout(dog); next(); };
+      u.onend = go;
+      u.onerror = go;
+      dog = setTimeout(go, 1500 + 110 * part.length); // generous: a slow voice is never cut off, only a stuck one
+      try { window.speechSynthesis.speak(u); } catch (e) { go(); }
+    };
+    next();
+  });
+}
+function talkNext() {
+  if (!TALK.on) return;
+  if (TALK.typing) {
+    $('talk-form').hidden = false;
+    talkStatus('Type your question, or tap the mic on the keyboard. “That’s all” finishes.');
+    return;
+  }
+  talkLater(talkListen, 600); // the speaker settles before the mic opens (iPhone audio route)
+}
+function talkListen(waited) {
+  if (!TALK.on || TALK.typing || TALK.busy) return;
+  if (!$('talk').classList.contains('show')) { talkEnd('left'); return; } // never a mic behind a closed sheet
+  // Never listen while the phone is still talking (it would hear itself) — wait up to 12 s for it to finish.
+  const w = waited || 0;
+  if (talkSupport().speak && window.speechSynthesis.speaking && w < 40) { talkLater(() => talkListen(w + 1), 300); return; }
+  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const seq = TALK.seq;
+  const st = { started: false, said: '', err: null, done: false, quiet: null };
+  let rec;
+  try { rec = new Rec(); } catch (e) { talkCantListen('This phone would not open the microphone for Arbo. You can type below.'); return; }
+  rec.lang = 'en-US';
+  rec.continuous = false;
+  rec.interimResults = true;
+  rec.maxAlternatives = 1;
+  const finish = () => {
+    if (st.done) return;
+    st.done = true;
+    clearTimeout(st.quiet);
+    if (TALK.rec === rec) TALK.rec = null;
+    if (seq === TALK.seq && TALK.on) talkAfterListen(st);
+  };
+  // The mic opened. From here, nothing final within 15 s is closed (WebKit never ends a silent listen itself).
+  const began = () => {
+    if (st.started) return;
+    st.started = true;
+    TALK.micOk = true;
+    talkLater(() => {
+      if (st.done) return;
+      try { rec.stop(); } catch (e) { /* ignore */ }
+      talkLater(() => { if (!st.done) { try { rec.abort(); } catch (e) { /* ignore */ } finish(); } }, 1500);
+    }, 15000);
+  };
+  rec.onstart = began;
+  rec.onaudiostart = began;
+  rec.onresult = (ev) => {
+    began();
+    let said = '';
+    let final = false;
+    for (let i = 0; i < ev.results.length; i++) {
+      said += ev.results[i][0].transcript;
+      if (ev.results[i].isFinal) final = true;
+    }
+    st.said = said.trim();
+    clearTimeout(st.quiet);
+    if (final) { finish(); return; }
+    // A second and a half with no new words closes the turn; 'end' then finishes it.
+    st.quiet = setTimeout(() => { try { rec.stop(); } catch (e) { finish(); } }, 1500);
+  };
+  rec.onerror = (ev) => { st.err = (ev && ev.error) || 'error'; };
+  rec.onend = finish;
+  TALK.rec = rec;
+  talkStatus('Listening…');
+  try { rec.start(); } catch (e) { st.err = 'start-failed'; finish(); return; }
+  // Watchdog: a mic that never opens is dead — after 3 s once it has worked this launch, but the first
+  // time 20 s, because the iPhone's "Allow" prompt holds it shut until Mike answers (WebKit fires start after).
+  talkLater(() => { if (!st.started && !st.done) { st.err = 'dead'; try { rec.abort(); } catch (e) { /* ignore */ } finish(); } }, TALK.micOk || TALK.dead ? 3000 : 20000);
+}
+function talkAfterListen(st) {
+  if (st.said) { TALK.dead = 0; TALK.quiet = 0; talkHeard(st.said); return; }
+  if (st.err === 'not-allowed') { TALK.deaf = true; talkCantListen('The microphone is off for Arbo. You can type below, or tap the mic on the keyboard.'); return; }
+  // Busy or unavailable, not refused: typing for now, and the next Start tries the mic again.
+  if (st.err === 'audio-capture') { talkCantListen('I lost the microphone — a call or Siri may have it. Type below, or tap End, then Start to try again.'); return; }
+  if (st.err === 'service-not-allowed') { talkCantListen('Speech recognition isn’t available right now. If Dictation is off, turn it on in Settings, General, Keyboard. Type below, or tap End, then Start to try again.'); return; }
+  if (!st.started) {
+    // Two dead listens in a row: this mode may not hear (an installed app can start and never listen).
+    if (++TALK.dead >= 2) { talkCantListen('I can’t hear you in this mode. Type below, or tap the mic on the keyboard.'); return; }
+    talkLater(talkListen, 400);
+    return;
+  }
+  TALK.dead = 0;
+  // It listened and heard nothing: quietly again, three times, then rest.
+  if (++TALK.quiet >= 3) { talkSay('I’ll stop listening now. Tap Start when you need me.').then(() => talkEnd('quiet')); return; }
+  talkLater(talkListen, 300);
+}
+function talkCantListen(line) {
+  TALK.typing = true;
+  $('talk-form').hidden = false;
+  talkStatus(line);
+  talkSay(line);
+}
+function talkHeard(said) {
+  const text = String(said || '').trim().slice(0, 500);
+  if (!text || !TALK.on || TALK.busy) return;
+  $('talk-heard').hidden = false;
+  $('talk-heard').textContent = 'You: ' + text;
+  if (talkEndPhrase(text)) {
+    TALK.busy = true;
+    talkStatus('Signing off…');
+    talkSay('Okay, signing off.').then(() => talkEnd('done'));
+    return;
+  }
+  TALK.turns.push({ role: 'user', text: text });
+  talkTrim();
+  talkAsk();
+}
+function talkTrim() {
+  if (TALK.turns.length > 24) TALK.turns.splice(0, TALK.turns.length - 24);
+}
+// Stop everything: the mic, the voice, the screen lock, the audio routing. Safe to call twice.
+function talkEnd(why) {
+  const was = TALK.on;
+  TALK.on = false;
+  TALK.busy = false;
+  TALK.seq++;
+  for (const t of TALK.timers) clearTimeout(t);
+  TALK.timers = [];
+  const rec = TALK.rec;
+  TALK.rec = null;
+  if (rec) { try { rec.abort(); } catch (e) { /* already stopped */ } }
+  try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) { /* ignore */ }
+  const lock = TALK.lock;
+  TALK.lock = null;
+  if (lock) { try { const p = lock.release(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* already released */ } }
+  try { if (TALK_AUDIO_SESSION && navigator.audioSession) navigator.audioSession.type = 'auto'; } catch (e) { /* ignore */ }
+  $('talk-form').hidden = true;
+  talkButton();
+  if (was && TALK_END_LINE[why]) talkStatus(TALK_END_LINE[why]);
+}
+// ═══ /TALK ═══
+$('talk-open').addEventListener('click', () => {
+  $('talk').classList.add('show'); sheetOpened('talk');
+  talkStart(); // the same tap: iOS lets speech start only inside one
+});
+$('talk-close').addEventListener('click', () => closeSheet('talk'));
+$('talk-go').addEventListener('click', () => { if (TALK.on) talkEnd('done'); else talkStart(); });
+$('talk-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (!TALK.on || TALK.busy) return; // still answering: the question stays in the box, not thrown away
+  const v = $('talk-text').value;
+  $('talk-text').value = '';
+  talkHeard(v);
+});
+document.addEventListener('visibilitychange', () => { if (document.hidden && TALK.on) talkEnd('hidden'); });
+
 // BACK (Mike, 2026-10-20: "the app itself needs to have a back button"). The
 // installed app has no browser bar, so every screen and every sheet is a step in
 // the phone's own history: the ‹ in the header, Android's back button and a
@@ -5334,7 +5683,7 @@ function switchTab(which) {
 // home-screen shortcut, the crew preview's way back) a More desk lands on More
 // and anything else on Today.
 const NAV_PARENT = { book: 'more', followups: 'more', perf: 'more', permits: 'more', agents: 'more', measure: 'more', learn: 'more', settings: 'today' };
-const SHEETS = ['twin', 'yard', 'bd'];
+const SHEETS = ['twin', 'yard', 'bd', 'talk'];
 let NAV_QUIET = false; // true while a back step is drawn — drawing it must not add a new step
 function navPush(which) {
   if (NAV_QUIET) return;
@@ -5379,6 +5728,7 @@ function sheetOpened(id) {
   try { history.pushState({ v: CUR_TAB, d: (st.d || 0) + 1, sheet: id }, '', '#' + CUR_TAB); } catch (e) { /* ignore */ }
 }
 function closeSheet(id) {
+  if (id === 'talk') talkEnd('left'); // leaving Talk stops the mic, the voice and the screen lock
   if ((history.state || {}).sheet === id) history.back(); // the step back closes it
   else $(id).classList.remove('show');
 }
@@ -5386,6 +5736,7 @@ window.addEventListener('popstate', (ev) => {
   const st = ev.state || {};
   // Stepping back past a sheet closes it; stepping forward never reopens one.
   for (const id of SHEETS) if (st.sheet !== id) $(id).classList.remove('show');
+  if (TALK.on && !$('talk').classList.contains('show')) talkEnd('left'); // the phone's back left Talk: stop listening and speaking
   const want = st.v && Object.prototype.hasOwnProperty.call(VIEW_TITLES, st.v) ? st.v : 'today';
   if (want === CUR_TAB) { navShowBack(); return; }
   navShow(want);

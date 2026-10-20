@@ -58,3 +58,48 @@ shows "the crew door key isn't set up yet — ask Mike" and asks for nothing
 - Still from -01: the 125-ft rule vs the erodible-soil extension, HRGEO coverage of south VB, and the VB PPR vs administrative-variance path.
 - R26 follow-ups (each a one-line change if Mike wants it): a downed line with nobody hurt — also say the 911 line? · the blocked-date replacement line (the date rule's line today, or the wants-human line) · a "Brakes or steering" checkbox on the breakdown sheet so the hold does not depend on wording · Crew Chief's desk subtitle · open-burning steps reading "PERMIT: REVIEW NEEDED".
 - Storm law: the flag only knows federal (FEMA) declarations; a Governor-only declaration is not in any feed. Counsel question: when "time of disaster" ends for Va. Code 59.1-526.
+
+## 6. Talk (R30) — test it on your iPhone, parked
+
+Talk is the **mic button marked "Talk"** at the top right of every screen.
+One tap and Arbo reads you what needs you, then listens; ask anything about
+today, Sona's calls or the trucks and it answers out loud. Say **"that's
+all"** (or "stop", or "goodbye") or tap **End** to finish. It is read-only:
+it tells you things, it cannot send, book or change anything. Your iPhone
+does the listening and the speaking; Arbo's own brain does the thinking.
+While the data links are cut it says so ("cut on purpose — not zero").
+
+Start it while parked — Virginia law is about holding the phone, and nothing
+after the first tap needs a touch.
+
+- [ ] **Home-screen app**: tap Talk. You should hear "Pulling your update",
+      then the update. The first time, the iPhone asks to allow the
+      microphone and speech recognition — tap **Allow**; Arbo waits up to 20
+      seconds for it. When the line under the big button says
+      **Listening…**, ask "what's at stop two?". It should answer out loud and
+      listen again. Then say "that's all".
+- [ ] **Same test in a Safari tab** (the Arbo address `/app`). Apple has never
+      said the home-screen app may listen; Safari can. If only Safari works,
+      tell Claude which — the choice of what to do about it is yours.
+- [ ] **Silent switch on**: do you still hear it?
+- [ ] **In the truck**: does the voice come through the truck's speakers over
+      Bluetooth/CarPlay, and does it still hear you? Is the volume normal
+      after the first answer, or does it drop?
+- [ ] **Lock the screen mid-answer**: it stops; back in the app it says
+      "Paused when the screen locked".
+
+**If it cannot hear you, read Claude the exact line under the big button.**
+
+| The line says | What to do |
+|---|---|
+| "The microphone is off for Arbo…" | Allow the microphone: Safari → the **aA** button → Website Settings → Microphone → Allow (and Settings → Safari → Microphone → Ask or Allow). |
+| "Speech recognition isn't available right now…" | If Settings → General → Keyboard → **Enable Dictation** is off, turn it on. Then tap End, then Start — it tries the mic again. |
+| "I lost the microphone — a call or Siri may have it…" | Finish the call (or Siri), then tap End, then Start — it tries the mic again. |
+| "I can't hear you in this mode…" | The mic never opened, twice. Tap End, then Start to try again; if it keeps saying this, try the Safari tab. The typing box works either way — tap it, then the mic on the keyboard. |
+| "Talk is locked…" | Check the key in Settings. If the key is right, `APP_ACCESS_KEY` is not set on Railway. |
+| "Arbo's brain is off — there's no AI key…" | `ANTHROPIC_API_KEY` is not set on Railway. |
+| "Arbo's brain didn't answer — try again." (or "…didn't answer (503)…") | Arbo's brain failed or took too long that turn. Say it again — Talk keeps listening. |
+| "I can't say that one out loud…" | The answer broke one of your rules (a price, a promised day, a permit "clear", a phone number, a claim that Arbo did something…) twice — Arbo gets one second try first — and was held back. Ask another way, or look in the app. |
+
+Also tell Claude: your iPhone model and iOS version, home-screen app or
+Safari, and whether you heard the voice at all.

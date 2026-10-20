@@ -594,17 +594,26 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
         return { status: 503, body: { error: 'weather_unavailable' } };
       }
       let atRisk: ReturnType<typeof flagStopsAtRisk> = [];
+      // R30 review: a schedule Arbo could not read (a cut link, a database
+      // error) must not hide an active alert. The alerts still go out, and the
+      // stops at risk are NAMED unread — never an empty list taken as zero (§1B).
+      let atRiskUnread = false;
       if (source.ready() && alerts.length > 0) {
-        const from = new Date();
-        const to = new Date(from.getTime() + 48 * 60 * 60 * 1000);
-        const stops = await source.stopsBetween(from.toISOString(), to.toISOString());
-        atRisk = flagStopsAtRisk(
-          alerts,
-          stops.map((s) => ({ id: s.id, city: s.city, timeIso: s.timeIso ?? null })),
-          from,
-        );
+        try {
+          const from = new Date();
+          const to = new Date(from.getTime() + 48 * 60 * 60 * 1000);
+          const stops = await source.stopsBetween(from.toISOString(), to.toISOString());
+          atRisk = flagStopsAtRisk(
+            alerts,
+            stops.map((s) => ({ id: s.id, city: s.city, timeIso: s.timeIso ?? null })),
+            from,
+          );
+        } catch (err) {
+          console.error('[storm] stops at risk unread:', err instanceof Error ? err.name : 'error');
+          atRiskUnread = true;
+        }
       }
-      return { status: 200, body: { alerts, atRisk } };
+      return { status: 200, body: { alerts, atRisk, ...(atRiskUnread ? { atRiskUnread } : {}) } };
     },
 
     /**

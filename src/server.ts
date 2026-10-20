@@ -167,6 +167,7 @@ import { createStormLawCheck } from './ops/stormLaw.js';
 import { loadAllConfig } from './config/loadConfig.js';
 import { env } from './env.js';
 import { createVoiceLlm } from './voice/anthropicLlm.js';
+import { createOwnerTalk, talkReadsFrom, anthropicTalkModel } from './voice/ownerTalk.js';
 import { createElevenLabsBridge, type BridgeRequestBody } from './voice/elevenlabsBridge.js';
 import { createGoogleGmailReader, createGoogleGmailThreadReader } from './integrations/gmail.js';
 import { createGoogleCalendarApi } from './integrations/calendar.js';
@@ -658,6 +659,19 @@ export function createArborRequestHandler() {
       })
     : null;
   currentQuoStudy = quoStudy;
+  // R30 (Mike, 2026-10-20: "i want to tap a button in arbo and i can talk to
+  // it no third party"): Talk. The iPhone listens and speaks; this is Arbo's
+  // own brain with READ-ONLY tools over the same reads the screens make. Not
+  // the receptionist, and no ElevenLabs or Twilio (R21). No key = 503 by name.
+  const ownerTalk = createOwnerTalk({
+    model: env.anthropic.apiKey ? anthropicTalkModel(env.anthropic.apiKey) : null,
+    reads: talkReadsFrom({
+      api,
+      quo: () => ({ status: quoIntake.status(), calls: quoIntake.list() }),
+      stormLaw: () => stormLaw.status(),
+      mode: () => (dataLinksSim() ? 'sim' : dataLinksLive() ? 'live' : 'cut'),
+    }),
+  });
   if (quoApi && env.quoApiKey) {
     outreach = new OutreachEngine({
       quo: quoApi,
@@ -925,6 +939,13 @@ export function createArborRequestHandler() {
       // admin key like every /api route — the crew key never opens it.
       if (req.method === 'GET' && url.pathname === '/api/storm/law') {
         return send(200, await stormLaw.status());
+      }
+      // R30: Talk — one turn of Mike's spoken conversation. Behind the admin
+      // key like every /api route (the crew key never opens it), and locked
+      // with no APP_ACCESS_KEY at all: customer names ride the answers (R24).
+      if (req.method === 'POST' && url.pathname === '/api/talk') {
+        if (!env.appAccessKey) return send(401, { error: 'no_app_key', message: 'APP_ACCESS_KEY is not set — Talk is locked until it is.' });
+        return send(...unpack(await ownerTalk.handle(await readJson(req))));
       }
       if (req.method === 'GET' && url.pathname === '/api/brief/audio' && !vendorLinked('elevenlabs')) {
         return send(503, vendorCutBody('elevenlabs'));
