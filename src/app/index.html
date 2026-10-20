@@ -362,6 +362,8 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 .texts .feed-state + .storm-muted{padding-left:18px}
 .loc-strip{display:flex;align-items:center;gap:12px;margin-bottom:12px;font-size:14px;color:var(--ink-2)}
 .loc-strip .badge{flex:none;min-width:92px;text-align:center;white-space:nowrap}
+.fleet-track{margin-top:10px}
+.fleet-track:empty{display:none}
 .loc-toggle{min-height:44px;min-width:64px;border:1px solid var(--border);border-radius:var(--r-pill);background:var(--card);color:var(--ink-3);
   font-size:12.5px;font-weight:700;padding:0 16px;letter-spacing:.06em;display:inline-grid;place-items:center}
 .loc-toggle.on{background:var(--forest);border-color:var(--forest);color:var(--paper)}
@@ -729,13 +731,13 @@ function showSaveFail(box, e) { const n = box.querySelector(':scope > .save-err'
 // TONE WORDS (the canonical list) — a new chip finds its word here, or the nearest kin of it:
 //   alarm = EMERGENCY, POWER LINES, the power-line CALL FIRST, NO AERIAL WORK (nothing is stronger)
 //   stop = BLOCKED, GUARD BLOCKED A REPLY, SONA BROKE A RULE, EXPIRED, NO RECORD, NEVER TESTED, DOWN, NOT SCHEDULABLE,
-//     FINAL — CALL THEM, FAILED, TICKET REQUIRED, STRUCTURES, HOT (lead)
+//     FINAL — CALL THEM, FAILED, TICKET REQUIRED, STRUCTURES, HOT (lead), WRONG KEY
 //   watch = WARM, PERMIT LIKELY, REVIEW NEEDED, PERMIT SCREEN PENDING, UNCONFIRMED / any non-SOURCED fact, RE-CHECK DUE,
 //     UNREADABLE, MISSING INPUTS, FAIR, LOW, NOT SET UP, NOT WIRED, PENDING, NO EXPIRY DATE, EXPIRES SOON, WEEK UNKNOWN,
 //     OWES THIS WEEK, OVERDUE, DUE NOW, COMING DUE (property), PAST DUE, SECOND NOTICE, LATE FEE, NEEDS ATTENTION,
 //     N OPEN TASKS, SIZE UNKNOWN, CARDS UNKNOWN, BELOW AVERAGE, WAITING ON YOU, IN RPA, FOLLOW-UP, NO-SHOW SAVE,
-//     a non-power CALL FIRST, an unknown crew role
-//   good = READ, OK, GOOD, SOURCED, QUALIFIED, WIRED, OPEN, UP, ABOVE AVERAGE, WEEK DONE, REVIEWED
+//     a non-power CALL FIRST, an unknown crew role, NOT CONNECTED
+//   good = READ, OK, GOOD, SOURCED, QUALIFIED, WIRED, OPEN, UP, ABOVE AVERAGE, WEEK DONE, REVIEWED, CONNECTED
 //   info = CUT / LINK CUT, NOT SIMULATED, NOT RUN, NOT BUILT, NO OVERLAY — VERIFY W/ CITY, JOB, ESTIMATE, FIRST-TIMER,
 //     REPEAT, SPANISH SPEAKER, SPAM, COOL, OFF ROSTER, AT AVERAGE, NOT ENOUGH DATA, RENEWAL DUE, SEASONAL, REVIEW ASK,
 //     COMING DUE (growth nudge), + PROOF OF INSURANCE, and every identity tag (city, channel, line, job type, role,
@@ -3553,6 +3555,161 @@ function paidButton(invoiceId, slot) {
   return btn;
 }
 
+// ---------- Bouncie truck tracking (R31 draft) — owner only ----------
+// MAP HOOK: GET /api/fleet/positions is the one route for truck positions —
+// the upcoming map screen reads it for lat/lon; the Fleet card reads it for
+// one line per unit and never shows a coordinate. Every state has its own
+// words (§1B): not set up, cut, not connected, sign-in expired, couldn't
+// read, no trucks, and a truck with no report since a time.
+let TRACK = null; // the last /api/fleet/positions answer, or { failed: e }; null until the first read lands
+async function loadTrack() {
+  try { TRACK = await api('/api/fleet/positions'); }
+  catch (e) { TRACK = { failed: e }; }
+  return TRACK;
+}
+// [words, look] per state. A gap wears the feed-state look, never the help-text one.
+const TRACK_SAYS = {
+  keys_missing: ['Tracking not set up — the Bouncie keys aren’t on the server', 'feed-state unset'],
+  link_cut: ['Tracking cut on purpose — Arbo reads no positions until it is reconnected', 'feed-state cut'],
+  not_connected: ['Tracking not connected — connect Bouncie in Settings', 'feed-state unset'],
+  token_expired: ['Tracking stopped — the Bouncie sign-in expired; reconnect it in Settings', 'feed-state unset'],
+  unreadable: ['Tracking: couldn’t read Bouncie just now', 'feed-state unread'],
+  no_trucks: ['Bouncie lists no trucks on this account', 'storm-muted'],
+};
+// '4 min ago', '3 h ago', '2 days ago' — minutes counted on the server's clock.
+function agoWords(min) {
+  if (typeof min !== 'number') return 'at an unknown time';
+  if (min < 1) return 'just now';
+  if (min < 60) return min + ' min ago';
+  if (min < 2880) return Math.floor(min / 60) + ' h ago';
+  return Math.floor(min / 1440) + ' days ago';
+}
+// One truck, one line, [words, look] — never a coordinate.
+function truckWords(k) {
+  const when = fmtWhen(k.reportedAt);
+  if (k.motion === 'driving') return ['Driving · last report ' + agoWords(k.ageMinutes), 'storm-muted'];
+  if (k.motion === 'parked') return ['Last seen ' + agoWords(k.ageMinutes) + ' · parked', 'storm-muted'];
+  if (k.motion === 'seen') return ['Last seen ' + agoWords(k.ageMinutes), 'storm-muted'];
+  if (k.motion === 'unplugged') return ['Bouncie tracker unplugged' + (when ? ' since ' + when : ''), 'feed-state unset'];
+  if (k.motion === 'stale') return ['No Bouncie report since ' + (when || 'Arbo last restarted'), 'feed-state unread'];
+  return ['Bouncie has no position for this truck yet', 'feed-state unread'];
+}
+function trackWords(t, unitId) {
+  if (!t) return ['', 'storm-muted']; // not read yet: no line rather than a guess
+  if (t.failed) return t.failed.code === 401 ? ['', 'storm-muted'] : ['Tracking: ' + FEED_WORD[feedKind(t.failed)], 'feed-state ' + feedKind(t.failed)];
+  if (t.state !== 'ok' && t.state !== 'unreadable') return TRACK_SAYS[t.state] || ['Tracking: ' + FEED_WORD.unread, 'feed-state unread'];
+  const u = (t.units || []).find((x) => x.unitId === unitId);
+  if (u && u.truck) return truckWords(u.truck);
+  return t.state === 'unreadable' ? TRACK_SAYS.unreadable : ['No Bouncie truck matched to this unit', 'storm-muted'];
+}
+// The one line each Fleet card carries. Drawn from the last read; fillTrack rewrites it when a new read lands.
+function fleetTrackLine(u) {
+  const [words, look] = trackWords(TRACK, u.id);
+  const n = el('div', look + ' fleet-track', words);
+  n.dataset.unit = u.id;
+  return n;
+}
+// After a read: every unit line, then the trucks no unit claims (with the fleet list unavailable, that is all of them).
+function fillTrack(listSlot, trackSlot) {
+  for (const n of listSlot.querySelectorAll('.fleet-track')) {
+    const [words, look] = trackWords(TRACK, n.dataset.unit);
+    n.className = look + ' fleet-track';
+    n.textContent = words;
+  }
+  trackSlot.replaceChildren();
+  const t = TRACK;
+  if (!t || t.failed || !(t.unmatched || []).length) return;
+  trackSlot.appendChild(el('div', 'panel-title', t.units ? 'Bouncie trucks not matched to a unit' : 'Bouncie trucks'));
+  trackSlot.appendChild(el('div', 'storm-muted', t.units
+    ? 'Give the truck the same name in Bouncie as its unit here, or put its VIN on the unit, and Arbo pairs them.'
+    : 'The fleet list isn’t available, so these aren’t matched to units.'));
+  for (const k of t.unmatched) {
+    const c = el('div', 'card');
+    const top = el('div', 'toprow');
+    top.appendChild(el('div', 'who', k.name || 'Unnamed truck'));
+    top.appendChild(el('div', 'when', k.vin4 ? 'VIN …' + k.vin4 : 'Tracker …' + k.device4));
+    c.appendChild(top);
+    const [words, look] = truckWords(k);
+    c.appendChild(el('div', look, words));
+    trackSlot.appendChild(c);
+  }
+}
+// Settings → Bouncie: the sign-in, the link and the live updates, each in its own words. [chip, tone, sentence] rows.
+function bouncieRows(b) {
+  const rows = [];
+  const s = b.signIn || {};
+  const w = b.webhook || {};
+  if (s.state === 'keys_missing') rows.push(['NOT SET UP', 'watch', 'Bouncie sign-in isn’t set up on the server — add BOUNCIE_CLIENT_ID and BOUNCIE_CLIENT_SECRET on Railway, then deploy. Nothing is disconnected — it was never set up.']);
+  else if (s.state === 'not_connected') rows.push(['NOT CONNECTED', 'watch', 'The Bouncie keys are on the server, but Bouncie isn’t connected yet — tap Connect Bouncie and approve.']);
+  else if (s.state === 'expired') rows.push(['EXPIRED', 'stop', 'The Bouncie sign-in expired or was removed — tap Reconnect Bouncie. Positions stop until you do.']);
+  else rows.push(['CONNECTED', 'good', s.where === 'disk'
+    ? 'Bouncie connected — saved on Arbo’s storage disk' + (s.savedAt ? ' ' + fmtWhen(s.savedAt) : '') + '. Survives redeploys.'
+    : 'Bouncie connected — but held in memory only (no storage disk). It will need connecting again after the next restart.']);
+  if (!b.link || !b.link.open) {
+    rows.push(['CUT', 'info', 'Truck positions are cut on purpose — Arbo reads and keeps none until ' + ((b.link && b.link.envVar) || 'ARBO_LINK_BOUNCIE') + ' is set to live on Railway. Nothing was deleted.'
+      + (w.whileCut ? ' Bouncie sent ' + plural(w.whileCut, 'update') + ' since Arbo last restarted; each was answered and dropped unread.' : '')]);
+  } else {
+    const p = (b.positions || {}).state;
+    const tr = b.trucks || {};
+    rows.push(['OPEN', 'good', p === 'ok' ? 'Positions on — ' + plural(tr.known || 0, 'truck') + (tr.lastReportAt ? ', last report ' + fmtWhen(tr.lastReportAt) : ', no report since Arbo last restarted') + '.'
+      : p === 'no_trucks' ? 'Positions on — Bouncie answered and lists no trucks on this account.'
+        : p === 'unreadable' ? 'Positions on — but Arbo couldn’t read Bouncie just now. ' + RETRY
+          : 'Positions on — waiting on the Bouncie sign-in above.']);
+  }
+  if (!w.wired) {
+    rows.push(['NOT WIRED', 'watch', 'Live updates — BOUNCIE_WEBHOOK_KEY isn’t set on Railway, so Arbo refuses Bouncie’s live updates; this is not zero updates.'
+      + (w.refusedNotWired ? ' Something called the webhook ' + plural(w.refusedNotWired, 'time') + ' since Arbo last restarted.' : '')]);
+  } else if (!w.deliveries && !w.whileCut) {
+    rows.push(['PENDING', 'watch', 'Live updates — the key is set, but nothing has arrived since Arbo last restarted. Turn the webhook on in the Bouncie portal with the address below.']);
+  } else {
+    rows.push(['WIRED', 'good', 'Live updates — ' + plural(w.received || 0, 'update') + ' kept since Arbo last restarted' + (w.lastAt ? ', last heard from ' + fmtWhen(w.lastAt) : '') + '.']);
+  }
+  if (w.rejected) rows.push(['WRONG KEY', 'stop', plural(w.rejected, 'call') + ' to the webhook came with the wrong key since Arbo last restarted — the key in the Bouncie portal must match BOUNCIE_WEBHOOK_KEY exactly.']);
+  const skipped = (w.unknownTypes || 0) + (w.badEvents || 0) + (w.badJson || 0) + (w.oversized || 0) + (w.overCap || 0);
+  if (skipped) rows.push(['UNREADABLE', 'watch', plural(skipped, 'update') + ' from Bouncie couldn’t be read and were skipped since Arbo last restarted.']);
+  return rows;
+}
+async function bouncieSettings(v, stale) {
+  v.appendChild(el('div', 'panel-title', 'Bouncie (truck tracking)'));
+  v.appendChild(el('div', 'storm-muted', 'Where the trucks are — for you only. The crew door never shows it.'));
+  let b;
+  try { b = await api('/api/bouncie'); }
+  catch (e) {
+    if (stale()) return;
+    // The switches above just read with this same key, so a 401 here is the route's own lock (no APP_ACCESS_KEY).
+    v.appendChild(e.code === 401 ? el('div', 'feed-state unset', 'Bouncie: locked on the server — connecting needs APP_ACCESS_KEY set on Railway.') : feedLine(e, 'Bouncie status'));
+    return;
+  }
+  if (stale()) return;
+  for (const [word, tone, text] of bouncieRows(b)) {
+    const row = el('div', 'loc-strip');
+    row.appendChild(chip(word, tone));
+    row.appendChild(el('span', '', text));
+    v.appendChild(row);
+  }
+  const st = (b.signIn || {}).state;
+  if (st === 'keys_missing' || st === 'not_connected') v.appendChild(el('div', 'storm-muted', 'Redirect URI to register in the Bouncie portal: ' + b.redirectUri));
+  if (st === 'not_connected' || st === 'expired') {
+    const go = el('button', 'actbtn', st === 'expired' ? 'Reconnect Bouncie' : 'Connect Bouncie');
+    const out = el('div', 'errline', '');
+    go.addEventListener('click', async () => {
+      go.disabled = true;
+      out.textContent = '';
+      try {
+        const r = await api('/api/bouncie/connect', { method: 'POST', body: {} });
+        location.assign(r.authorizeUrl); // Bouncie's approval page; it comes back to Arbo's own result page
+      } catch (e) {
+        go.disabled = false;
+        out.textContent = 'Not opened — ' + (e.code === 401 ? 'connecting is locked on the server (APP_ACCESS_KEY).' : e.message === 'bouncie_keys_missing' ? 'the Bouncie keys aren’t on the server.' : 'Arbo couldn’t start the sign-in. Try again.');
+      }
+    });
+    v.appendChild(go);
+    v.appendChild(out);
+  }
+  const w = b.webhook || {};
+  if (w.url && (!w.wired || !(w.deliveries || w.whileCut))) v.appendChild(el('div', 'storm-muted', 'Webhook address for the Bouncie portal: ' + w.url));
+}
+
 // ---------- Fleet (§6E: units, DOWN status, breakdown reports) ----------
 const UNIT_STATUS = {
   up: ['UP', 'good'],
@@ -3568,10 +3725,14 @@ async function renderFleet(slot) {
   slot.replaceChildren();
   const listSlot = el('div');
   slot.appendChild(listSlot);
+  const track = loadTrack(); // R31: Bouncie is read alongside — the list never waits on it
   const readable = await renderFleetList(listSlot);
   // No composer over a dead feed: nothing could be written to it anyway, and
   // offering the form would imply Arbo is talking to the database.
   if (readable) slot.appendChild(fleetComposer(listSlot));
+  const trackSlot = slot.appendChild(el('div'));
+  await track;
+  fillTrack(listSlot, trackSlot);
 }
 
 async function renderFleetList(slot) {
@@ -3618,6 +3779,7 @@ async function renderFleetList(slot) {
     if (!u.heightInches || !u.weightLbsLoaded) {
       b.appendChild(chip('SIZE UNKNOWN — ROUTED CONSERVATIVELY', 'watch'));
     }
+    c.appendChild(fleetTrackLine(u)); // R31: where the truck is, in words — never a coordinate
     // R26: a brake or steering defect holds the unit, and its reason is named
     // on the card. Nothing returns it on its own: this button, behind the owner
     // key, is the only way back, and it asks twice like every one-way action.
@@ -4238,6 +4400,10 @@ async function buildSettings(v, gen) {
       v.appendChild(feedLine(e, 'Google status'));
     }
   }
+
+  // R31 draft: Bouncie truck tracking. Its own read, so a dead Bouncie never hides the sections around it.
+  await bouncieSettings(v, () => gen !== settingsGen);
+  if (gen !== settingsGen) return;
 
   // R19: the data links, one by one. Read-only here on purpose \u2014 a link
   // opens by setting its variable on Railway AFTER its verification passes,

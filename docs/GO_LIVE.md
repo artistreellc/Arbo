@@ -47,6 +47,7 @@ shows "the crew door key isn't set up yet — ask Mike" and asks for nothing
 - [ ] **Reconnect Google** — Settings → Google (Gmail read, calendar holds, Drive read).
 - [ ] **Open the data links one at a time** after each passes its verification (`docs/DATA_LINKS.md`, R19). The app runs fully with them cut; opening one is never an optimisation.
 - [ ] **Quo texting registration** (A2P) before any R22 text goes out.
+- [ ] **Bouncie truck tracking** (R31 draft) — built and switched off. Steps in `docs/BOUNCIE.md`: `BOUNCIE_CLIENT_ID` / `BOUNCIE_CLIENT_SECRET` → deploy → Settings → Connect Bouncie → `BOUNCIE_WEBHOOK_KEY` → deploy → turn on the webhook in the Bouncie portal → `ARBO_LINK_BOUNCIE=live` when ready. Owner only; the crew door never shows it.
 - [ ] **`ANTHROPIC_API_KEY`** on Railway turns the agents' brain from "offline — deterministic" to Opus.
 - [ ] **`CLAUDE_CODE_OAUTH_TOKEN`** repo secret (turns on the automated PR review job).
 - [ ] **The Supabase project `arbor` is PAUSED** (INACTIVE, seen 2026-10-20). Nothing reads it while the links are cut, but a paused project can only be restored for a limited time — restore it (Supabase dashboard → the project → Restore) before that window closes, or the kept rows (§3) are at risk.

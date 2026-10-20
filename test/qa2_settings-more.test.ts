@@ -70,6 +70,7 @@ async function build(over: Record<string, Route> = {}) {
     showKeywall: keywall,
     showSaveFail: () => {}, saveFailText: () => '', fmtTime: () => '', renderSettings: () => {},
     themePref: () => 'auto', setTheme: () => {},
+    bouncieSettings: async () => {}, // R31: the Bouncie card has its own tests (test/bouncie.test.ts)
   });
   await buildSettings(v, 1);
   return { v, keywall };
