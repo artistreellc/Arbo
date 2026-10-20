@@ -84,6 +84,18 @@ describe('the Book (§6/#36): /api/properties + twin', () => {
     expect((out.body as { properties: unknown[] }).properties).toHaveLength(1);
   });
 
+  it('a dead forecast read is NAMED for the Book to say — never an empty coming-due list (§1B)', async () => {
+    const api = createApi({
+      ...base,
+      properties: async () => [{ id: 'p1' }],
+      growthTargets: async () => { throw new Error('twin offline'); },
+    });
+    const body = (await api.properties(NOW)).body as { comingDue: unknown; forecastUnavailable: boolean };
+    expect(body.forecastUnavailable).toBe(true);
+    // null, not [] — an empty list would read as "nothing due".
+    expect(body.comingDue).toBeNull();
+  });
+
   it('twin: 404 for unknown ids, 200 with the twin otherwise', async () => {
     const api = createApi({
       ...base,

@@ -169,4 +169,32 @@ describe('backend API (server handlers)', () => {
     // No property captured yet → nothing to screen (address comes first).
     expect(leads.find((l) => l.id === 'no-property')!.screenPending).toBe(false);
   });
+
+  it('an unreadable permit or history read is NAMED, never shown as "screen pending" (§1B)', async () => {
+    const base = {
+      source: 'call', details: 'Trim job', qualification: {}, isEmergency: false, status: 'new',
+      createdAt: at(9), name: 'Lee', city: 'Chesapeake', zip: '23320', isFirstTimer: false,
+      permit: null, phone: null, history: null,
+    };
+    const api = createApi(
+      fakeSource({
+        leads: [
+          { ...base, id: 'unread', propertyId: 'p1', permitUnreadable: true, historyUnreadable: true },
+          { ...base, id: 'read', propertyId: 'p2' },
+        ],
+      }),
+    );
+    const { leads } = (await api.leads()).body as {
+      leads: Array<{ id: string; screenPending: boolean; permitUnreadable: boolean; historyUnreadable: boolean }>;
+    };
+    const unread = leads.find((l) => l.id === 'unread')!;
+    // Could not read the permits is a different fact from no screen on file.
+    expect(unread.permitUnreadable).toBe(true);
+    expect(unread.screenPending).toBe(false);
+    expect(unread.historyUnreadable).toBe(true);
+    const read = leads.find((l) => l.id === 'read')!;
+    expect(read.permitUnreadable).toBe(false);
+    expect(read.historyUnreadable).toBe(false);
+    expect(read.screenPending).toBe(true);
+  });
 });

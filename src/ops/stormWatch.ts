@@ -61,6 +61,25 @@ export const CITY_POINTS: Record<ServiceCity, { lat: number; lng: number }> = {
   Portsmouth: { lat: 36.8354, lng: -76.2983 },
 };
 
+/**
+ * NWS county codes (UGC) for the same four cities. Tornado and Severe
+ * Thunderstorm Warnings are drawn as storm polygons and tagged with every
+ * county they touch. A polygon over Pungo does not contain the Oceanfront
+ * point above, so the point query alone could miss it and the city would read
+ * as no storm (§1B). One county query catches any warning that touches any
+ * part of a city; the point queries stay for zone-issued alerts (hurricane,
+ * tropical, wind, coastal flood), which a county query may not return.
+ */
+export const CITY_COUNTY_UGC: Record<ServiceCity, string> = {
+  'Virginia Beach': 'VAC810',
+  Norfolk: 'VAC710',
+  Chesapeake: 'VAC550',
+  Portsmouth: 'VAC740',
+};
+
+/** NWS asks for a User-Agent it can trace back — the app's public URL, no invented email. */
+const NWS_USER_AGENT = 'ARBO (Art-is-Tree LLC ops, https://arbor-server-production.up.railway.app)';
+
 export interface StormAlert {
   id: string;
   event: string; // e.g. "Severe Thunderstorm Warning"
@@ -68,7 +87,7 @@ export interface StormAlert {
   headline: string | null;
   onset: string | null; // ISO
   ends: string | null; // ISO (ends ?? expires)
-  cities: ServiceCity[]; // service cities whose point the alert covers
+  cities: ServiceCity[]; // service cities whose point or county the alert covers
 }
 
 export type FetchFn = (url: string, init?: { headers?: Record<string, string> }) => Promise<{
@@ -91,41 +110,66 @@ interface NwsFeature {
     onset?: string;
     ends?: string;
     expires?: string;
+    areaDesc?: string;
+    geocode?: { UGC?: string[] };
   };
 }
 
 /**
- * Live provider over api.weather.gov. One point query per city, deduped by
- * alert id. NWS asks for an identifying User-Agent.
+ * Live provider over api.weather.gov. One point query per city plus one
+ * county query for all four (see CITY_COUNTY_UGC), deduped by alert id. Any
+ * failed query fails the whole read — a partial feed never reads as no storm.
+ * NWS asks for an identifying User-Agent.
  */
 export function createNwsAlertsProvider(fetchFn: FetchFn): AlertsProvider {
+  const read = async (query: string, what: string): Promise<NwsFeature[]> => {
+    const url = `https://api.weather.gov/alerts/active?${query}`;
+    const res = await fetchFn(url, { headers: { 'user-agent': NWS_USER_AGENT, accept: 'application/geo+json' } });
+    if (!res.ok) throw new Error(`NWS alerts failed for ${what}: HTTP ${res.status}`);
+    const body = (await res.json()) as { features?: NwsFeature[] };
+    if (!Array.isArray(body.features)) throw new Error(`NWS alerts: malformed response for ${what}`);
+    return body.features;
+  };
+
   return {
     async activeAlerts(): Promise<StormAlert[]> {
       const byId = new Map<string, StormAlert>();
-      for (const [city, p] of Object.entries(CITY_POINTS) as Array<[ServiceCity, { lat: number; lng: number }]>) {
-        const url = `https://api.weather.gov/alerts/active?point=${p.lat},${p.lng}`;
-        const res = await fetchFn(url, { headers: { 'user-agent': 'ARBO (Art-is-Tree LLC ops)', accept: 'application/geo+json' } });
-        if (!res.ok) throw new Error(`NWS alerts failed for ${city}: HTTP ${res.status}`);
-        const body = (await res.json()) as { features?: NwsFeature[] };
-        if (!Array.isArray(body.features)) throw new Error(`NWS alerts: malformed response for ${city}`);
-        for (const f of body.features) {
-          const pr = f.properties ?? {};
-          const id = pr.id ?? `${pr.event}-${pr.onset}`;
-          const existing = byId.get(id);
-          if (existing) {
-            if (!existing.cities.includes(city)) existing.cities.push(city);
-            continue;
-          }
-          byId.set(id, {
-            id,
-            event: pr.event ?? 'Weather alert',
-            severity: pr.severity ?? 'Unknown',
-            headline: pr.headline ?? null,
-            onset: pr.onset ?? null,
-            ends: pr.ends ?? pr.expires ?? null,
-            cities: [city],
-          });
+      const add = (f: NwsFeature, cities: ServiceCity[]): void => {
+        const pr = f.properties ?? {};
+        const id = pr.id ?? `${pr.event}-${pr.onset}`;
+        const existing = byId.get(id);
+        if (existing) {
+          for (const city of cities) if (!existing.cities.includes(city)) existing.cities.push(city);
+          return;
         }
+        byId.set(id, {
+          id,
+          event: pr.event ?? 'Weather alert',
+          severity: pr.severity ?? 'Unknown',
+          headline: pr.headline ?? null,
+          onset: pr.onset ?? null,
+          ends: pr.ends ?? pr.expires ?? null,
+          cities: [...cities],
+        });
+      };
+
+      for (const [city, p] of Object.entries(CITY_POINTS) as Array<[ServiceCity, { lat: number; lng: number }]>) {
+        for (const f of await read(`point=${p.lat},${p.lng}`, city)) add(f, [city]);
+      }
+
+      const counties = Object.entries(CITY_COUNTY_UGC) as Array<[ServiceCity, string]>;
+      for (const f of await read(`zone=${counties.map(([, ugc]) => ugc).join(',')}`, 'the four counties')) {
+        const tagged = f.properties?.geocode?.UGC ?? [];
+        const hit = counties.filter(([, ugc]) => tagged.includes(ugc)).map(([city]) => city);
+        // Forecast-zone alerts (VAZ…) come back here too, naming no county
+        // code. Checked live 2026-10-18: a Coastal Flood Watch for
+        // "Chesapeake; Suffolk; Norfolk; Portsmouth" — so read the cities from
+        // the alert's own area list before falling back to all four.
+        const area = (f.properties?.areaDesc ?? '').toLowerCase();
+        const named = counties.filter(([city]) => area.includes(city.toLowerCase())).map(([city]) => city);
+        // Names none of them either: we cannot tell which city, so it counts
+        // for all four — a false nudge beats a crew sent into a warning.
+        add(f, hit.length > 0 ? hit : named.length > 0 ? named : counties.map(([city]) => city));
       }
       return [...byId.values()];
     },

@@ -148,9 +148,14 @@ export function createSimSource(): DataSource {
   return {
     ready: () => true,
 
-    stopsBetween: async () => SIM_JOBS.map((j) => ({
-      id: j.jobId, kind: 'job' as const, timeIso: j.scheduledFor, name: 'SIM-Test',
-      phone: p(1), address: j.address, city: j.city, isFirstTimer: true, scope: j.scope,
+    // Each stop is its own customer, named as billableJobs names the same job
+    // (sim-job-1 Alder, sim-job-2 Birch). Not a SIM_JOBS field: crewJobs hands
+    // SIM_JOBS to the crew door, which has no slot for a customer's name.
+    stopsBetween: async () => SIM_JOBS.map((j, i) => ({
+      id: j.jobId, kind: 'job' as const, timeIso: j.scheduledFor,
+      name: ['SIM-Alder, Test', 'SIM-Birch, Test'][i] ?? `SIM-Stop ${i + 1}, Test`,
+      phone: p(i + 1), address: j.address, city: j.city, isFirstTimer: true, scope: j.scope,
+      nearPowerLines: j.hazardPowerLines,
     })),
 
     newLeads: async (limit: number) => SIM_LEADS.slice(0, limit),

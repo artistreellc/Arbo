@@ -9,9 +9,11 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 import {
-  SECTION_AGENTS, runSectionAgent, runAllSections, isSectionId,
+  SECTION_AGENTS, runSectionAgent, runAllSections, isSectionId, onDemandSectionDeps,
   type SectionDeps, type AgentReport,
 } from '../src/agents/sections.js';
+import { createApi } from '../src/server/api.js';
+import { createSimSource } from '../src/dev/simSource.js';
 import { createBrain, deterministicSummary, BRAIN_OFFLINE, type BrainTextClient } from '../src/agents/brain.js';
 import { loadGuardrails, loadLegal } from '../src/config/loadConfig.js';
 import { KNOWLEDGE_BASE } from '../src/reception/knowledgeBase.js';
@@ -23,6 +25,7 @@ import type { SafetyAgentResult } from '../src/agents/safetyAgent.js';
 import type { PermittingSweepResult } from '../src/agents/permittingAgent.js';
 import type { OwnerBriefingResult } from '../src/agents/ownerBriefingAgent.js';
 import type { AgentRunHandle } from '../src/binder/agentRun.js';
+import type { AlertsProvider } from '../src/ops/stormWatch.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const NOW = new Date('2026-09-28T14:00:00Z');
@@ -131,9 +134,9 @@ describe('SECTION_AGENTS — the eight (R25)', () => {
 
 describe('with the data links cut (hasDb false)', () => {
   const DB_BACKED = [
-    'call review backlog', "tomorrow's booked stops", 'open loops (Loop-Closer queue)', 'owner briefing',
-    'permit screens for recent leads', 'permit board', 'reference library drafts', 'site photos (vision & labeling)',
-    'crew certifications & near-miss log', 'training board', 'open invoices (collections)', 'fleet units',
+    'call review backlog', "tomorrow's booked stops", 'open loops on the Queue', 'owner briefing',
+    'permit screens for recent leads', 'permit board', 'reference library drafts', 'site photos',
+    'crew certifications & near-miss log', 'training board', 'open invoices', 'fleet units',
     'area & campaign performance',
   ];
 
@@ -148,7 +151,8 @@ describe('with the data links cut (hasDb false)', () => {
       expect(hits.length, name).toBeGreaterThan(0);
       for (const i of hits) {
         expect(i.state, name).toBe('cut');
-        expect(i.detail).toMatch(/data link cut/);
+        expect(i.detail).toMatch(/cut on purpose/);
+        expect(i.detail, name).not.toMatch(/ARBO_|\bops\b|photos|\(/); // no env var, no raw link keys
       }
     }
     // What still reads is what needs no database — and it says something.
@@ -193,10 +197,10 @@ describe('with the links open (all fakes)', () => {
     expect(permit.findings[0]!.ref).toBe('p-1,p-2'); // ids only
     expect(permit.findings.map((f) => f.text).join(' ')).toMatch(/REVIEW NEEDED/);
 
-    // Only the photo reader is unbuilt — named, not hidden.
+    // Only the photo reader is unbuilt — named, not hidden, and its own state.
     const arborist = byId(reports, 'arborist');
     expect(arborist.status).toBe('degraded');
-    expect(arborist.inputs.find((i) => i.name.startsWith('site photos'))!.detail).toMatch(/not wired/);
+    expect(arborist.inputs.find((i) => i.name === 'site photos')).toMatchObject({ state: 'notbuilt', detail: 'there is no photo reader yet' });
     for (const r of reports.filter((x) => x.agentId !== 'arborist')) expect(r.status, r.agentId).toBe('ok');
   });
 
@@ -220,7 +224,7 @@ describe('with the links open (all fakes)', () => {
     const reports = await runAllSections(liveFakes({ linkOpen: (l) => l !== 'equipment' }));
     const fleet = byId(reports, 'yard-boss').inputs.find((i) => i.name === 'fleet units')!;
     expect(fleet.state).toBe('cut');
-    expect(fleet.detail).toMatch(/ARBO_LINK_EQUIPMENT/);
+    expect(fleet.detail).toBe('cut on purpose — this link is not opened yet');
   });
 
   it('a plain feed that throws is unreadable and the section degrades (not blocked)', async () => {
@@ -231,7 +235,74 @@ describe('with the links open (all fakes)', () => {
     expect(crew.status).toBe('degraded');
     const w = crew.inputs.find((i) => i.name === 'NWS weather alerts')!;
     expect(w.state).toBe('unreadable');
-    expect(w.detail).toMatch(/feed unreadable: NWS weather alerts — Error: NWS 503/);
+    // The screen prints the name and an UNREADABLE chip, so the detail repeats neither.
+    expect(w.detail).toBe('Error: NWS 503');
+    expect(w.detail).not.toMatch(/NWS weather alerts|unreadable/);
+  });
+
+  it('a network failure is said in plain words, never a raw TypeError', async () => {
+    const reports = await runAllSections(liveFakes({
+      alerts: { activeAlerts: async () => { throw new TypeError('fetch failed'); } },
+    }));
+    const w = byId(reports, 'crew-chief').inputs.find((i) => i.name === 'NWS weather alerts')!;
+    expect(w.state).toBe('unreadable');
+    expect(w.detail).toBe("the service didn't answer");
+  });
+});
+
+// ─── on demand, and on the practice data ────────────────────────────────────
+
+describe('the on-demand run (Mike\'s tap)', () => {
+  const quietAlerts: AlertsProvider = { activeAlerts: async () => [] };
+
+  // The same composition as POST /api/agents/sections/run in SIMULATION mode.
+  const simDeps = (alerts: AlertsProvider = quietAlerts): SectionDeps => {
+    const base = onDemandSectionDeps(createApi(createSimSource(), { dataLinksSim: true }), alerts, NOW);
+    return { ...base, hasDb: () => true, linkOpen: () => true };
+  };
+
+  it('on the practice data no input says "link cut" — a feed the simulation lacks is NOT SIMULATED, by name', async () => {
+    const reports = await runAllSections(simDeps());
+    const inputs = reports.flatMap((r) => r.inputs);
+    expect(inputs.filter((i) => i.state === 'cut')).toEqual([]);
+    // Fleet units ARE in the practice data, so they are read.
+    expect(byId(reports, 'yard-boss').inputs.find((i) => i.name === 'fleet units')!.state).toBe('read');
+    // The call backlog is not — named as such, never a failed read or a zero.
+    const backlog = byId(reports, 'front-desk').inputs.find((i) => i.name === 'call review backlog')!;
+    expect(backlog).toMatchObject({ state: 'sim', detail: 'not in the practice data' });
+    // The agents left to the hourly sweep are not run here — not "unreadable".
+    const stops = byId(reports, 'dispatcher').inputs.find((i) => i.name === "tomorrow's booked stops")!;
+    expect(stops.state).toBe('notrun');
+    expect(stops.detail).toMatch(/hourly check/);
+    for (const i of inputs) expect(i.detail, i.name).not.toMatch(/wired/);
+    // Anything not read still degrades the desk; nothing is blocked.
+    for (const r of reports) {
+      expect(r.status, r.agentId).not.toBe('blocked');
+      if (r.inputs.some((i) => i.state !== 'read')) expect(r.status, r.agentId).toBe('degraded');
+    }
+  });
+
+  it('the Dispatcher reads the weather feed itself, the same read the Crew Chief gets', async () => {
+    const reports = await runAllSections(simDeps());
+    const dispatcher = byId(reports, 'dispatcher').inputs.find((i) => i.name === 'NWS weather alerts')!;
+    const crew = byId(reports, 'crew-chief').inputs.find((i) => i.name === 'NWS weather alerts')!;
+    expect(dispatcher.state).toBe('read');
+    expect(crew.state).toBe('read');
+  });
+
+  it('a dead weather feed on demand is unreadable for the Dispatcher — never a blocked desk', async () => {
+    const reports = await runAllSections(simDeps({ activeAlerts: async () => { throw new TypeError('fetch failed'); } }));
+    const d = byId(reports, 'dispatcher');
+    expect(d.status).toBe('degraded');
+    expect(d.inputs[0]).toMatchObject({ state: 'unreadable', detail: "the service didn't answer" });
+    expect(d.findings.filter((f) => f.severity === 'info')).toHaveLength(0); // no invented "none work-stopping"
+  });
+
+  it('the run route uses exactly that composition, and only in SIMULATION', () => {
+    const server = readFileSync(resolve(here, '..', 'src/server.ts'), 'utf8');
+    expect(server).toContain('const base = onDemandSectionDeps(api, alertsProvider);');
+    expect(server).toContain('const deps = dataLinksSim() ? { ...base, hasDb: () => true, linkOpen: () => true } : base;');
+    expect(server).toContain('const reports = await runAllSections(deps);');
   });
 });
 
@@ -285,16 +356,18 @@ describe('one failing agent never stops the other seven', () => {
 describe('the Opus brain', () => {
   const sample = async () => runSectionAgent('dispatcher', liveFakes());
 
-  it('without a client is offline and says so, deterministically', async () => {
+  it('without a client is offline and says so once on the page, deterministically', async () => {
     const r = await sample();
     const brain = createBrain();
     expect(brain.online).toBe(false);
     const a = await brain.summarize(r);
     const b = await brain.summarize(r);
     expect(a.source).toBe('deterministic');
-    expect(a.text).toContain(BRAIN_OFFLINE);
+    // The Agents page says AI is off once; the card line carries no label of its own.
+    expect(a.text).not.toContain(BRAIN_OFFLINE);
+    expect(a.note).toBe(BRAIN_OFFLINE);
     expect(a.text).toBe(b.text);
-    expect(a.text).toContain(deterministicSummary(r));
+    expect(a.text).toBe(deterministicSummary(r));
   });
 
   it('shows the model states and counts, never an input detail', async () => {
@@ -324,7 +397,57 @@ describe('the Opus brain', () => {
       expect(out.source).toBe('deterministic');
       expect(out.note).toMatch(why);
       expect(out.text).toContain(deterministicSummary(r));
+      // What Mike reads is plain words; the exact reason stays on `note`.
+      expect(out.text).toMatch(/^AI (read failed|line blocked) — plain count\. /);
     }
+  });
+});
+
+describe('the plain count (no model) — §1B in words', () => {
+  const report = (inputs: AgentReport['inputs'], over: Partial<AgentReport> = {}): AgentReport => ({
+    agentId: 'yard-boss', name: 'Yard Boss', section: 'Fleet & money', ranAt: NOW.toISOString(),
+    status: 'degraded', inputs, findings: [], proposals: [], wrapped: [], ...over,
+  });
+
+  it('a desk that read nothing never prints a zero as if it had looked', () => {
+    const s = deterministicSummary(report([
+      { name: 'open invoices', state: 'cut', detail: 'x' },
+      { name: 'fleet units', state: 'notrun', detail: 'x' },
+    ]));
+    expect(s).not.toMatch(/0 to act on/);
+    expect(s).toContain('does not mean nothing is wrong');
+    expect(s).toContain('Could not see 2 of 2 inputs (named below).');
+    expect(s).toContain('0 proposals from this run for you to decide.');
+    expect(s).not.toMatch(FORBIDDEN_CLEAR);
+    expect(s).not.toMatch(/Mike|proposal\(s\)|deterministic/);
+    expect(s).not.toMatch(/\) \(|: Could not see:/);
+  });
+
+  it('a desk that read only a rulebook has looked at no business data — no zero count either', () => {
+    const s = deterministicSummary(report([
+      { name: 'guardrails (golden rules in code)', state: 'read', detail: 'x' },
+      { name: 'call review backlog', state: 'notrun', detail: 'x' },
+    ], { agentId: 'front-desk', name: 'Front Desk', section: 'Calls' }));
+    expect(s).not.toMatch(/0 to act on/);
+    expect(s).toContain('does not mean nothing is wrong');
+    expect(s).toContain('Could not see 1 of 2 inputs (named below).');
+    expect(s).not.toMatch(/\) \(|: Could not see:/);
+  });
+
+  it('a desk that missed some inputs says its counts are not the whole picture', () => {
+    const s = deterministicSummary(report([
+      { name: 'open invoices', state: 'read', detail: 'x' },
+      { name: 'fleet units', state: 'unreadable', detail: 'x' },
+    ], { findings: [{ severity: 'act', text: 'x' }], proposals: [{ kind: 'k', text: 't', needsMike: true }] }));
+    expect(s).toContain('Could not see 1 of 2 inputs (named below).');
+    expect(s).toContain('From what it could see: 1 to act on, 0 to watch — not the whole picture.');
+    expect(s).toContain('1 proposal from this run for you to decide.');
+    expect(s).not.toMatch(/\) \(|: Could not see:/);
+  });
+
+  it('a desk that read everything says so, and only then gives the plain count', () => {
+    const s = deterministicSummary(report([{ name: 'fleet units', state: 'read', detail: 'x' }], { status: 'ok' }));
+    expect(s).toBe('Read everything it needs: 0 to act on, 0 to watch. 0 proposals from this run for you to decide.');
   });
 });
 

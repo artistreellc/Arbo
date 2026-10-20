@@ -130,7 +130,7 @@ const FIT_TOLERANCE_M = 0.025;
 const MIN_FIT_POINTS = 12;
 
 export const UNITS_WARNING =
-  'UNITS NOT CONFIRMED: the file does not say it is in metres. Every figure assumes metres; if the scan app exported feet, all of them are off by a factor of 3.28.';
+  'Units not confirmed: the file does not say it is in metres. Arbo read it as metres; if the scan app exported feet, every figure here is off by a factor of 3.28.';
 
 const RANK: Record<Confidence, number> = { good: 3, fair: 2, low: 1, unreadable: 0 };
 
@@ -190,14 +190,14 @@ export function measureTree(points: Float32Array, opts: MeasureOptions = {}): Tr
 
   // 3. DBH.
   if (!stem) {
-    result.confidence.dbh = unreadable('stem_not_found: no trunk-like column of points 0.3–2.5 m above ground');
-    result.confidence.lean = unreadable('stem_not_found: no trunk-like column of points 0.3–2.5 m above ground');
+    result.confidence.dbh = unreadable('stem_not_found: no trunk-like column of points about 1–8 ft (0.3–2.5 m) above ground');
+    result.confidence.lean = unreadable('stem_not_found: no trunk-like column of points about 1–8 ft (0.3–2.5 m) above ground');
     warnings.push('No trunk found in the scan; height and crown use the whole scan.');
   } else {
     const bh = ground + BREAST_HEIGHT_M;
     const fit = fitSlice(cloud, stem, bh - SLICE_HALF_M, bh + SLICE_HALF_M, 1);
     if (!fit) {
-      result.confidence.dbh = unreadable('dbh_slice_unreadable: too few trunk points at 1.27–1.47 m to fit a circle');
+      result.confidence.dbh = unreadable('dbh_slice_unreadable: too few trunk points at about 4.2–4.8 ft (breast height) to fit a circle');
     } else {
       result.dbhCm = round1(fit.r * 200);
       result.dbhFit = { inliers: fit.inliers, rmseCm: round2(fit.rmse * 100), arcCoverageDeg: Math.round(fit.arcDeg) };
@@ -211,17 +211,18 @@ export function measureTree(points: Float32Array, opts: MeasureOptions = {}): Tr
     const high = fitSlice(cloud, stem, ground + 1.9, ground + 2.1, 3);
     if (!low || !high) {
       result.confidence.lean = unreadable(
-        `lean_slice_unreadable: no circle fit at ${!low ? '0.5 m' : '2.0 m'} above ground`,
+        `lean_slice_unreadable: no circle fit at about ${!low ? '1.5 ft' : '6.5 ft'} above ground`,
       );
     } else {
       const offset = Math.hypot(high.cx - low.cx, high.cy - low.cy);
       result.leanDeg = round1((Math.atan2(offset, 1.5) * 180) / Math.PI);
-      let c: MetricConfidence = { level: 'good', reason: 'stem centres fitted cleanly at 0.5 m and 2.0 m; lowest 2 m of trunk only' };
+      // Feet first in every reason a person reads (the slices stay at 0.5 m and 2.0 m).
+      let c: MetricConfidence = { level: 'good', reason: 'stem centres fitted cleanly at about 1.5 ft and 6.5 ft; lowest 6.5 ft of trunk only' };
       if (Math.min(low.arcDeg, high.arcDeg) < 270 || Math.max(low.rmse, high.rmse) > 0.015) {
-        c = worse(c, 'fair', 'stem centres fitted on part of the trunk; lowest 2 m of trunk only');
+        c = worse(c, 'fair', 'stem centres fitted on part of the trunk; lowest 6.5 ft of trunk only');
       }
       if (Math.min(low.arcDeg, high.arcDeg) < 180) {
-        c = worse(c, 'low', 'less than half the trunk seen at 0.5 m or 2.0 m, so the stem centres are uncertain');
+        c = worse(c, 'low', 'less than half the trunk seen at about 1.5 ft or 6.5 ft, so the stem centres are uncertain');
       }
       result.confidence.lean = c;
     }
@@ -234,14 +235,14 @@ export function measureTree(points: Float32Array, opts: MeasureOptions = {}): Tr
   const top = sortedUp[Math.max(0, sortedUp.length - k)] ?? ground;
   const height = top - ground;
   if (!(height > 0.3)) {
-    result.confidence.height = unreadable('no_height: nothing in the scan rises more than 0.3 m above ground');
-    result.confidence.crown = unreadable('no_height: nothing in the scan rises more than 0.3 m above ground');
+    result.confidence.height = unreadable('no_height: nothing in the scan rises more than about 1 ft (0.3 m) above ground');
+    result.confidence.crown = unreadable('no_height: nothing in the scan rises more than about 1 ft (0.3 m) above ground');
     return result;
   }
   result.heightM = round2(height);
   if (height > CLEAN_RANGE_M) {
-    result.confidence.height = { level: 'low', reason: 'the top is beyond the phone\'s clean range (~4 m); a minimum, not a measurement' };
-    warnings.push('height exceeds phone LiDAR clean range (~4 m); treat as a minimum');
+    result.confidence.height = { level: 'low', reason: 'the top is beyond the phone’s clean range, about 13 ft (4 m); a minimum, not a measurement' };
+    warnings.push('Height is a minimum: the treetop is beyond what a phone scan reads cleanly, about 13 ft (4 m).');
   } else {
     result.confidence.height = { level: 'fair', reason: 'within the phone\'s clean range; phone LiDAR tends to read heights short' };
   }
@@ -257,10 +258,10 @@ export function measureTree(points: Float32Array, opts: MeasureOptions = {}): Tr
   result.crownSpreadM = round2(crown.major);
   let cc: MetricConfidence = {
     level: 'fair',
-    reason: `no validated phone-LiDAR crown method; counts everything above one-third height within ${NEIGHBOURHOOD_M} m of the stem`,
+    reason: `no validated phone-LiDAR crown method; counts everything above one-third height within about 40 ft (${NEIGHBOURHOOD_M} m) of the stem`,
   };
   if (height > CLEAN_RANGE_M || crown.major > 2 * CLEAN_RANGE_M) {
-    cc = worse(cc, 'low', 'the crown reaches beyond the phone\'s clean range (~4 m); edges and top are likely missing');
+    cc = worse(cc, 'low', 'the crown reaches beyond the phone’s clean range, about 13 ft (4 m); edges and top are likely missing');
   }
   if (result.dbhCm !== null && crown.major <= (1.5 * result.dbhCm) / 100) {
     cc = worse(cc, 'low', 'only trunk above one-third height — the crown looks unscanned');
@@ -277,17 +278,18 @@ function dbhConfidence(fit: Circle, warnings: string[]): MetricConfidence {
   };
   if (fit.arcDeg < 180) {
     c = worse(c, 'low', `only ${Math.round(fit.arcDeg)}° of the trunk seen; the fit may run small`);
-    warnings.push(`partial stem arc < 180° (${Math.round(fit.arcDeg)}°); DBH may be underestimated — scan further around the trunk`);
+    warnings.push(`Only ${Math.round(fit.arcDeg)}° of the trunk was scanned, so the trunk width may read small. Walk all the way round the trunk.`);
   } else if (fit.arcDeg < 270) {
     c = worse(c, 'fair', `${Math.round(fit.arcDeg)}° of the trunk seen; a full walk-around fits better`);
   }
-  if (fit.rmse > 0.03) c = worse(c, 'low', `points scatter ${round1(fit.rmse * 100)} cm about the circle`);
-  else if (fit.rmse > 0.015) c = worse(c, 'fair', `points scatter ${round1(fit.rmse * 100)} cm about the circle`);
+  // Inches first, centimetres in brackets — the same order as the tiles.
+  if (fit.rmse > 0.03) c = worse(c, 'low', `points scatter ${round1((fit.rmse * 100) / 2.54)} in (${round1(fit.rmse * 100)} cm) about the circle`);
+  else if (fit.rmse > 0.015) c = worse(c, 'fair', `points scatter ${round1((fit.rmse * 100) / 2.54)} in (${round1(fit.rmse * 100)} cm) about the circle`);
   if (fit.inliers < 30) c = worse(c, 'fair', `only ${fit.inliers} points on the trunk circle`);
   if (fit.inliers < fit.slicePoints * 0.4) {
     c = worse(c, 'fair', 'many points at breast height are off the trunk circle (branches, brush or a second stem)');
   }
-  if (fit.r * 2 > 2.5) c = worse(c, 'low', 'diameter over 2.5 m is outside what a phone scan resolves; check the scan and units');
+  if (fit.r * 2 > 2.5) c = worse(c, 'low', 'diameter over about 8 ft (2.5 m) is outside what a phone scan resolves; check the scan and units');
   // The apps and the Kasa fit both lean small (research part B).
   return c;
 }

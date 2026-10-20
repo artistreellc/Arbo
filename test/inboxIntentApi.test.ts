@@ -64,7 +64,7 @@ describe('Today-screen intent panel (source pins)', () => {
   });
 
   it('a dead Gmail feed is NAMED, never rendered as a quiet zero (§1B)', () => {
-    expect(html).toContain('This is not zero mail');
+    expect(html).toContain('That doesn’t mean no mail came in.');
   });
 
   it('carries the maybe lane and proposal cards — and NO ignored log on screen (Mike, 2026-09-24)', () => {

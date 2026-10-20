@@ -70,9 +70,10 @@ export function summarizeTreeMeasurement(m: TreeMeasurement): string {
     `Phone LiDAR scan, measured from the exported point cloud (${m.pointCount.toLocaleString('en-US')} points).`,
   ];
 
+  // Feet and inches first (how a Virginia crew talks), metric in brackets — the Measure screen's order.
   if (m.heightM !== null) {
     parts.push(
-      `Height about ${m.heightM.toFixed(1)} m (${(m.heightM * M_TO_FT).toFixed(0)} ft), ${conf(m.confidence.height)}.`,
+      `Height about ${(m.heightM * M_TO_FT).toFixed(0)} ft (${m.heightM.toFixed(1)} m), ${conf(m.confidence.height)}.`,
     );
   } else {
     parts.push(missing('Height', m.confidence.height));
@@ -80,8 +81,8 @@ export function summarizeTreeMeasurement(m: TreeMeasurement): string {
 
   if (m.crownSpreadM !== null && m.crownAxesM) {
     parts.push(
-      `Crown spread about ${m.crownSpreadM.toFixed(1)} m (${(m.crownSpreadM * M_TO_FT).toFixed(0)} ft) at its widest and ` +
-        `${m.crownAxesM.minor.toFixed(1)} m the other way, ${conf(m.confidence.crown)}.`,
+      `Crown spread about ${(m.crownSpreadM * M_TO_FT).toFixed(0)} ft (${m.crownSpreadM.toFixed(1)} m) at its widest and ` +
+        `${(m.crownAxesM.minor * M_TO_FT).toFixed(0)} ft (${m.crownAxesM.minor.toFixed(1)} m) the other way, ${conf(m.confidence.crown)}.`,
     );
   } else {
     parts.push(missing('Crown spread', m.confidence.crown));
@@ -90,21 +91,22 @@ export function summarizeTreeMeasurement(m: TreeMeasurement): string {
   const bhFt = (BREAST_HEIGHT_M * M_TO_FT).toFixed(1);
   if (m.dbhCm !== null) {
     parts.push(
-      `Trunk diameter at breast height (${BREAST_HEIGHT_M} m / ${bhFt} ft) about ${m.dbhCm.toFixed(0)} cm ` +
-        `(${(m.dbhCm * CM_TO_IN).toFixed(1)} in), ${conf(m.confidence.dbh)}` +
-        (m.dbhFit ? `; ${m.dbhFit.rmseCm.toFixed(1)} cm scatter.` : '.'),
+      `Trunk diameter at breast height (${bhFt} ft / ${BREAST_HEIGHT_M} m) about ${(m.dbhCm * CM_TO_IN).toFixed(1)} in ` +
+        `(${m.dbhCm.toFixed(1)} cm), ${conf(m.confidence.dbh)}` +
+        (m.dbhFit ? `; ${(m.dbhFit.rmseCm * CM_TO_IN).toFixed(2)} in (${m.dbhFit.rmseCm.toFixed(1)} cm) scatter.` : '.'),
     );
   } else {
     parts.push(missing('Trunk diameter at breast height', m.confidence.dbh));
   }
 
   if (m.leanDeg !== null) {
-    parts.push(`Trunk lean about ${m.leanDeg.toFixed(0)}° from vertical, ${conf(m.confidence.lean)}.`);
+    parts.push(`Trunk lean about ${m.leanDeg.toFixed(1)}° from vertical, ${conf(m.confidence.lean)}.`);
   } else {
     parts.push(missing('Trunk lean', m.confidence.lean));
   }
 
-  if (m.warnings.length > 0) parts.push(`Check: ${m.warnings.map((w) => w.replace(/\.$/, '')).join('; ')}.`);
+  // 'Check —', not 'Check:', so the units warning never reads "Check: UNITS NOT CONFIRMED: …".
+  if (m.warnings.length > 0) parts.push(`Check — ${m.warnings.map((w) => w.replace(/\.$/, '')).join('; ')}.`);
   parts.push(SIGN_OFF);
   return parts.join(' ');
 }

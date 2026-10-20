@@ -106,10 +106,13 @@ main{padding:16px;max-width:640px;margin:0 auto}
   padding:14px;background:var(--surface-alt);font-size:16px;line-height:1.55}
 #brief-body p{margin-bottom:10px}
 #brief-body .clause{font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.06em}
-.ackrow{display:flex;align-items:center;gap:12px;margin-top:14px;min-height:48px}
-.ackrow input{width:26px;height:26px;accent-color:var(--forest);flex:none}
-.ackrow label{font-size:15px;font-weight:700}
+/* The whole row is the label, so a gloved thumb anywhere on it ticks the box. */
+.ackrow{margin-top:14px}
+.ackrow label{display:flex;align-items:center;gap:12px;min-height:52px;width:100%;font-size:15px;font-weight:700;cursor:pointer}
+.ackrow input{width:28px;height:28px;margin:0;accent-color:var(--forest);flex:none}
 .gate-status{font-size:13px;color:var(--muted);margin-top:8px;min-height:20px}
+/* A failed sign-off carries a stop-work order: it reads as one, not as helper text. */
+.gate-status.err{color:#FFD9A0;font-size:14px;font-weight:700;line-height:1.4;border-left:3px solid var(--warning);padding-left:10px}
 #gobtn{width:100%;min-height:60px;margin-top:14px;border:0;border-radius:var(--r-md);
   background:var(--surface-alt);color:var(--muted);border:1.5px solid var(--border);
   font-size:19px;font-weight:900;letter-spacing:.14em;cursor:not-allowed}
@@ -150,7 +153,7 @@ main{padding:16px;max-width:640px;margin:0 auto}
   border-radius:var(--r-md);padding:16px;margin-bottom:12px;box-shadow:var(--shadow-card)}
 .wo .top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:6px}
 .wo .num{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;
-  border-radius:50%;background:var(--forest);color:#fff;font-size:15px;font-weight:800;flex:none}
+  border-radius:50%;background:#2F7560;color:#fff;font-size:15px;font-weight:800;flex:none}
 .wo .when{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:16px;
   font-weight:800;color:var(--canopy);white-space:nowrap}
 .wo .addr{font-size:18px;font-weight:800;line-height:1.3;margin:2px 0}
@@ -165,10 +168,14 @@ main{padding:16px;max-width:640px;margin:0 auto}
   color:var(--muted);margin-top:10px}
 .locked-note{text-align:center;padding:36px 20px;color:var(--muted);font-size:16px;
   background:var(--surface);border:1px dashed var(--border);border-radius:var(--r-lg)}
-.state{text-align:center;padding:40px 24px;color:var(--muted);
+.state{text-align:center;padding:40px 24px;color:var(--muted);margin-bottom:16px;
   background:var(--surface);border:1px dashed var(--border);border-radius:var(--r-lg)}
 .state b{display:block;font-size:19px;color:var(--ink);margin-bottom:8px}
+/* §1B: "Arbo couldn't read it" never wears the same box as "nothing there" —
+   and it usually carries a do-not-start order, so it looks like one. */
+.state.err{border:1.5px solid var(--warning);background:#2A1D06;color:#FFD9A0;font-weight:600}
 .errline{color:#FF9B95;font-weight:600;margin-top:10px}
+.errline:empty{display:none}
 main.door-locked #gate-slot,main.door-locked #quiz,main.door-locked #work,main.door-locked #library,main.door-locked #nearmiss{display:none}
 #whoami{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
   padding:16px;margin-bottom:16px;box-shadow:var(--shadow-card)}
@@ -180,22 +187,26 @@ main.door-locked #gate-slot,main.door-locked #quiz,main.door-locked #work,main.d
   font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace}
 #whoami button{width:100%;min-height:52px;border:0;border-radius:var(--r-md);
   background:var(--go);color:#fff;font-size:16px;font-weight:800;cursor:pointer}
+/* The door key is masked, so the crew-code field's monospace buys nothing here. */
+#whoami #doorkey{font-family:inherit}
+#whoami button.keyshow{width:auto;min-height:44px;background:none;color:var(--canopy);font-weight:700;padding:0;margin:-4px 0 6px 0}
 .signed{display:flex;align-items:center;justify-content:space-between;gap:10px;
   font-size:13px;color:var(--muted);margin-bottom:14px}
-#whoami .signed button{width:auto;flex:none;min-height:40px;border:1px solid var(--border);
-  border-radius:999px;background:var(--surface);color:var(--muted);font-size:12px;font-weight:800;
-  padding:0 14px;cursor:pointer}
+#whoami .signed button{width:auto;flex:none;min-height:48px;border:1px solid var(--border);
+  border-radius:999px;background:var(--surface);color:var(--muted);font-size:13px;font-weight:800;
+  padding:0 16px;cursor:pointer}
 #whoami .signed{margin-bottom:0}
 /* Reference library (§6U). A crew member holding a saw in one hand gets big
    targets and short lines. Limits are styled LOUDER than the how-to, because
    the paragraph that keeps someone out of a bad cut is the one that matters. */
 #library{margin-top:28px}
-#lib-card{border:1px solid var(--border);border-radius:14px;padding:16px;background:var(--surface)}
-#lib-card .why{color:var(--muted);font-size:14px;line-height:1.5;margin-bottom:12px}
-#lib-q{width:100%;min-height:56px;border:1px solid var(--border);border-radius:12px;
+#lib-card{border:1px solid var(--border);border-radius:var(--r-lg);padding:16px;background:var(--surface);box-shadow:var(--shadow-card)}
+#lib-card .why{color:var(--muted);font-size:14px;line-height:1.5;margin-bottom:12px;text-wrap:pretty}
+#lib-q{width:100%;min-height:56px;border:1px solid var(--border);border-radius:var(--r-md);
   background:var(--surface-alt);color:var(--ink);font-size:17px;padding:0 14px;font-family:inherit}
-#lib-go{width:100%;min-height:56px;margin-top:12px;border:0;border-radius:12px;
-  background:var(--forest);color:#fff;font-size:17px;font-weight:800;cursor:pointer}
+#lib-go{width:100%;min-height:56px;margin-top:12px;border:0;border-radius:var(--r-md);
+  background:var(--go);color:#fff;font-size:17px;font-weight:800;cursor:pointer;
+  box-shadow:0 8px 22px -8px rgba(0,0,0,.8),inset 0 1px 0 rgba(255,255,255,.12)}
 #lib-go:disabled{opacity:.55}
 #lib-out{margin-top:12px}
 .lib-note{font-size:14px;color:var(--muted);line-height:1.5;margin-bottom:10px}
@@ -217,12 +228,13 @@ main.door-locked #gate-slot,main.door-locked #quiz,main.door-locked #work,main.d
 /* Near-miss filing. Deliberately plain and always reachable — a report that
    takes effort is a report that never happens. */
 #nearmiss{margin-top:28px}
-#nm-card{border:1px solid var(--border);border-radius:14px;padding:16px;background:var(--surface)}
-#nm-card .why{color:var(--muted);font-size:14px;line-height:1.5;margin-bottom:12px}
-#nm-desc{width:100%;min-height:88px;border:1px solid var(--border);border-radius:12px;
-  background:var(--bg);color:var(--ink);font-size:17px;padding:12px;font-family:inherit;resize:vertical}
-#nm-go{width:100%;min-height:56px;margin-top:12px;border:0;border-radius:12px;
-  background:var(--forest);color:#fff;font-size:17px;font-weight:800;cursor:pointer}
+#nm-card{border:1px solid var(--border);border-radius:var(--r-lg);padding:16px;background:var(--surface);box-shadow:var(--shadow-card)}
+#nm-card .why{color:var(--muted);font-size:14px;line-height:1.5;margin-bottom:12px;text-wrap:pretty}
+#nm-desc{width:100%;min-height:88px;border:1px solid var(--border);border-radius:var(--r-md);
+  background:var(--surface-alt);color:var(--ink);font-size:17px;padding:12px;font-family:inherit;resize:none}
+#nm-go{width:100%;min-height:56px;margin-top:12px;border:0;border-radius:var(--r-md);
+  background:var(--go);color:#fff;font-size:17px;font-weight:800;cursor:pointer;
+  box-shadow:0 8px 22px -8px rgba(0,0,0,.8),inset 0 1px 0 rgba(255,255,255,.12)}
 #nm-go:disabled{opacity:.55}
 #nm-out{margin-top:12px;font-size:15px;line-height:1.5}
 #nm-out.ok{color:var(--ok)}
@@ -257,8 +269,13 @@ const el = (tag, cls, text) => {
   if (text !== undefined) n.textContent = text;
   return n;
 };
-let KEY = localStorage.getItem('arboCrewKey') || '';
-let CREW_ID = localStorage.getItem('arboCrewId') || '';
+// Browser storage can be blocked outright (private browsing, site data off).
+// A throwing read would stop this whole script and leave a blank page; a
+// failed save must be SAID, never followed by a reload into the same screen.
+const load = (k) => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
+const STORAGE_BLOCKED = 'This phone’s browser is blocking saved data (private browsing or site data off). Turn that off, then try again.';
+let KEY = load('arboCrewKey');
+let CREW_ID = load('arboCrewId');
 async function api(path, opts) {
   const res = await fetch(path, {
     method: (opts && opts.method) || 'GET',
@@ -268,6 +285,20 @@ async function api(path, opts) {
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw Object.assign(new Error(body.error || 'error'), { code: res.status });
   return body;
+}
+// Why a crew read failed, in the crew's words. This page has no shared script,
+// so it mirrors the office app's feed states (index.html feedKind), kept this
+// small: a cut on purpose, not in the practice data, not set up, no answer.
+// GET /health is public and says whether the data links are live.
+let LINKS = null;
+const LINKS_READY = api('/health').then((h) => { LINKS = h.dataLinks || 'unknown'; }).catch(() => null);
+function crewWhy(e) {
+  const m = e && e.code === 503 ? e.message : '';
+  if (m === 'not_simulated') return 'not part of the practice data';
+  // A named link held cut (link_cut) is a cut on purpose too, the same as feedKind.
+  if (m === 'link_cut' || (m === 'db_not_configured' && LINKS !== 'live')) return 'the office data link is cut on purpose';
+  if (m === 'db_not_configured' || m === 'not_built') return 'not set up on the server yet';
+  return 'the office didn’t answer';
 }
 function fmtTime(iso) {
   if (!iso) return '';
@@ -282,10 +313,24 @@ const GATE = {
   checked: false,
   openedMs: Date.now(),
   unlocked: false,
+  // The server's last word (a refusal or an error). The 1-second refresh
+  // shows it instead of its own countdown until the crew acts again, so an
+  // answer is never wiped before anyone can read it.
+  serverMsg: '',
+  // True when serverMsg is a failure (a stop-work order), so it is styled as one.
+  serverErr: false,
+  // True when pressing again cannot help (400 wrong crew code; 503 cut, practice
+  // data, not set up): GO stays tappable but is never green under that line.
+  serverHold: false,
 };
+// The server names what is missing in codes; the crew reads them in words.
+const GATE_NEED = { scroll: 'scroll to the bottom', checkbox: 'tick the box', read_time: 'read for longer' };
 
 function renderGate(brief) {
+  document.querySelector('main').classList.remove('door-locked'); // the door answered: show the panels
   GATE.content = brief;
+  // The server's read floor (10–15 s by length), so the countdown is its number, not a guess.
+  GATE.requiredSeconds = brief.requiredSeconds || 10;
   const slot = $('gate-slot');
   slot.replaceChildren();
   const box = el('div', 'locked');
@@ -306,10 +351,11 @@ function renderGate(brief) {
   const row = el('div', 'ackrow');
   const cb = document.createElement('input');
   cb.type = 'checkbox'; cb.id = 'ackbox';
-  cb.addEventListener('change', () => { GATE.checked = cb.checked; refreshGate(); });
+  cb.addEventListener('change', () => { GATE.checked = cb.checked; GATE.serverMsg = ''; GATE.serverErr = false; GATE.serverHold = false; refreshGate(); });
+  // The box sits INSIDE its label, so the whole row is one gloved-thumb target.
   const lab = el('label', '', 'I read this briefing and understand it.');
-  lab.htmlFor = 'ackbox';
-  row.appendChild(cb); row.appendChild(lab);
+  lab.prepend(cb);
+  row.appendChild(lab);
   box.appendChild(row);
 
   box.appendChild(el('div', 'gate-status', ''))
@@ -340,18 +386,24 @@ function refreshGate() {
   const left = required - secondsOnScreen();
   if (left > 0) need.push('read for ' + left + 's more');
   const status = $('gate-status');
-  if (status) status.textContent = need.length ? 'Still needed: ' + need.join(' · ') : 'Ready — press GO.';
+  if (status) {
+    status.textContent = GATE.serverMsg || (need.length ? 'Still needed: ' + need.join(' · ') : 'Ready — press GO.');
+    status.classList.toggle('err', Boolean(GATE.serverMsg && GATE.serverErr));
+  }
   const go = $('gobtn');
   if (go) {
     const ready = need.length === 0;
     go.disabled = !ready;
-    go.className = ready ? 'ready' : '';
+    go.className = ready && !GATE.serverHold ? 'ready' : '';
   }
 }
 
 async function submitGate() {
   const go = $('gobtn');
   go.disabled = true;
+  GATE.serverMsg = '';
+  GATE.serverErr = false;
+  GATE.serverHold = false;
   try {
     const res = await api('/api/crew/briefing/ack', {
       method: 'POST',
@@ -365,8 +417,11 @@ async function submitGate() {
     });
     if (!res.unlocked) {
       // The server is the authority — if it says not yet, the day stays locked.
-      GATE.requiredSeconds = res.requiredSeconds || 10;
-      $('gate-status').textContent = 'Still needed: ' + (res.missing || []).join(' · ');
+      GATE.requiredSeconds = res.requiredSeconds || GATE.requiredSeconds || 10;
+      // Read time is left to the live countdown, which says how many seconds
+      // are left and clears itself; a fixed "read for longer" would freeze on screen.
+      const other = (res.missing || []).filter((m) => m !== 'read_time');
+      GATE.serverMsg = other.length ? 'Still needed: ' + other.map((m) => GATE_NEED[m] || 'ask the office').join(' · ') : '';
       refreshGate();
       return;
     }
@@ -378,13 +433,19 @@ async function submitGate() {
     renderQuiz();
     renderWork();
   } catch (e) {
+    await LINKS_READY; // 'cut on purpose' vs 'not set up' needs /health's answer
     go.disabled = false;
-    // Name the real reason instead of a generic retry (§1B: never bluff).
-    $('gate-status').textContent = e.code === 400
+    // Name the real reason instead of a generic retry (§1B: never bluff). The
+    // day stays locked, so the words say so — same order as the briefing card.
+    GATE.serverErr = true;
+    GATE.serverHold = e.code === 400 || e.code === 503;
+    GATE.serverMsg = e.code === 400
       ? 'That sign-off was rejected — check your crew code with the office.'
       : e.code === 503
-        ? 'Cannot reach the office right now. Your day is not blocked — call it in.'
+        ? 'Your sign-off could not be recorded (' + crewWhy(e) + ').'
+          + ' Your work orders stay locked — do not start work; call the office to log your briefing.'
         : 'Could not record that — try once more.';
+    refreshGate();
   }
 }
 
@@ -530,16 +591,31 @@ async function renderWork() {
   try {
     data = await api('/api/crew/workorders');
   } catch (e) {
-    v.appendChild(el('div', 'state', 'Could not load your work orders. Pull to refresh.'));
+    v.appendChild(el('div', 'state err', 'Could not load your work orders — that is not an empty day. Call the office.'));
+    return;
+  }
+  // R9 + §1B: the server holds back every row without a signed contract, and
+  // holds back EVERYTHING when it could not read the contract list. Neither
+  // is an empty day, so neither may say "Nothing scheduled". The server's own
+  // note is written for Mike, not the crew, so it is never shown raw here.
+  const held = data.notWorkOrders || 0;
+  const heldLine = held + (held === 1 ? ' job on today’s sheet is' : ' jobs on today’s sheet are')
+    + ' on hold — no signed contract yet. Check with the office.';
+  if (data.contractLookupFailed) {
+    const s = el('div', 'state err');
+    s.appendChild(el('b', '', 'Can’t confirm today’s jobs'));
+    s.appendChild(document.createTextNode('Arbo could not read the contract list, so no job is confirmed. This is not an empty day — do not start work; call the office.'));
+    v.appendChild(s);
     return;
   }
   if (!data.workOrders.length) {
     const s = el('div', 'state');
-    s.appendChild(el('b', '', 'Nothing scheduled'));
-    s.appendChild(document.createTextNode('Check with the office.'));
+    s.appendChild(el('b', '', held ? 'Nothing confirmed to start' : 'Nothing scheduled'));
+    s.appendChild(document.createTextNode(held ? heldLine : 'Check with the office.'));
     v.appendChild(s);
     return;
   }
+  if (held) v.appendChild(el('div', 'shortfall', heldLine));
   for (const wo of data.workOrders) {
     const c = el('div', 'wo');
     const top = el('div', 'top');
@@ -679,6 +755,12 @@ function renderLibrary() {
   out.id = 'lib-out';
   card.appendChild(out);
   box.appendChild(card);
+  // The page knows up front when the master link is cut, so it says so before
+  // anyone types. Only an exact 'cut': a /health with no answer is not a cut,
+  // and the catch in libSearch stays the backstop for that and a named link.
+  LINKS_READY.then(() => {
+    if (LINKS === 'cut') card.insertBefore(el('div', 'lib-warn', 'Off while the office data link is cut on purpose — ask the office.'), input);
+  });
 
   const run = () => libSearch(input.value.trim(), out, btn);
   btn.addEventListener('click', run);
@@ -695,9 +777,8 @@ async function libSearch(q, out, btn) {
   } catch (e) {
     // §1B: a library Arbo could not read is not an empty library. Say which
     // one this is, so nobody concludes there is no guidance on file.
-    out.appendChild(el('div', 'lib-warn', e.code === 503
-      ? 'Library unavailable right now. That is NOT "nothing on file" — ask the office.'
-      : 'Could not search the library. That is NOT "nothing on file" — ask the office.'));
+    await LINKS_READY;
+    out.appendChild(el('div', 'lib-warn', 'Library: ' + crewWhy(e) + '. That is NOT "nothing on file" — ask the office.'));
     btn.disabled = false;
     return;
   }
@@ -711,8 +792,10 @@ async function libSearch(q, out, btn) {
   }
   if (res.unpublishedHeld > 0) {
     out.appendChild(el('div', 'lib-note',
-      res.unpublishedHeld + ' more entr' + (res.unpublishedHeld === 1 ? 'y is' : 'ies are')
-      + ' written but not yet signed off by a person, so they are held back. Ask the office if you need one.'));
+      res.unpublishedHeld + (res.unpublishedHeld === 1
+        ? ' more entry is written but not yet signed off by a person, so it is held back.'
+        : ' more entries are written but not yet signed off by a person, so they are held back.')
+      + ' Ask the office if you need one.'));
   }
   if (res.refsDropped > 0) {
     out.appendChild(el('div', 'lib-note',
@@ -789,9 +872,13 @@ function renderNearMiss() {
   box.appendChild(el('div', 'panel-title', 'Report a near miss'));
   const card = el('div');
   card.id = 'nm-card';
+  // Promise only what is true: the report IS filed under the crew code (the
+  // safety record needs a reporter) and becomes a DRAFT lesson a person vets
+  // (D61). Whether near misses should be anonymous is Mike's call.
   card.appendChild(el('div', 'why',
-    'Something almost went wrong? Say it here. No names, no blame, no write-up — '
-    + 'this goes straight into training so the next crew does not meet it.'));
+    'Something almost went wrong? Say it here — nobody gets blamed or written up. '
+    + 'It’s filed under your crew code, and the office turns it into a lesson for the next crew. '
+    + 'Leave other people’s names out.'));
   const ta = el('textarea');
   ta.id = 'nm-desc';
   ta.placeholder = 'What almost happened?';
@@ -803,6 +890,11 @@ function renderNearMiss() {
   out.id = 'nm-out';
   card.appendChild(out);
   box.appendChild(card);
+  // Never let a crew member type a whole safety report the page already knows
+  // cannot be filed. Exact 'cut' only; the click's catch stays the backstop.
+  LINKS_READY.then(() => {
+    if (LINKS === 'cut') card.insertBefore(el('div', 'lib-warn', 'Filing is off while the office data link is cut on purpose — tell the office directly.'), ta);
+  });
 
   btn.addEventListener('click', async () => {
     const description = ta.value.trim();
@@ -833,8 +925,12 @@ function renderNearMiss() {
     } catch (e) {
       // Never swallow it: a report the crew THINKS they filed is worse than
       // one they know failed.
+      // Words, never the server's code: e.message is a slug for Mike's logs.
+      await LINKS_READY;
       out.className = 'err';
-      out.textContent = 'Did not save (' + (e.message || 'error') + '). Tell the office directly.';
+      out.textContent = (e.code === 400
+        ? 'Did not save — the office did not recognise your crew code.'
+        : 'Did not save — ' + crewWhy(e) + '.') + ' Tell the office directly.';
     } finally {
       btn.disabled = false;
     }
@@ -849,15 +945,19 @@ function renderWhoAmI() {
   box.replaceChildren();
   if (CREW_ID) {
     const row = el('div', 'signed');
-    row.appendChild(el('span', '', 'Signed in \u00b7 ' + CREW_ID.slice(0, 8)));
+    // Nothing has checked this code yet, so the line claims nothing more than
+    // what is stored. "Signed in" waits for the §8C login.
+    row.appendChild(el('span', '', 'Crew code on this phone \u00b7 ' + CREW_ID.slice(0, 8)));
     const out = el('button', '', 'Not you?');
+    const err = el('div', 'errline', '');
     out.addEventListener('click', () => {
-      localStorage.removeItem('arboCrewId');
+      try { localStorage.removeItem('arboCrewId'); } catch (e) { err.textContent = STORAGE_BLOCKED; return; }
       CREW_ID = '';
       location.reload();
     });
     row.appendChild(out);
     box.appendChild(row);
+    box.appendChild(err);
     return true;
   }
   const h = el('h2', '', 'Who is on this phone?');
@@ -871,7 +971,7 @@ function renderWhoAmI() {
   go.addEventListener('click', () => {
     const v = input.value.trim();
     if (!v) { err.textContent = 'Enter the code from the office.'; return; }
-    localStorage.setItem('arboCrewId', v);
+    try { localStorage.setItem('arboCrewId', v); } catch (e) { err.textContent = STORAGE_BLOCKED; return; }
     location.reload();
   });
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') go.click(); });
@@ -882,41 +982,79 @@ function renderWhoAmI() {
 // R25: the crew door has its own key (CREW_ACCESS_KEY). It opens the crew
 // routes only. Asked once per phone, and only when the server says the door
 // is locked — never guessed at, never shown as "nothing today".
-function renderDoorKey() {
+function renderDoorKey(notSet) {
   // Hide (not just empty) the other panels: their own 401s land later and
   // must not paint an "unavailable" line under a locked door.
   document.querySelector('main').classList.add('door-locked');
   const box = $('whoami');
   box.replaceChildren();
   box.appendChild(el('h2', '', 'Crew door key'));
-  box.appendChild(el('p', '', 'This phone needs the crew door key from the office before it can show today\u2019s work. You only do this once.'));
+  if (notSet) {
+    // D89: the server says no CREW_ACCESS_KEY exists, so there is nothing for
+    // the office to hand out. Asking for one anyway sends them to the only key
+    // that works (Mike's own), and that key must never live on a crew phone.
+    // No field on purpose.
+    box.appendChild(el('p', '', 'No crew door key has been set up yet. Ask Mike to set one. Don\u2019t put the office app key on a crew phone.'));
+    return;
+  }
+  box.appendChild(el('p', '', 'One more step: the crew door key from the office. It is not your crew code \u2014 it is one phrase the whole crew shares. You only enter it once on this phone.'));
   const input = document.createElement('input');
   input.id = 'doorkey'; input.type = 'password'; input.placeholder = 'Crew door key'; input.autocomplete = 'off';
+  input.autocapitalize = 'off'; input.setAttribute('autocorrect', 'off'); input.spellcheck = false; input.enterKeyHint = 'go';
+  // A long phrase typed blind with gloves on fails on one letter, and the
+  // crew only learns that after a reload, so they can look before they send.
+  const show = el('button', 'keyshow', 'Show key');
+  show.type = 'button';
+  show.addEventListener('click', () => {
+    const hidden = input.type === 'password';
+    input.type = hidden ? 'text' : 'password';
+    show.textContent = hidden ? 'Hide key' : 'Show key';
+  });
   const go = el('button', '', 'Open the crew door');
   const err = el('div', 'errline', KEY ? 'That key did not open the door \u2014 check it with the office.' : '');
   go.addEventListener('click', () => {
     const v = input.value.trim();
     if (!v) { err.textContent = 'Enter the key from the office.'; return; }
-    try { localStorage.setItem('arboCrewKey', v); } catch (e) { /* private mode */ }
+    try { localStorage.setItem('arboCrewKey', v); } catch (e) { err.textContent = STORAGE_BLOCKED; return; }
     location.reload();
   });
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') go.click(); });
-  box.appendChild(input); box.appendChild(go); box.appendChild(err);
+  box.appendChild(input); box.appendChild(show); box.appendChild(go); box.appendChild(err);
 }
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => { /* works online without it */ }); });
 }
 
 $('dateline').textContent = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+// As the office app's header: every screen says SIMULATION while the data is
+// practice data, so nobody files a real near miss into it unawares. A /health
+// that did not answer leaves LINKS null, and the plain date stands.
+LINKS_READY.then(() => { if (LINKS === 'simulation') $('dateline').textContent = 'SIMULATION · ' + $('dateline').textContent; });
 if (renderWhoAmI()) {
+  // No door key on this phone: the crew routes will almost surely answer 401, so
+  // the panels stay hidden until the briefing answers, instead of painting and
+  // then vanishing under the key card. renderGate and the catch show them again.
+  if (!KEY) document.querySelector('main').classList.add('door-locked');
   renderWork();
   renderLibrary();
   renderNearMiss();
-  api('/api/crew/briefing').then(renderGate).catch((e) => {
-    if (e.code === 401) return renderDoorKey();
-    $('gate-slot').appendChild(el('div', 'state', e.code === 404
-      ? 'No briefing published for today yet — check with the office.'
-      : 'Could not read today\u2019s briefing (' + (e.code === 503 ? 'the office system is not connected' : 'no answer') + '). That is not \u201cno briefing\u201d \u2014 do not start work; call the office.'));
+  api('/api/crew/briefing').then(renderGate).catch(async (e) => {
+    if (e.code === 401) return renderDoorKey(e.message === 'crew_key_not_set');
+    document.querySelector('main').classList.remove('door-locked'); // the door answered: show the panels
+    if (e.code === 404) {
+      $('gate-slot').appendChild(el('div', 'state', 'No briefing published for today yet — check with the office.'));
+      return;
+    }
+    // §1B: a briefing Arbo could not read is not "no briefing", and the order
+    // it carries is stop-work, so it wears the warning box, not the empty one.
+    await LINKS_READY; // 'cut on purpose' vs 'not set up' needs /health's answer
+    const why = crewWhy(e);
+    const s = el('div', 'state err');
+    s.appendChild(el('b', '', 'Briefing didn\u2019t come through'));
+    s.appendChild(document.createTextNode(why.charAt(0).toUpperCase() + why.slice(1) + '.'));
+    // The order is its own line, so "Do not start work" never splits after "Do".
+    s.appendChild(el('b', 'order', 'Do not start work \u2014 call the office.'));
+    $('gate-slot').appendChild(s);
   });
 }
 </script>

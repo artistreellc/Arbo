@@ -177,8 +177,10 @@ describe('HTTP + screens', () => {
     srv.close();
     const html = readFileSync(new URL('../src/app/index.html', import.meta.url), 'utf8');
     expect(html).toContain('Where each customer stands');
-    expect(html).toContain('This is not zero customers.');
-    expect(html.indexOf('studyPanel(5).then')).toBeLessThan(html.indexOf("api('/api/brief?from="));
-    expect(html).toContain('studyPanel(60).then');
+    expect(html).toContain('That doesn\\u2019t mean there are none.');
+    expect(html.indexOf('studyPanel(5), outreachPanel(false), sonaPanel(3, false)')).toBeGreaterThan(-1);
+    expect(html.indexOf('studyPanel(5), outreachPanel(false), sonaPanel(3, false)')).toBeLessThan(html.indexOf("api('/api/brief?from="));
+    // Calls reads it through the shared Quo fold (QA round 3), as Today does.
+    expect(html).toContain('fillQuoSlots([studyPanel(60), outreachPanel(true), sonaPanel(20, true)]');
   });
 });

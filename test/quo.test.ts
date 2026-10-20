@@ -399,8 +399,8 @@ describe('learning from Quo — no call dropped in silence (Mike, 2026-09-24: "N
     expect(src).toContain('intake.reconcile(line.api, line.phoneNumberId, QUO_LEARN_BACKFILL_MS)');
     expect(src).toContain('const QUO_LEARN_EVERY_MS = 10 * 60 * 1000;');
     const html = readFileSync(new URL('../src/app/index.html', import.meta.url), 'utf8');
-    expect(html).toContain('event(s) Arbo could not use');
-    expect(html).toContain('This is not zero calls.');
+    expect(html).toContain("'event') + ' Arbo could not use (");
+    expect(html).toContain('That doesn\\u2019t mean no calls came in.');
     expect(html).toContain('checked against Quo\\u2019s own record');
     expect(html).not.toContain('no Sona calls since deploy');
   });
@@ -526,13 +526,14 @@ describe('Quo HTTP surface and screens', () => {
     expect(hook.status).toBe(503);
     const q = (await (await fetch(`${base}/api/quo`)).json()) as { status: { registration: { state: string; detail: string } } };
     expect(q.status.registration.state).toBe('not_configured');
-    expect(q.status.registration.detail).toContain('This is not zero calls');
+    expect(q.status.registration.detail).toContain('That doesn’t mean no calls came in.');
     srv.close();
   });
 
   it('the Sona panel sits above the brief fetch and names rule slips', () => {
     const html = readFileSync(new URL('../src/app/index.html', import.meta.url), 'utf8');
-    const panel = html.indexOf('sonaPanel(3, false).then');
+    // Today reads it through the shared Quo fold (QA round 3: fillQuoSlots).
+    const panel = html.indexOf('sonaPanel(3, false)], [studySlot, outreachSlot, sonaSlot]);');
     expect(panel).toBeGreaterThan(-1);
     expect(panel).toBeLessThan(html.indexOf("api('/api/brief?from="));
     expect(html).toContain('SONA BROKE A RULE');

@@ -42,6 +42,7 @@
 */
 import { describe, it, expect } from 'vitest';
 import { createApi, type DataSource, type CrewJobSource } from '../src/server/api.js';
+import { createSimSource } from '../src/dev/simSource.js';
 
 const job = (over: Partial<CrewJobSource> = {}): CrewJobSource => ({
   jobId: 'j1', scheduledFor: '2026-08-05T13:00:00Z', address: '123 Oak St',
@@ -178,15 +179,50 @@ describe('crew work orders (§6F) — the API cannot leak admin data', () => {
     const body = (await api.crewWorkOrders('2026-08-05')).body as { workOrders: unknown[] };
     expect(body.workOrders).toHaveLength(0);
   });
+
+  // §1B on the crew phone: "could not read the contract list" and "every job
+  // is held back" are different days. The page reads a FLAG for the first,
+  // never the sentence written for Mike.
+  it('flags an unreadable contract list so the page cannot draw it as an empty day', async () => {
+    const api = createApi({
+      ready: () => true,
+      stopsBetween: async () => [],
+      newLeads: async () => [],
+      crewJobs: async () => [job({ jobId: 'x' })],
+      jobsWithFiledContract: async () => { throw new Error('contract table unreadable'); },
+    });
+    const body = (await api.crewWorkOrders('2026-08-05')).body as { workOrders: unknown[]; contractLookupFailed: boolean };
+    expect(body.contractLookupFailed).toBe(true);
+    expect(body.workOrders).toHaveLength(0);
+  });
+
+  it('a readable list with jobs held back is NOT flagged as unreadable', async () => {
+    const api = createApi(crewSource([job({ jobId: 'nocontract' })], undefined, 'none'));
+    const body = (await api.crewWorkOrders('2026-08-05')).body as { contractLookupFailed: boolean; notWorkOrders: number };
+    expect(body.contractLookupFailed).toBe(false);
+    expect(body.notWorkOrders).toBe(1);
+  });
+
+  it('the practice data has no contract list, so its crew day is flagged unreadable', async () => {
+    const res = await createApi(createSimSource(), { dataLinksSim: true }).crewWorkOrders('');
+    expect(res.status).toBe(200);
+    const body = res.body as { workOrders: unknown[]; contractLookupFailed: boolean; notWorkOrders: number };
+    expect(body.contractLookupFailed).toBe(true);
+    expect(body.workOrders).toEqual([]);
+    expect(body.notWorkOrders).toBeGreaterThan(0);
+  });
 });
 
 describe('gated briefing over the API (§6V.4 / §4.6)', () => {
   const content = { id: '33333333-3333-3333-3333-333333333333', body: 'Watch the drop zone. Call every cut.', standardRefs: ['Z133 §8.1'] };
+  // A crew code is a uuid: a mistyped one is now a 400 bad_crew_id (QA round 2),
+  // so these fixtures carry a well-formed one.
+  const c1 = '44444444-4444-4444-8444-444444444444';
 
   it('a half-completed gate does NOT unlock and names what is missing', async () => {
     const api = createApi(crewSource([]));
     const res = await api.ackBriefing({
-      crewMemberId: 'c1', content,
+      crewMemberId: c1, content,
       state: { scrolledToBottom: true, checkboxTicked: false, secondsOnScreen: 40 },
       startedAtIso: '2026-08-05T10:00:00Z', completedAtIso: '2026-08-05T10:00:40Z',
     });
@@ -198,7 +234,7 @@ describe('gated briefing over the API (§6V.4 / §4.6)', () => {
     let recorded: unknown = null;
     const api = createApi(crewSource([], (i) => { recorded = i; }));
     const res = await api.ackBriefing({
-      crewMemberId: 'c1', content,
+      crewMemberId: c1, content,
       state: { scrolledToBottom: true, checkboxTicked: true, secondsOnScreen: 12 },
       startedAtIso: '2026-08-05T10:00:00Z', completedAtIso: '2026-08-05T10:00:12Z',
     });
@@ -210,7 +246,7 @@ describe('gated briefing over the API (§6V.4 / §4.6)', () => {
     const api = createApi(crewSource([]));
     expect((await api.ackBriefing({ crewMemberId: '', content, state: {} })).status).toBe(400);
     expect((await api.ackBriefing({
-      crewMemberId: 'c1', content, state: {},
+      crewMemberId: c1, content, state: {},
       startedAtIso: 'not-a-time', completedAtIso: 'nope',
     })).status).toBe(400);
   });
@@ -218,7 +254,7 @@ describe('gated briefing over the API (§6V.4 / §4.6)', () => {
   it('rejects a reversed span — a client clock cannot mint negative time', async () => {
     const api = createApi(crewSource([]));
     const res = await api.ackBriefing({
-      crewMemberId: 'c1', content,
+      crewMemberId: c1, content,
       state: { scrolledToBottom: true, checkboxTicked: true, secondsOnScreen: 20 },
       startedAtIso: '2026-08-05T10:05:00Z', completedAtIso: '2026-08-05T10:00:00Z',
     });
@@ -228,7 +264,7 @@ describe('gated briefing over the API (§6V.4 / §4.6)', () => {
   it('rejects a non-UUID briefing id (uuid[] would commit PAID time then fail)', async () => {
     const api = createApi(crewSource([]));
     const res = await api.ackBriefing({
-      crewMemberId: 'c1', content: { id: 'b1', body: 'x', standardRefs: [] },
+      crewMemberId: c1, content: { id: 'b1', body: 'x', standardRefs: [] },
       state: { scrolledToBottom: true, checkboxTicked: true, secondsOnScreen: 20 },
       startedAtIso: '2026-08-05T10:00:00Z', completedAtIso: '2026-08-05T10:00:20Z',
     });
@@ -240,7 +276,7 @@ describe('gated briefing over the API (§6V.4 / §4.6)', () => {
     let recorded: { payableMinutes: number } | null = null;
     const api = createApi(crewSource([], (i) => { recorded = i as { payableMinutes: number }; }));
     await api.ackBriefing({
-      crewMemberId: 'c1', content,
+      crewMemberId: c1, content,
       state: { scrolledToBottom: true, checkboxTicked: true, secondsOnScreen: 9999 },
       startedAtIso: '2025-08-05T00:00:00Z', completedAtIso: '2026-08-05T00:00:00Z',
     });

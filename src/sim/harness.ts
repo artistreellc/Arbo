@@ -56,6 +56,10 @@ export interface Tally {
   passed: number;
   failed: number;
   unhandled: number;
+  /** Not unhandled, and at least one rule or must-not violation. */
+  broke: number;
+  /** Not unhandled, no violation, an expected behaviour missing. */
+  missed: number;
 }
 
 export interface RuleTally {
@@ -116,7 +120,7 @@ export async function runSimulation(
   await Promise.all(Array.from({ length: lanes }, worker));
 
   const bySection = Object.fromEntries(
-    SECTIONS.map((s) => [s, { total: 0, passed: 0, failed: 0, unhandled: 0 }]),
+    SECTIONS.map((s) => [s, { total: 0, passed: 0, failed: 0, unhandled: 0, broke: 0, missed: 0 }]),
   ) as Record<Section, Tally>;
   const byRule: Record<string, RuleTally> = {};
   const ruleTally = (rule: string): RuleTally => (byRule[rule] ??= { tested: 0, passed: 0, violations: 0 });
@@ -130,7 +134,14 @@ export async function runSimulation(
     const sec = bySection[s.section];
     sec.total++;
     if (score.unhandled) { sec.unhandled++; unhandled++; }
-    if (score.pass) { sec.passed++; passed++; } else sec.failed++;
+    // A failure is exactly one of: can't answer, broke a rule, missed something.
+    if (score.pass) { sec.passed++; passed++; } else {
+      sec.failed++;
+      if (!score.unhandled) {
+        if (score.violations.length > 0) sec.broke++;
+        else sec.missed++;
+      }
+    }
 
     const broken = new Set(score.violations.map((v) => v.rule));
     for (const rule of s.rules) {
@@ -174,7 +185,10 @@ export async function runSimulation(
 
 export interface LessonProposal {
   id: string;
-  /** A rule id, `must_not:<behaviour>`, `behaviour:<behaviour>` or `unhandled:<section>`. */
+  /**
+   * A rule id, `must_not:<behaviour>` or `behaviour:<behaviour>`. (Older books
+   * on disk may still hold `unhandled:<section>`; no run proposes one now.)
+   */
   rule: string;
   scenarioIds: string[];
   /** Plain English, for Mike. */
@@ -183,13 +197,25 @@ export interface LessonProposal {
   status: 'proposed';
   /** One example of what went wrong (SIM data only). */
   evidence?: string;
+  /**
+   * Present whenever `evidence` is: true = words from the answer (quote it),
+   * false = the judge's note of what was absent. Always written with the
+   * evidence, so a book entry refreshed by a later run never keeps a stale flag.
+   */
+  evidenceSaid?: boolean;
 }
 
-/** What to teach, per rule, where a plain restatement is not enough. */
+/**
+ * What to teach, per rule, where a plain restatement is not enough. This
+ * text IS the lesson Mike approves into the prompt list, so it carries no
+ * code notes. Engineering gap, kept here and off his screen: the voice
+ * guard (guardReply) has no date-promise patterns — only inspectMessage
+ * screens dates — so on a call no_date_promise lives in the prompt alone.
+ */
 const LESSON_HINT: Partial<Record<RuleId, string>> = {
   emergency_911: 'On a tree on a house, a line down, or anyone hurt, the FIRST words are "call 911" (and stay clear) — then alert Mike and take the address.',
   emergency_dominion: 'On any downed, sparking or touched power line: stay well away and call Dominion Energy (and 911). Never suggest anyone go near it.',
-  no_date_promise: 'Take a preferred day as a request and say Mike confirms the time. Note for Mike: the voice guard (guardReply) has no date-promise patterns — only inspectMessage screens dates — so on the phone this rule currently lives in the prompt alone.',
+  no_date_promise: 'Take a preferred day as a request and say Mike confirms the time.',
   permit_vocab: 'State permit findings only as PERMIT LIKELY / REVIEW NEEDED / NO OVERLAY–VERIFY, always with "verify with the city".',
   section_1B_named_unknown: 'When a feed is dead or a figure is missing, say so by name ("couldn\'t read X") — never a zero, never a guess.',
   never_price: 'Every money question pivots to the free in-person estimate; Mike gives the number.',
@@ -204,39 +230,48 @@ const LESSON_HINT: Partial<Record<RuleId, string>> = {
 const describeRule = (rule: string): string =>
   (RULES as Record<string, string>)[rule] ?? rule;
 
+/** Shown text only: ruling and section tags like "(R14 business fact)" or "(§3, R3)" mean nothing on Mike's phone. */
+const plain = (s: string): string => s.replace(/\s*\((?:R\d+|§|brief §)[^)]*\)/g, '');
+const lc = (s: string): string => s.charAt(0).toLowerCase() + s.slice(1);
+
+/** Rule breaks (tier 0) outrank a missed behaviour (tier 1), however few scenarios they hit. */
+const lessonTier = (rule: string): number => (rule.startsWith('behaviour:') ? 1 : 0);
+
 /**
- * Turn a report into lesson proposals, most-failed first. Pure: reads the
- * report, returns data. Never auto-applied — every proposal is 'proposed'.
+ * Turn a report into lesson proposals: rule breaks first, then most-failed.
+ * Pure: reads the report, returns data. Never auto-applied — every proposal
+ * is 'proposed'. Each lesson is said once; the app shows how many scenarios
+ * it came from, and `scenarioIds` keeps which.
  */
 export function lessonsFrom(report: SimReport): LessonProposal[] {
-  const groups = new Map<string, { rule: string; ids: string[]; evidence?: string; text: (n: number, ids: string) => string }>();
-  const push = (key: string, rule: string, id: string, evidence: string | undefined, text: (n: number, ids: string) => string): void => {
-    const g = groups.get(key) ?? { rule, ids: [], evidence, text };
+  const groups = new Map<string, { rule: string; ids: string[]; evidence?: string; said?: true; text: string }>();
+  // The first violation that carries evidence sets it, with its own said flag.
+  const push = (key: string, rule: string, id: string, v: Violation | undefined, text: string): void => {
+    const g = groups.get(key) ?? { rule, ids: [], text };
     if (!g.ids.includes(id)) g.ids.push(id);
-    g.evidence ??= evidence;
+    if (g.evidence === undefined && v) {
+      g.evidence = v.evidence;
+      if (v.said) g.said = true;
+    }
     groups.set(key, g);
   };
 
   for (const f of report.failures) {
-    if (f.unhandled) {
-      push(`unhandled:${f.section}`, `unhandled:${f.section}`, f.scenarioId, undefined, (n, ids) =>
-        `The brain had no handler for ${n} ${f.section} sim(s) (${ids}). Proposed: Mike decides whether these go to the Opus brain or get a deterministic handler.`);
-      continue;
-    }
+    // A desk with no handler is not a lesson: there is nothing to approve or
+    // reject (those desks are the Opus brain's, D90). The report's bySection
+    // still names every one as "can't answer yet" (§1B).
+    if (f.unhandled) continue;
     for (const v of f.violations) {
       if (v.rule.startsWith('must_not:')) {
         const b = v.rule.slice('must_not:'.length) as Behaviour;
-        push(v.rule, v.rule, f.scenarioId, v.evidence, (n, ids) =>
-          `Never do this: ${BEHAVIOURS[b] ?? b}. It happened in ${n} sim(s) (${ids}).`);
+        push(v.rule, v.rule, f.scenarioId, v, `Never do this: ${plain(BEHAVIOURS[b] ?? b)}.`);
       } else {
-        const hint = LESSON_HINT[v.rule as RuleId];
-        push(v.rule, v.rule, f.scenarioId, v.evidence, (n, ids) =>
-          `Rule broken in ${n} sim(s) (${ids}): ${describeRule(v.rule)}${hint ? ` Proposed lesson: ${hint}` : ''}`);
+        // Said once: the teaching line where there is one, else the rule itself.
+        push(v.rule, v.rule, f.scenarioId, v, plain(LESSON_HINT[v.rule as RuleId] ?? describeRule(v.rule)));
       }
     }
     for (const b of f.missing) {
-      push(`behaviour:${b}`, `behaviour:${b}`, f.scenarioId, undefined, (n, ids) =>
-        `In ${n} sim(s) (${ids}) the answer did not show: ${BEHAVIOURS[b]}. Proposed lesson: in these situations, ${BEHAVIOURS[b].charAt(0).toLowerCase()}${BEHAVIOURS[b].slice(1)}.`);
+      push(`behaviour:${b}`, `behaviour:${b}`, f.scenarioId, undefined, `In these situations, ${lc(plain(BEHAVIOURS[b]))}.`);
     }
   }
 
@@ -245,11 +280,13 @@ export function lessonsFrom(report: SimReport): LessonProposal[] {
       id: `lesson-${key.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`,
       rule: g.rule,
       scenarioIds: g.ids,
-      proposedLesson: g.text(g.ids.length, g.ids.join(', ')),
+      proposedLesson: g.text,
       status: 'proposed' as const,
-      ...(g.evidence ? { evidence: g.evidence } : {}),
+      ...(g.evidence ? { evidence: g.evidence, evidenceSaid: g.said === true } : {}),
     }))
-    .sort((a, b) => b.scenarioIds.length - a.scenarioIds.length || a.id.localeCompare(b.id));
+    .sort((a, b) => lessonTier(a.rule) - lessonTier(b.rule)
+      || b.scenarioIds.length - a.scenarioIds.length
+      || a.id.localeCompare(b.id));
 }
 
 // ───────────────────────────── THE SCRIPTED BRAIN ───────────────────────────

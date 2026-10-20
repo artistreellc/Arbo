@@ -6,26 +6,35 @@
   widget (which must come from their CDN to stay current with their
   platform) lives here, one tap away, instead of inside it. Same agent,
   same guarded Opus brain, same rules as the phone line.
+  Dressed in the app's own Heartwood colours and self-hosted type (R25), so
+  it reads as part of Arbo, and its back link opens the app (/app), not the
+  public front door at '/'.
 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F7F5F0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0B1512" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
 <title>Talk to Arbo — Art-is-Tree</title>
 <style>
-  :root { color-scheme: dark; }
-  body { margin: 0; background: #0B0D10; color: #E8EAED; font-family: -apple-system, system-ui, sans-serif;
+  @font-face { font-family: 'Fraunces'; src: url('/fonts/fraunces.woff2') format('woff2'); font-weight: 300 800; font-display: swap; }
+  @font-face { font-family: 'Instrument Sans'; src: url('/fonts/instrument-sans.woff2') format('woff2'); font-weight: 400 700; font-display: swap; }
+  :root { color-scheme: light; --paper: #F7F5F0; --ink: #13201A; --ink-2: #3B4A43; --forest: #1B4D3E; --gold: #9A7212; }
+  @media (prefers-color-scheme:dark) { :root { color-scheme: dark; --paper: #0B1512; --ink: #EAF1EC; --ink-2: #C5D2CA; --forest: #5FB08F; --gold: #E9C877; } }
+  body { margin: 0; background: var(--paper); color: var(--ink); font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
          min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px 16px; text-align: center; }
-  .brand { font-size: 26px; font-weight: 900; letter-spacing: .12em; }
-  .brand small { color: #7C3AED; font-weight: 600; font-size: 15px; margin-left: 8px; }
-  p { max-width: 420px; opacity: .85; line-height: 1.5; margin: 0; }
-  a { color: #7C3AED; }
+  .brand { font-family: 'Fraunces', Georgia, serif; font-size: 28px; font-weight: 600; letter-spacing: .06em; color: var(--forest); }
+  .brand small { font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif; color: var(--gold); font-weight: 600; font-size: 11px; letter-spacing: .2em; text-transform: uppercase; margin-left: 10px; }
+  p { max-width: 420px; color: var(--ink-2); line-height: 1.5; margin: 0; }
+  a { color: var(--forest); font-weight: 600; text-decoration: none; }
 </style>
 </head>
 <body>
   <div class="brand">ARBO<small>Art-is-Tree</small></div>
   <p>Tap the widget to talk — this is the same guarded brain that answers the phone line. Allow the microphone when asked.</p>
-  <p><a href="/">&larr; Back to the dashboard</a></p>
+  <p><a href="/app">&larr; Back to the app</a></p>
   <elevenlabs-convai agent-id="agent_1901kyyxyj2sf9nsx9jascy2ssxj"></elevenlabs-convai>
   <script src="/talk/widget.js" async></script>
 </body>

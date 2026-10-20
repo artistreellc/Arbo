@@ -101,6 +101,11 @@ export interface AreaReport {
 /** How far from the benchmark counts as genuinely above or below. */
 const BAND = 0.12;
 
+/** "1 job" / "3 jobs" — the count is known, so the line never says "job(s)". */
+const jobs = (n: number) => `${n} job${n === 1 ? '' : 's'}`;
+/** Whole dollars with a comma, the way the Numbers screen shows every figure. */
+const usd = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
+
 function crewHours(f: AreaJobFact): number {
   return f.hours * Math.max(1, f.crewSize);
 }
@@ -117,7 +122,7 @@ export function buildAreaReport(facts: AreaJobFact[]): AreaReport {
   const usable = facts.filter((f) => f.hours > 0 && f.revenue > 0);
   const unusable = facts.length - usable.length;
   if (unusable > 0) {
-    blindSpots.push(`${unusable} job(s) had no hours or no revenue on file and could not be normalized — they are excluded, not counted as zero.`);
+    blindSpots.push(`${jobs(unusable)} had no hours or no revenue on file and could not be normalized — ${unusable === 1 ? 'it is' : 'they are'} excluded, not counted as zero.`);
   }
   if (usable.length === 0) {
     return { areas: [], fleetRatePerCrewHour: null, withheld: [], blindSpots: [...blindSpots, 'No usable job data — no area can be rated.'] };
@@ -151,7 +156,7 @@ export function buildAreaReport(facts: AreaJobFact[]): AreaReport {
       areas.push({
         areaKey, jobs: rows.length, normalizedRatePerCrewHour: rate, rawRevenuePerJob: rawPerJob,
         verdict: 'not_enough_data',
-        line: `${rows.length} job(s) — too few to rate. This is not a good area or a bad one; it is an unmeasured one.`,
+        line: `${jobs(rows.length)} — too few to rate. This is not a good area or a bad one; it is an unmeasured one.`,
         mix,
       });
       continue;
@@ -167,8 +172,8 @@ export function buildAreaReport(facts: AreaJobFact[]): AreaReport {
       areaKey, jobs: rows.length, normalizedRatePerCrewHour: rate, rawRevenuePerJob: rawPerJob,
       verdict,
       line: verdict === 'at'
-        ? `${rows.length} jobs, in line with the fleet rate.`
-        : `${rows.length} jobs, ${Math.abs(pct)}% ${verdict === 'above' ? 'above' : 'below'} the fleet rate per crew-hour.`,
+        ? `${rows.length} jobs, in line with the company average.`
+        : `${rows.length} jobs, ${Math.abs(pct)}% ${verdict === 'above' ? 'above' : 'below'} the company average per crew-hour.`,
       mix,
     });
   }
@@ -219,13 +224,16 @@ export function buildCampaignReport(facts: CampaignFact[]): CampaignResult[] {
     if (!c.attributionWired) {
       return {
         id: c.id, type: c.type, cost: c.cost, bookedJobs: null, costPerBookedJob: null,
-        line: 'No tracking on this one — Arbo cannot tell whether it worked. That is not the same as it failing.',
+        // The spend is on file even though the result is not, so it is shown.
+        line: c.cost !== null
+          ? `${usd(c.cost)} spent · no tracking on this one — Arbo cannot tell whether it worked. That is not the same as it failing.`
+          : 'No tracking on this one — Arbo cannot tell whether it worked. That is not the same as it failing.',
       };
     }
     if (c.cost === null) {
       return {
         id: c.id, type: c.type, cost: null, bookedJobs: c.bookedJobs, costPerBookedJob: null,
-        line: `${c.bookedJobs} booked job(s), but no cost on file — cost per job is unknown.`,
+        line: `${c.bookedJobs} booked ${c.bookedJobs === 1 ? 'job' : 'jobs'}, but no cost on file — cost per job is unknown.`,
       };
     }
     if (c.bookedJobs === 0) {
@@ -237,7 +245,8 @@ export function buildCampaignReport(facts: CampaignFact[]): CampaignResult[] {
     const cpj = Math.round((c.cost / c.bookedJobs) * 100) / 100;
     return {
       id: c.id, type: c.type, cost: c.cost, bookedJobs: c.bookedJobs, costPerBookedJob: cpj,
-      line: `${c.bookedJobs} booked job(s) at ${cpj} per job.`,
+      // The per-job figure is the card's headline (costPerBookedJob), so the line does not repeat it.
+      line: `${usd(c.cost)} spent · ${c.bookedJobs} booked ${c.bookedJobs === 1 ? 'job' : 'jobs'}.`,
     };
   }).sort((a, b) => {
     // Cheapest measured campaign first; unmeasurable ones last, never ranked

@@ -112,9 +112,10 @@ const REQUIRED_BY_ROLE: Record<string, CertType[]> = {
  */
 const STRICTEST: CertType[] = ['first_aid', 'cpr', 'aerial_rescue'];
 
-function requiredFor(role: string): { certs: CertType[]; roleRecognised: boolean } {
-  const known = REQUIRED_BY_ROLE[role.trim().toLowerCase()];
-  return known ? { certs: known, roleRecognised: true } : { certs: STRICTEST, roleRecognised: false };
+// The unknown role is said once, on that person's roster card on the same
+// Queue screen — never repeated on every credential line.
+function requiredFor(role: string): CertType[] {
+  return REQUIRED_BY_ROLE[role.trim().toLowerCase()] ?? STRICTEST;
 }
 
 /** Certs whose absence or lapse grounds aerial work specifically. */
@@ -168,7 +169,7 @@ export function findCertProblems(
   for (const m of crew) {
     if (!m.active) continue; // an inactive member is not on the schedule
     const held = byMember.get(m.id) ?? [];
-    const { certs: required, roleRecognised } = requiredFor(m.role);
+    const required = requiredFor(m.role);
 
     for (const type of required) {
       // The NEWEST row for this type is the one that governs — an old expired
@@ -179,14 +180,10 @@ export function findCertProblems(
             (r.expiresOn ?? '') > (best.expiresOn ?? '') ? r : best)
         : null;
 
-      const roleNote = roleRecognised
-        ? ''
-        : ` (role "${m.role}" is not one Arbo knows, so it was checked against the strictest requirements)`;
-
       if (!governing) {
         out.push({
           crewMemberId: m.id, crewMemberName: m.name, type, state: 'missing', daysUntil: null,
-          line: `${LABEL[type]} — NO RECORD on file. Arbo cannot confirm this credential; do not assume it exists.${roleNote}`,
+          line: `${LABEL[type]} — NO RECORD on file. Arbo cannot confirm this credential; do not assume it exists.`,
           blocksAerialWork: AERIAL_CRITICAL.includes(type),
         });
         continue;
@@ -195,18 +192,20 @@ export function findCertProblems(
       const { state, daysUntil } = certState(governing.expiresOn, todayEt);
       if (state === 'current') continue;
 
+      // '1 day' / '19 days' — the count is known, so the line never says 'day(s)'.
+      const days = (n: number) => `${n} day${n === 1 ? '' : 's'}`;
       const line =
         state === 'lapsed'
-          ? `${LABEL[type]} EXPIRED ${Math.abs(daysUntil!)} day(s) ago — this is not a reminder, it is a stop.`
+          ? `${LABEL[type]} EXPIRED ${days(Math.abs(daysUntil!))} ago — this is not a reminder, it is a stop.`
           : state === 'urgent'
-            ? `${LABEL[type]} expires in ${daysUntil} day(s) — book the renewal now.`
+            ? `${LABEL[type]} expires in ${days(daysUntil!)} — book the renewal now.`
             : state === 'upcoming'
-              ? `${LABEL[type]} expires in ${daysUntil} day(s).`
+              ? `${LABEL[type]} expires in ${days(daysUntil!)}.`
               : `${LABEL[type]} has no expiry date on file — Arbo cannot tell whether it is valid.`;
 
       out.push({
         crewMemberId: m.id, crewMemberName: m.name, type, state, daysUntil,
-        line: line + roleNote,
+        line,
         blocksAerialWork: AERIAL_CRITICAL.includes(type) && (state === 'lapsed' || state === 'unknown'),
       });
     }

@@ -8,7 +8,7 @@
 import type { ServiceCity } from '../../lib/address.js';
 import { rulesetFor } from '../cities.js';
 import { FACTS } from './facts.js';
-import { TOPICS, type Confidence, type Fact, type FactScope, type Topic } from './types.js';
+import { TOPICS, type Confidence, type Fact, type FactScope, type Topic, type WhoToCall } from './types.js';
 
 export type ChecklistStatus = 'PERMIT LIKELY' | 'REVIEW NEEDED' | 'NO OVERLAY–VERIFY' | 'CALL FIRST' | 'TICKET REQUIRED';
 
@@ -25,6 +25,10 @@ export interface ChecklistItem {
   why: string;
   factIds: string[];
   status: ChecklistStatus;
+  /** Who to ring for this step, taken from its fact, so the UI can offer tap-to-call. */
+  call?: WhoToCall;
+  /** Life-safety step (power lines): the strongest chip on screen. */
+  safety?: true;
 }
 
 export type Maybe = boolean | 'unknown';
@@ -171,6 +175,8 @@ export function jobChecklist(input: JobInput): ChecklistItem[] {
       why: explain(['va-dominion-10ft', 'va-high-voltage-act']) + ' The utility has 5 working days to start arrangements.',
       factIds: powerIds,
       status: 'CALL FIRST',
+      call: factById('va-dominion-10ft')?.whoToCall,
+      safety: true,
     });
   } else if (input.nearPowerLines === 'unknown') {
     items.push(unknownItem('power lines', 'is any line within 10 ft of the tree or its branches?', powerIds));

@@ -440,7 +440,8 @@ describe('HTTP + screens', () => {
     const html = readFileSync(new URL('../src/app/index.html', import.meta.url), 'utf8');
     expect(html).toContain('Send catch-up to ');
     expect(html).toContain('texting registration not approved');
-    expect(html).toContain('This is not zero candidates');
-    expect(html.indexOf('outreachPanel(false).then')).toBeLessThan(html.indexOf("api('/api/brief?from="));
+    expect(html).toContain('Waiting on Quo — nothing can be texted');
+    expect(html.indexOf('studyPanel(5), outreachPanel(false), sonaPanel(3, false)')).toBeGreaterThan(-1);
+    expect(html.indexOf('studyPanel(5), outreachPanel(false), sonaPanel(3, false)')).toBeLessThan(html.indexOf("api('/api/brief?from="));
   });
 });

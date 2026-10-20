@@ -90,6 +90,23 @@ describe('server wiring', () => {
       expect((await get('/api/agents/sections', 'crew-k')).status).toBe(401);
       expect((await get('/api/permits/db', 'admin-k')).status).toBe(200);
       expect((await get('/api/crew/workorders')).status).toBe(401);
+      // A crew key IS set, so a wrong one is plain "unauthorized".
+      expect(await (await get('/api/crew/workorders', 'wrong')).json()).toEqual({ error: 'unauthorized' });
+    } finally { srv.close(); }
+  });
+
+  it('with no crew key set, the crew door says so by name (D89); Mike’s routes do not', async () => {
+    const { base, srv } = await serve({ APP_ACCESS_KEY: 'admin-k', CREW_ACCESS_KEY: undefined, ARBO_DATA_LINKS: undefined });
+    try {
+      const get = (p: string, k?: string) => fetch(base + p, { headers: k ? { 'x-arbor-key': k } : {} });
+      const crew = await get('/api/crew/workorders');
+      expect(crew.status).toBe(401);
+      expect(await crew.json()).toEqual({ error: 'crew_key_not_set' });
+      const leads = await get('/api/leads');
+      expect(leads.status).toBe(401);
+      expect(await leads.json()).toEqual({ error: 'unauthorized' });
+      // Mike's own key still opens the crew door while no crew key exists.
+      expect((await get('/api/crew/workorders', 'admin-k')).status).not.toBe(401);
     } finally { srv.close(); }
   });
 

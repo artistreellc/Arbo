@@ -115,7 +115,7 @@ describe('ARBOR app shell', () => {
   });
 
   it('a dead training board is named, not drawn as a current crew (§1B)', () => {
-    expect(html).toContain('Training board unavailable');
+    expect(html).toContain("'Training board — ' + FEED_WORD[feedKind(e)]");
     expect(html).toContain('not a claim that everyone is current');
   });
 
@@ -128,12 +128,12 @@ describe('ARBOR app shell', () => {
   });
 
   it('a dead draft queue is named, not rendered as an empty queue (§1B)', () => {
-    expect(html).toContain('Draft queue unavailable');
+    expect(html).toContain("'Draft queue — ' + FEED_WORD[feedKind(e)]");
     expect(html).toContain('not a claim that nothing is waiting');
   });
 
   it('the money surface names a dead ledger instead of implying everything is paid (§1B)', () => {
-    expect(html).toContain('Ledger unavailable');
+    expect(html).toContain("'Ledger — ' + FEED_WORD[feedKind(e)]");
     expect(html).toContain('not a claim that everything is paid');
   });
 
@@ -149,7 +149,7 @@ describe('ARBOR app shell', () => {
   });
 
   it('the fleet surface names a dead feed instead of drawing all-units-up (§1B)', () => {
-    expect(html).toContain('Fleet status unknown');
+    expect(html).toContain("'Fleet — ' + FEED_WORD[feedKind(e)]");
     expect(html).toContain('not a claim that everything runs');
   });
 
@@ -161,7 +161,8 @@ describe('ARBOR app shell', () => {
 
   it('the performance screen shows the benchmark and the blind spots FIRST (§1B/§6N.3)', () => {
     expect(html).toContain('/api/performance');
-    expect(html).toContain('fleet $/crew-hr');
+    // 'Company average', not 'fleet rate': on this app 'fleet' means the trucks.
+    expect(html).toContain('company avg per crew-hour');
     // Rated on crew-hours, and the screen says so — per-job rewards job mix.
     expect(html).toContain('not per job');
     expect(html).toContain('BLIND SPOT');
@@ -173,7 +174,7 @@ describe('ARBOR app shell', () => {
   });
 
   it('a dead performance feed is named, not drawn as healthy numbers', () => {
-    expect(html).toContain('Performance unavailable');
+    expect(html).toContain("'Numbers — ' + FEED_WORD[feedKind(e)]");
     expect(html).toContain('not a claim that everything is fine');
     expect(html).toContain('not "no campaigns running"');
   });
@@ -181,13 +182,13 @@ describe('ARBOR app shell', () => {
   it('is the only place a crew member or a card can be put on file (§4)', () => {
     expect(html).toContain("api('/api/roster')");
     expect(html).toContain('/certification');
-    expect(html).toContain('Add somebody to the roster');
+    expect(html).toContain('Add someone to the roster');
     // The crew code is what somebody types into the crew door.
     expect(html).toContain('Crew code: ');
   });
 
   it('the roster counts cards on file and never rules on anybody', () => {
-    expect(html).toContain('CARDS ON FILE');
+    expect(html).toContain("plural(p.certCount, 'card') + ' on file'");
     // Scoped to the roster — 'qualified' is also a LEAD status elsewhere on
     // this page, which is a different word about a different thing.
     const roster = html.slice(html.indexOf('function renderRoster('), html.indexOf('// ---------- Training board'));
@@ -201,7 +202,7 @@ describe('ARBOR app shell', () => {
 
   it('an empty roster explains what it breaks, and a dead one is named apart', () => {
     expect(html).toContain('Nobody on the roster yet');
-    expect(html).toContain('Roster unavailable');
+    expect(html).toContain("'Roster — ' + FEED_WORD[feedKind(e)]");
     expect(html).toContain('not a claim that nobody is on it');
   });
 
@@ -213,7 +214,7 @@ describe('ARBOR app shell', () => {
   it('is the only place the §6U library can be written, and it writes drafts', () => {
     expect(html).toContain('/api/reference/drafts');
     expect(html).toContain("api('/api/reference'");
-    expect(html).toContain('Write a new entry');
+    expect(html).toContain('Write a new library entry');
     // §6U.3 stated where the entry is actually typed, not only in the API.
     expect(html).toContain('never paste the standard text');
   });
@@ -234,7 +235,7 @@ describe('ARBOR app shell', () => {
   });
 
   it('a dead library queue is named, not drawn as an empty one (§1B)', () => {
-    expect(html).toContain('Library queue unavailable');
+    expect(html).toContain("'Library drafts — ' + FEED_WORD[feedKind(e)]");
     expect(html).toContain('not a claim that nothing is waiting');
   });
 
@@ -266,7 +267,7 @@ describe('ARBOR app shell', () => {
   it('the reception instrument is on the home surface and never renders a dead feed as quiet', () => {
     expect(html).toContain('/api/reception/status');
     expect(html).toContain('Reception: status unavailable right now');
-    expect(html).toContain('no calls since deploy');
+    expect(html).toContain('no calls since Arbo last restarted');
     expect(html).toContain('rejected call attempt');
     expect(html).toContain('receptionStrip().then((b) => { if (b) recSlot.appendChild(b); });');
   });
@@ -274,15 +275,17 @@ describe('ARBOR app shell', () => {
   it('the settings screen exists, is honest about persistence, and fails safe', () => {
     expect(html).toContain('id="settings-btn"');
     expect(html).toContain('/api/settings/channels');
-    expect(html).toContain('reset to the coded defaults on a redeploy');
-    expect(html).toContain('Could not load the channel switches. Nothing was changed.');
+    expect(html).toContain('go back to the standard set whenever Arbo restarts or is updated');
+    // QA round 2: a dead switches feed is named in the shared feed words, and nothing was changed.
+    expect(html).toContain("state('Channel switches — ' + FEED_WORD[feedKind(e)], 'Nothing was changed.')");
   });
 
   it("today's work ZIP is settable, and honest about its in-memory life (R15)", () => {
     expect(html).toContain('/api/settings/route');
-    expect(html).toContain("Today's work ZIP");
-    expect(html).toContain('set it each morning; resets on redeploy');
-    expect(html).toContain('Work-ZIP setting unavailable right now. Nothing was changed.');
+    expect(html).toContain('Today\\u2019s work ZIP');
+    expect(html).toContain('Set it each morning; it resets whenever Arbo restarts or is updated');
+    // QA round 2: a dead work-ZIP read is a named feed line, never a help tip.
+    expect(html).toContain("feedLine(rzErr, 'Work ZIP', 'Nothing was changed.')");
   });
 
   it('the location toggle and route planner are on the settings screen, honest in both modes (R15/R16)', () => {
@@ -321,5 +324,25 @@ describe('ARBOR app shell', () => {
     expect(html).toContain('#1B4D3E'); // luminous purple accent
     expect(html).toContain('#F7F5F0'); // near-black base
     expect(html).toMatch(/min-height:\s*(48|56)px/);
+  });
+
+  it('one feed-state vocabulary words every failed read and save (§1B)', () => {
+    // Every panel words a dead feed through these, so a cut link, a gap in the
+    // practice data, an unwired feed and a failed read never read the same.
+    expect(html).toContain('function feedKind(');
+    for (const word of ['cut on purpose', 'not in the practice data', 'not set up yet', 'couldn’t read it']) {
+      expect(html, `FEED_WORD lost "${word}"`).toContain(word);
+    }
+    for (const helper of ['function feedSays(', 'function feedLine(', 'function feedState(', 'function saveFailText(', 'function showSaveFail(']) {
+      expect(html).toContain(helper);
+    }
+    // The server's three gap words are each read, not lumped into one.
+    expect(html).toContain("e.message === 'not_simulated'");
+    expect(html).toContain("e.message === 'db_not_configured'");
+    // One /health read at boot decides whether db_not_configured means cut.
+    expect(html).toContain("const LINKS_READY = api('/health')");
+    // A dead feed has its own row style, distinct from a help tip.
+    expect(html).toContain('.feed-state{');
+    expect(html).toContain('.view .feed-state,');
   });
 });

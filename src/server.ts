@@ -219,30 +219,36 @@ export function createLiveSource(): DataSource {
         zip: r.zip ?? undefined,
         isFirstTimer: r.isFirstTimer ?? undefined,
         scope: r.scope ?? undefined,
+        nearPowerLines: r.nearPowerLines ?? undefined,
       }));
     },
     async newLeads(limit): Promise<ApiLeadInput[]> {
       const rows = await listLeads(limit);
       // The §6B screen flag rides each lead: latest permit per property, batched.
       // A permit-join failure must not kill the inbox (the lead list is the
-      // lifeblood) — degrade to "no flag on file", which the API surfaces as
-      // screenPending, the honest "still needs a screen" state. Never a clear.
+      // lifeblood) — but it is NAMED: every lead with a property carries
+      // permitUnreadable, which the API keeps apart from screenPending. "We
+      // could not read the permits" is not "no screen on file" (§1B). Never a clear.
       const propertyIds = [...new Set(rows.map((r) => r.property?.id).filter((id): id is string => Boolean(id)))];
       let permits: Awaited<ReturnType<typeof latestPermitsForProperties>>;
+      let permitFailed = false;
       try {
         permits = await latestPermitsForProperties(propertyIds);
       } catch (err) {
         console.error('[server] permit flag fetch failed:', err instanceof Error ? err.message : 'error');
         permits = new Map();
+        permitFailed = true;
       }
-      // §27 memory — auxiliary like permits: a failure degrades to "no history
-      // line", never a dead inbox.
+      // §27 memory — auxiliary like permits: a failure never kills the inbox,
+      // and it is named the same way (historyUnreadable), never a silent blank.
       let history: Awaited<ReturnType<typeof latestHistoryForProperties>>;
+      let historyFailed = false;
       try {
         history = await latestHistoryForProperties(propertyIds);
       } catch (err) {
         console.error('[server] history fetch failed:', err instanceof Error ? err.message : 'error');
         history = new Map();
+        historyFailed = true;
       }
       return rows.map((r) => {
         const permit = r.property ? permits.get(r.property.id) ?? null : null;
@@ -264,7 +270,10 @@ export function createLiveSource(): DataSource {
           permit: permit
             ? { screenStatus: permit.screen_status, inRpa: permit.in_rpa, status: permit.status }
             : null,
+          // Only a lead WITH a property had a read that could fail.
+          permitUnreadable: permitFailed && r.property != null,
           history: h ? { kind: h.kind, when: h.when, scope: h.scope, status: h.status } : null,
+          historyUnreadable: historyFailed && r.property != null,
         };
       });
     },
@@ -710,9 +719,10 @@ export function createArborRequestHandler() {
       // the other shells; the agent itself is public-id, so no key gate.
       if (req.method === 'GET' && (url.pathname === '/talk' || url.pathname === '/talk/') && !vendorLinked('elevenlabs')) {
         // R21: the ElevenLabs link is cut — say so plainly instead of loading
-        // a widget whose brain would refuse every word.
+        // a widget whose brain would refuse every word. Same Heartwood colours
+        // and self-hosted type as the app (Day and Night), so it reads as Arbo.
         res.writeHead(503, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-        return res.end('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Arbo — Talk is off</title></head><body style="font-family:system-ui,sans-serif;max-width:520px;margin:48px auto;padding:0 16px;line-height:1.6"><h1>Talk to Arbo is off</h1><p>Arbo\'s own voice line is disconnected while Sona (Quo) handles calls. Nothing was deleted — it comes back with one setting.</p><p><a href="/app">Back to the app</a></p></body></html>');
+        return res.end(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>Arbo — Talk is off</title><style>@font-face{font-family:Fraunces;src:url(/fonts/fraunces.woff2) format('woff2');font-weight:300 800}@font-face{font-family:'Instrument Sans';src:url(/fonts/instrument-sans.woff2) format('woff2');font-weight:400 700}body{font-family:'Instrument Sans',system-ui,sans-serif;background:#F7F5F0;color:#13201A;max-width:520px;margin:0 auto;padding:56px 20px;line-height:1.6}h1{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:2rem;color:#1B4D3E}p{color:#3B4A43}a.btn{display:inline-block;margin-top:12px;background:linear-gradient(180deg,#245F4D,#1B4D3E);color:#fff;text-decoration:none;font-weight:700;padding:15px 30px;border-radius:16px}@media (prefers-color-scheme:dark){body{background:#0B1512;color:#EAF1EC}h1{color:#5FB08F}p{color:#C5D2CA}}</style></head><body><h1>Talk to Arbo is off</h1><p>Arbo's own voice line is disconnected while Sona (Quo) handles calls. Nothing was deleted — it comes back with one setting.</p><a class="btn" href="/app">Back to the app</a></body></html>`);
       }
       if (req.method === 'GET' && (url.pathname === '/talk' || url.pathname === '/talk/')) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
@@ -880,7 +890,10 @@ export function createArborRequestHandler() {
         return res.end('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
       }
       if (url.pathname.startsWith('/api/') && !apiAuthorized()) {
-        return send(401, { error: 'unauthorized' });
+        // D89: with no CREW_ACCESS_KEY there is no crew key to ask for. Say so
+        // by name, so the crew page does not send the office looking for one
+        // (and a crew phone does not end up holding Mike's key instead).
+        return send(401, { error: url.pathname.startsWith('/api/crew/') && env.appAccessKey && !env.crewAccessKey ? 'crew_key_not_set' : 'unauthorized' });
       }
       if (req.method === 'GET' && url.pathname === '/api/brief') {
         return send(...unpack(await api.brief(url.searchParams.get('from') ?? '', url.searchParams.get('to') ?? '')));
@@ -1331,7 +1344,13 @@ export function createArborRequestHandler() {
         return send(200, { agents: SECTION_AGENTS, brain: sectionBrain.online ? 'online' : 'offline' });
       }
       if (req.method === 'POST' && url.pathname === '/api/agents/sections/run') {
-        const reports = await runAllSections(onDemandSectionDeps(api, alertsProvider));
+        // SIMULATION: `api` runs on the in-memory practice source and never
+        // opens a database, so its read handlers are the desks' inputs —
+        // never "link cut". The writing agents stay out either way; cut and
+        // live keep the real gates. The hourly scheduler is untouched.
+        const base = onDemandSectionDeps(api, alertsProvider);
+        const deps = dataLinksSim() ? { ...base, hasDb: () => true, linkOpen: () => true } : base;
+        const reports = await runAllSections(deps);
         const summaries = await Promise.all(reports.map((r) => sectionBrain.summarize(r)));
         return send(200, { ranAt: new Date().toISOString(), reports, summaries });
       }
@@ -1532,6 +1551,8 @@ export function createArborRequestHandler() {
       if (req.method === 'GET' && url.pathname === '/api/webhooks/texts') {
         return send(200, {
           wired: Boolean(env.twilioSmsWebhookKey),
+          // R21: the key can be set while the link is cut — cut wins, and is its own state.
+          linkCut: !vendorLinked('twilio'),
           texts: webhooks.texts(),
           note: 'Texts and photos sent to the Arbo number. Receive only — Arbo never replies. NOT WIRED is not zero texts.',
         });
@@ -1539,6 +1560,7 @@ export function createArborRequestHandler() {
       if (req.method === 'GET' && url.pathname === '/api/webhooks/calls') {
         return send(200, {
           wired: Boolean(env.elevenlabs.postCallSecret),
+          linkCut: !vendorLinked('elevenlabs'),
           transcripts: webhooks.callTranscripts(),
           note: 'Post-call transcripts pushed by ElevenLabs. NOT WIRED means the webhook secret is absent — that is not zero calls.',
         });
@@ -1653,7 +1675,7 @@ async function wireQuo(intake: QuoIntake, outreach: OutreachEngine | null): Prom
   if (!env.quoApiKey) return null;
   const domain = process.env.RAILWAY_PUBLIC_DOMAIN;
   if (!domain) {
-    intake.setRegistration('failed', 'No public URL (RAILWAY_PUBLIC_DOMAIN) to give Quo — Sona calls cannot reach Arbo.');
+    intake.setRegistration('failed', 'Arbo has no public web address to give Quo — Sona’s calls cannot reach Arbo. That doesn’t mean no calls came in.');
     console.error('[quo] NOT wired — no public URL');
     return null;
   }
@@ -1684,7 +1706,7 @@ async function wireQuo(intake: QuoIntake, outreach: OutreachEngine | null): Prom
     return first ? { api, phoneNumberId: first.id, numbers } : null;
   } catch (err) {
     const why = err instanceof Error ? err.message : 'error';
-    intake.setRegistration('failed', `Quo registration failed (${why}) — Sona calls are NOT reaching Arbo. This is not zero calls.`);
+    intake.setRegistration('failed', `Quo registration failed (${why}) — Sona calls are NOT reaching Arbo. That doesn’t mean no calls came in.`);
     console.error('[quo] registration FAILED:', why);
     return null;
   }

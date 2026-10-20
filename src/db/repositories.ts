@@ -569,6 +569,8 @@ export interface DayStopRow {
   zip: string | null;
   isFirstTimer: boolean | null;
   scope: string | null;
+  /** The property's power-line hazard — only true raises the brief's red flag. */
+  nearPowerLines: boolean | null;
 }
 
 /** Every estimate + job scheduled inside [fromIso, toIso) — feeds the brief. */
@@ -577,12 +579,12 @@ export async function listStopsBetween(fromIso: string, toIso: string): Promise<
   const [est, jobs] = await Promise.all([
     db
       .from('estimate')
-      .select('id, scheduled_slot, zip_cluster, property:property_id(address, city, zip), contact:contact_id(name, phones, is_first_timer)')
+      .select('id, scheduled_slot, zip_cluster, property:property_id(address, city, zip, hazard_power_lines), contact:contact_id(name, phones, is_first_timer)')
       .gte('scheduled_slot', fromIso)
       .lt('scheduled_slot', toIso),
     db
       .from('job')
-      .select('id, scheduled_for, materials, property:property_id(address, city, zip), contact:contact_id(name, phones, is_first_timer)')
+      .select('id, scheduled_for, materials, property:property_id(address, city, zip, hazard_power_lines), contact:contact_id(name, phones, is_first_timer)')
       .gte('scheduled_for', fromIso)
       .lt('scheduled_for', toIso),
   ]);
@@ -594,7 +596,7 @@ export async function listStopsBetween(fromIso: string, toIso: string): Promise<
     scheduled_slot?: string;
     scheduled_for?: string;
     materials?: string | null;
-    property: { address: string; city: string; zip: string | null } | null;
+    property: { address: string; city: string; zip: string | null; hazard_power_lines: boolean } | null;
     contact: { name: string | null; phones: string[]; is_first_timer: boolean } | null;
   };
   const map = (r: Joined, kind: 'estimate' | 'job'): DayStopRow => ({
@@ -608,6 +610,7 @@ export async function listStopsBetween(fromIso: string, toIso: string): Promise<
     zip: r.property?.zip ?? null,
     isFirstTimer: r.contact?.is_first_timer ?? null,
     scope: r.materials ?? null,
+    nearPowerLines: r.property?.hazard_power_lines ?? null,
   });
   return [
     ...(est.data as unknown as Joined[]).map((r) => map(r, 'estimate')),
@@ -1071,8 +1074,8 @@ export async function getPropertyTwin(propertyId: string): Promise<PropertyTwinR
   };
 }
 
-/** Mike's tap on a lead: qualified / spam / converted / lost (DB CHECK validates). */
-export async function updateLeadStatus(leadId: string, status: 'new' | 'qualified' | 'spam' | 'converted' | 'lost'): Promise<void> {
+/** Mike's tap on a lead: qualified / spam / converted / lost, or Undo back to new / emergency (DB CHECK validates). */
+export async function updateLeadStatus(leadId: string, status: 'new' | 'qualified' | 'emergency' | 'spam' | 'converted' | 'lost'): Promise<void> {
   const db = getDb();
   const res = await db.from('lead').update({ status, updated_at: new Date().toISOString() }).eq('id', leadId);
   if (res.error) throw res.error;

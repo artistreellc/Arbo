@@ -182,9 +182,25 @@ describe('the harness', () => {
     const brain: Brain = async () => 'That usually runs about $850.';
     const report = await runSimulation(brain, few, { brainName: 'bad', now: () => new Date('2026-09-28T12:00:00Z') });
     expect(report).toMatchObject({ brain: 'bad', total: 3, passed: 0, failed: 3, unhandled: 0, passRate: 0 });
-    expect(report.bySection.front_desk).toEqual({ total: 2, passed: 0, failed: 2, unhandled: 0 });
+    expect(report.bySection.front_desk).toEqual({ total: 2, passed: 0, failed: 2, unhandled: 0, broke: 2, missed: 0 });
     expect(report.byRule.never_price!.violations).toBe(3);
     expect(report.failures).toHaveLength(3);
+  });
+
+  it('a scenario that only missed a behaviour counts as missed, never as a rule break', async () => {
+    const onlyMissed = probe([], { id: 'probe-missed', mustDo: ['empathize'] });
+    const broke = probe([], { id: 'probe-broke', mustDo: ['empathize'] });
+    const cannot = probe([], { id: 'probe-unhandled', mustDo: ['empathize'] });
+    const answers: Record<string, string> = {
+      'probe-missed': 'Thanks for calling.',
+      'probe-broke': 'That usually runs about $850.',
+      'probe-unhandled': `${UNHANDLED} no handler`,
+    };
+    const brain: Brain = async (sc) => answers[sc.id]!;
+    const report = await runSimulation(brain, [onlyMissed, broke, cannot]);
+    expect(report.bySection.front_desk).toEqual({ total: 3, passed: 0, failed: 3, unhandled: 1, broke: 1, missed: 1 });
+    // Every failure is exactly one of the three.
+    for (const t of Object.values(report.bySection)) expect(t.broke + t.missed + t.unhandled).toBe(t.failed);
   });
 
   it('names a brain that throws instead of swallowing it', async () => {
@@ -241,5 +257,31 @@ describe('the scripted brain (existing deterministic code, no network)', () => {
 
   it('answers [[UNHANDLED]] where no deterministic handler exists', async () => {
     expect(await scriptedBrain()(byId('dp-rain-day'))).toMatch(/^\[\[UNHANDLED\]\]/);
+  });
+
+  it('real rule breaks lead the lessons, ahead of every missed behaviour, however few scenarios they hit', async () => {
+    const report = await runSimulation(scriptedBrain(), SCENARIOS, { concurrency: 8 });
+    const lessons = lessonsFrom(report);
+    const at = (rule: string) => lessons.findIndex((l) => l.rule === rule);
+    const firstNag = lessons.findIndex((l) => l.rule.startsWith('behaviour:') || l.rule.startsWith('unhandled:'));
+    expect(firstNag).toBeGreaterThan(0);
+    for (const rule of ['no_date_promise', 'line_clearance_only']) {
+      expect(at(rule), rule).toBeGreaterThanOrEqual(0);
+      expect(at(rule), rule).toBeLessThan(firstNag);
+    }
+    // A desk with no handler is named in bySection, not offered as a lesson to approve.
+    expect(report.unhandled).toBeGreaterThan(0);
+    expect(lessons.some((l) => l.rule.startsWith('unhandled:'))).toBe(false);
+  });
+
+  it('each lesson is said once, in words for Mike — no ids, no "sim(s)", no ruling tags', async () => {
+    const lessons = lessonsFrom(await runSimulation(scriptedBrain(), SCENARIOS, { concurrency: 8 }));
+    for (const l of lessons) {
+      expect(l.proposedLesson, l.id).not.toMatch(/sim\(s\)|\(R\d+|\(§|_/);
+      for (const id of l.scenarioIds) expect(l.proposedLesson, l.id).not.toContain(id);
+      expect(l.scenarioIds.length).toBeGreaterThan(0);
+    }
+    const clear = lessons.find((l) => l.rule === 'behaviour:stay_clear')!;
+    expect(clear.proposedLesson).toBe('In these situations, tell people to stay away from the hazard.');
   });
 });
