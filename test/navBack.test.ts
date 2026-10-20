@@ -179,3 +179,15 @@ describe('the red Sona flags say which call and open it', () => {
     expect(o).toContain("card.classList.add('flash');");
   });
 });
+
+describe('the aerial-work warning names each person and opens their credential', () => {
+  it('one row per blocked crew member — name and what is wrong — each scrolling to that person\'s card', () => {
+    const at = html.indexOf('if (s.aerialBlocked.length) {');
+    const block = html.slice(at, html.indexOf('if (s.certProblems.length) {', at));
+    expect(block).toContain('for (const id of s.aerialBlocked) {');
+    expect(block).toContain("const row = el('button', 'sliplink', ((lead && lead.crewMemberName) || 'A crew member') + (lead ? ' · ' + what(lead) : '')");
+    expect(block).toContain("' · ' + (CERT_STATE[f.state] || [String(f.state).toUpperCase()])[0]");
+    expect(block).toContain(".find((n) => n.dataset.crew === id);");
+    expect(html).toContain('c.dataset.crew = f.crewMemberId;');
+  });
+});

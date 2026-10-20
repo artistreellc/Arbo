@@ -346,9 +346,9 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 .storm{background:var(--emergency-bg);border:1px solid color-mix(in srgb,var(--emergency) 28%,transparent);color:color-mix(in srgb,var(--emergency) 75%,var(--ink-1));
   border-radius:var(--r-md);padding:13px 16px;margin-bottom:12px;font-weight:600;font-size:14px;line-height:1.45}
 .storm small{display:block;font-weight:500;opacity:.9;margin-top:4px}
-.storm .sliplink{display:flex;width:100%;min-height:44px;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;padding:10px 12px;
+.storm .sliplink,.card .sliplink{display:flex;width:100%;min-height:44px;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;padding:10px 12px;
   border-radius:12px;border:1px solid color-mix(in srgb,var(--emergency) 40%,transparent);background:var(--card);color:inherit;font:inherit;font-weight:600;text-align:left}
-.storm .sliplink::after{content:'\203A';font-size:22px;line-height:1;flex:none}
+.storm .sliplink::after,.card .sliplink::after{content:'\203A';font-size:22px;line-height:1;flex:none}
 .card.flash{animation:cardflash 1.8s var(--ease)}
 @keyframes cardflash{0%,40%{box-shadow:0 0 0 3px var(--emergency)}100%{box-shadow:none}}
 .storm-muted{color:var(--ink-3);font-size:13.5px;line-height:1.55;margin-bottom:12px;text-wrap:pretty}
@@ -2615,6 +2615,21 @@ async function renderSafety(slot) {
     c.appendChild(el('div', 'who', plural(s.aerialBlocked.length, 'crew member') + ' cannot be put on aerial work'));
     c.appendChild(el('div', 'scope',
       'A rescue-critical credential is expired, missing, or has no date on file. Fix before assigning the day.'));
+    // Mike, 2026-10-20: a red flag says WHO, and a tap opens that person's credential below.
+    for (const id of s.aerialBlocked) {
+      const probs = s.certProblems.filter((f) => f.crewMemberId === id);
+      const lead = probs.find((f) => f.blocksAerialWork) || probs[0];
+      // Short: who · which card · its state ("SIM-Alder · Aerial rescue · EXPIRED"); the full line is on the card.
+      const what = (f) => ((CERT_TYPES.find(([k]) => k === f.type) || [f.type, String(f.type).replace(/_/g, ' ')])[1]) + ' · ' + (CERT_STATE[f.state] || [String(f.state).toUpperCase()])[0];
+      const row = el('button', 'sliplink', ((lead && lead.crewMemberName) || 'A crew member') + (lead ? ' · ' + what(lead) : '') + (probs.length > 1 ? ' (+' + (probs.length - 1) + ' more)' : ''));
+      row.addEventListener('click', () => {
+        const t = [...slot.querySelectorAll('[data-crew]')].find((n) => n.dataset.crew === id);
+        if (!t) return;
+        t.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        t.classList.remove('flash'); void t.offsetWidth; t.classList.add('flash');
+      });
+      c.appendChild(row);
+    }
     slot.appendChild(c);
   }
 
@@ -2623,6 +2638,7 @@ async function renderSafety(slot) {
     for (const f of s.certProblems) {
       const hard = f.state === 'lapsed' || f.state === 'missing';
       const c = el('div', 'card' + (hard ? ' emergency' : ''));
+      c.dataset.crew = f.crewMemberId;
       const top = el('div', 'toprow');
       top.appendChild(el('div', 'who', f.crewMemberName));
       // A lapsed card says how long ago, in the stop colour — never a gold '-19d'.
