@@ -1125,6 +1125,84 @@ real rows are never keyless); the crew door stays shut without
 `src/db/notSaved.ts`, `src/ops/leadAge.ts`, `test/readOnlyMode.test.ts`,
 `test/dataLinks.test.ts`.
 
+## R33 — Google and Quo connected read-only (Mike, 2026-10-20)
+
+**DRAFT — Claude wrote this from Mike's words; Mike confirms or corrects it.**
+
+Mike, verbatim: *"Connect Google as a read only and connect quo as read only"*.
+
+What this changes:
+1. **Google: Arbo asks for three read permissions and nothing else** —
+   `gmail.readonly`, `calendar.readonly`, `drive.readonly`. `calendar.events`
+   (the R18 hold) is no longer asked for. Every Google write Arbo's code could
+   make refuses IN CODE before anything leaves Arbo — not even a token is
+   minted — so a sign-in granted before today, which still carries
+   `calendar.events`, is used read-only all the same. There is no variable that
+   turns a Google write back on.
+2. **Quo: read-only, enforced by Arbo** (a Quo API key cannot be limited to
+   reading). One switch, `ARBO_QUO_SEND`, read-only unless it is exactly `live`
+   — any other value, a different case, a stray space, or no value at all
+   stays read-only. **Only Mike sets it**, on his explicit word; never a build,
+   never an agent, never an optimisation. Until then every Quo write Arbo's code
+   can make refuses by name: a text (R22 — Mike's catch-up tap, the boot
+   catch-up, the 48-hour follow-ups, any route), and creating, replacing or
+   deleting Arbo's own Quo webhooks. A webhook Quo is missing is named — *"Quo
+   webhook missing — Arbo is read-only and won't create it; texts and calls are
+   read from Quo's record instead"* — never created.
+3. **Reading keeps working:** Gmail (the inbox watch and the intent engine), the
+   calendar view, the Drive lead logs (R24), Sona's calls, transcripts and
+   summaries, texts, the R24 customer study, the Quo webhook intake (through the
+   hooks that already exist), and Talk. Who has not heard back (the outreach
+   list) is a read and still shows, so Mike can text them from the Quo app.
+4. **§1B:** off on purpose has its own words and its own muted tone — never
+   "failed", never "0 calendar holds filed", never "nothing to send". The boot
+   names both modes: `[google] READ-ONLY (R33)` and `[quo] READ-ONLY (R33)`
+   (or `[quo] WRITES ON` once Mike sets the switch).
+
+What is PAUSED, and how each could come back — only on Mike's word:
+
+| Paused | What it did | How it comes back |
+|---|---|---|
+| **R18 calendar holds** | An unconfirmed "Estimate - …" hold on Mike's calendar during a Sona call (and on Arbo's own line, cut under R21). Now each call card says *"Calendar holds are off — Google is connected read-only (Mike, 2026-10-20). Sona's requested time is shown on the call card for you to book."* | A code change (`GOOGLE_READ_ONLY` in `src/integrations/readOnly.ts`, and `calendar.events` back in `GOOGLE_PERMISSIONS`) **and** Mike reconnecting Google so it grants the write permission. |
+| **R22 texts from Arbo** | The "still interested in a quote?" text: the past-week catch-up and the 48-hour follow-ups. The catch-up button stays where it was, disabled, with *"Quo is read-only — send from the Quo app."* | `ARBO_QUO_SEND=live` on Railway and a manual deploy. `ARBO_OUTREACH` / `ARBO_OUTREACH_CATCHUP` still gate the automatic sends on top of it, and Quo's A2P registration still applies. |
+| **D36 won-estimate recolor** | The Sage recolor (a PATCH) of a won estimate's calendar event. No live caller used it; the calendar client now refuses it. | The same as R18: a code change and a write permission. |
+| Drive folder create (brief §7 filing) | Making a property's folders. No live caller used it; the Drive client now refuses it (`POST /drive/v3/files` makes a folder — it is not a list). | The same as R18. |
+| Quo webhook registration | At every boot Arbo created its four Quo webhooks, or replaced one whose key Quo withheld. Now it uses the hooks Quo already has, as they are. | `ARBO_QUO_SEND=live` — the same one switch. |
+
+**The hosted assistant (R28) is separate.** It reaches Gmail, Calendar, Drive and
+Quo through its OWN connections in Mike's Claude Console vault — not Arbo's
+Google sign-in and not Arbo's Quo key — so this ruling does not switch it. Every
+send and write it can make already waits for Mike's tap in the Arbo app (the
+tools are on `always_ask` in `agents/arbo/agent.yaml`). Mike's read-only choice
+means: keep those tools on `always_ask` (they are), or tell Claude to turn them
+off. **Open — Mike's call:** should the assistant's email send, calendar
+booking, Drive write and Quo text also be switched off while Arbo is read-only?
+And its one Google write that runs WITHOUT asking — saving a new Gmail draft
+(`create_draft`, an R28 default)? Built: unchanged — each send still waits for
+his OK, and a new draft is still saved unasked.
+
+Defaults Claude used where Mike did not say (he may change any):
+- The switch is named `ARBO_QUO_SEND`, and it is the one switch for every Quo
+  write — texts and Arbo's own webhooks.
+- A webhook that exists but whose signing key Quo will not show is named, not
+  replaced; an older texts hook without the delivery-receipt event is still used.
+- The privacy page (`/privacy`) now describes the read-only access.
+
+What did NOT move: email never; calendar edits never; §3 — nothing is imported;
+R4 — sweeps stay read-only; R24's reading is unchanged (this makes it true of
+the credentials too); Twilio and ElevenLabs stay cut (R21); logs stay
+counts-and-ids (§4.3); deploys stay manual.
+
+*Carried by:* `src/integrations/readOnly.ts` (`GOOGLE_READ_ONLY`,
+`quoWritesLive`, the lines, `readOnlyBootLines`),
+`src/integrations/googleTokenStore.ts` (`GOOGLE_PERMISSIONS`, `GOOGLE_SCOPES`,
+`extraScopes`), `src/integrations/calendar.ts`, `src/integrations/drive.ts`,
+`src/integrations/quo.ts` (`ensureQuoWebhooks`, `registrationFrom`),
+`src/integrations/quoSend.ts`, `src/ops/outreach.ts`, `src/ops/quoIntake.ts`
+(`holdsLive`, `bookedFromHolds`), `src/voice/elevenlabsBridge.ts`,
+`src/voice/ownerTalk.ts`, `src/server.ts`, `src/app/index.html`,
+`docs/PHONE_SETUP.md`, `docs/GO_LIVE.md`, `test/r33ReadOnly.test.ts`.
+
 ## R34 — See the photos customers text to Quo, view-only (Mike, 2026-10-20)
 
 Mike, verbatim: *"Needs to be able to view photos on quo"*.

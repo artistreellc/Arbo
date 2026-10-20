@@ -572,7 +572,8 @@ describe("R30 review — a caller's words cannot steer Arbo, and Arbo never clai
     ]) expect(talkGuard(bad, guardrails), bad).toContain('action-claim');
     for (const bad of ['Call Dana at 7575550101.', 'Her number is +17575550101.', 'It is 17575550101.']) expect(talkGuard(bad, guardrails), bad).toContain('customer-shaped');
     for (const fine of [
-      "I can't send a text — that's a tap in the app.",
+      "I can't send a text — Quo is read-only in Arbo, so send it from the Quo app.",
+      "I can't book that — that's a tap in the app.",
       'Sona booked a calendar hold for that caller.',
       "Only Mike signs it back on; Arbo can't.",
       'I checked the update: two trucks are up.',

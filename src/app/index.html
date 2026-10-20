@@ -1486,7 +1486,10 @@ async function sonaPanel(limit, withTranscripts) {
     wrap.appendChild(el('div', st.registration.state === 'failed' ? 'storm' : 'storm-muted', st.registration.detail));
   }
   if (!st.reading) {
-    wrap.appendChild(el('div', 'storm', 'Arbo cannot read Sona calls right now (no model key) — calls are kept, but no calendar holds are filed.'));
+    // R33: with holds off on purpose, the missing key costs the rule check — not the holds.
+    wrap.appendChild(el('div', 'storm', st.holds === 'read_only'
+      ? 'Arbo cannot read Sona calls right now (no model key) — calls are kept but not checked, so a rule slip can be missed.'
+      : 'Arbo cannot read Sona calls right now (no model key) — calls are kept, but no calendar holds are filed.'));
   }
   const sona = d.calls.filter((c) => c.handledBy === 'sona');
   if (st.callsWithSlips > 0) {
@@ -1517,10 +1520,13 @@ async function sonaPanel(limit, withTranscripts) {
     wrap.appendChild(el('div', 'storm', 'Quo sent ' + plural(notUsed.reduce((n, [, k]) => n + k, 0), 'event') + ' Arbo could not use (' + notUsed.map(([r, k]) => k + ' ' + r).join(', ') + ') \u2014 Arbo reads those calls from Quo\u2019s record instead.'));
   }
   if (withTranscripts) {
-    wrap.appendChild(el('div', 'storm-muted', plural(st.sonaCalls, 'Sona call') + ' learned (' + (st.learnedFromRecord || 0) + ' read from Quo\u2019s record, last 7 days) \u00b7 ' + plural(st.holdsAttempted, 'calendar hold') + ' filed \u00b7 ' + plural(st.hangups, 'hang-up') + ' \u00b7 ' + st.callsWithSlips + ' with rule slips.'));
+    // R33: holds off on purpose is said as off — never "0 calendar holds filed".
+    const holdsSaid = st.holds === 'read_only' ? 'calendar holds off (Google is read-only)' : plural(st.holdsAttempted, 'calendar hold') + ' filed';
+    wrap.appendChild(el('div', 'storm-muted', plural(st.sonaCalls, 'Sona call') + ' learned (' + (st.learnedFromRecord || 0) + ' read from Quo\u2019s record, last 7 days) \u00b7 ' + holdsSaid + ' \u00b7 ' + plural(st.hangups, 'hang-up') + ' \u00b7 ' + st.callsWithSlips + ' with rule slips.'));
   }
   if (!sona.length) {
-    if (st.registration.state === 'ok' && !rec.error) {
+    // A webhook Arbo won't create (R33, 'read_only') changes nothing here: the calls are read from Quo's record.
+    if ((st.registration.state === 'ok' || st.registration.state === 'read_only') && !rec.error) {
       wrap.appendChild(el('div', 'storm-muted', rec.lastAt ? 'No Sona calls in the last 7 days \u2014 checked against Quo\u2019s own record.' : 'Wired \u2014 reading Sona\u2019s calls from Quo\u2026'));
     }
     return wrap;
@@ -1532,6 +1538,8 @@ async function sonaPanel(limit, withTranscripts) {
     extraction_unavailable: 'Arbo could not read this call — no hold filed',
     no_writer: 'Calendar not connected — no hold filed',
     learned_only: 'Learned from Quo\u2019s record after the fact \u2014 Arbo filed no hold. If they want an estimate, book it yourself.',
+    // R33 (Mike, 2026-10-20: "Connect Google as a read only").
+    read_only: 'Calendar holds are off — Google is connected read-only (Mike, 2026-10-20). Sona’s requested time is shown on the call card for you to book.',
     not_sona: '',
   };
   const urgent = (c) => c.slips.length > 0 || !!(c.facts && c.facts.emergency);
@@ -1557,7 +1565,11 @@ async function sonaPanel(limit, withTranscripts) {
     else if (f.treeDetails) card.appendChild(el('div', 'scope', f.treeDetails));
     if (f.requestedTime) card.appendChild(el('div', 'scope', 'Asked for: ' + f.requestedTime));
     for (const sl of c.slips) card.appendChild(el('div', 'storm', slipRuleLabel(sl.rule) + ' — Sona said: \u201c' + sl.said + '\u201d'));
-    if (holdText[c.hold]) card.appendChild(el('div', 'storm-muted', holdText[c.hold]));
+    // R33: holds off, and the caller gave no time — never point Mike at a time the card doesn't show.
+    const holdSaid = c.hold === 'read_only' && !f.requestedTime
+      ? 'Calendar holds are off — Google is connected read-only (Mike, 2026-10-20). The caller gave no time — call them to set one.'
+      : holdText[c.hold];
+    if (holdSaid) card.appendChild(el('div', 'storm-muted', holdSaid));
     const actions = el('div', 'actions');
     if (c.from) { const call = el('a', 'callbtn', 'Call back'); call.href = 'tel:' + c.from; actions.appendChild(call); }
     card.appendChild(actions);
@@ -1590,27 +1602,43 @@ async function outreachPanel(full) {
   const st = d.status;
   const wrap = el('div');
   wrap.appendChild(el('div', 'panel-title', 'Text outreach'));
+  // R33 (Mike, 2026-10-20: "connect quo as read only"): off on purpose — its own
+  // line, FIRST, whatever else is true; never a failure and never "nothing to send".
+  // Who hasn't heard back is a read and still shows.
+  if (st.readOnly) wrap.appendChild(el('div', 'feed-state cut', 'Quo is read-only — send from the Quo app.'));
   if (!st.wired) {
-    wrap.appendChild(el('div', 'storm-muted', 'Quo line not learned yet \u2014 nothing can be texted until Arbo registers with Quo at boot.'));
+    wrap.appendChild(el('div', 'storm-muted', st.readOnly
+      ? 'Quo line not learned yet \u2014 Arbo reads it from Quo at boot; who hasn\u2019t heard back shows once it has.'
+      : 'Quo line not learned yet \u2014 nothing can be texted until Arbo registers with Quo at boot.'));
     return wrap;
   }
-  if (!st.template.ok) {
+  if (!st.template.ok && !st.readOnly) {
     wrap.appendChild(el('div', 'storm', 'The text template fails the rules \u2014 NOTHING is sent: ' + st.template.problems.join('; ')));
     return wrap;
   }
+  // R33: nothing is sent while read-only anyway — a template problem is a note for the day texts come back, not an alarm.
+  if (!st.template.ok) wrap.appendChild(el('div', 'storm-muted', 'The text template fails the rules (not in use while Quo is read-only): ' + st.template.problems.join('; ')));
   if (st.paused) {
     const why = { not_registered: 'Quo refused: texting registration not approved. In Quo: Settings \u2192 Trust center \u2192 complete US texting (A2P) registration. Queued texts wait.',
                   daily_cap: 'Quo refused: daily texting cap reached. Queued texts wait for tomorrow.',
                   unauthorized: 'Quo refused the API key.', subscription_expired: 'Quo says the subscription expired.' };
     wrap.appendChild(el('div', 'storm', (why[st.paused.reason] || ('Quo refused: ' + st.paused.reason)) + ' Retry after ' + fmtTime(st.paused.until) + '.'));
   }
-  const line = el('div', 'storm-muted', 'From ' + st.fromNumber + ' \u00b7 follow-ups ' + (st.autoFollowUps ? 'AUTOMATIC (48h after an inquiry, hourly check)' : 'OFF — not turned on yet') + ' \u00b7 8am\u20139pm ET only \u00b7 STOP honored');
+  const line = el('div', 'storm-muted', st.readOnly
+    ? 'From ' + st.fromNumber + ' \u00b7 Arbo texts no one while Quo is read-only (your call, 2026-10-20)'
+    : 'From ' + st.fromNumber + ' \u00b7 follow-ups ' + (st.autoFollowUps ? 'AUTOMATIC (48h after an inquiry, hourly check)' : 'OFF — not turned on yet') + ' \u00b7 8am\u20139pm ET only \u00b7 STOP honored');
   wrap.appendChild(line);
   const hud = el('div', 'hud');
   const tile = (n, label, cls) => { const x = el('div', 'tile' + (cls ? ' ' + cls : '')); x.appendChild(el('b', '', String(n))); x.appendChild(el('span', '', label)); return x; };
-  hud.appendChild(tile(st.candidates.eligible, 'ready to text', st.candidates.eligible > 0 ? 'accent' : ''));
-  hud.appendChild(tile(st.sent, 'sent'));
-  hud.appendChild(tile(st.queued, 'queued', st.queued > 0 ? 'warn' : ''));
+  if (st.readOnly) {
+    // R33: who to text is a read; Arbo's own sends are OFF — never "sent 0" or "queued 0" (§1B).
+    hud.appendChild(tile(st.candidates.eligible, 'to text from the Quo app'));
+    hud.appendChild(tile('OFF', 'Arbo texts \u2014 Quo read-only'));
+  } else {
+    hud.appendChild(tile(st.candidates.eligible, 'ready to text', st.candidates.eligible > 0 ? 'accent' : ''));
+    hud.appendChild(tile(st.sent, 'sent'));
+    hud.appendChild(tile(st.queued, 'queued', st.queued > 0 ? 'warn' : ''));
+  }
   wrap.appendChild(hud);
   if (st.deferredUntil) wrap.appendChild(el('div', 'storm-muted', plural(st.queued, 'text') + ' waiting for quiet hours to end (' + fmtTime(st.deferredUntil) + ').'));
   wrap.appendChild(el('div', 'scope', 'Template: \u201c' + st.template.text + '\u201d'));
@@ -1620,12 +1648,17 @@ async function outreachPanel(full) {
   const pv = el('button', 'minibtn', st.lastRunAt ? 'Refresh list' : 'Find past-week callers');
   pv.onclick = async () => { pv.disabled = true; pv.textContent = 'Checking Quo\u2026'; try { await api('/api/outreach/preview', { method: 'POST', body: {} }); } catch (e) {} rerender(); };
   row.appendChild(pv);
-  if (st.candidates.eligible > 0) {
+  if (st.candidates.eligible > 0 && st.readOnly) {
+    // R33: the button stays where Mike expects it, disabled, and says why in its own words.
+    const go = el('button', 'actbtn', 'Quo is read-only — send from the Quo app.');
+    go.disabled = true;
+    row.appendChild(go);
+  } else if (st.candidates.eligible > 0) {
     const go = el('button', 'actbtn', 'Send catch-up to ' + st.candidates.eligible + ' now');
     go.onclick = async () => {
       go.disabled = true; go.textContent = 'Sending\u2026';
       try { const r = await api('/api/outreach/catchup', { method: 'POST', body: {} }); go.textContent = r.queued + ' queued \u2014 going out one at a time'; }
-      catch (e) { go.textContent = 'Could not start \u2014 ' + (e.message || 'refused'); }
+      catch (e) { go.textContent = e.line || ('Could not start \u2014 ' + (e.message || 'refused')); } // R33: a read-only refusal says its own line
       setTimeout(rerender, 2500);
     };
     row.appendChild(go);
@@ -3096,6 +3129,12 @@ async function renderCalls() {
     } else if (!t.wired) {
       txSlot.appendChild(el('div', 'feed-state unset',
         'Arbo line (757-821-6983): incoming texts aren’t set up in Twilio yet — this is not zero texts.'));
+    }
+    // R33: the Quo texts hook is one Arbo won't create while read-only — Quo
+    // texts never land here, which is not the same as none coming in (§1B).
+    if (t.quoTextsHookMissing) {
+      txSlot.appendChild(el('div', 'feed-state cut',
+        'Quo line: texts webhook missing — Arbo is read-only and won’t create it. New Quo texts don’t show here; this is not zero texts.'));
     }
     if (!t.texts.some((m) => m.line === 'business')) {
       txSlot.appendChild(el('div', 'storm-muted',
@@ -5072,15 +5111,28 @@ async function buildSettings(v, gen) {
   // Reconnect Google (Mike, 2026-09-28). Arbo swaps the code for the token
   // ON ITS SERVER and keeps it there \u2014 this card never shows a token.
   v.appendChild(el('div', 'panel-title', 'Google'));
-  v.appendChild(el('div', 'storm-muted', 'Gmail, calendar holds and Drive lead logs.'));
+  v.appendChild(el('div', 'storm-muted', 'Gmail, the calendar and Drive lead logs \u2014 read only.'));
   try {
     const gs = await api('/api/google/connect');
     if (gen !== settingsGen) return;
+    const perms = gs.permissions || [];
     const t = gs.token || {};
+    // R33 (Mike, 2026-10-20: "Connect Google as a read only"): what Arbo may do with Google, in Google's own words.
+    // The green chip and the ✓ only once a sign-in is saved here — before that, what Arbo ASKS for, in a neutral tone.
+    // "Arbo's own sign-in": the business assistant (R28) reaches Google through its own connection, not this one.
+    if (gs.readOnly) {
+      const ro = el('div', 'loc-strip');
+      ro.appendChild(chip('READ-ONLY', t.stored ? 'good' : 'info'));
+      ro.appendChild(el('span', '', 'Arbo\u2019s own Google sign-in writes nothing: no email sent, no calendar holds, nothing changed in Drive.'));
+      v.appendChild(ro);
+      for (const p of perms) v.appendChild(el('div', 'storm-muted', (t.stored ? '\u2713 ' : 'Arbo asks for: ') + p.what + ' \u2014 Google calls it \u201c' + p.googleSays + '\u201d'));
+    }
     v.appendChild(el('div', t.stored ? 'storm-muted' : 'storm', t.stored
       ? (t.where === 'disk' ? 'Connected \u2014 saved on Arbo\u2019s storage disk ' + (t.savedAt ? fmtTime(t.savedAt) : '') + '. Survives redeploys.' : 'Connected \u2014 but held in memory only (no storage disk). It will need reconnecting after the next restart.')
       : 'Not reconnected here yet' + (gs.fallbackVariable ? ' \u2014 Arbo is using the older Railway token, which Google may have expired.' : '.')));
-    v.appendChild(el('div', 'storm-muted', '1) Tap Open Google and approve.  2) You land on a page that will not load \u2014 copy its whole address.  3) Paste it below and tap Connect. Do it within a few minutes; the code expires.'));
+    v.appendChild(el('div', 'storm-muted', gs.readOnly && perms.length
+      ? '1) Tap Open Google. Google’s screen will list exactly these three: ' + perms.map((p) => '\u201c' + p.googleSays + '\u201d').join(', ') + '. If it asks for anything that sends, edits or deletes, don\u2019t approve it.  2) Approve. You land on a page that will not load \u2014 copy its whole address.  3) Paste it below and tap Connect. Do it within a few minutes; the code expires.'
+      : '1) Tap Open Google and approve.  2) You land on a page that will not load \u2014 copy its whole address.  3) Paste it below and tap Connect. Do it within a few minutes; the code expires.'));
     const open = el('a', 'callbtn', 'Open Google');
     open.href = gs.consentUrl; open.target = '_blank'; open.rel = 'noopener';
     v.appendChild(open);
@@ -5096,7 +5148,13 @@ async function buildSettings(v, gen) {
       try {
         const r = await api('/api/google/connect', { method: 'POST', body: { pasted: box.value } });
         box.value = '';
-        out.textContent = r.where === 'disk' ? 'Connected. Gmail, calendar holds and Drive read are back \u2014 saved on the storage disk.' : 'Connected for now \u2014 but there is no storage disk, so it lasts only until the next restart.';
+        // R33: a box left unticked on Google's screen is named — never "all three are read" over a partial grant.
+        const lacking = (r.missingScopes || []).map((sc) => (perms.find((p) => p.scope === sc) || { what: sc }).what);
+        out.textContent = (lacking.length
+          ? 'Connected, but Google didn\u2019t grant: ' + lacking.join(', ') + ' \u2014 tap Open Google and approve all three.' + (r.where === 'disk' ? '' : ' There is no storage disk, so this lasts only until the next restart.')
+          : r.where === 'disk' ? 'Connected read-only. Gmail, the calendar and Drive are read again \u2014 saved on the storage disk.' : 'Connected for now \u2014 but there is no storage disk, so it lasts only until the next restart.')
+          // R33: an older write permission Google kept is said, and is still never used to write.
+          + (r.extraScopes && r.extraScopes.length ? ' Google also kept an older permission that could write \u2014 Arbo never uses it to write.' : '');
       } catch (e) { out.textContent = 'Not connected \u2014 ' + (e.message === 'code_expired_or_used' ? 'that code expired or was already used. Tap Open Google again and paste the new address right away.' : e.message === 'no_code' ? 'that paste has no Google code in it. Copy the whole address.' : 'Arbo could not finish it. Tap Open Google and try again.'); }
       go.disabled = false;
     };
@@ -5201,12 +5259,22 @@ async function buildSettings(v, gen) {
     const reg = q.registration || {};
     const ok = reg.state === 'ok';
     const row = el('div', 'loc-strip');
-    row.appendChild(chip(ok ? 'WIRED' : reg.state === 'failed' ? 'FAILED' : reg.state === 'pending' ? 'PENDING' : 'NOT WIRED', ok ? 'good' : reg.state === 'failed' ? 'stop' : 'watch'));
+    // R33: 'read_only' = a webhook Arbo won't create while Quo is read-only — its own word, never FAILED.
+    row.appendChild(chip(ok ? 'WIRED' : reg.state === 'failed' ? 'FAILED' : reg.state === 'pending' ? 'PENDING' : reg.state === 'read_only' ? 'HOOK MISSING' : 'NOT WIRED', ok ? 'good' : reg.state === 'failed' ? 'stop' : 'watch'));
     // The row names Quo once: Settings words the not-connected state itself, and
     // a failed or pending registration reads as the intake's own sentence after the label.
     row.appendChild(el('span', '', 'Quo (Sona calls & texts) \u2014 ' + (ok ? q.received + ' received' + (q.lastAt ? ', last ' + fmtTime(q.lastAt) : ' since Arbo last restarted')
       : reg.state === 'not_configured' ? 'not connected to Arbo yet, so Sona\u2019s calls aren\u2019t reaching Arbo' : reg.detail)));
     v.appendChild(row);
+    // R33 (Mike, 2026-10-20: "connect quo as read only"): what Arbo may do in Quo — only as the server says it.
+    if (reg.state !== 'not_configured' && q.quoWrites) {
+      const wr = el('div', 'loc-strip');
+      wr.appendChild(chip(q.quoWrites === 'live' ? 'SENDS ON' : 'READ-ONLY', q.quoWrites === 'live' ? 'watch' : 'good'));
+      wr.appendChild(el('span', '', q.quoWrites === 'live'
+        ? 'Quo \u2014 Arbo may send the \u201cstill interested?\u201d text, on your word.'
+        : 'Quo \u2014 Arbo reads calls, texts and transcripts and sends nothing. Send from the Quo app.'));
+      v.appendChild(wr);
+    }
   } catch (e) {
     if (gen !== settingsGen) return;
     if (e.code !== 401) v.appendChild(feedLine(e, 'Quo (Sona)'));

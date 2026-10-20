@@ -44,7 +44,9 @@ describe('Settings screen (QA round)', () => {
 
   it('the Google card names a setup gap as NOT SET UP, never a raw code or "unavailable" (S-google)', () => {
     expect(settings).toContain("el('div', 'panel-title', 'Google')");
-    expect(settings).toContain('Gmail, calendar holds and Drive lead logs.');
+    // R33 (Mike, 2026-10-20: "Connect Google as a read only"): no calendar holds any more.
+    expect(settings).toContain('Gmail, the calendar and Drive lead logs \\u2014 read only.');
+    expect(settings).not.toContain('Gmail, calendar holds and Drive lead logs.');
     expect(settings).not.toContain('Google (Gmail, calendar holds, Drive lead logs)');
     // google_client_missing is the route's only 503, and feedKind words it 'unset'. The code name
     // itself stays out of the page: appUi's §4.8 test forbids the substring it contains.
@@ -65,7 +67,8 @@ describe('Settings screen (QA round)', () => {
     const quo = settings.indexOf("api('/api/quo')");
     expect(quo).toBeGreaterThan(hooks);
     expect(settings).toContain('Quo (Sona calls & texts)');
-    expect(settings).toContain("reg.state === 'failed' ? 'FAILED' : reg.state === 'pending' ? 'PENDING' : 'NOT WIRED'");
+    // R33: a webhook Arbo won't create while Quo is read-only is its own word, never FAILED.
+    expect(settings).toContain("reg.state === 'failed' ? 'FAILED' : reg.state === 'pending' ? 'PENDING' : reg.state === 'read_only' ? 'HOOK MISSING' : 'NOT WIRED'");
     expect(settings).toContain("feedLine(e, 'Quo (Sona)')");
   });
 

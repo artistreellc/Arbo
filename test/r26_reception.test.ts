@@ -280,6 +280,7 @@ describe('R26.1 — the guard blocks a date promise', () => {
       guardrails: g, legal, llm, alerter: { emergency: async () => {} }, bridgeSecret: 's',
       callRecords: records,
       calendarHold: async (h: CallHold) => { holds.push(h); },
+      googleWrites: true, // the dormant R18 path — R33 keeps holds off in the app (test/r33ReadOnly.test.ts)
       now: () => Date.parse('2026-09-22T15:00:00Z'),
     });
     const tools = [{ type: 'function', function: { name: 'end_call' } }];

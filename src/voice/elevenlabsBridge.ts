@@ -66,6 +66,7 @@ import { extractVaZip, hintContextLine, proximityHint, type RouteAnchors } from 
 import { CallMemory, CallRecordStore, normalizeCallerId, repeatCallerNote } from '../reception/callMemory.js';
 import { parseRequestedWindow, type RequestedWindow } from '../ops/requestedWindow.js';
 import { buildEstimateHold, type CallHold } from '../reception/estimateHold.js';
+import { GOOGLE_READ_ONLY } from '../integrations/readOnly.js';
 
 export type { CallHold };
 
@@ -154,6 +155,13 @@ export interface BridgeDeps {
    * calendar. null/undefined = no writer configured, recorded as such.
    */
   calendarHold?: ((hold: CallHold) => Promise<void>) | null;
+  /**
+   * R33 (Mike, 2026-10-20: "Connect Google as a read only"): may a hold be
+   * written to Google at all? Defaults to "no" while Google is connected
+   * read-only — the writer is then never called and the record says
+   * 'read_only'. Only a test of the dormant path, or Mike's ruling, sets it.
+   */
+  googleWrites?: boolean;
   now?: () => number;
 }
 
@@ -381,8 +389,9 @@ export function createElevenLabsBridge(deps: BridgeDeps): ElevenLabsBridge {
           },
           atIso,
         );
-        let holdOutcome: 'attempted' | 'no_writer' = 'no_writer';
-        if (deps.calendarHold) {
+        let holdOutcome: 'attempted' | 'no_writer' | 'read_only' = 'no_writer';
+        if (!(deps.googleWrites ?? !GOOGLE_READ_ONLY)) holdOutcome = 'read_only'; // R33 — never calls the writer
+        else if (deps.calendarHold) {
           // Filed EXACTLY the way Mike files his own estimates — the one
           // shared builder (src/reception/estimateHold.ts), so Arbo's calls
           // and Sona's calls can never drift into two formats.

@@ -63,17 +63,18 @@ import { DATA_LINKS, LINK_NAMES, linkOpen, linkEnvVar, openLinks, readOnlyKeptCu
 import { noteNotSaved, notSavedReport } from './db/notSaved.js';
 import { unsavedAgentRuns } from './binder/agentRun.js';
 import { WebhookIntake, createResendEmailFetcher } from './ops/webhooks.js';
-import { QuoIntake } from './ops/quoIntake.js';
+import { QuoIntake, bookedFromHolds } from './ops/quoIntake.js';
 import { vendorLinked, vendorCutBody, cutVendorLinks } from './integrations/vendorLinks.js';
 import { createSonaExtractor } from './ops/quoExtract.js';
 import { QuoStudy, createStudyReader } from './ops/quoStudy.js';
 import { createDriveFolderReader } from './integrations/driveRead.js';
-import { GoogleTokenStore, googleCreds, consentUrl, codeFrom, exchangeCode, GOOGLE_SCOPES } from './integrations/googleTokenStore.js';
+import { GoogleTokenStore, googleCreds, consentUrl, codeFrom, exchangeCode, extraScopes, missingScopes, GOOGLE_SCOPES, GOOGLE_PERMISSIONS } from './integrations/googleTokenStore.js';
 import { Bouncie, BOUNCIE_CALLBACK_PATH, BOUNCIE_REDIRECT, RETIRED_CALLBACK_PATH, bouncieTokenBackend, callbackPage, type UnitLite } from './integrations/bouncie.js';
-import { createQuoApi, ensureQuoWebhooks } from './integrations/quo.js';
+import { createQuoApi, ensureQuoWebhooks, registrationFrom, textsHookMissing } from './integrations/quo.js';
 import { QuoMediaStore } from './integrations/quoMedia.js';
 import { simQuoTexts } from './dev/simQuoTexts.js';
 import { createQuoSender } from './integrations/quoSend.js';
+import { GOOGLE_READ_ONLY, GOOGLE_HOLDS_OFF_LINE, QUO_READ_ONLY_LINE, quoWritesLive, readOnlyBootLines } from './integrations/readOnly.js';
 import { OutreachEngine } from './ops/outreach.js';
 import {
   listLeads,
@@ -637,9 +638,12 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
   // code or change the app. The calendar writer is the ONE-method hold
   // creator; it exists only when the Google token trio is configured, and
   // its absence is said out loud at boot rather than discovered in silence.
+  // R33 (Mike, 2026-10-20: "Connect Google as a read only"): the writer is
+  // not even built while Google is read-only — and if it were, the calendar
+  // client refuses the create in code, and the intake never calls it.
   const callMemory = new CallMemory();
   const callRecords = new CallRecordStore();
-  const calCreds = googleCredsNow();
+  const calCreds = GOOGLE_READ_ONLY ? null : googleCredsNow();
   const calendarHold = calCreds
     ? (() => {
         const calApi = createGoogleCalendarApi(createRefreshTokenProvider(calCreds));
@@ -655,8 +659,10 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
         };
       })()
     : null;
-  if (!calendarHold) {
-    console.error('[calendar] holds DISABLED — no Google token (R18 waits on the consent step). This is not "no calls".');
+  if (GOOGLE_READ_ONLY) {
+    console.log('[calendar] holds OFF — Google is connected read-only (R33, Mike 2026-10-20). Sona’s requested time shows on each call card. This is not "no calls".');
+  } else if (!calendarHold) {
+    console.error('[calendar] holds NOT CONFIGURED — no Google token. This is not "no calls".');
   }
 
   // R19: the webhook intake — everything that can PUSH to Arbo. Sources
@@ -752,16 +758,10 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
       guardrails,
       legal,
       extractor: sonaExtractor,
-      bookedCallers: () => {
-        const booked = new Set<string>();
-        for (const c of quoIntake.list()) {
-          if (c.hold !== 'attempted' || !c.from) continue;
-          const n = c.from.replace(/[^\d+]/g, '');
-          if (n) booked.add(n);
-        }
-        return booked;
-      },
-      sonaFilesHolds: Boolean(calendarHold),
+      // Only a hold Sona's call actually ATTEMPTED is a booking — never one
+      // R33 kept off (the intake says whether holds are filed at all).
+      bookedCallers: () => bookedFromHolds(quoIntake.list()),
+      sonaFilesHolds: quoIntake.holdsLive(),
       enabled: () => env.outreachAuto,
     });
   }
@@ -922,7 +922,7 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
         const bodyHtml = isPrivacy
           ? `<p>Arbo is the internal reception and operations system of Art-is-Tree LLC, a tree service in Virginia Beach, Norfolk, Chesapeake, and Portsmouth, VA. It is operated by and for Art-is-Tree LLC only.</p>
 <p><b>What we collect.</b> When you call our business line, our assistant collects what you tell it — your name, callback number, property address, and details about the tree work you want — solely to schedule estimates and provide tree service. Calls are recorded for quality purposes and you are told so on the call.</p>
-<p><b>Google user data.</b> Arbo accesses Google account data only for Art-is-Tree's own business account: read-only access to that account's email (to surface customer inquiries to the owner) and the ability to create events on that account's calendar (to schedule estimate visits). Arbo's use of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements. Google user data is never sold, never used for advertising, and never transferred to third parties except the service providers that operate the system (hosting and AI processing) or as required by law.</p>
+<p><b>Google user data.</b> Arbo accesses Google account data only for Art-is-Tree's own business account: read-only access to that account's email (to surface customer inquiries to the owner), its calendar (to see scheduled estimate visits) and its Drive files (to read the business's own lead logs). Through this sign-in Arbo sends no email and creates, changes or deletes nothing in that account. Arbo's use of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements. Google user data is never sold, never used for advertising, and never transferred to third parties except the service providers that operate the system (hosting and AI processing) or as required by law.</p>
 <p><b>Sharing.</b> Customer information is used only to provide tree service. We do not sell personal information.</p>
 <p><b>Contact.</b> artistreeofvirginia@gmail.com</p>`
           : `<p>Arbo is an internal business tool operated by Art-is-Tree LLC for its own reception and scheduling. It is not offered as a service to the public.</p>
@@ -1729,8 +1729,11 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
         return send(200, {
           records: callRecords.list(),
           knownCallers: callMemory.size,
-          calendarHolds: calendarHold ? 'configured' : 'DISABLED — no Google token (this is not zero holds)',
-          note: 'In-memory since deploy — the calendar hold is the durable copy until the data links go live.',
+          calendarHolds: GOOGLE_READ_ONLY ? GOOGLE_HOLDS_OFF_LINE : calendarHold ? 'configured' : 'DISABLED — no Google token (this is not zero holds)',
+          // R33: no hold is ever made while Google is read-only, so it can't be the lasting copy.
+          note: GOOGLE_READ_ONLY
+            ? 'In-memory since deploy — calendar holds are off (R33), so Quo’s own record is the lasting copy.'
+            : 'In-memory since deploy — the calendar hold is the durable copy until the data links go live.',
         });
       }
       // R19: webhook state + captured payloads, keywall-only (customer
@@ -1760,7 +1763,11 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
         const secret = env.google.gmailOauthClientSecret;
         if (!cid || !secret) return send(503, { error: 'google_client_missing', message: 'No Google client on the server (GMAIL_OAUTH_CLIENT_ID / _SECRET) — cannot reconnect.' });
         if (req.method === 'GET') {
-          return send(200, { consentUrl: consentUrl(cid), scopes: GOOGLE_SCOPES, token: googleTokenStore.status(), fallbackVariable: Boolean(env.google.gmailOauthRefreshToken) });
+          // R33: read-only — the three read permissions, in Google's own words, for the card to list.
+          return send(200, {
+            consentUrl: consentUrl(cid), scopes: GOOGLE_SCOPES, readOnly: GOOGLE_READ_ONLY, permissions: GOOGLE_PERMISSIONS,
+            holds: GOOGLE_READ_ONLY ? GOOGLE_HOLDS_OFF_LINE : null, token: googleTokenStore.status(), fallbackVariable: Boolean(env.google.gmailOauthRefreshToken),
+          });
         }
         if (req.method === 'POST') {
           const body = (await readJson(req)) as { pasted?: unknown };
@@ -1772,8 +1779,12 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
             return send(r.reason === 'network' ? 502 : 400, { error: r.reason, message: r.reason === 'code_expired_or_used' ? 'Google says that code expired or was already used — tap the link again and paste the new address right away.' : `Google refused (${r.reason}).` });
           }
           const where = googleTokenStore.save(r.refreshToken, new Date().toISOString());
-          console.log(`[google] reconnected — token kept on ${where}; ${r.scopes.length} scope(s)`);
-          return send(200, { ok: true, where, scopes: r.scopes, token: googleTokenStore.status() });
+          // R33: a grant that also carries an older write permission is named (count only in the log) — Arbo uses it read-only all the same.
+          const extra = extraScopes(r.scopes);
+          // R33 review: a box Mike unticked on Google's screen is named too — never "all three are read" over a partial grant.
+          const missing = missingScopes(r.scopes);
+          console.log(`[google] reconnected — token kept on ${where}; ${r.scopes.length} scope(s), ${extra.length} beyond read-only, ${missing.length} asked-for not granted; used read-only (R33)`);
+          return send(200, { ok: true, where, scopes: r.scopes, extraScopes: extra, missingScopes: missing, readOnly: GOOGLE_READ_ONLY, token: googleTokenStore.status() });
         }
       }
       if (req.method === 'GET' && url.pathname === '/api/quo/study') {
@@ -1794,8 +1805,10 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
           return send(200, { candidates, status: outreach.status() });
         }
         if (req.method === 'POST' && url.pathname === '/api/outreach/catchup') {
-          // Mike's tap — never gated by the automatic-sends switch.
+          // Mike's tap — never gated by the automatic-sends switch. R33: refused
+          // by name while Quo is read-only (ARBO_QUO_SEND not 'live'), with the app's line.
           const out = await outreach.runCatchup('mike');
+          if (out.reason === 'quo_read_only') return send(409, { ...out, error: 'quo_read_only', line: QUO_READ_ONLY_LINE });
           return send(out.ran ? 200 : 409, out);
         }
         if (req.method === 'POST' && url.pathname === '/api/outreach/exclude') {
@@ -1816,6 +1829,8 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
           // R21: the key can be set while the link is cut — cut wins, and is its own state.
           linkCut: !vendorLinked('twilio'),
           texts,
+          // R33: the Quo texts hook is one Arbo won't create — new Quo texts never land here, and the panel says so.
+          quoTextsHookMissing: quoIntake.textsHookMissing(),
           note: 'Texts and photos sent to the Arbo number. Receive only — Arbo never replies. NOT WIRED is not zero texts.',
         });
       }
@@ -1981,16 +1996,11 @@ async function wireQuo(intake: QuoIntake, outreach: OutreachEngine | null): Prom
     // (Mike's cell) and Arbo's own line — docs/PHONE_SETUP.md.
     if (outreach && first) outreach.setLine({ phoneNumberId: first.id, number: first.number, ownNumbers: [...numbers, ...OWN_PHONE_NUMBERS] });
     else if (outreach) console.error('[outreach] NOT wired — Quo returned no phone number; nothing can be texted');
-    const partial = hooks.failed.length
-      ? ` NOT wired: ${hooks.failed.map((f) => `${f.family} (${f.why})`).join(', ')}.`
-      : '';
-    intake.setRegistration(
-      hooks.failed.length ? 'failed' : 'ok',
-      `Wired to Quo — ${hooks.created.length} webhook(s) created, ${hooks.reused.length} reused.${partial}`,
-      hooks.keys,
-      numbers,
-    );
-    console.log(`[quo] wired — created ${hooks.created.length}, reused ${hooks.reused.length}, failed ${hooks.failed.length}, ${numbers.length} number(s)`);
+    // R33: read-only names a hook it won't create as its own state, never 'failed'.
+    const reg = registrationFrom(hooks);
+    intake.setRegistration(reg.state, reg.detail, hooks.keys, numbers);
+    intake.setTextsHookMissing(textsHookMissing(hooks));
+    console.log(`[quo] wired${hooks.readOnly ? ' READ-ONLY' : ''} — created ${hooks.created.length}, reused ${hooks.reused.length}, missing ${hooks.missing.length}, failed ${hooks.failed.length}, ${numbers.length} number(s)`);
     return first ? { api, phoneNumberId: first.id, numbers } : null;
   } catch (err) {
     const why = err instanceof Error ? err.message : 'error';
@@ -2056,6 +2066,11 @@ export function startServer(port: number) {
         }
       } else if (env.quoApiKey) console.error('[quo] NOT learning from Quo\'s record — no Quo line to read');
       if (!outreach) return;
+      if (!quoWritesLive()) {
+        // R33: off on purpose — not "template refused", not "nothing to send".
+        console.log('[outreach] READ-ONLY (R33) — Quo is read-only: no text is sent; the catch-up and follow-ups are off until Mike sets ARBO_QUO_SEND=live');
+        return;
+      }
       const tv = outreach.verifyTemplate();
       console.log(tv.ok
         ? `[outreach] template OK — follow-ups ${env.outreachAuto ? 'AUTO (hourly, 48h after an inquiry)' : 'OFF until ARBO_OUTREACH=live'}; catch-up ${env.outreachCatchupAtBoot ? 'RUNNING at boot' : 'waits for Mike\'s tap or ARBO_OUTREACH_CATCHUP=live'}`
@@ -2076,6 +2091,8 @@ export function startServer(port: number) {
   // (Mike, 2026-10-20: "Keep the sign-in alive") swaps the refresh token. Never reads a truck, never throws.
   const bouncieNow = currentBouncie;
   if (bouncieNow) setInterval(() => { void bouncieNow.tick(); }, 60_000).unref();
+  // R33: name both modes — Google read-only, Quo read-only or writes on.
+  for (const line of readOnlyBootLines()) console.log(line);
   const cutNow = cutVendorLinks();
   console.log(cutNow.length
     ? `[links] CUT while Sona handles calls (R21): ${cutNow.join(', ')} — set ARBO_LINK_<NAME>=live to reconnect`

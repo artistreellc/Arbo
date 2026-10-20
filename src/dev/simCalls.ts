@@ -183,6 +183,9 @@ export async function runSimulation(personas: SimPersona[], opts: RunOptions = {
       calendarHold: async (h) => {
         holds.push(h);
       },
+      // The sim's "calendar" is this in-memory array, never Google: it proves the
+      // hold FORMAT, which stays ready for the day Mike rules holds back on (R33).
+      googleWrites: true,
       now,
     });
     const turns = callerTurns(p, idx);

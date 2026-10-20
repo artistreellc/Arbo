@@ -6,10 +6,17 @@
 // people reach back out to 7573195131 if they are still intrested in a
 // quote for the past week only and after that use the same templet for
 // follow ups". Every law in src/ops/outreach.ts's header is pinned here.
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { OutreachEngine, isStopText, type Candidate } from '../src/ops/outreach.js';
+
+// R33 (Mike, 2026-10-20: "connect quo as read only"): the whole R22 path is
+// PAUSED unless ARBO_QUO_SEND is exactly 'live' — pinned in
+// test/r33ReadOnly.test.ts. Every law below is pinned as it runs once Mike
+// turns sends back on, so the path stays ready and correct while paused.
+beforeEach(() => { vi.stubEnv('ARBO_QUO_SEND', 'live'); });
+afterEach(() => { vi.unstubAllEnvs(); });
 import { QuoHttpError, type QuoApi, type QuoCall, type QuoConversation, type QuoMessage, type QuoTranscript } from '../src/integrations/quo.js';
 import type { QuoSender, SendResult } from '../src/integrations/quoSend.js';
 import type { SonaCallFacts } from '../src/ops/quoExtract.js';

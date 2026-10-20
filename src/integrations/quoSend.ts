@@ -12,11 +12,19 @@
 //
 // §4.3: a refusal is logged by status and Quo's error code only. Never the
 // recipient, never the words, never Quo's response body.
+//
+// R33 (Mike, 2026-10-20: "connect quo as read only"): Quo API keys cannot be
+// scoped, so this door refuses EVERY send — reason 'read_only', before the
+// content check, before the fetch — unless ARBO_QUO_SEND is exactly 'live'
+// (src/integrations/readOnly.ts). Only Mike sets that, on his word.
 
 import { QUO_API_BASE } from './quo.js';
+import { quoWritesLive } from './readOnly.js';
 
 /** Why Quo refused, by name — each one renders differently in the app. */
 export type SendRefusal =
+  /** R33 — Quo is read-only (ARBO_QUO_SEND is not 'live'): nothing left Arbo. */
+  | 'read_only'
   | 'not_registered'
   | 'daily_cap'
   | 'rate_limited'
@@ -49,6 +57,7 @@ export const MAX_CONTENT_CHARS = 1600;
 export function createQuoSender(apiKey: string, fetchImpl: FetchLike = fetch as unknown as FetchLike, base = QUO_API_BASE): QuoSender {
   return {
     async send({ from, to, content }) {
+      if (!quoWritesLive()) return { ok: false, reason: 'read_only', code: null }; // R33 — read at every send
       if (!content.trim() || content.length > MAX_CONTENT_CHARS) return { ok: false, reason: 'bad_request', code: null };
       let res: { ok: boolean; status: number; json(): Promise<unknown> };
       try {

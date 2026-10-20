@@ -15,6 +15,16 @@
 // paginated (maxResults + pageToken -> nextPageToken); GET /calls and
 // GET /messages REQUIRE phoneNumberId + one participant; webhooks are
 // created per family and each carries its own signing `key`.
+//
+// R33 (Mike, 2026-10-20: "connect quo as read only"): Quo API keys cannot be
+// scoped, so Arbo enforces it. While ARBO_QUO_SEND is not exactly 'live'
+// (src/integrations/readOnly.ts) this client's two writes — createWebhook and
+// deleteWebhook — refuse before anything leaves, and ensureQuoWebhooks keeps
+// the hooks Quo already has, as they are: a missing one is NAMED, never
+// created; one whose key Quo withholds is named, never replaced. Every read
+// keeps working, and Arbo reads Sona's calls from Quo's own record anyway.
+
+import { QUO_HOOK_MISSING_LINE, QUO_HOOK_NO_KEY_LINE, QUO_TEXTS_HOOK_LINE, QuoReadOnlyError, quoWritesLive } from './readOnly.js';
 
 export const QUO_API_BASE = 'https://api.quo.com/v1';
 
@@ -273,6 +283,7 @@ export function createQuoApi(apiKey: string, fetchImpl: FetchLike = fetch as unk
       return asWebhook(out?.data);
     },
     async createWebhook(family, url) {
+      if (!quoWritesLive()) throw new QuoReadOnlyError('webhook.create'); // R33 — before the fetch
       const body = { url, events: QUO_EVENTS[family], label: `Arbo — ${family}` };
       // "All numbers" is ['*'] in Quo's docs; if the account rejects that
       // form, one retry without it (Quo's default scope is the workspace).
@@ -287,6 +298,7 @@ export function createQuoApi(apiKey: string, fetchImpl: FetchLike = fetch as unk
       return hook;
     },
     async deleteWebhook(id) {
+      if (!quoWritesLive()) throw new QuoReadOnlyError('webhook.delete'); // R33 — before the fetch
       await call('DELETE', `/webhooks/${encodeURIComponent(id)}`);
     },
   };
@@ -299,6 +311,10 @@ export interface EnsureResult {
   reused: QuoWebhookFamily[];
   /** Families Quo refused, by name — e.g. transcripts need the Business plan. */
   failed: Array<{ family: QuoWebhookFamily; why: string }>;
+  /** R33: true while Quo is read-only — nothing was created, replaced or deleted. */
+  readOnly: boolean;
+  /** R33: families Arbo would have registered and won't while read-only, each with its line. Never 'failed'. */
+  missing: Array<{ family: QuoWebhookFamily; why: string }>;
 }
 
 /**
@@ -310,7 +326,8 @@ export interface EnsureResult {
  */
 export async function ensureQuoWebhooks(api: QuoApi, url: string): Promise<EnsureResult> {
   const existing = (await api.listWebhooks()).filter((w) => w.url === url);
-  const result: EnsureResult = { keys: [], created: [], reused: [], failed: [] };
+  if (!quoWritesLive()) return useWebhooksAsTheyAre(api, existing);
+  const result: EnsureResult = { keys: [], created: [], reused: [], failed: [], readOnly: false, missing: [] };
   // One family at a time, each on its own: a family Quo refuses (plan
   // limits) must not take texts and calls down with it.
   for (const family of Object.keys(QUO_EVENTS) as QuoWebhookFamily[]) {
@@ -343,4 +360,74 @@ export async function ensureQuoWebhooks(api: QuoApi, url: string): Promise<Ensur
     throw new Error(`no webhook registered (${result.failed.map((f) => `${f.family}: ${f.why}`).join('; ')})`);
   }
   return result;
+}
+
+/**
+ * R33 — read-only: use the hooks of OURS that Quo already has, exactly as
+ * they are. A hook that carries any event a family wants is used (an older
+ * texts hook without message.delivered still brings texts in), and its
+ * signing key is learned from the list or, failing that, read by id — so
+ * its deliveries verify. Nothing is created, replaced or deleted. A family
+ * with no hook, or with a hook whose key Quo will not show, is NAMED in
+ * `missing` — never 'failed', and never a throw: Arbo still reads Quo's
+ * record on its timer.
+ */
+async function useWebhooksAsTheyAre(api: QuoApi, existing: QuoWebhook[]): Promise<EnsureResult> {
+  const result: EnsureResult = { keys: [], created: [], reused: [], failed: [], readOnly: true, missing: [] };
+  for (const family of Object.keys(QUO_EVENTS) as QuoWebhookFamily[]) {
+    const ours = existing.filter((w) => QUO_EVENTS[family].some((e) => w.events.includes(e)));
+    if (ours.length === 0) {
+      result.missing.push({ family, why: QUO_HOOK_MISSING_LINE });
+      continue;
+    }
+    try {
+      let found = 0;
+      for (const w of ours) {
+        const key = w.key ?? (await api.getWebhook(w.id))?.key;
+        if (!key) continue;
+        found += 1;
+        if (!result.keys.includes(key)) result.keys.push(key);
+      }
+      if (found === 0) {
+        result.missing.push({ family, why: QUO_HOOK_NO_KEY_LINE });
+        continue;
+      }
+      result.reused.push(family);
+    } catch (err) {
+      // A READ Quo refused — that is a failure, and named as one.
+      result.failed.push({ family, why: err instanceof Error ? err.message : 'error' });
+    }
+  }
+  return result;
+}
+
+/**
+ * Is the TEXTS hook one Arbo won't create (read-only, R33)? A hook whose key
+ * Quo withholds counts too: Quo posts, Arbo can't verify it, nothing lands.
+ * Then new Quo texts never reach the Texts list — the panel names it.
+ */
+export function textsHookMissing(hooks: EnsureResult): boolean {
+  return hooks.readOnly && hooks.missing.some((m) => m.family === 'messages');
+}
+
+/**
+ * The intake's registration line for what ensureQuoWebhooks found. Three
+ * states, never fewer (§1B): every hook in place ('ok'), read-only with a
+ * hook missing ('read_only' — off on purpose, said in its own muted line),
+ * and a refusal from Quo ('failed').
+ */
+export function registrationFrom(hooks: EnsureResult): { state: 'ok' | 'failed' | 'read_only'; detail: string } {
+  const failed = hooks.failed.length ? ` NOT wired: ${hooks.failed.map((f) => `${f.family} (${f.why})`).join(', ')}.` : '';
+  if (!hooks.readOnly) {
+    return {
+      state: hooks.failed.length ? 'failed' : 'ok',
+      detail: `Wired to Quo — ${hooks.created.length} webhook(s) created, ${hooks.reused.length} reused.${failed}`,
+    };
+  }
+  const missing = hooks.missing.length
+    ? `${[...new Set(hooks.missing.map((m) => m.why))].join(' ')} Missing: ${hooks.missing.map((m) => m.family).join(', ')}.${textsHookMissing(hooks) ? ` ${QUO_TEXTS_HOOK_LINE}` : ''}`
+    : '';
+  if (hooks.failed.length) return { state: 'failed', detail: `Quo is read-only — ${hooks.reused.length} webhook(s) in place, none created.${failed}${missing ? ` ${missing}` : ''}` };
+  if (!missing) return { state: 'ok', detail: `Wired to Quo, read-only — ${hooks.reused.length} webhooks in place, none created.` };
+  return { state: 'read_only', detail: missing };
 }

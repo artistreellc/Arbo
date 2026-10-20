@@ -15,7 +15,8 @@
 // Law for all eight (§8A, §8A.8, R17): a section never calls another section
 // (they share state and events only — each one sees only its injected deps);
 // never spends; never sends (the only send in Arbo is the R22 Quo text behind
-// inspectMessage, and nothing here imports it); never edits a calendar event;
+// inspectMessage — paused while Quo is read-only, R33 — and nothing here
+// imports it); never edits a calendar event;
 // never rewrites its own rules or code. Every run is recorded (agent_run).
 //
 // §1B, the spine: every input has one of six states. 'cut' = its data link
@@ -82,7 +83,7 @@ export interface SectionAgentDef {
 const LAW: readonly string[] = [
   'call another agent — agents share state and events, nothing else',
   'spend money or commit the company to anything',
-  'send anything to anyone (the only send in Arbo is the compliance-checked Quo text, which no section agent calls)',
+  'send anything to anyone (Arbo sends nothing while Quo is read-only — R33; the compliance-checked Quo text, if Mike turns it back on, is never called by a section agent)',
   'edit a calendar event',
   'rewrite its own rules, prompts or code',
   'import or store leads or live business records (R4, §3)',

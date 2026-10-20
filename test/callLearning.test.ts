@@ -28,8 +28,10 @@ class ScriptLlm implements LlmClient {
 }
 const alerter: Alerter = { emergency: async () => {} };
 
+// R33 keeps holds off by default (pinned in test/r33ReadOnly.test.ts); these
+// pin the dormant R18 path as it runs once Mike turns holds back on.
 function bridgeWith(llm: LlmClient, extra: Record<string, unknown> = {}) {
-  return createElevenLabsBridge({ guardrails: g, legal, llm, alerter, bridgeSecret: SECRET, ...extra });
+  return createElevenLabsBridge({ guardrails: g, legal, llm, alerter, bridgeSecret: SECRET, googleWrites: true, ...extra });
 }
 
 const TOOLS = { tools: [{ type: 'function', function: { name: 'end_call' } }] };
