@@ -49,7 +49,7 @@ shows "the crew door key isn't set up yet — ask Mike" and asks for nothing
 - [ ] **Quo texting registration** (A2P) before any R22 text goes out.
 - [ ] **`ANTHROPIC_API_KEY`** on Railway turns the agents' brain from "offline — deterministic" to Opus.
 - [ ] **`CLAUDE_CODE_OAUTH_TOKEN`** repo secret (turns on the automated PR review job).
-- [ ] **Migration 0020** (brake/steering hold) is applied to the live database with the R26 deploy; the equipment link still stays cut until its own verification.
+- [ ] **Migrations 0016–0020** are committed but not applied to the live database (§3: schema changes there are Mike's call). Apply them before the links they serve open — 0020 (brake/steering hold) before the equipment link, or a brake report fails to save instead of holding the unit.
 
 ## 5. Held for Mike (not decided by a build)
 
