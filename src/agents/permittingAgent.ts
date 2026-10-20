@@ -53,6 +53,7 @@
 import { consumeNew, emitSafe, type BusEvent } from '../binder/eventBus.js';
 import { startAgentRun } from '../binder/agentRun.js';
 import { getDb } from '../db/client.js';
+import { linkOpen, LinkCutError } from '../db/links.js';
 import { env } from '../env.js';
 
 export interface PermittingSweepResult {
@@ -66,6 +67,10 @@ export interface PermittingSweepResult {
 
 /** Properties referenced by recent leads that have NO permit screen on file. */
 async function propertiesMissingScreens(sinceIso: string): Promise<string[]> {
+  // The answer needs the permit table. While its link is cut (kept cut in
+  // read-only), say so on EVERY run — never "0 missing" just because no recent
+  // lead happened to make the agent look (§1B).
+  if (!linkOpen('permits')) throw new LinkCutError('permit', 'permits');
   const db = getDb();
   const leads = await db
     .from('lead')
@@ -90,11 +95,14 @@ async function propertiesMissingScreens(sinceIso: string): Promise<string[]> {
 export async function runPermittingAgent(now = new Date()): Promise<PermittingSweepResult> {
   const run = await startAgentRun({ agent: 'permitting', modelUsed: env.anthropic.apiKey ? 'claude-opus-5' : undefined });
   const llm = env.anthropic.apiKey ? 'available' as const : 'not_configured' as const;
+  // R32: the same batch is read again next run — said, not hidden, on a failed run too.
+  let cursorNote = '';
   try {
     let processed = 0;
-    await consumeNew('permitting-agent', async (_e: BusEvent) => {
+    const consumed = await consumeNew('permitting-agent', async (_e: BusEvent) => {
       processed++;
     });
+    if (!consumed.cursorSaved) cursorNote = ' cursor=not_saved_read_only';
 
     const since = new Date(now.getTime() - 14 * 86400_000).toISOString();
     const missing = await propertiesMissingScreens(since);
@@ -121,14 +129,14 @@ export async function runPermittingAgent(now = new Date()): Promise<PermittingSw
 
     await run.finish({
       status: 'ok',
-      outputSummary: `events=${processed} screens_missing=${missing.length} newly_flagged=${fresh.length} llm=${llm}`,
+      outputSummary: `events=${processed}${cursorNote} screens_missing=${missing.length} newly_flagged=${fresh.length} llm=${llm}`,
     });
     return {
       agent: 'permitting', eventsProcessed: processed, screensMissing: missing.length,
       flaggedPropertyIds: missing, llm, status: 'ok',
     };
   } catch (err) {
-    await run.finish({ status: 'error', outputSummary: err instanceof Error ? err.message : 'error' });
+    await run.finish({ status: 'error', outputSummary: (err instanceof Error ? err.message : 'error') + cursorNote });
     return { agent: 'permitting', eventsProcessed: 0, screensMissing: 0, flaggedPropertyIds: [], llm, status: 'error' };
   }
 }

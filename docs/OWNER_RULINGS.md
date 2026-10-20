@@ -741,6 +741,85 @@ where he did not say (Mike may change any):
    Before crews rely on it, a Spanish-speaking crew member reads the safety
    briefing and the quiz on a phone and says it reads right.
 
+## R28 — The hosted assistant inside Arbo (Mike, 2026-10-20)
+
+Mike pasted a Claude Managed Agent ("Arbo") with every Gmail, Calendar, Drive
+and Quo tool on "auto" — it could send, write and delete with nobody looking.
+Mike, verbatim: *"Make it safe, then set it up"*. His three overrides, verbatim:
+*"Send email (with your OK)"*, *"Square invoices and payments"*, *"Book times on
+the calendar"* — and where the approvals live: *"put it in the arbo app"*. Later
+the same day, two answers: calendar bookings — *"Each booking waits for my
+OK"*; proactive duties — *"One daily office check"*.
+
+What this changes:
+1. **The assistant is a hosted agent Mike runs from his own Claude Console**,
+   pasted from `agents/arbo/agent.yaml`. Arbo's server starts its sessions and
+   carries its approvals; it never creates or edits the agent. OFF unless
+   `ARBO_AGENT` is exactly `live` (fail-closed, like `ARBO_DATA_LINKS`). Steps:
+   `docs/ASSISTANT_SETUP.md`.
+2. **Every send waits for Mike's tap in the Arbo app** — every email, text,
+   calendar booking, Drive write and Square call (reads included, until
+   Square's tool list has been seen). It is set in the agent's permission
+   policies (`always_ask`), not only its prompt, and a send that ever ran
+   unasked is named in Activity. A Gmail send by draft id never reaches Mike:
+   Arbo refuses it at once (Gmail would send the saved draft and ignore the
+   words on the card).
+3. **Calendar: create only, each booking on Mike's OK.** Never edit, move or
+   delete. A guest is named first and loudly on the card, because Google emails
+   them an invitation. An estimate hold is titled "Arbo HOLD (unconfirmed, Mike
+   confirms Friday): …" (R18, R14).
+4. **Exactly four things start it, and its prompt names the same four:** each
+   inbound Quo text, missed call or finished call (one session each — Mike's
+   own calls back start nothing); a Gmail sweep every 30 minutes 7am–9pm ET; the
+   crew-route summaries at 6:30am ET; and **the daily office check at 7am ET,
+   Monday to Saturday** — weather for today's and tomorrow's jobs, invoices
+   unpaid past their terms, equipment due for service, and anything waiting on
+   Mike. The office check reports in the app (its report on Today and in
+   Activity); anything it wants to send still waits for his OK; a day it could
+   not run is named on Today, never a quiet nothing (§1B). No switch of its own
+   beyond `ARBO_AGENT`.
+5. **TCPA quiet hours are enforced at Allow:** a customer text Mike allows
+   before 8am or after 9pm ET is refused by name (`quiet_hours`) and keeps
+   waiting — unless it answers, within the hour, that customer's own text or
+   call, or goes to a number in `ARBO_AGENT_CREW_NUMBERS`.
+
+Defaults Claude used where Mike did not say (he may change any):
+- Opus 5.5 at medium effort (his paste said low).
+- Gmail: saving a new draft runs unasked; changing an existing draft (his
+  included) is off.
+- Web search and web fetch reach only the listed sites (weather, the four
+  cities, Virginia agencies, VA811, Dominion, OSHA/ISA/TCIA standards,
+  suppliers, two job boards) — in the tool settings and the Limited environment
+  both — and Arbo starts nothing until it reads the environment back as Limited.
+- The office check: 7am ET, Monday to Saturday, never Sunday.
+- A text the agent starts (an offer, a review request, an invoice reminder)
+  names Art-is-Tree and ends "Reply STOP to opt out." (R22's identity and
+  opt-out).
+- Not running, because nothing starts them: seasonal and storm outreach,
+  staffing flags, supplier price comparisons. The setup guide says so.
+- The agent has no voice; Talk (R30, read-only) is the hands-free path.
+
+Also standing with it (each a one-line change on Mike's word): a customer is
+never told the $500 minimum (his paste allowed it; R3/R14 stand); every text
+waits for his OK, crew texts included; every Drive write waits; it never
+deletes or shares a file.
+
+Open — Mike's call, not a build's: the 2pm estimate routing from his paste is
+not in (R14's timing stands); the question is in the setup guide.
+
+What did NOT move: §3 — the assistant never touches Arbo's database; the links
+stay cut and nothing is imported. R4 — Arbo's own sweeps stay read-only. Arbo's
+own code still never sends email and never edits a calendar; the hosted agent
+sends only in Mike's own accounts, one item at a time, on his OK. Never price,
+never diagnose, never promise a date, the three permit words and never
+"clear". Logs stay counts-and-ids (§4.3). Deploys stay manual.
+
+*Carried by:* `agents/arbo/agent.yaml`, `src/assistant/*`, `src/env.ts`
+(`assistantEnv`), `src/server.ts` (`/api/assistant/*`, the Quo hand-off),
+`src/app/index.html` (the approvals card, sheet and desk),
+`docs/ASSISTANT_SETUP.md`, `test/assistantConfig.test.ts`,
+`test/assistant.test.ts`, `test/assistantUi.test.ts`.
+
 ## R29 — The layout review answers: Direction B, and sixteen more (Mike, 2026-10-20)
 
 *(R28, the hosted assistant, is filed with its own build.)*
@@ -887,3 +966,161 @@ agents still cannot send or spend; deploys stay manual.
 
 *Carried by:* `src/integrations/bouncie.ts`, `src/server.ts` (the Bouncie
 blocks), `src/app/index.html` (Settings card, Fleet line), `test/bouncie.test.ts`.
+
+**Amended by Mike's spec 2026-10-20.** Mike, verbatim: *"Client ID:
+`arbo-app`"*, *"Redirect URI:
+`https://arbor-server-production.up.railway.app/api/bouncie/callback`"*,
+*"Client Secret and API Key are being added to Railway ... as
+`BOUNCIE_CLIENT_ID`, `BOUNCIE_CLIENT_SECRET`, `BOUNCIE_API_KEY`. Never
+hardcode them or put them in the repo."*, then his tasks: *"Check the repo
+first for any existing Bouncie code or routes ... This is an add-on, not a
+rewrite."*, *"Build `GET /api/bouncie/callback`: take the authorization code,
+exchange it for tokens using Bouncie's OAuth flow (check docs.bouncie.dev,
+don't guess endpoints), and"* *"store the tokens server-side in Supabase"*,
+*"Add a token refresh, and a read-only pull of vehicles and trips/locations."*,
+*"Location data is admin-only and tracked only during working hours, per the spec."*,
+and *"Run the Section 11 self-audit after these steps and report back before
+deploying"*.
+
+What this changes in R31:
+1. **The callback is `/api/bouncie/callback`** — answered before the `/api`
+   key gate (Bouncie's redirect carries no key; the single-use state minted
+   behind the owner key is its lock). The first build's `/bouncie/callback`
+   is retired: a named 410 pointing at the new address, so there is one door.
+   The Client ID is `arbo-app`, read from `BOUNCIE_CLIENT_ID` only.
+2. **Item 3's "nothing goes into Arbo's database. The sign-in is kept on the
+   storage disk" is replaced:** the sign-in is kept in Supabase, in one table
+   (`integration_credential`, migration 0021), sealed with AES-256-GCM under
+   a key derived from `BOUNCIE_CLIENT_SECRET`, reached through one narrow door
+   (`src/db/credentialStore.ts`) that touches that table and nothing else. It
+   holds Arbo's own sign-in, not company data, so it is not one of the
+   business data links — but §3 (every Supabase link cut until the app is
+   built) and this spec meet there, and that is Mike's call, not the code's.
+   So the door has its own switch and is CUT unless `ARBO_LINK_CREDENTIALS`
+   is exactly `live`: while cut, Arbo sends nothing to Supabase for the
+   sign-in and Connect refuses by name. A disk sign-in from the first build is moved in
+   once, then removed from the disk. Practice mode (`ARBO_DATA_LINKS=sim`)
+   opens no database, so there the disk file stays. The rotated refresh token
+   is saved before the new access token is used; if Supabase will not take
+   it, the old row stays and the new pair is held unused until it is saved.
+3. **Trips are read too** (`GET /v1/trips`, owner-only `GET /api/fleet/trips`),
+   read only, one truck and one day at a time.
+4. **The default "positions show around the clock" is replaced:** positions
+   and trips follow `withinWorkingHours()` — 8am–8pm, Monday to Saturday, the
+   office phone's hours. Outside them Arbo reads nothing, holds nothing (a
+   minute tick drops what was held, whether or not anyone asks), and
+   answers Bouncie's webhook 200 while dropping the update unread. "After
+   hours" is its own named state, never "no trucks".
+5. **`BOUNCIE_API_KEY`** is read for presence only. Bouncie's docs name no
+   separate API key, so it is never sent or shown until Mike says which
+   portal field it is.
+
+Open, for Mike, at the amendment (three of these four are answered below;
+trips after 8pm is still open): applying migration 0021 live (his go only);
+what `BOUNCIE_API_KEY` is; whether the day's trips may be reviewed after
+8pm (built: no); whether keeping the sign-in in Supabase while the business
+links stay cut is what he meant (built: cut by its own switch until he
+says — setting `ARBO_LINK_CREDENTIALS=live` is his yes, and opens that one
+table only).
+
+*Carried by (amendment):* `src/db/credentialStore.ts`,
+`supabase/migrations/0021_integration_credential.sql`,
+`src/integrations/bouncie.ts`, `src/server.ts`, `src/env.ts`,
+`src/app/index.html`, `docs/BOUNCIE.md`, `test/bouncie.test.ts`,
+`test/credentialStore.test.ts`.
+
+**Answered by Mike, 2026-10-20 (after the §11 audit).**
+1. **The sign-in row.** Mike, verbatim: *"Yes, allow the sign-in row"*.
+   Arbo keeps the Bouncie sign-in as one sealed row in Supabase
+   (`integration_credential`) while the business data links stay cut — the
+   single sanctioned exception to §3's cut (CLAUDE.md §3,
+   `docs/DATA_LINKS.md`). Migration 0021 was applied live by Claude on this
+   go and checked: RLS on, 0 policies, anon and authenticated have no
+   SELECT, 0 rows. `ARBO_LINK_CREDENTIALS=live` is set on Railway at deploy;
+   the switch still fails closed (anything but exactly `live` is CUT).
+2. **`BOUNCIE_API_KEY`.** Mike's answer (not verbatim): it came from the
+   portal's *Users & Devices → Authorize My Devices* — the per-user
+   Authorization Code. Arbo does not need it: Connect Bouncie gets its own
+   fresh code (and a browser Connect invalidates the portal one). It stays
+   presence-only — a yes/no in `src/env.ts`, its value never read, sent or
+   logged — and Settings says: *Not needed — Connect Bouncie gets its own
+   code. You can delete BOUNCIE_API_KEY from Railway.*
+3. **Keeping the sign-in alive.** Mike, verbatim: *"Keep the sign-in alive"*.
+   Once a day Arbo renews the Bouncie sign-in even outside working hours
+   (Sunday included), so Monday works without a Reconnect. This replaces
+   R31's default "the sign-in is not refreshed while positions are cut".
+   The keep-alive ONLY swaps the refresh token (`POST /oauth/token`,
+   `grant_type=refresh_token`) and stores the rotated pair through the
+   credential store; it reads no vehicle, trip or position, and never runs
+   while `ARBO_LINK_CREDENTIALS` is cut or the sign-in is not connected. It
+   reuses the single-flight refresh (rotation saved before use; a refused
+   save keeps the old row), runs from the minute tick when the last renewal
+   is 20 hours old or more, is named in Settings when it fails (*couldn't
+   renew the sign-in at* the time it failed *— tap Reconnect if it keeps
+   failing*), and is retried no more than hourly. Its log line carries the
+   state only.
+
+Also from the audit: a store cut on purpose is its own state
+(`sign_in_cut`), grey like every gap by choice — never the amber of
+"Arbo can't open the saved sign-in".
+
+Still open, for Mike: whether the day's trips may be reviewed after 8pm
+(built: no); whether *Last report was after hours — not shown* and the
+webhook's last-arrival time may still show (`docs/BOUNCIE.md`, *Waiting on
+Mike* #5 and #7).
+
+*Carried by (answers):* `src/integrations/bouncie.ts` (`keepAlive`,
+`sign_in_cut`), `src/env.ts`, `src/server.ts`, `src/app/index.html`,
+`supabase/migrations/0021_integration_credential.sql` (header),
+`docs/BOUNCIE.md`, `docs/DATA_LINKS.md`, `docs/GO_LIVE.md`, `CLAUDE.md` §3,
+`test/bouncie.test.ts`, `test/credentialStore.test.ts`.
+
+## R32 — Arbo and its agents may READ the data; nothing is written (Mike, 2026-10-20)
+
+Mike, verbatim: *"give arbo and its agents read only data access and run
+systems checks every couple hours while you contuin to build"*.
+
+What this changes:
+1. **A third exact value for the master switch: `ARBO_DATA_LINKS=readonly`.**
+   Arbo and its agents READ Mike's records through the one door with no
+   `ARBO_LINK_*` variable. Exactly `readonly` — any other spelling stays CUT,
+   and it can never be taken for `live`. Turning it on or off is one Railway
+   variable and a manual deploy (`docs/DATA_LINKS.md`).
+2. **Nothing is written, anywhere — enforced at the door, not by remembering.**
+   The read-only client hands out `from` → `select` and nothing else; every
+   write verb and every other client surface (rpc, schema, storage, functions,
+   realtime, auth) is refused by name, and its fetch lets only GET/HEAD leave.
+   A refused tap says: *"Read-only: Arbo can look but not save. Nothing was
+   written."*
+3. **The agents still run their sweeps** (R4: sweeps are read-only by rule)
+   and say on every tick that their run log and events were not saved; their
+   runs show in the app from memory, marked not saved.
+
+Defaults Claude used where Mike did not say (Mike may change any):
+- **Four links stay CUT even in read-only**, because reading them would put a
+  false or misleading state on a screen: *calls* (Sona's calls live in Quo —
+  empty tables would read "no calls yet", R21); *photos* (nothing files a photo
+  yet); *jobs* (the 11 mistaken rows, R29 — until a count check shows the
+  delete ran); *permits* (`permit_correspondence` holds rows no Arbo code
+  writes — unexplained, so shut per DATA_LINKS step 3). Opening one is a
+  one-line change after Mike rules.
+- **A lead older than 14 days is an "older lead"**: no EMERGENCY alarm, no
+  tab badge, no "Call back needed", no open loop, no Call back button, and
+  Talk does not list it. It shows on Leads under its own heading with its date.
+  Whether anyone is contacted is Mike's call, never Arbo's.
+- The hourly sweep keeps its hourly clock; "every couple hours" is read as the
+  cadence of the systems checks run while building, not a change to the app.
+
+What did NOT move: §3 — nothing is imported; sweeps stay read-only (R4); email
+never; calendar edits never (R18 holds only — the R18 hold path is Google, not
+this database, and is not switched by this mode); texting only via R22 behind
+`inspectMessage` (Mike's tap, or automatically only while `ARBO_OUTREACH=live`
+or `ARBO_OUTREACH_CATCHUP=live`) — read-only mode does not switch it; logs stay
+counts-and-ids (§4.3); the `/api` door still needs `APP_ACCESS_KEY` (read-only
+real rows are never keyless); the crew door stays shut without
+`CREW_ACCESS_KEY`; deploys stay manual.
+
+*Carried by:* `src/db/client.ts` (`dataLinksReadOnly`, `canWrite`,
+`readOnlyDb`), `src/db/links.ts` (`READ_ONLY_KEPT_CUT`, `ReadOnlyError`),
+`src/db/notSaved.ts`, `src/ops/leadAge.ts`, `test/readOnlyMode.test.ts`,
+`test/dataLinks.test.ts`.

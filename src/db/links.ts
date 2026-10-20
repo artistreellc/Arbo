@@ -9,8 +9,9 @@
  * step verification process."
  *
  * The single master switch (ARBO_DATA_LINKS, §3) stays and still rules:
- * while it is not exactly 'live', EVERY link is cut, whatever the per-link
- * variables say. On top of it, each named link below opens only when its own
+ * while it is not exactly 'live' (or exactly 'readonly' — see
+ * READ_ONLY_KEPT_CUT below), EVERY link is cut, whatever the per-link
+ * variables say. On top of 'live', each named link below opens only when its own
  * variable — ARBO_LINK_<NAME> — is also exactly 'live'. Same opt-in shape as
  * the master, for the same reason: a missing, misspelled, or miscased value
  * leaves that link CUT, because the expensive failure is quiet access to
@@ -57,13 +58,41 @@ export function linkForTable(table: string): DataLink | null {
 }
 
 /**
- * True when this one link is open: master live AND the link's own variable
- * live. Both checks read process.env directly (not a cached snapshot) so a
- * test or a restart sees the truth at call time — same as dataLinksLive().
+ * READ-ONLY MODE (R32, Mike 2026-10-20: "give arbo and its agents read
+ * only data access"). With ARBO_DATA_LINKS exactly 'readonly', every link
+ * below is READABLE without its own ARBO_LINK_* variable — EXCEPT these,
+ * which stay CUT because reading them would put a false or misleading state
+ * on a screen. Each carries its reason, in words, for the boot line,
+ * /api/links and Settings. Writes are refused at the door in every link
+ * (client.ts). Opening one of these in read-only is a code change after
+ * Mike rules on it — never a variable flipped on the way past.
+ */
+export const READ_ONLY_KEPT_CUT: Readonly<Partial<Record<DataLink, string>>> = {
+  calls: "Sona's calls live in Quo, not in these tables — an empty call log would read as \"no calls yet\" (R21, §1B).",
+  photos: 'Nothing in the app files a photo yet, so an empty photo table would read as "no photos" instead of "not built".',
+  jobs: 'Held: the 11 mistaken job rows (§3, R29). Mike chose to delete them; until a count check shows they are gone they would render as booked work orders and open loops.',
+  permits: 'Held: permit_correspondence holds rows no Arbo code writes (it was 0 at the 2026-09-24 check). DATA_LINKS step 3 — shut until Mike says where they came from.',
+};
+
+/** Why this link stays cut in read-only mode, or null when read-only may read it. */
+export function readOnlyKeptCut(link: DataLink): string | null {
+  return READ_ONLY_KEPT_CUT[link] ?? null;
+}
+
+/**
+ * True when this one link may be READ right now:
+ *   - master exactly 'live'     → the link's own variable must be exactly 'live' (R19);
+ *   - master exactly 'readonly' → every link except READ_ONLY_KEPT_CUT (reads only —
+ *                                 the door in client.ts refuses every write);
+ *   - anything else             → cut (fails closed: 'READONLY', ' readonly', 'read-only' are cut).
+ * Reads process.env directly (not a cached snapshot) so a test or a restart
+ * sees the truth at call time — same as dataLinksLive().
  */
 export function linkOpen(link: DataLink): boolean {
-  if (process.env.ARBO_DATA_LINKS !== 'live') return false;
-  return process.env[linkEnvVar(link)] === 'live';
+  const master = process.env.ARBO_DATA_LINKS;
+  if (master === 'live') return process.env[linkEnvVar(link)] === 'live';
+  if (master === 'readonly') return readOnlyKeptCut(link) === null;
+  return false;
 }
 
 /** The exact environment variable that opens a link, for docs and screens. */
@@ -86,13 +115,39 @@ export class LinkCutError extends Error {
   readonly link: DataLink | null;
   readonly table: string;
   constructor(table: string, link: DataLink | null) {
+    // In read-only mode a link is cut for its own stated reason, not for a
+    // missing variable — say that one, so nobody "fixes" it with ARBO_LINK_*.
+    const keptCut = link && process.env.ARBO_DATA_LINKS === 'readonly' ? readOnlyKeptCut(link) : null;
     super(
-      link
-        ? `Data link '${link}' is CUT (set ${linkEnvVar(link)}=live after its verification passes — R19). Table '${table}' was not touched.`
-        : `Table '${table}' belongs to no data link — access refused. Add it to DATA_LINKS in src/db/links.ts (fails closed on purpose).`,
+      keptCut
+        ? `Data link '${link}' stays CUT in read-only mode: ${keptCut} Table '${table}' was not touched.`
+        : link
+          ? `Data link '${link}' is CUT (set ${linkEnvVar(link)}=live after its verification passes — R19). Table '${table}' was not touched.`
+          : `Table '${table}' belongs to no data link — access refused. Add it to DATA_LINKS in src/db/links.ts (fails closed on purpose).`,
     );
     this.name = 'LinkCutError';
     this.link = link;
     this.table = table;
+  }
+}
+
+/** The one plain line a refused write says, on every screen and in every 503 (R32). */
+export const READ_ONLY_LINE = 'Read-only: Arbo can look but not save. Nothing was written.';
+
+/**
+ * The refusal a WRITE raises at the door while ARBO_DATA_LINKS is exactly
+ * 'readonly'. It extends LinkCutError on purpose: a handler that only knows
+ * the link refusal still answers a named 503, never a vague 500 — and the
+ * server checks for this class FIRST, so it answers 503 { error: 'read_only' }.
+ * `op` names what was refused (insert, rpc, storage, HTTP POST …) — never a
+ * value, so no customer data can ride the message (§4.3).
+ */
+export class ReadOnlyError extends LinkCutError {
+  readonly op: string;
+  constructor(op: string, table: string | null = null, link: DataLink | null = null) {
+    super(table ?? '', link);
+    this.name = 'ReadOnlyError';
+    this.op = op;
+    this.message = `Read-only (ARBO_DATA_LINKS=readonly): '${op}'${table ? ` on table '${table}'` : ''} was refused at the door. ${READ_ONLY_LINE}`;
   }
 }

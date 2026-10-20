@@ -103,10 +103,15 @@ the prompts and makes the calls; your job is to build.
 - **Do not ingest or store leads.** Mike handles them. Scheduled sweeps are
   READ-ONLY: scan, report issues, write nothing — no lead rows, no Gmail
   labels, no calendar edits. (Ruling R4.)
-- **Never modify calendar events. Never send email.** Ever. (Two owner-ruled
-  carve-outs, both structural: R18 lets Arbo CREATE unconfirmed calendar
-  holds, never edit; R22 lets Arbo TEXT via Quo through the compliance gate,
-  never email.)
+- **Never modify calendar events. Never send email.** Ever. (Three owner-ruled
+  carve-outs: R18 lets Arbo CREATE unconfirmed calendar holds, never edit;
+  R22 lets Arbo TEXT via Quo through the compliance gate, never email; R28,
+  below, lets the hosted assistant send only on Mike's per-item OK.)
+  *R28 carve-out (Mike, 2026-10-20):* the hosted assistant (`agents/arbo/`,
+  `src/assistant/`) sends email, texts and Square invoices/payments only on
+  Mike's per-item OK in the Arbo app, and may only CREATE calendar events,
+  each on Mike's OK — never edit, move or delete one. Arbo's own code still
+  never sends email.
 - **No customer PII in chat output or logs** — counts and ids only (§4.3).
 - **Deploy is manual.** Auto-deploy stays OFF.
 
@@ -151,6 +156,12 @@ may READ Quo and the hourly assistant's Drive lead logs to study where each
 customer stands — in memory, keywall-only, writing nothing anywhere. Reading
 is not importing: nothing goes into Arbo's database.
 
+*The one sanctioned exception (Mike 2026-10-20: "Yes, allow the sign-in
+row"):* the sealed Bouncie sign-in row in `integration_credential`, reached
+only through `src/db/credentialStore.ts` behind its own switch
+`ARBO_LINK_CREDENTIALS` (exactly `live`), is the only thing Arbo reads or
+writes in Supabase while the data links stay cut — see `docs/DATA_LINKS.md`.
+
 **Use simulations instead.** `src/dev/seed.ts` writes obviously-fake records
 (`SIM-` names, `555-01xx` numbers, streets that do not exist) so no screen
 ever needs a real customer to have something to render. It refuses on a
@@ -166,13 +177,21 @@ for code that never checked. Opening a link is still Mike's process, never an
 optimisation to make quietly — and connecting a link is NOT an import ruling:
 nothing new flows in without its own go.
 
+*Read-only mode (R32, Mike 2026-10-20: "give arbo and its agents
+read only data access"):* `ARBO_DATA_LINKS=readonly` — exactly — lets Arbo READ
+every link except the four kept cut (calls, photos, jobs, permits — reasons in
+`src/db/links.ts`), and refuses EVERY write at the door (`ReadOnlyError`, 503
+`read_only`). Writers check `canWrite()`, never `hasDb()` (which means "can
+read"). See `docs/DATA_LINKS.md`.
+
 ## Guardrails that live in code, not prose
 
 Never price · never diagnose · never promise a date · never claim a credential
 the company doesn't hold · TCPA consent + permanent STOP + 8am–9pm ET quiet
 hours · permit vocabulary is PERMIT LIKELY / REVIEW NEEDED / NO OVERLAY–VERIFY
 and **never "you're clear"** · agents cannot spend money or send anything —
-the one exception is the R22 text via Quo, behind `inspectMessage`.
+the one exception is the R22 text via Quo, behind `inspectMessage`; the R28
+hosted assistant sends, books and charges only on Mike's per-item OK in the app.
 
 **§1B is the spine of this codebase:** a dead feed is NAMED, never rendered as
 a confident zero. "We couldn't read it" and "there's nothing there" are
@@ -234,7 +253,8 @@ instead of a false "crash". Keep it that way.
 
 **Then verify all three:**
 1. build log `git_ref` matches your SHA,
-2. `db connected` in the deploy log,
+2. `db connected` in the deploy log (or, in read-only mode, `db READ-ONLY
+   (ARBO_DATA_LINKS=readonly)` — see docs/DATA_LINKS.md),
 3. the live deployment has **`snapshotId: null`**.
 
 A provenance-less *snapshot* deployment has raced and won twice. A green

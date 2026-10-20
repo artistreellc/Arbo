@@ -105,7 +105,7 @@ export const TALK_TOOLS: Anthropic.Tool[] = [
 ];
 
 // ─── The reads (server-side, the same doors the app uses) ────────────────────
-export type TalkMode = 'live' | 'cut' | 'sim';
+export type TalkMode = 'live' | 'cut' | 'sim' | 'readonly';
 type QuoRead = { status: ReturnType<QuoIntake['status']>; calls: ReturnType<QuoIntake['list']> };
 
 /** Everything Talk may look at. Each one is a READ the app's own screens already make. */
@@ -157,7 +157,8 @@ function feedOf(r: ApiResult, mode: TalkMode): Feed {
   const code = String((r.body as { error?: unknown } | null)?.error ?? '');
   if (r.status === 503) {
     if (code === 'not_simulated') return 'sim';
-    if (code === 'db_not_configured') return mode === 'live' ? 'unset' : 'cut';
+    // Read-only reads like live: no database here means not set up, never cut.
+    if (code === 'db_not_configured') return mode === 'live' || mode === 'readonly' ? 'unset' : 'cut';
     if (code === 'link_cut') return 'cut';
     if (code === 'not_built' || /_(not_configured|not_wired|not_started|missing)$/.test(code)) return 'unset';
   }
@@ -296,17 +297,28 @@ function gap(name: string, feed: Gap, notWhat: string): Section {
 function modeLine(mode: TalkMode): string | null {
   if (mode === 'sim') return 'PRACTICE DATA: Arbo is running on simulated records (the names start with SIM). Tell Mike once that this is practice data, not his real business.';
   if (mode === 'cut') return "DATA LINKS CUT: Arbo's link to the business records is cut on purpose while the app is being built. Every feed that needs it is named below as cut — none of them is zero.";
+  // R32: real records, nothing saved. Some links stay cut on purpose and are named as cut below.
+  if (mode === 'readonly') return "READ-ONLY: Arbo is reading Mike's real records and saving nothing. Some feeds stay cut on purpose and are named below as cut — none of them is zero. Arbo cannot change anything, so never say it did.";
   return null;
 }
 
-function leadsSection(r: Read, now: number): Section {
+function leadsSection(r: Read, now: number, mode: TalkMode): Section {
   const name = 'Emergency leads';
   if (r.feed !== 'read') return gap(name, r.feed, 'zero');
   const leads = (r.body as { leads?: unknown } | null)?.leads;
   if (!Array.isArray(leads)) return gap(name, 'unread', 'zero');
   // The app's own rule: an emergency Mike marked Good has been acted on.
   const open = (leads as LeadLike[]).filter((l) => l.isEmergency && l.status !== 'qualified');
-  if (!open.length) return { lines: ['Emergency leads: none open right now.'], missing: null };
+  // §1B: nothing in the app files a lead (R4), so on real data an empty list is
+  // an UNFED list, never "none". Only the practice data is the whole world.
+  if (!open.length) {
+    return {
+      lines: [mode === 'sim'
+        ? 'Emergency leads: none open right now.'
+        : "Emergency leads: Arbo's lead list is not fed yet — new leads are in Quo and Gmail, so this is not zero."],
+      missing: null,
+    };
+  }
   const lines = [`Emergency leads open: ${open.length}.`];
   for (const l of open.slice(0, 5)) {
     const permit = leadPermit(l);
@@ -530,7 +542,7 @@ export function createTalkTools(reads: TalkReads, opts: { now?: () => number; re
         ]);
         return {
           text: say([
-            leadsSection(leads, t), sonaSection(quo(), false, t), trucksSection(fleet, false), crewSection(safety),
+            leadsSection(leads, t, reads.mode()), sonaSection(quo(), false, t), trucksSection(fleet, false), crewSection(safety),
             stopsSection(brief, false, t), workOrdersSection(orders, t), stormSection(weather, t), stormLawSection(flag),
           ], true),
           error: false,

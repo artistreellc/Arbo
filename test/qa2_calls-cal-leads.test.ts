@@ -104,7 +104,7 @@ describe('Leads: the file-it pair, Undo and the chip rows (run, not just read)',
     isFirstTimer: true, quality: { priority: 'warm' }, permit: null, screenPending: true,
     permitUnreadable: false, history: null, historyUnreadable: false, details: null, ...o,
   });
-  function mount(leads: Lead[]) {
+  function mount(leads: Lead[], links: string | null = 'simulation') {
     const v = el('div');
     const posts: Array<{ path: string; status: unknown }> = [];
     const saveFails: unknown[] = [];
@@ -117,10 +117,12 @@ describe('Leads: the file-it pair, Undo and the chip rows (run, not just read)',
     };
     const permitBadge = pageFn<(l: Lead) => Node | null>('permitBadge', { permitChip });
     const renderLeads = pageFn<() => Promise<void>>('renderLeads', {
-      $: () => v, el, api, chip, fmtWhen, permitBadge, leadsTabBadge: () => {},
+      $: () => v, el, api, chip, fmtWhen, plural, permitBadge, leadsTabBadge: () => {},
       icon: (id: string) => el('svg', 'ico ' + id),
-      showKeywall: () => {}, LINKS_READY: Promise.resolve('simulation'),
-      state: (t: string) => el('div', 'state', t), feedState: (_e: unknown, w: string) => el('div', 'state', w),
+      showKeywall: () => {}, LINKS_READY: Promise.resolve(links),
+      // The page's state(title, msg): the title is the box's own text, the message a child.
+      state: (t: string, m: string) => { const n = el('div', 'state', t); n.appendChild(el('span', '', m)); return n; },
+      feedState: (_e: unknown, w: string) => el('div', 'state', w),
       feedLine: (_e: unknown, w: string) => el('div', 'feed-state', w),
       showSaveFail: (_box: Node, e: unknown) => { saveFails.push(e); },
     });
@@ -131,6 +133,70 @@ describe('Leads: the file-it pair, Undo and the chip rows (run, not just read)',
     const undo = () => buttons().find((b) => b.textContent === 'Undo')!;
     return { v, renderLeads, posts, saveFails, ctl, card, good, spam, undo };
   }
+
+  // R32: an older lead (the server's `older`, > 14 days) is never new work.
+  it('an older lead sits under its own heading with its age: no alarm, no call-back label, no Call back button', async () => {
+    const s = mount([
+      lead({ id: 'OLD', createdAt: '2026-07-12T14:00:00Z', older: true, ageDays: 100, filedAsEmergency: true, isEmergency: false, needsCallback: false, quality: { priority: 'hot' } }),
+      lead({ id: 'NEW', needsCallback: true }),
+    ]);
+    await s.renderLeads();
+    const kids = s.v.children;
+    // The recent lead first, then the heading, then the older one.
+    expect(kids[0]!.text()).toContain('SIM-Elm');
+    const head = kids.findIndex((n) => n.textContent === 'Older leads — more than 14 days old');
+    expect(head).toBeGreaterThan(0);
+    const old = kids.slice(head).find((n) => n.has('card'))!;
+    expect(old.text()).toContain('Older lead — came in 100 days ago. Filed as an emergency then — not a live alarm.');
+    expect(old.text()).toContain('WHEN(2026-07-12T14:00:00Z)'); // its date, in the card's one time format
+    expect(chipsIn(old)).toContain('OLDER LEAD=info');
+    expect(chipsIn(old).join(' ')).not.toMatch(/EMERGENCY|HOT/);
+    expect(old.has('emergency') || old.has('callback')).toBe(false);
+    expect(old.all().some((n) => n.textContent === 'Call back' || n.textContent === 'Call back needed')).toBe(false);
+    // The recent lead keeps everything it had.
+    expect(kids[0]!.all().some((n) => n.textContent === 'Call back')).toBe(true);
+  });
+
+  it('only older leads: the screen says nothing new is waiting, then shows them for the record', async () => {
+    const s = mount([lead({ id: 'OLD', older: true, ageDays: 30 })]);
+    await s.renderLeads();
+    expect(s.v.children[0]!.textContent).toBe('No new leads');
+    expect(s.v.children.some((n) => n.textContent === 'Older leads — more than 14 days old')).toBe(true);
+  });
+
+  // R32 behaviour review, finding 1: nothing in the app files a lead
+  // (R4), so on real data an empty list is an UNFED list — never "no new leads".
+  const NOT_FED = 'Arbo doesn’t receive new leads yet — Sona’s are in Quo, and website and ad leads are in Gmail. This is not an empty inbox.';
+  it.each(['readonly', 'live'])('%s with no rows: the screen says the list is not fed, never "No new leads"', async (links) => {
+    const s = mount([], links);
+    await s.renderLeads();
+    expect(s.v.children).toHaveLength(1);
+    expect(s.v.children[0]!.textContent).toBe('New leads are not in Arbo');
+    expect(s.v.children[0]!.text()).toContain(NOT_FED);
+    expect(s.v.text()).not.toContain('No new leads');
+  });
+
+  it.each(['readonly', 'live'])('%s with only older rows: not fed, and the older rows are below for the record', async (links) => {
+    const s = mount([lead({ id: 'OLD', older: true, ageDays: 100 })], links);
+    await s.renderLeads();
+    expect(s.v.children[0]!.textContent).toBe('New leads are not in Arbo');
+    expect(s.v.children[0]!.text()).toContain(NOT_FED + ' Older rows from the database are below, for the record.');
+    expect(s.v.text()).not.toContain('No new leads');
+    expect(s.v.children.some((n) => n.textContent === 'Older leads — more than 14 days old')).toBe(true);
+  });
+
+  it('a /health that never answered is not practice data: it says not fed too', async () => {
+    const s = mount([], null);
+    await s.renderLeads();
+    expect(s.v.children[0]!.textContent).toBe('New leads are not in Arbo');
+  });
+
+  it('practice data keeps "No new leads" — the simulation is the whole world there', async () => {
+    const s = mount([]);
+    await s.renderLeads();
+    expect(s.v.children[0]!.textContent).toBe('No new leads');
+    expect(s.v.children[0]!.text()).toContain('Nothing waiting right now.');
+  });
 
   it('Undo on an emergency lead puts back "emergency", not "new"', async () => {
     const s = mount([lead({ id: 'E1', status: 'emergency', isEmergency: true, quality: { priority: 'hot' } })]);

@@ -158,12 +158,65 @@ export const env = {
   // portal → the app); the webhook key is one Mike makes up and types into
   // both the portal and Railway. Positions stay off until ARBO_LINK_BOUNCIE
   // is exactly 'live' — read at call time in src/integrations/bouncie.ts.
+  // BOUNCIE_API_KEY (Mike's spec, 2026-10-20) is PRESENCE ONLY. Mike, the
+  // same day: it is the portal's per-user Authorization Code (Users & Devices
+  // → Authorize My Devices). Arbo does not need it — Connect Bouncie gets its
+  // own code — so only a yes/no is kept here: the value never sits in this
+  // object, so it can never be sent, logged or shown (docs/BOUNCIE.md).
   bouncie: {
     clientId: get('BOUNCIE_CLIENT_ID'),
     clientSecret: get('BOUNCIE_CLIENT_SECRET'),
     webhookKey: get('BOUNCIE_WEBHOOK_KEY'),
+    apiKeySet: get('BOUNCIE_API_KEY') !== undefined,
   },
 } as const;
+
+/**
+ * R28 (Mike, 2026-10-20: "Make it safe, then set it up" / "put it in the arbo
+ * app"): the business assistant — a Claude Managed Agent Mike creates in the
+ * Claude Console; Arbo starts its sessions and carries its approvals.
+ *
+ * Read at CALL time, never cached, so a restart or a test sees the truth.
+ * The switch is exactly like ARBO_DATA_LINKS: ARBO_AGENT must be exactly
+ * 'live', read raw — 'LIVE', 'true', ' live' or unset all leave it OFF.
+ * The key is the same ANTHROPIC_API_KEY through the same accessor as
+ * env.anthropic.apiKey. Values are never logged — only which NAMES are missing.
+ *
+ * ARBO_AGENT_CREW_NUMBERS (optional, comma-separated): Mike's crew phones. A
+ * text to one of them is not held by the 8am–9pm ET quiet hours at Allow
+ * (TCPA covers customers, not his own crew). Unset = no number is a crew
+ * number, so every early or late text waits for 8am (fail closed).
+ */
+export function assistantEnv(): {
+  on: boolean;
+  apiKey: string | undefined;
+  agentId: string | undefined;
+  environmentId: string | undefined;
+  vaultId: string | undefined;
+  /** Whole cents; null when the variable is set but is not a dollar amount above 0. */
+  budgetCents: number | null;
+  /** Last 10 digits of each crew phone in ARBO_AGENT_CREW_NUMBERS; anything shorter is dropped. */
+  crewNumbers: string[];
+} {
+  const rawBudget = get('ARBO_AGENT_SESSION_BUDGET_USD');
+  const budgetCents = rawBudget === undefined
+    ? 300
+    : /^\d+(\.\d{1,2})?$/.test(rawBudget) && Number(rawBudget) > 0 ? Math.round(Number(rawBudget) * 100) : null;
+  const crewNumbers = (get('ARBO_AGENT_CREW_NUMBERS') ?? '')
+    .split(',')
+    .map((n) => n.replace(/\D/g, ''))
+    .filter((d) => d.length >= 10)
+    .map((d) => d.slice(-10));
+  return {
+    on: process.env.ARBO_AGENT === 'live',
+    apiKey: get('ANTHROPIC_API_KEY'),
+    agentId: get('ARBO_AGENT_ID'),
+    environmentId: get('ARBO_AGENT_ENVIRONMENT_ID'),
+    vaultId: get('ARBO_AGENT_VAULT_ID'),
+    budgetCents,
+    crewNumbers,
+  };
+}
 
 /** Which integration groups have real credentials present (booleans only). */
 export function integrationStatus(): Record<string, boolean> {

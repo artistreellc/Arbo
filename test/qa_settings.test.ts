@@ -92,7 +92,9 @@ describe('Settings screen (QA round)', () => {
 
   it('read-only states are chips by tone, not look-alike switches (S-status-tags)', () => {
     expect(settings).not.toContain("el('span', 'loc-toggle'");
-    expect(settings).toContain("chip(l.state === 'open' ? 'OPEN' : 'CUT', l.state === 'open' ? 'good' : 'info')");
+    // R32 added a fourth link state: READ-ONLY reads, so it wears good like OPEN; CUT stays info.
+    expect(settings).toContain("chip(l.state === 'open' ? 'OPEN' : l.state === 'read-only' ? 'READ-ONLY' : 'CUT', readable ? 'good' : 'info')");
+    expect(settings).toContain("const readable = l.state === 'open' || l.state === 'read-only';");
     expect(settings).toContain("chip('CUT', 'info')");
     expect(settings).toContain("chip(s.configured ? 'WIRED' : 'NOT WIRED', s.configured ? 'good' : 'watch')");
     expect(settings).toContain("ok ? 'good' : reg.state === 'failed' ? 'stop' : 'watch'");

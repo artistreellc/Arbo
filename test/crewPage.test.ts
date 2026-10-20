@@ -69,8 +69,8 @@ describe('the crew door (§8C.1) — one app, two doors', () => {
     for (const c of calls.filter((x) => x !== '/health')) {
       expect(c, `crew page called a non-crew endpoint: ${c}`).toMatch(/^\/api\/crew\//);
     }
-    // R31: truck positions are owner-only — the crew page never names their routes.
-    for (const forbidden of ['/api/leads', '/api/properties', '/api/estimating', '/api/queue', '/api/followups', '/api/calendar', '/api/bouncie', '/api/fleet/positions']) {
+    // R31: truck positions and trips are owner-only — the crew page never names their routes.
+    for (const forbidden of ['/api/leads', '/api/properties', '/api/estimating', '/api/queue', '/api/followups', '/api/calendar', '/api/bouncie', '/api/fleet/positions', '/api/fleet/trips']) {
       expect(html).not.toContain(forbidden);
     }
   });

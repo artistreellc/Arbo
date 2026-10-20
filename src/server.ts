@@ -58,8 +58,10 @@ import { createLiveBrain } from './agents/brain.js';
 import { LearnDesk, catalog as simCatalog, type Decision } from './sim/learnDesk.js';
 import { boot } from './index.js';
 import { createApi, type DataSource, type ApiLeadInput } from './server/api.js';
-import { hasDb, dataLinksLive, dataLinksSim, dbConfigured, getDb } from './db/client.js';
-import { DATA_LINKS, LINK_NAMES, linkOpen, linkEnvVar, openLinks, LinkCutError } from './db/links.js';
+import { hasDb, canWrite, dataLinksLive, dataLinksSim, dataLinksReadOnly, dbConfigured, getDb } from './db/client.js';
+import { DATA_LINKS, LINK_NAMES, linkOpen, linkEnvVar, openLinks, readOnlyKeptCut, LinkCutError, ReadOnlyError, READ_ONLY_LINE } from './db/links.js';
+import { noteNotSaved, notSavedReport } from './db/notSaved.js';
+import { unsavedAgentRuns } from './binder/agentRun.js';
 import { WebhookIntake, createResendEmailFetcher } from './ops/webhooks.js';
 import { QuoIntake } from './ops/quoIntake.js';
 import { vendorLinked, vendorCutBody, cutVendorLinks } from './integrations/vendorLinks.js';
@@ -67,7 +69,7 @@ import { createSonaExtractor } from './ops/quoExtract.js';
 import { QuoStudy, createStudyReader } from './ops/quoStudy.js';
 import { createDriveFolderReader } from './integrations/driveRead.js';
 import { GoogleTokenStore, googleCreds, consentUrl, codeFrom, exchangeCode, GOOGLE_SCOPES } from './integrations/googleTokenStore.js';
-import { Bouncie, callbackPage, type UnitLite } from './integrations/bouncie.js';
+import { Bouncie, BOUNCIE_CALLBACK_PATH, BOUNCIE_REDIRECT, RETIRED_CALLBACK_PATH, bouncieTokenBackend, callbackPage, type UnitLite } from './integrations/bouncie.js';
 import { createQuoApi, ensureQuoWebhooks } from './integrations/quo.js';
 import { createQuoSender } from './integrations/quoSend.js';
 import { OutreachEngine } from './ops/outreach.js';
@@ -193,6 +195,7 @@ import { IntentRegistry } from './ops/intentRegistry.js';
 import { InboxSurfaceStore } from './ops/inboxSurface.js';
 import { createOpusIntentModel } from './ops/inboxIntent.js';
 import { createSimSource } from './dev/simSource.js';
+import { Assistant } from './assistant/assistant.js';
 
 /**
  * The source the server actually runs on. In SIM mode this is in-memory fake
@@ -210,6 +213,8 @@ export function createServerSource(): DataSource {
 export function createLiveSource(): DataSource {
   return {
     ready: () => hasDb(),
+    // R32: read-only reads (ready) but never writes (canWrite).
+    canWrite: () => canWrite(),
     async stopsBetween(fromIso, toIso): Promise<StopInput[]> {
       const rows = await listStopsBetween(fromIso, toIso);
       return rows.map((r) => ({
@@ -236,10 +241,15 @@ export function createLiveSource(): DataSource {
       const propertyIds = [...new Set(rows.map((r) => r.property?.id).filter((id): id is string => Boolean(id)))];
       let permits: Awaited<ReturnType<typeof latestPermitsForProperties>>;
       let permitFailed = false;
+      // R32: leads can be open while permits is kept cut — that is a
+      // cut on purpose, said as one (not "couldn't read it, try again"), and
+      // not logged on every poll.
+      let permitCut = false;
       try {
         permits = await latestPermitsForProperties(propertyIds);
       } catch (err) {
-        console.error('[server] permit flag fetch failed:', err instanceof Error ? err.message : 'error');
+        permitCut = err instanceof LinkCutError;
+        if (!permitCut) console.error('[server] permit flag fetch failed:', err instanceof Error ? err.message : 'error');
         permits = new Map();
         permitFailed = true;
       }
@@ -247,10 +257,12 @@ export function createLiveSource(): DataSource {
       // and it is named the same way (historyUnreadable), never a silent blank.
       let history: Awaited<ReturnType<typeof latestHistoryForProperties>>;
       let historyFailed = false;
+      let historyCut = false;
       try {
         history = await latestHistoryForProperties(propertyIds);
       } catch (err) {
-        console.error('[server] history fetch failed:', err instanceof Error ? err.message : 'error');
+        historyCut = err instanceof LinkCutError;
+        if (!historyCut) console.error('[server] history fetch failed:', err instanceof Error ? err.message : 'error');
         history = new Map();
         historyFailed = true;
       }
@@ -276,8 +288,10 @@ export function createLiveSource(): DataSource {
             : null,
           // Only a lead WITH a property had a read that could fail.
           permitUnreadable: permitFailed && r.property != null,
+          ...(permitCut && r.property != null ? { permitCut: true } : {}),
           history: h ? { kind: h.kind, when: h.when, scope: h.scope, status: h.status } : null,
           historyUnreadable: historyFailed && r.property != null,
+          ...(historyCut && r.property != null ? { historyCut: true } : {}),
         };
       });
     },
@@ -423,7 +437,10 @@ export function createLiveSource(): DataSource {
     leakageWindow: () => leakageWindow(),
     logLeakage: (input) => createLeakageEvent(input),
     // §8A.6g audit surface + §8A.6b bus.
-    agentRuns: (limit) => listAgentRuns(limit),
+    // R32: no run is saved, so the saved log would freeze on old rows
+    // and pose as current. Read-only shows this process's own runs from
+    // memory instead (each marked saved: false), and the API says so.
+    agentRuns: async (limit) => (canWrite() ? listAgentRuns(limit) : unsavedAgentRuns(limit)),
     emit: (type, payload) => emitSafe(type, payload, 'server'),
     calendarEvents: (from, to) => listCalendarEvents(from, to),
     crewJobs: (from, to) => listCrewJobs(from, to),
@@ -585,8 +602,12 @@ const consoleAlerter: Alerter = {
  * and the five-minute inbox watch, and a serverless function has no process
  * that lives between requests to run them in. A host for this app has to stay
  * up.
+ *
+ * `opts.assistant` is the R28 business assistant; tests hand in one built on
+ * a fake Anthropic client. Unset, the real one is built — and it starts
+ * nothing unless ARBO_AGENT is exactly 'live' and every id is set.
  */
-export function createArborRequestHandler() {
+export function createArborRequestHandler(opts: { assistant?: Assistant } = {}) {
   boot(); // validates guardrails + legal or throws
   const alertsProvider = createNwsAlertsProvider((url, init) => fetch(url, init));
   // R26: the owner-only storm-law flag — OpenFEMA, read-only, asked at most
@@ -600,6 +621,7 @@ export function createArborRequestHandler() {
   const api = createApi(createServerSource(), {
     dataLinksLive: dataLinksLive(),
     dataLinksSim: dataLinksSim(),
+    dataLinksReadOnly: dataLinksReadOnly(),
     alerts: alertsProvider,
     ...(env.elevenlabs.apiKey ? { tts: createElevenLabsTts(env.elevenlabs.apiKey) } : {}),
   });
@@ -644,14 +666,27 @@ export function createArborRequestHandler() {
   });
 
   // ═══ R31 — Bouncie truck tracking (docs/BOUNCIE.md). Owner only, read
-  // only, memory only; dormant until Mike adds the keys, connects, and sets
-  // ARBO_LINK_BOUNCIE=live. The boot line names each state, never a secret. ═══
+  // only, working hours only; dormant until Mike adds the keys, connects,
+  // and sets ARBO_LINK_BOUNCIE=live. Migration 0021 is applied live and
+  // ARBO_LINK_CREDENTIALS=live is set at deploy (Mike, 2026-10-20: "Yes,
+  // allow the sign-in row"). The sign-in is kept in Supabase, sealed — in
+  // practice mode (ARBO_DATA_LINKS=sim, which opens no database) on the disk
+  // as before — and renewed once a day by the minute tick ("Keep the sign-in
+  // alive"). The boot line names each state, never a secret, once the store is read. ═══
   const bouncie = new Bouncie({
     clientId: env.bouncie.clientId ?? null,
     clientSecret: env.bouncie.clientSecret ?? null,
     webhookKey: env.bouncie.webhookKey ?? null,
+    apiKeySet: env.bouncie.apiKeySet,
+    tokens: bouncieTokenBackend({
+      supabaseUrl: env.supabase.url,
+      serviceKey: env.supabase.serviceRoleKey,
+      clientSecret: env.bouncie.clientSecret,
+      practice: dataLinksSim(),
+    }),
   });
-  console.log(`[bouncie] ${bouncie.bootLine()}`);
+  void bouncie.ready().then(() => console.log(`[bouncie] ${bouncie.bootLine()}`));
+  currentBouncie = bouncie;
 
   // Sona's calls via Quo (Mike, 2026-09-24: "auto do it"). Same R18 stores
   // as Arbo's own calls; keys and numbers arrive when startServer registers.
@@ -697,7 +732,7 @@ export function createArborRequestHandler() {
       api,
       quo: () => ({ status: quoIntake.status(), calls: quoIntake.list() }),
       stormLaw: () => stormLaw.status(),
-      mode: () => (dataLinksSim() ? 'sim' : dataLinksLive() ? 'live' : 'cut'),
+      mode: () => (dataLinksSim() ? 'sim' : dataLinksReadOnly() ? 'readonly' : dataLinksLive() ? 'live' : 'cut'),
     }),
   });
   if (quoApi && env.quoApiKey) {
@@ -721,6 +756,11 @@ export function createArborRequestHandler() {
     });
   }
   currentOutreach = outreach;
+  // R28 (Mike, 2026-10-20: "put it in the arbo app"): the business assistant.
+  // Its approvals and activity live behind the owner key below; startServer
+  // starts its clock and re-attaches to the sessions it was watching.
+  const assistant = opts.assistant ?? new Assistant();
+  currentAssistant = assistant;
 
   const bridge = createElevenLabsBridge({
     guardrails,
@@ -925,6 +965,10 @@ export function createArborRequestHandler() {
           },
           raw,
         );
+        // R28: only a VERIFIED delivery may start an assistant session — a
+        // text, a missed call, a finished call. It never changes Quo's
+        // answer, and it is a no-op unless the assistant is on.
+        if (out.status === 200) assistant.noteQuoEvent(raw);
         return send(out.status, out.body);
       }
       // Incoming texts to the Arbo number. Accepted texts get an EMPTY TwiML
@@ -940,13 +984,28 @@ export function createArborRequestHandler() {
         return res.end('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
       }
       // ═══ R31 — Bouncie's two PUBLIC doors, each with its own lock ═══
-      // The sign-in callback: it only finishes a sign-in Arbo started behind
-      // the owner key (single-use state, ten minutes). The page never repeats
-      // the code or the state, and is never cached or sent on as a referrer.
-      if (req.method === 'GET' && url.pathname === '/bouncie/callback') {
+      // The sign-in callback, at the Redirect URI Mike registers (his spec,
+      // 2026-10-20: /api/bouncie/callback). It sits ABOVE the /api key gate on
+      // purpose: Bouncie's redirect is a plain browser visit that carries no
+      // x-arbor-key. Its lock is its own: it only finishes a sign-in Arbo
+      // started behind the owner key (single-use state, ten minutes, PKCE).
+      // The page never repeats the code or the state, and is never cached or
+      // sent on as a referrer.
+      if (req.method === 'GET' && url.pathname === BOUNCIE_CALLBACK_PATH) {
         const r = await bouncie.finishConnect({ code: url.searchParams.get('code'), state: url.searchParams.get('state') });
         res.writeHead(r.status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
         return res.end(callbackPage(r));
+      }
+      // The first build's callback address, retired so there is ONE door. It
+      // finishes nothing, spends no state, and says where the door is now.
+      if (url.pathname === RETIRED_CALLBACK_PATH) {
+        res.writeHead(410, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
+        return res.end(callbackPage({
+          status: 410,
+          ok: false,
+          title: 'This sign-in address has moved',
+          line: `Arbo now finishes the Bouncie sign-in at ${BOUNCIE_REDIRECT}. Put that address in the Bouncie portal as the Redirect URI, then tap Connect Bouncie in Settings again. Nothing was saved.`,
+        }));
       }
       // Live updates: the key Mike chose, checked in constant time before the
       // body is read. An authentic call is answered 200 even when its data is
@@ -971,6 +1030,26 @@ export function createArborRequestHandler() {
       // refused here, whatever key came with it — the page refuses it first.
       if (url.pathname.startsWith('/api/crew/') && req.headers['x-arbo-preview'] === '1' && req.method !== 'GET') {
         return send(403, { error: 'preview_read_only' });
+      }
+      // R28: the business assistant — Mike's approvals and what it did. Owner
+      // key only: the gate above opens the crew key to /api/crew/ alone, so
+      // the crew key never reaches this. Like /api/outreach, no APP_ACCESS_KEY
+      // means LOCKED (never the "open while the DB is cut" door) — these cards
+      // carry customer contact, and an allow here sends an email, a text or a
+      // payment. The office's look-only preview is refused outright.
+      if (url.pathname === '/api/assistant' || url.pathname.startsWith('/api/assistant/')) {
+        if (!env.appAccessKey) return send(401, { error: 'no_app_key', message: 'APP_ACCESS_KEY is not set — the assistant is locked until it is.' });
+        if (req.headers['x-arbo-preview'] === '1') return send(403, { error: 'preview_read_only' });
+        if (req.method === 'GET' && url.pathname === '/api/assistant/status') return send(200, assistant.status());
+        if (req.method === 'GET' && url.pathname === '/api/assistant/approvals') return send(...unpack(assistant.approvals()));
+        if (req.method === 'GET' && url.pathname === '/api/assistant/activity') return send(...unpack(assistant.activity()));
+        const m = url.pathname.match(/^\/api\/assistant\/approvals\/([^/]+)$/);
+        if (req.method === 'POST' && m) {
+          const body = ((await readJson(req)) ?? {}) as { decision?: unknown; note?: unknown };
+          if (body.decision !== 'allow' && body.decision !== 'deny') return send(400, { error: 'decision_must_be_allow_or_deny' });
+          return send(...unpack(await assistant.decide(m[1]!, body.decision, typeof body.note === 'string' ? body.note : undefined)));
+        }
+        return send(404, { error: 'not_found' });
       }
       if (req.method === 'GET' && url.pathname === '/api/brief') {
         return send(...unpack(await api.brief(url.searchParams.get('from') ?? '', url.searchParams.get('to') ?? '')));
@@ -1262,6 +1341,10 @@ export function createArborRequestHandler() {
       // no job table to write into, and pretending otherwise is the lie §1B
       // exists to stop.
       if (req.method === 'POST' && url.pathname === '/api/inbox/convert') {
+        // R32: a conversion is a write — refused in read-only's own words, not "links cut".
+        if (dataLinksReadOnly()) {
+          return send(503, { error: 'read_only', line: READ_ONLY_LINE, message: 'Read-only: nothing was converted. Open the thread in Gmail and handle it there for now.' });
+        }
         if (!dataLinksLive()) {
           return send(409, {
             error: 'links_cut',
@@ -1281,14 +1364,26 @@ export function createArborRequestHandler() {
       // ═══ R31 — Bouncie, OWNER ONLY. The gate above lets the crew key
       // into /api/crew/* alone, and with no APP_ACCESS_KEY these stay locked
       // even while the database is cut — truck positions are not "nothing to leak". ═══
-      if (url.pathname === '/api/bouncie' || url.pathname === '/api/bouncie/connect' || url.pathname === '/api/fleet/positions') {
+      if (url.pathname === '/api/bouncie' || url.pathname === '/api/bouncie/connect' || url.pathname === '/api/fleet/positions' || url.pathname === '/api/fleet/trips') {
         if (!env.appAccessKey) return send(401, { error: 'no_app_key', message: 'APP_ACCESS_KEY is not set — truck tracking is locked until it is.' });
         if (req.method === 'GET' && url.pathname === '/api/bouncie') return send(200, await bouncie.status());
         if (req.method === 'POST' && url.pathname === '/api/bouncie/connect') {
+          await bouncie.ready(); // a store that can't keep a sign-in refuses here, before Mike is sent to Bouncie
           const c = bouncie.beginConnect();
           return c.ok
             ? send(200, { authorizeUrl: c.authorizeUrl })
-            : send(503, { error: c.error, message: 'BOUNCIE_CLIENT_ID and BOUNCIE_CLIENT_SECRET are not on Railway yet.' });
+            : send(503, {
+              error: c.error,
+              message: c.error === 'bouncie_keys_missing' ? 'BOUNCIE_CLIENT_ID and BOUNCIE_CLIENT_SECRET are not on Railway yet.'
+                : c.error === 'bouncie_store_cut' ? 'The sign-in store in Supabase is cut on purpose — ARBO_LINK_CREDENTIALS is not "live" on Railway, so Arbo touches no Supabase table to keep the sign-in.'
+                  : c.error === 'bouncie_store_missing' ? 'The sign-in table is not in Supabase yet — migration 0021 must be applied before connecting.'
+                    : 'Supabase is not configured on the server, and the Bouncie sign-in is kept only there.',
+            });
+        }
+        // Read only, owner only, working hours only: one truck's trips on one day (MAP HOOK, like positions).
+        if (req.method === 'GET' && url.pathname === '/api/fleet/trips') {
+          const out = await bouncie.trips({ truck: url.searchParams.get('truck'), day: url.searchParams.get('day') });
+          return send(out.status, out.body);
         }
         // MAP HOOK: the upcoming map screen reads this same route — per-truck
         // lat/lon, age and state. The Fleet card reads it too, but never shows a coordinate.
@@ -1694,13 +1789,15 @@ export function createArborRequestHandler() {
       // R19: the data links, one by one. States are named (§1B): master cut,
       // link cut, or open — an open link is probed read-only with counts.
       if (req.method === 'GET' && url.pathname === '/api/links') {
-        const master = dataLinksSim() ? 'sim' : dataLinksLive() ? 'live' : 'cut';
+        const readOnlyMode = dataLinksReadOnly();
+        const master = dataLinksSim() ? 'sim' : readOnlyMode ? 'readonly' : dataLinksLive() ? 'live' : 'cut';
         const links = await Promise.all(LINK_NAMES.map(async (link) => {
           const open = linkOpen(link);
           const counts: Record<string, number | 'unreadable'> = {};
           if (open && hasDb()) {
             for (const t of DATA_LINKS[link]) {
               try {
+                // A HEAD count — the read-only door lets it through; no row is read.
                 const r = await getDb().from(t).select('*', { count: 'exact', head: true });
                 counts[t] = r.error ? 'unreadable' : (r.count ?? 0);
               } catch {
@@ -1708,18 +1805,30 @@ export function createArborRequestHandler() {
               }
             }
           }
+          // R32: a readable link is 'read-only' (never 'open' — nothing it
+          // holds can be saved); a link kept cut says why in words.
+          const keptCut = readOnlyMode ? readOnlyKeptCut(link) : null;
           return {
             link,
             envVar: linkEnvVar(link),
-            state: open ? 'open' : 'cut',
+            state: open ? (readOnlyMode ? 'read-only' : 'open') : 'cut',
             tables: DATA_LINKS[link],
+            ...(keptCut ? { reason: keptCut } : {}),
             ...(open ? { rowCounts: counts } : {}),
           };
         }));
         return send(200, {
           master,
+          ...(readOnlyMode ? {
+            mode: 'READ-ONLY (ARBO_DATA_LINKS=readonly) — reading real data, writing nothing',
+            line: READ_ONLY_LINE,
+            // What was skipped since this process started — kinds and counts only. Resets on a redeploy.
+            notSaved: notSavedReport(),
+          } : {}),
           links,
-          note: 'A CUT link is a closed door, not empty data. Each link opens one by one after its verification passes (docs/DATA_LINKS.md) — R19.',
+          note: readOnlyMode
+            ? 'READ-ONLY: every link below marked read-only can be looked at and none can be saved to. A CUT link is a closed door, not empty data — each says why it stays shut.'
+            : 'A CUT link is a closed door, not empty data. Each link opens one by one after its verification passes (docs/DATA_LINKS.md) — R19.',
         });
       }
       // ElevenLabs custom-LLM endpoint (the agent's Server URL points at
@@ -1742,6 +1851,14 @@ export function createArborRequestHandler() {
       // A bad request is the CALLER's fault and says so — 400, with which of
       // the two problems it was. Everything else is genuinely ours.
       if (err instanceof BadRequestError) return send(400, { error: err.code });
+      // R32: a write refused at the read-only door. FIRST, because a
+      // ReadOnlyError is also a LinkCutError and must not be called "link cut".
+      // The plain line rides as `line`, which the app shows as it is. The op
+      // and table are names only — no customer data (§4.3).
+      if (err instanceof ReadOnlyError) {
+        noteNotSaved(`refused:${err.table || err.op}`);
+        return send(503, { error: 'read_only', op: err.op, ...(err.table ? { table: err.table } : {}), line: READ_ONLY_LINE });
+      }
       // R19: a cut data link refuses BY NAME — "the door is closed" must
       // never render as a vague server error (§1B). No PII in the message.
       if (err instanceof LinkCutError) {
@@ -1776,6 +1893,8 @@ const QUO_STUDY_BOOT_DELAY_MS = 2 * 60 * 1000;
 const OWN_PHONE_NUMBERS = ['+17573195131', '+17578216983'];
 /** The outreach engine the running handler uses — startServer hands it the Quo line. */
 let currentOutreach: OutreachEngine | null = null;
+/** The Bouncie integration the running handler uses — startServer gives it its minute tick. */
+let currentBouncie: Bouncie | null = null;
 /**
  * The Google grant Mike makes from Settings → Reconnect Google (2026-09-28).
  * Every Google token provider reads through this, so a new grant takes
@@ -1791,6 +1910,8 @@ function googleCredsNow() {
 }
 /** The R24 read-only study — startServer runs it on a timer once Quo is wired. */
 let currentQuoStudy: QuoStudy | null = null;
+/** The R28 business assistant the running handler uses — startServer starts its clock. */
+let currentAssistant: Assistant | null = null;
 
 /**
  * Register Arbo's webhooks with Quo and hand the intake its signing keys.
@@ -1909,28 +2030,29 @@ export function startServer(port: number) {
       setInterval(() => { void outreach.tick(); }, 15 * 60_000).unref();
     });
   } else console.error('[quo] intake missing at boot — not wired');
+  // R31: once a minute, outside working hours nothing about the trucks is held even when nobody
+  // asks, a renewed Bouncie sign-in Supabase refused is saved again, and the daily keep-alive
+  // (Mike, 2026-10-20: "Keep the sign-in alive") swaps the refresh token. Never reads a truck, never throws.
+  const bouncieNow = currentBouncie;
+  if (bouncieNow) setInterval(() => { void bouncieNow.tick(); }, 60_000).unref();
   const cutNow = cutVendorLinks();
   console.log(cutNow.length
     ? `[links] CUT while Sona handles calls (R21): ${cutNow.join(', ')} — set ARBO_LINK_<NAME>=live to reconnect`
     : '[links] ElevenLabs and Twilio links live');
   if (!env.quoApiKey) console.error('[quo] DISABLED — no QUO_API_KEY. Sona calls are not reaching Arbo (this is not zero calls).');
+  // R28: the business assistant's clock (crew routes at 6:30am ET, the daily
+  // office check at 7am ET Mon–Sat, 30-minute Gmail sweeps 7am–9pm ET) and its
+  // re-attach to sessions still open. It names its own state in the boot log —
+  // OFF, NOT SET UP, or on — and reads its environment back as Limited
+  // networking before anything starts.
+  currentAssistant?.start();
   // §8A.6f: the agents run on their own clock, not only when Mike taps.
   startAgentScheduler(
     createApi(createServerSource(), { alerts: createNwsAlertsProvider((u, i) => fetch(u, i)) }),
     createNwsAlertsProvider((u, i) => fetch(u, i)),
   );
   server.listen(port, () => {
-    // Three states, never two: configured-and-live, configured-but-CUT, and
-    // not configured at all. Collapsing the middle one into either of the
-    // others is the §1B lie in the one line an operator actually reads.
-    const dbState = dataLinksSim()
-      ? 'SIMULATION — every record is fake, no database connection is opened'
-      : !dbConfigured()
-        ? 'not configured'
-        : dataLinksLive()
-          ? `connected — links open: ${openLinks().join(', ') || `NONE of ${LINK_NAMES.length} (master live, every ARBO_LINK_* still cut)`}`
-          : 'CONFIGURED BUT LINKS CUT (ARBO_DATA_LINKS is not "live") — no real data is being read or written';
-    console.log(`✅ ARBO backend on :${port} — guardrails v${summary.guardrailsVersion}, legal v${summary.legalVersion}, db ${dbState}`);
+    console.log(`✅ ARBO backend on :${port} — guardrails v${summary.guardrailsVersion}, legal v${summary.legalVersion}, db ${dbStateLine()}`);
   });
   // Railway stops the old copy with SIGTERM on every deploy. Without a handler
   // Node dies on the signal, npm prints "command failed … signal SIGTERM", and
@@ -1947,6 +2069,26 @@ export function startServer(port: number) {
   process.once('SIGTERM', () => stop('SIGTERM'));
   process.once('SIGINT', () => stop('SIGINT'));
   return server;
+}
+
+/**
+ * The boot line's database state. Five states, never fewer: simulation,
+ * not configured, configured-and-live, READ-ONLY, and configured-but-CUT.
+ * Collapsing any one into another is the §1B lie in the one line an operator
+ * actually reads. Deploy verification reads this: "db connected" (live) or
+ * "db READ-ONLY" (read-only) — CLAUDE.md.
+ */
+export function dbStateLine(): string {
+  if (dataLinksSim()) return 'SIMULATION — every record is fake, no database connection is opened';
+  if (!dbConfigured()) return 'not configured';
+  if (dataLinksReadOnly()) {
+    const kept = LINK_NAMES.filter((l) => readOnlyKeptCut(l) !== null);
+    return `READ-ONLY (ARBO_DATA_LINKS=readonly) — reading real data, writing nothing. Readable: ${openLinks().join(', ') || 'none'}. Kept cut: ${kept.join(', ') || 'none'}`;
+  }
+  if (dataLinksLive()) {
+    return `connected — links open: ${openLinks().join(', ') || `NONE of ${LINK_NAMES.length} (master live, every ARBO_LINK_* still cut)`}`;
+  }
+  return 'CONFIGURED BUT LINKS CUT (ARBO_DATA_LINKS is not "live" or "readonly") — no real data is being read or written';
 }
 
 function unpack(r: { status: number; body: unknown }): [number, unknown] {
