@@ -3293,6 +3293,7 @@ const UNIT_STATUS = {
   up: ['UP', 'good'],
   down: ['DOWN', 'stop'],
   maintenance: ['NEEDS ATTENTION', 'watch'],
+  held: ['HELD', 'stop'], // R26: brake/steering — off the schedule until Mike signs it back on
 };
 // The list and the composer are SEPARATE slots. Refreshing the list after an
 // add must not wipe the line the composer just printed — the composer's own
@@ -3323,15 +3324,20 @@ async function renderFleetList(slot) {
       : 'Could not read the fleet. This is not a claim that everything runs.'));
     return false;
   }
+  // A held unit is off the schedule as surely as a DOWN one, so the heading
+  // never says "all units schedulable" while either is on the list (R26).
+  const offSchedule = [];
+  if (f.down > 0) offSchedule.push(plural(f.down, 'unit') + ' down');
+  if (f.held > 0) offSchedule.push(plural(f.held, 'unit') + ' held');
   slot.appendChild(el('div', 'panel-title',
-    f.down > 0 ? 'Fleet — ' + plural(f.down, 'unit') + ' down' : 'Fleet — all units schedulable'));
+    offSchedule.length ? 'Fleet — ' + offSchedule.join(', ') : 'Fleet — all units schedulable'));
   if (!f.units.length) {
     slot.appendChild(state('No units on file', 'Add equipment below and it shows up here.'));
     return true;
   }
-  // A DOWN unit is the one that changes the day, so it leads the list.
-  for (const u of [...f.units].sort((a, b) => (b.status === 'down') - (a.status === 'down'))) {
-    const c = el('div', 'card' + (u.status === 'down' ? ' emergency' : ''));
+  // A unit off the schedule (DOWN or HELD) is the one that changes the day, so it leads the list.
+  for (const u of [...f.units].sort((a, b) => (!b.schedulable) - (!a.schedulable))) {
+    const c = el('div', 'card' + (u.schedulable ? '' : ' emergency'));
     const top = el('div', 'toprow');
     top.appendChild(el('div', 'who', u.name));
     top.appendChild(el('div', 'when', u.kind || ''));
@@ -3346,6 +3352,32 @@ async function renderFleetList(slot) {
     // Say that on the card, so nobody assumes the number is simply missing.
     if (!u.heightInches || !u.weightLbsLoaded) {
       b.appendChild(chip('SIZE UNKNOWN — ROUTED CONSERVATIVELY', 'watch'));
+    }
+    // R26: a brake or steering defect holds the unit, and its reason is named
+    // on the card. Nothing returns it on its own: this button, behind the owner
+    // key, is the only way back, and it asks twice like every one-way action.
+    if (u.status === 'held') {
+      const why = el('div', 'scope', 'On hold: ' + (u.holdReason || 'brake/steering defect') + '. It stays off the schedule until you sign it back on.');
+      why.style.marginTop = '10px'; // its own line under the chips, not pressed against them
+      c.appendChild(why);
+      const sign = el('button', 'actbtn', 'Sign it back on');
+      const signErr = el('div', 'errline', '');
+      armTwice(sign, 'Tap again to sign ' + u.name + ' back on'
+        + (u.openTasks > 0 ? ' with ' + plural(u.openTasks, 'open task') + ' still on it' : '')
+        + ' — it goes back on the schedule', async () => {
+        sign.disabled = true;
+        signErr.textContent = '';
+        try {
+          await api('/api/fleet/units/' + u.id + '/sign-back', { method: 'POST', body: {} });
+          renderFleetList(slot);
+        } catch (ex) {
+          sign.disabled = false;
+          // A refused tap says so under the button; the hold stays on screen as it is.
+          signErr.textContent = ex.code === 409 ? 'Not on hold any more — nothing to sign back on. Tap ↻ to see where it stands.' : saveFailText(ex);
+        }
+      });
+      c.appendChild(sign);
+      c.appendChild(signErr);
     }
     const btn = el('button', 'actbtn', 'Report a breakdown');
     btn.addEventListener('click', () => openBreakdown(u));
