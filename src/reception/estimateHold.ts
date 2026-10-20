@@ -32,6 +32,23 @@ export interface EstimateHoldInput {
   bookedBy: string;
 }
 
+/**
+ * Why a hold did NOT reach the calendar, as a short code (H1, 2026-10-20).
+ * A failed hold is named on Mike's screen — never shown as filed. The code
+ * is all that is kept: the error text could quote the event (§4.3).
+ *   google_signin    — Arbo could not sign in to Google (token refresh refused)
+ *   calendar_refused — Google answered, and refused the event
+ *   error            — anything else (network, timeout inside the writer)
+ */
+export type HoldErrorCode = 'google_signin' | 'calendar_refused' | 'error';
+
+export function holdErrorCode(err: unknown): HoldErrorCode {
+  const m = err instanceof Error ? err.message : '';
+  if (/token refresh failed/i.test(m)) return 'google_signin';
+  if (/createEvent failed/i.test(m)) return 'calendar_refused';
+  return 'error';
+}
+
 export function buildEstimateHold(input: EstimateHoldInput): CallHold {
   const { state, window: win, nowMs } = input;
   const start = win ? win.startIso : new Date(nowMs + 30 * 60 * 1000).toISOString();

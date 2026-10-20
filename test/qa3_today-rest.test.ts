@@ -152,7 +152,8 @@ describe('#25: a red stops count says why on its own tile', () => {
     expect(note({ emergencies: 1, redFlagCount: 2 })).toBe('1 emergency');
     expect(note({ emergencies: 2, redFlagCount: 2 })).toBe('2 emergencies');
     expect(note({ emergencies: 0, redFlagCount: 0 })).toBe('');
-    expect(html).toContain("HERO.stat('stops', s.totalStops, (s.emergencies || s.redFlagCount) ? 'hot' : '', plural(s.totalStops, 'stop') + ' today', flagNote);");
+    // H4: "today" only when the day is really read; Arbo's own bookings say "in Arbo today".
+    expect(html).toContain("HERO.stat('stops', s.totalStops, (s.emergencies || s.redFlagCount) ? 'hot' : '', plural(s.totalStops, 'stop') + (onlyArbo ? ' in Arbo today' : ' today'), flagNote);");
   });
 
   it('an empty note takes no room; a hot tile ties its border and note to the red count', () => {

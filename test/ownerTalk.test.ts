@@ -96,8 +96,8 @@ function quoRead(status: Record<string, unknown>, calls: Array<Record<string, un
   return {
     status: {
       registration: { state: 'ok', detail: 'wired' }, reading: true, received: 0, rejected: 0, lastAt: null, lastError: null,
-      sonaCalls: calls.length, slips: 0, callsWithSlips: 0, holdsAttempted: 0, hangups: 0, learnedFromRecord: 0, notUsed: {},
-      quoRecord: { lastAt: NOW, learned: 0, pending: 0, error: null, unreadable: null },
+      sonaCalls: calls.length, slips: 0, callsWithSlips: 0, holdsFiled: 0, holdsFailed: 0, holdsWaiting: 0, readsRetrying: 0, readRetryMax: 5, hangups: 0, learnedFromRecord: 0, notUsed: {},
+      quoRecord: { lastAt: NOW, learned: 0, pending: 0, error: null, unreadable: null, weekReadOkAt: NOW },
       ...status,
     },
     calls,
@@ -180,7 +180,7 @@ describe('Talk tools — read-only, and a feed it could not read is NAMED (§1B)
     expect(update).toMatch(/\n- SIM-Alder, Test: aerial rescue \(expired\)/);
     // The practice data has no contract file: an unreadable day, never an empty one.
     expect(update).toContain('Work orders: Arbo could not read the contract file, so nothing is dispatched as a work order. That is not an empty day — it is an unreadable one.');
-    expect(update).toContain("Today's stops, in route order: 2 — 2 jobs and 0 estimates.");
+    expect(update).toContain("Today's stops in Arbo's bookings, in route order: 2 — 2 jobs and 0 estimates.");
     expect(update).toMatch(/- Stop 1: job in Virginia Beach, .*, SIM-Alder, Test — POWER LINES\./);
     // Customer phone numbers and street addresses never reach the brain.
     expect(update).not.toMatch(PHONE);
@@ -215,13 +215,13 @@ describe('Talk tools — read-only, and a feed it could not read is NAMED (§1B)
       sonaCall({ callId: 'AC2', slips: [{ rule: 'no-date-promise', said: 'We can be there Tuesday.' }, { rule: 'no-price', said: '$1,200' }], facts: { name: null, city: 'Chesapeake', emergency: false } }),
       sonaCall({ callId: 'AC3', slips: [], facts: { name: 'SIM-Dogwood, Test', city: 'Portsmouth', emergency: true } }),
     ];
-    const tools = createTalkTools(simReads({ quo: () => quoRead({ callsWithSlips: 2, slips: 3, holdsAttempted: 1, hangups: 0 }, calls) }));
+    const tools = createTalkTools(simReads({ quo: () => quoRead({ callsWithSlips: 2, slips: 3, holdsFiled: 1, hangups: 0 }, calls) }));
     const text = (await tools.run('arbo_sona_calls')).text;
     expect(text).toContain('Red flags: Sona broke your rules on 2 calls.');
     expect(text).toMatch(/- SIM-Carver, Test, \d{1,2}:\d{2} [AP]M: gave a price\. Call back from the Arbo app\./);
     expect(text).toMatch(/- A caller who gave no name, \d{1,2}:\d{2} [AP]M: promised a day or time, gave a price\./);
     expect(text).toMatch(/- Emergency call: SIM-Dogwood, Test in Portsmouth, \d{1,2}:\d{2} [AP]M\. Call back from the Arbo app\./);
-    expect(text).toContain('Sona calls Arbo holds: 3. Calendar holds filed: 1. Hang-ups: 0.');
+    expect(text).toContain('Sona calls Arbo holds: 3. Calendar holds on your calendar: 1. Failed: 0. Still waiting on Google: 0. Hang-ups: 0.');
     for (const never of ['$800', '$1,200', 'Tuesday', 'about', '7575550103', '+1757']) expect(text).not.toContain(never);
     expect(text).not.toMatch(PHONE);
   });
@@ -269,7 +269,7 @@ describe('Talk tools — read-only, and a feed it could not read is NAMED (§1B)
     const rules = ['no-price', 'no-diagnosis', 'no-date-promise', 'no-financial-authority', 'forbidden-term', 'opus-read', 'something-new'];
     const calls = rules.map((rule, i) => sonaCall({ callId: `AC${i}`, slips: [{ rule, said: '$900 Tuesday' }], facts: { name: `SIM-Caller ${i}, Test`, city: 'Norfolk', emergency: i === 0 } }));
     const tools = createTalkTools(simReads({
-      quo: () => quoRead({ callsWithSlips: rules.length, holdsAttempted: 2, hangups: 1 }, calls),
+      quo: () => quoRead({ callsWithSlips: rules.length, holdsFiled: 2, holdsFailed: 1, readsRetrying: 1, hangups: 1 }, calls),
       storm: async () => ({ status: 200, body: { alerts: [{ id: 'a', event: 'Tornado Warning', severity: 'Extreme', headline: null, onset: null, ends: new Date(Date.now() + 3_600_000).toISOString(), cities: ['Norfolk'] }], atRisk: [{}] } }),
       stormLaw: async () => ({ ...lawNone, state: 'active', flag: STORM_LAW_FLAG }),
     }));
@@ -707,7 +707,7 @@ describe('POST /api/talk — over the wire', () => {
       const body = JSON.stringify({ messages: [] });
       const crew = await post(base, '/api/talk', body, 'crew-k');
       expect(crew.status).toBe(401);
-      expect(await crew.json()).toEqual({ error: 'unauthorized' });
+      expect(await crew.json()).toEqual({ error: 'unauthorized', message: 'The crew door key opens the crew door only. This needs the app key.' }); // the 401 says what to do (audit L1/M2)
       expect((await post(base, '/api/talk', body)).status).toBe(401);
       expect((await post(base, '/api/talk', body, 'wrong')).status).toBe(401);
       const owner = await post(base, '/api/talk', body, 'admin-k');
@@ -749,6 +749,13 @@ const block = (() => {
   const b = html.indexOf('// ═══ /TALK', a);
   if (a < 0 || b < 0) throw new Error('Talk block markers missing from the page');
   return html.slice(a, b);
+})();
+/** The key screen's words for a refusal the server named (Lane A) — Talk says the same ones. */
+const keyRefused = (() => {
+  const a = html.indexOf('const KEY_REFUSED = {');
+  const b = html.indexOf('};', a);
+  if (a < 0 || b < 0) throw new Error('KEY_REFUSED missing from the page');
+  return new Function(`${html.slice(a, b + 2)}\nreturn KEY_REFUSED;`)() as Record<string, string>;
 })();
 
 interface FakeNode { id: string; textContent: string; hidden: boolean; value: string; attrs: Record<string, string>; cls: Set<string>; classList: { add(c: string): void; remove(c: string): void; contains(c: string): boolean; toggle(c: string, on?: boolean): boolean }; setAttribute(k: string, v: string): void }
@@ -837,7 +844,7 @@ function rig(opts: { replies: Array<{ reply: string } | Error>; listen?: boolean
     return next;
   });
   const names = ['talkStart', 'talkEnd', 'talkHeard', 'TALK'];
-  const t = new Function('$', 'api', 'window', 'navigator', `${block}\nreturn { ${names.join(', ')} };`)($, api, win, nav) as Rig['t'];
+  const t = new Function('$', 'api', 'window', 'navigator', 'KEY_REFUSED', `${block}\nreturn { ${names.join(', ')} };`)($, api, win, nav, keyRefused) as Rig['t'];
   return { t, $, spoken, utts, sessionAtSpeak, cancels: () => cancels, recs: FakeRec.all, posts, lock, nav, synth };
 }
 
@@ -1062,6 +1069,31 @@ describe('the page: one tap, then hands-free (the iPhone\'s own speech)', () => 
     expect(r.$('talk-status').textContent).toMatch(/Talk is locked/);
     expect(r.$('talk-status').textContent).toMatch(/Settings/);
     expect(r.$('talk-status').textContent).toMatch(/server has no app key/);
+    expect(r.t.TALK.on).toBe(false);
+  });
+
+  // Wave-1 verify: api() turns the door's 429 too_many_attempts into code 401 + why. Talk read
+  // only the code, so a throttled phone with the RIGHT key was told to check its key.
+  it('a throttled connection (the door\'s 429, passed on as 401 + why) is told to wait — never "check your key" — and Talk stops', async () => {
+    vi.useFakeTimers();
+    const r = rig({ replies: [Object.assign(new Error('unauthorized'), { code: 401, why: 'too_many_attempts' })] });
+    r.t.talkStart();
+    await vi.advanceTimersByTimeAsync(300);
+    const said = r.$('talk-status').textContent;
+    expect(said).toContain(keyRefused.too_many_attempts!);
+    expect(said).not.toMatch(/not accepted|Settings|no app key/);
+    expect(r.spoken.join(' ')).toMatch(/Wait a minute/);
+    expect(r.t.TALK.on).toBe(false);
+  });
+
+  it('no app key on the server (401 no_app_key) is said as that — never "this phone\'s key"', async () => {
+    vi.useFakeTimers();
+    const r = rig({ replies: [Object.assign(new Error('unauthorized'), { code: 401, why: 'no_app_key' })] });
+    r.t.talkStart();
+    await vi.advanceTimersByTimeAsync(300);
+    const said = r.$('talk-status').textContent;
+    expect(said).toContain(keyRefused.no_app_key!);
+    expect(said).not.toMatch(/not accepted/);
     expect(r.t.TALK.on).toBe(false);
   });
 

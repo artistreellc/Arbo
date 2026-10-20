@@ -511,7 +511,7 @@ describe('GET /api/storm/law', () => {
       const get = (k?: string) => fetch(base + '/api/storm/law', { headers: k ? { 'x-arbor-key': k } : {} });
       const crew = await get('crew-k');
       expect(crew.status).toBe(401);
-      expect(await crew.json()).toEqual({ error: 'unauthorized' });
+      expect(await crew.json()).toEqual({ error: 'unauthorized', message: 'The crew door key opens the crew door only. This needs the app key.' });
       expect((await get()).status).toBe(401);
       expect(outside).toEqual([]); // a refused ask never reaches FEMA
       const r = await get('admin-k');

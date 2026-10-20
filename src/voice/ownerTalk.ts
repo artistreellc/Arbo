@@ -371,9 +371,17 @@ function sonaSection(q: QuoRead | null, detail: boolean, now: number): Section {
     const city = safe(c.facts?.city, '');
     lines.push(`- Emergency call: ${safe(c.facts?.name, 'a caller who gave no name')}${city ? ` in ${city}` : ''}, ${when(c.at, now)}. Call back from the Arbo app.`);
   }
-  // R33: holds off on purpose is said as off — never "Calendar holds filed: 0" — and
-  // the time a caller asked for is pointed at only when they gave one.
-  let holdsSaid = `Calendar holds filed: ${st.holdsAttempted}`;
+  // H1: a hold that failed is NOT on the calendar — said every time, never folded into "filed".
+  if (st.holdsFailed > 0) {
+    lines.push(`${plural(st.holdsFailed, 'calendar hold', 'calendar holds')} did NOT reach your calendar — book ${st.holdsFailed === 1 ? 'that caller' : 'those callers'} yourself from the Arbo app.`);
+  }
+  if (st.readsRetrying > 0) {
+    lines.push(`Arbo could not read ${plural(st.readsRetrying, 'Sona call', 'Sona calls')} yet — it is trying again${st.holds === 'read_only' ? '' : ', and no hold is filed until it can'}.`);
+  }
+  // H1: three numbers, never one "filed" count. R33: holds off on purpose is
+  // said as off — never "on your calendar: 0", never "failed" — and the time a
+  // caller asked for is pointed at only when they gave one.
+  let holdsSaid = `Calendar holds on your calendar: ${st.holdsFiled}. Failed: ${st.holdsFailed}. Still waiting on Google: ${st.holdsWaiting}`;
   if (st.holds === 'read_only') {
     const off = sona.filter((c) => c.hold === 'read_only');
     const timed = off.filter((c) => c.facts?.requestedTime).length;
@@ -385,8 +393,15 @@ function sonaSection(q: QuoRead | null, detail: boolean, now: number): Section {
     holdsSaid = `Calendar holds: off — Google is connected read-only, so you book estimates yourself${who.length ? `: ${who.join('; ')}` : ''}`;
   }
   if (detail) lines.push(`Sona calls Arbo holds: ${sona.length}. ${holdsSaid}. Hang-ups: ${st.hangups}.`);
-  if (!sona.length && (st.registration.state === 'ok' || st.registration.state === 'read_only') && !rec.error && !rec.unreadable) {
-    lines.push(rec.lastAt ? "No Sona calls in the last 7 days — checked against Quo's own record." : "Wired — still reading Sona's calls from Quo.");
+  // M10: the week's read stopped at its cap — the calls Arbo holds are not the whole week.
+  const weekShort = rec.weekThreadsNotRead ?? 0;
+  if (weekShort > 0) lines.push(`Arbo has not read all of this week's calls yet — ${plural(weekShort, 'older customer thread', 'older customer threads')} not read, so this is not the whole week.`);
+  // M10: a week read that has not finished (it failed, or left a call unread) is not an empty week.
+  else if (rec.lastAt && !rec.weekReadOkAt) lines.push("Arbo has not finished reading the past week of Quo's record — the calls Arbo holds are not the whole week yet.");
+  // R33: a webhook Arbo won't create ('read_only') changes nothing here — the calls are read from Quo's record.
+  if (!sona.length && (st.registration.state === 'ok' || st.registration.state === 'read_only') && !rec.error && !rec.unreadable && weekShort === 0) {
+    if (!rec.lastAt) lines.push("Wired — still reading Sona's calls from Quo.");
+    else if (rec.weekReadOkAt) lines.push("No Sona calls in the last 7 days — checked against Quo's own record.");
   }
   return { lines, missing };
 }
@@ -441,11 +456,16 @@ function crewSection(r: Read): Section {
 function stopsSection(r: Read, detail: boolean, now: number): Section {
   const name = "Today's stops";
   if (r.feed !== 'read') return gap(name, r.feed, 'an empty day');
-  const b = r.body as { stops?: unknown; summary?: { jobs?: number; estimates?: number } } | null;
+  const b = r.body as { stops?: unknown; summary?: { jobs?: number; estimates?: number }; scheduleSource?: unknown } | null;
   if (!b || !Array.isArray(b.stops)) return gap(name, 'unread', 'an empty day');
   const stops = b.stops as StopLike[];
-  if (!stops.length) return { lines: ["Today's stops: none on the schedule for today."], missing: null };
-  const lines = [`Today's stops, in route order: ${stops.length} — ${plural(b.summary?.jobs ?? 0, 'job')} and ${plural(b.summary?.estimates ?? 0, 'estimate')}.`];
+  // H4: these are Arbo's own bookings — the Google Calendar is not read, so "none" is never the day.
+  const onlyArbo = b.scheduleSource === 'arbo_tables_only';
+  if (!stops.length) {
+    return { lines: [onlyArbo ? "Today's stops: none booked in Arbo. Your Google Calendar isn't read here, so that is not an empty day — check the calendar." : "Today's stops: none on the schedule for today."], missing: null };
+  }
+  const lines = [`Today's stops${onlyArbo ? " in Arbo's bookings" : ''}, in route order: ${stops.length} — ${plural(b.summary?.jobs ?? 0, 'job')} and ${plural(b.summary?.estimates ?? 0, 'estimate')}.`];
+  if (onlyArbo) lines.push("Your Google Calendar isn't read here — a stop booked only there is not in this list.");
   const cap = detail ? 12 : 6;
   for (const s of stops.slice(0, cap)) {
     const flags = s.redFlags?.length ? ` — ${s.redFlags.join(' and ')}` : '';
@@ -492,6 +512,10 @@ function stormSection(r: Read, now: number): Section {
   // Stops at risk are only counted when the schedule was read; zero here would be a guess.
   const atRisk = Array.isArray(b.atRisk) ? b.atRisk.length : 0;
   if (atRisk > 0) lines.push(`${plural(atRisk, 'stop')} in the next 48 hours ${atRisk === 1 ? 'falls' : 'fall'} inside an alert.`);
+  // H4: checked against Arbo's own bookings only — said, so zero is never read as "no stop at risk".
+  if ((b as { atRiskScope?: unknown }).atRiskScope === 'arbo_tables_only' && (b as { atRiskUnread?: unknown }).atRiskUnread !== true) {
+    lines.push("Stops inside the alert were checked against Arbo's own bookings only — your Google Calendar isn't read here.");
+  }
   // api.storm could not read the schedule: the alert stands, the stops at risk are unknown (R30 review).
   if ((b as { atRiskUnread?: unknown }).atRiskUnread === true) {
     lines.push("Arbo couldn't check which stops fall inside the alert — that is not zero stops at risk.");

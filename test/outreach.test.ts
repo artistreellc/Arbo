@@ -22,6 +22,11 @@ import type { QuoSender, SendResult } from '../src/integrations/quoSend.js';
 import type { SonaCallFacts } from '../src/ops/quoExtract.js';
 import { loadAllConfig } from '../src/config/loadConfig.js';
 import { createArborRequestHandler } from '../src/server.js';
+import { ownerFetch } from './ownerKey.js';
+// Audit M1 (2026-10-20): the /api door is locked without APP_ACCESS_KEY in every
+// data mode, so this file sets the owner key before src/env.ts reads it and
+// calls /api with it (test/ownerKey.ts).
+vi.hoisted(() => { process.env.APP_ACCESS_KEY = 'test-owner-key'; });
 
 const DAY = 24 * 60 * 60 * 1000;
 /** A Thursday, 11:00 EDT — inside quiet hours. */
@@ -364,9 +369,11 @@ describe('review fixes (R22 adversarial review, 2026-09-24)', () => {
     expect((await harness(s).engine.buildCandidates())[0]!.skip).toBeNull();
   });
 
-  it('a Sona booking survives a redeploy — re-read from Quo’s transcript, not memory', async () => {
-    // Empty bookedCallers = a fresh deploy. With a calendar writer, Sona filed a hold for this caller.
-    expect((await harness(base(), { sonaFilesHolds: true }).engine.buildCandidates())[0]).toMatchObject({ skip: 'estimate_booked' });
+  it('after a redeploy Arbo cannot see whether Sona’s hold was filed — named hold_unknown, never "booked", never auto-texted (H1)', async () => {
+    // Empty bookedCallers + no hold on record = a fresh deploy. With a calendar
+    // writer a hold MAY exist — or may have failed. The transcript alone
+    // proves neither, so it is held back by name (it once read "booked").
+    expect((await harness(base(), { sonaFilesHolds: true }).engine.buildCandidates())[0]).toMatchObject({ classification: 'customer', skip: 'hold_unknown' });
     // Without a calendar writer no hold was ever filed — still a follow-up.
     expect((await harness(base(), { sonaFilesHolds: false }).engine.buildCandidates())[0]!.skip).toBeNull();
   });
@@ -440,7 +447,7 @@ describe('HTTP + screens', () => {
     const srv = createServer(createArborRequestHandler());
     await new Promise<void>((r) => srv.listen(0, r));
     const base = `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
-    const res = await fetch(`${base}/api/outreach`);
+    const res = await ownerFetch(`${base}/api/outreach`);
     expect(res.status).toBe(503);
     expect(((await res.json()) as { error: string }).error).toBe('quo_not_configured');
     srv.close();

@@ -427,7 +427,7 @@ describe('GET /api/quo/media/<id> — owner only, an id Arbo minted, the bytes a
     } finally { srv.close(); logs.restore(); }
   });
 
-  it('with no APP_ACCESS_KEY the door stays locked — even while the database is cut and the rest of /api is open', async () => {
+  it('with no APP_ACCESS_KEY the door stays locked — even while the database is cut (and, since audit M1, so is the rest of /api)', async () => {
     const logs = quietLogs();
     const store = new QuoMediaStore({ now: () => Date.now() });
     const id = store.mintSim('oak-1').mediaId!;
@@ -442,10 +442,15 @@ describe('GET /api/quo/media/<id> — owner only, an id Arbo minted, the bytes a
   it('with no APP_ACCESS_KEY the Texts list is locked too — customer numbers and words held in memory never open because the database is cut', async () => {
     const logs = quietLogs();
     const store = new QuoMediaStore({ now: () => Date.now() });
-    const { base, srv } = await serve({ APP_ACCESS_KEY: undefined, CREW_ACCESS_KEY: undefined, ARBO_DATA_LINKS: undefined }, store);
+    const { base, srv } = await serve({ APP_ACCESS_KEY: undefined, CREW_ACCESS_KEY: undefined, ARBO_DATA_LINKS: undefined, TWILIO_SMS_WEBHOOK_KEY: 'tw-k', ARBO_LINK_TWILIO: 'live' }, store);
     try {
-      // A text from the business-cell relay sits in memory (that door is open while the database is cut).
-      expect((await fetch(`${base}/api/relay/text`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ from: CALLER, text: 'SIM- private words' }) })).status).toBe(200);
+      // Audit M1: with no APP_ACCESS_KEY the business-cell relay is locked too — every /api route is.
+      const relay = await fetch(`${base}/api/relay/text`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ from: CALLER, text: 'SIM- private words' }) });
+      expect(relay.status).toBe(401);
+      expect(await relay.json()).toMatchObject({ error: 'no_app_key' });
+      // A text still lands in memory through the Twilio webhook's own door (its own secret, outside /api).
+      const hook = await fetch(`${base}/webhooks/twilio/sms?key=tw-k`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ MessageSid: 'SMSIM1', From: CALLER, Body: 'SIM- private words', NumMedia: '0' }).toString() });
+      expect(hook.status).toBe(200);
       const r = await get(base, '/api/webhooks/texts');
       expect(r.status).toBe(401);
       const raw = await r.text();

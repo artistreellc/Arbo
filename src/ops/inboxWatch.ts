@@ -112,6 +112,15 @@ export type InboxRead =
        * filed as spam is invisible to all of them. Named, every time.
        */
       unreadable: string[];
+      /**
+       * M12: ids Gmail LISTED in the window, opened or not — a cap is judged
+       * on this, never on what was fetched (250 listed and one unopened is
+       * still the cap). A reader that does not say is taken at what it
+       * returned plus what it missed.
+       */
+      listed?: number;
+      /** M12: listed, but could not be opened. */
+      missed?: number;
     }
   | { ok: false; reason: string };
 
@@ -222,6 +231,48 @@ export interface InboxWatchResult {
   cityMail: CityMailSighting[];
   /** Mailboxes the reader could not open. Named every pass, never smoothed. */
   unreadable: string[];
+  /**
+   * M12: set when this pass reached back past its usual window to the last
+   * good read (Gmail came back after an outage, or Arbo restarted).
+   */
+  caughtUpFromIso?: string;
+  /** M12: mail Arbo knows it has NOT read — named until it is read. */
+  gap?: InboxGap;
+  /** M12: on an unavailable pass, when Gmail first stopped answering. */
+  unavailableSince?: string;
+  /** M12: ids Gmail listed this pass (opened or not) — a count, never an id. */
+  listed?: number;
+  /** M12: listed this pass but could not be opened — a count. */
+  missed?: number;
+}
+
+/**
+ * Mail the watch knows it did not read (M12, 2026-10-20). After a 7-day
+ * Gmail outage the first good pass read 15 minutes and said "ok"; the week
+ * between was never read or named.
+ *   older_than_catchup — the outage ran past the 10-day catch-up reach
+ *   catchup_capped     — a catch-up hit its message cap; more may be there
+ *   catchup_unread     — a catch-up could not open mail Gmail listed
+ *   no_record          — no record of an earlier good read (first check on
+ *                        this disk), so what came before is unknown
+ */
+export interface InboxGap {
+  fromIso: string | null;
+  toIso: string;
+  why: 'older_than_catchup' | 'catchup_capped' | 'catchup_unread' | 'no_record';
+}
+
+/** What the watch remembers between passes and across restarts — timestamps only, never mail (§3, §4.3). */
+export interface InboxWatchState {
+  lastGoodReadAt: string | null;
+  unavailableSince: string | null;
+  gap: InboxGap | null;
+}
+
+/** Where that state lives: the storage disk in production (src/ops/inboxWatchState.ts), memory in tests. */
+export interface InboxStateStore {
+  load(): InboxWatchState | null;
+  save(s: InboxWatchState): void;
 }
 
 /** A city letter, described without describing the property. */
@@ -522,6 +573,7 @@ export async function watchInbox(
   const status: InboxWatchResult['status'] =
     unreadable.length > 0 || unparsedKnownSenderIds.length > 0 ? 'degraded' : 'ok';
 
+  const missed = read.missed ?? 0;
   const out: InboxWatchResult = {
     ranAtIso,
     status,
@@ -533,6 +585,8 @@ export async function watchInbox(
     otherMail,
     cityMail,
     unreadable,
+    listed: read.listed ?? read.messages.length + missed,
+    missed,
   };
   assertNoPii(out);
   return out;
@@ -600,9 +654,62 @@ export interface InboxWatchHandle {
    * `unreadable` rather than smoothed over.
    */
   backfill(sinceIso: string): Promise<InboxWatchResult>;
+  /** M12: the last good read, an outage in progress, and any gap — for the screens. */
+  state(): InboxWatchState;
 }
 
 const BACKFILL_LIMIT = 250;
+/** M12: how far back a catch-up reaches — the same 10 days the manual backfill allows. */
+export const CATCHUP_MAX_MS = 10 * 24 * 60 * 60_000;
+/** M12: a catch-up starts a little before the last good read, so a message on the edge is not missed. */
+const CATCHUP_OVERLAP_MS = 60_000;
+/** M12: the "no record" gap is closed by a catch-up that reaches back at least this far. */
+const NO_RECORD_REACH_MS = 7 * 24 * 60 * 60_000;
+
+/**
+ * M12: the window for the next pass. Normally the last `lookbackMinutes`;
+ * when the last good read is older than that (an outage, a restart), the
+ * pass reaches back to it — bounded at CATCHUP_MAX_MS — and what lies past
+ * the reach is a named gap.
+ */
+export function planPass(
+  state: InboxWatchState,
+  nowMs: number,
+  lookbackMinutes: number,
+  limit: number,
+): { lookbackMinutes: number; limit: number; catchUpFromIso: string | null; beyondReach: InboxGap | null } {
+  const normal = { lookbackMinutes, limit, catchUpFromIso: null, beyondReach: null };
+  if (!state.lastGoodReadAt) return normal;
+  const fromMs = Date.parse(state.lastGoodReadAt) - CATCHUP_OVERLAP_MS;
+  if (!Number.isFinite(fromMs) || fromMs >= nowMs - lookbackMinutes * 60_000) return normal;
+  const reachMs = nowMs - CATCHUP_MAX_MS;
+  const startMs = Math.max(fromMs, reachMs);
+  return {
+    lookbackMinutes: Math.ceil((nowMs - startMs) / 60_000),
+    limit: Math.max(limit, BACKFILL_LIMIT),
+    catchUpFromIso: new Date(startMs).toISOString(),
+    beyondReach: fromMs < reachMs ? { fromIso: state.lastGoodReadAt, toIso: new Date(reachMs).toISOString(), why: 'older_than_catchup' } : null,
+  };
+}
+
+/**
+ * M12: one gap is kept. A new gap replaces the stored one — except that a
+ * "could not open" gap never hides a wider gap still open whose own fix (a
+ * catch-up from its start) reads that stretch again anyway: a 5-minute
+ * Catch up with one bad fetch must not erase a week's "no record". An
+ * "older than 10 days" gap has no catch-up, so a newer gap replaces it.
+ */
+function keepGap(stored: InboxGap | null, fresh: InboxGap): InboxGap {
+  if (!stored || fresh.why !== 'catchup_unread' || stored.why === 'older_than_catchup') return fresh;
+  const from = (g: InboxGap) => (g.fromIso === null ? -Infinity : Date.parse(g.fromIso));
+  return from(stored) <= from(fresh) ? stored : fresh;
+}
+
+/** A store that keeps the state for this process only — what a test, or a server with no storage disk, gets. */
+export function memoryInboxState(): InboxStateStore {
+  let s: InboxWatchState | null = null;
+  return { load: () => s, save: (next) => { s = { ...next }; } };
+}
 
 /**
  * The five-minute loop. Never overlaps itself, never keeps a dying process
@@ -615,7 +722,7 @@ const BACKFILL_LIMIT = 250;
  */
 export function startInboxWatch(
   reader: GmailReader | null,
-  opts: WatchOptions & { intervalMs?: number; onPass?: (r: InboxWatchResult) => void } = {},
+  opts: WatchOptions & { intervalMs?: number; onPass?: (r: InboxWatchResult) => void; stateStore?: InboxStateStore } = {},
 ): InboxWatchHandle {
   const seen = new SeenMessages();
   let running = false;
@@ -624,14 +731,63 @@ export function startInboxWatch(
   // day. Say it on the first pass and then hourly — quieter, still never
   // silent, and still never "ok".
   let lastUnavailableLogMs = 0;
+  // M12: the last good read survives restarts (on the storage disk), so the
+  // first good pass after an outage reads from there — not just 15 minutes.
+  const store = opts.stateStore ?? memoryInboxState();
+  const loaded = store.load();
+  const state: InboxWatchState = loaded ?? { lastGoodReadAt: null, unavailableSince: null, gap: null };
+  const save = (): void => {
+    try {
+      store.save(state);
+    } catch (err) {
+      console.error('[inbox] watch state not saved:', err instanceof Error ? err.name : 'error');
+    }
+  };
+
+  /** Fold one pass into the state, and say on the pass what it covered and what it did not (M12). */
+  const settle = (result: InboxWatchResult, plan: ReturnType<typeof planPass>, sinceIso: string): InboxWatchResult => {
+    if (result.status === 'unavailable') {
+      state.unavailableSince ??= result.ranAtIso;
+      save();
+      return { ...result, unavailableSince: state.unavailableSince, ...(state.gap ? { gap: state.gap } : {}) };
+    }
+    // What Gmail LISTED, not what Arbo opened: 250 listed and one unopened is still the cap.
+    const listed = result.listed ?? result.scanned + result.alreadySeen;
+    const capped = plan.catchUpFromIso !== null && listed >= plan.limit;
+    const unopened = plan.catchUpFromIso !== null && (result.missed ?? 0) > 0;
+    const fresh: InboxGap | null =
+      plan.beyondReach
+      ?? (capped ? { fromIso: plan.catchUpFromIso, toIso: result.ranAtIso, why: 'catchup_capped' } : null)
+      ?? (unopened ? { fromIso: plan.catchUpFromIso, toIso: result.ranAtIso, why: 'catchup_unread' } : null)
+      ?? (state.lastGoodReadAt === null && state.gap === null ? { fromIso: null, toIso: sinceIso, why: 'no_record' } : null);
+    if (fresh) state.gap = keepGap(state.gap, fresh);
+    if (plan.catchUpFromIso) {
+      console.error(`[inbox] caught up from the last good read — reached back to ${plan.catchUpFromIso}${fresh && fresh.why !== 'no_record' ? `; NOT read: ${fresh.why}` : ''}`);
+    }
+    state.lastGoodReadAt = result.ranAtIso;
+    state.unavailableSince = null;
+    save();
+    return {
+      ...result,
+      ...(plan.catchUpFromIso ? { caughtUpFromIso: plan.catchUpFromIso } : {}),
+      ...(state.gap ? { gap: state.gap } : {}),
+    };
+  };
 
   const tick = async () => {
     if (running) return;
     running = true;
     try {
-      const result = reader
-        ? await watchInbox(reader, seen, new Date(), opts)
-        : unavailablePass(new Date().toISOString(), 'no Gmail credentials configured');
+      const now = new Date();
+      const plan = planPass(state, now.getTime(), opts.lookbackMinutes ?? 15, opts.limit ?? 50);
+      const sinceIso = new Date(now.getTime() - plan.lookbackMinutes * 60_000).toISOString();
+      const result = settle(
+        reader
+          ? await watchInbox(reader, seen, now, { ...opts, lookbackMinutes: plan.lookbackMinutes, limit: plan.limit })
+          : unavailablePass(now.toISOString(), 'no Gmail credentials configured'),
+        plan,
+        sinceIso,
+      );
       lastResult = result;
       opts.onPass?.(result);
 
@@ -664,15 +820,42 @@ export function startInboxWatch(
         return unavailablePass(new Date().toISOString(), 'no Gmail credentials configured');
       }
       const minutes = Math.max(1, Math.ceil((Date.now() - Date.parse(sinceIso)) / 60_000));
-      const result = await watchInbox(reader, seen, new Date(), {
+      const raw = await watchInbox(reader, seen, new Date(), {
         ...opts,
         lookbackMinutes: minutes,
         limit: BACKFILL_LIMIT,
       });
+      // M12: a catch-up that read its whole window closes a gap it covers; one
+      // that hit the cap, or could not open mail Gmail listed, is itself a gap.
+      // Either way the screen says which.
+      let result = raw;
+      if (raw.status !== 'unavailable') {
+        const capped = (raw.listed ?? raw.scanned + raw.alreadySeen) >= BACKFILL_LIMIT;
+        const unopened = (raw.missed ?? 0) > 0;
+        const g = state.gap;
+        const reachMs = Date.parse(sinceIso);
+        // A gap with a start is covered by reaching back to it; "no record" (no
+        // start) by Mike reading back a week ("Catch up → Last week").
+        const covers = g !== null && (g.fromIso !== null ? reachMs <= Date.parse(g.fromIso) : Date.now() - reachMs >= NO_RECORD_REACH_MS - 5 * 60_000);
+        if (capped) state.gap = { fromIso: sinceIso, toIso: raw.ranAtIso, why: 'catchup_capped' };
+        else if (unopened) state.gap = keepGap(covers ? null : g, { fromIso: sinceIso, toIso: raw.ranAtIso, why: 'catchup_unread' });
+        else if (covers) state.gap = null;
+        // Only a catch-up that reaches back to the last good read moves it
+        // forward — a 5-minute one must not paper over an outage the next
+        // pass would otherwise catch up.
+        const prevGood = state.lastGoodReadAt ? Date.parse(state.lastGoodReadAt) : null;
+        if (prevGood === null || reachMs <= prevGood) {
+          state.lastGoodReadAt = raw.ranAtIso;
+          state.unavailableSince = null;
+        }
+        save();
+        result = { ...raw, ...(state.gap ? { gap: state.gap } : {}) };
+      }
       lastResult = result;
       opts.onPass?.(result);
       console.log(watchLogLine(result).replace('[inbox]', '[inbox backfill]'));
       return result;
     },
+    state: () => ({ ...state }),
   };
 }

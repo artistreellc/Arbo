@@ -41,6 +41,14 @@ export const GOOGLE_READ_ONLY: boolean = true;
 export const GOOGLE_HOLDS_OFF_LINE =
   'Calendar holds are off — Google is connected read-only (Mike, 2026-10-20). Sona’s requested time is shown on the call card for you to book.';
 
+/**
+ * The text-outreach list says this while holds are off (H1 × R33): "booked"
+ * means a hold Google confirmed, and none is made — so nobody is skipped as
+ * booked, and the list never reads as if Sona booked anyone.
+ */
+export const GOOGLE_HOLDS_OFF_OUTREACH_LINE =
+  'Calendar holds are off — Google is connected read-only (Mike, 2026-10-20), so nobody here is skipped as booked: a caller who asked Sona for an estimate stays on this list for you to book.';
+
 export type GoogleWrite = 'calendar.create' | 'calendar.recolor' | 'drive.createFolder';
 
 /** A Google write refused before anything left Arbo — not a Google outage, not a failed call. */

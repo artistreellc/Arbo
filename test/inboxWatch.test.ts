@@ -46,6 +46,11 @@
 import { describe, it, expect, vi, afterAll } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { createArborRequestHandler } from '../src/server.js';
+import { ownerFetch } from './ownerKey.js';
+// Audit M1 (2026-10-20): the /api door is locked without APP_ACCESS_KEY in every
+// data mode, so this file sets the owner key before src/env.ts reads it and
+// calls /api with it (test/ownerKey.ts).
+vi.hoisted(() => { process.env.APP_ACCESS_KEY = 'test-owner-key'; });
 import {
   watchInbox,
   unavailablePass,
@@ -483,7 +488,7 @@ describe('GET /api/inbox', () => {
     server = createServer(createArborRequestHandler());
     await new Promise<void>((r) => server!.listen(0, r));
     const port = (server.address() as { port: number }).port;
-    const res = await fetch(`http://127.0.0.1:${port}/api/inbox`);
+    const res = await ownerFetch(`http://127.0.0.1:${port}/api/inbox`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as InboxWatchResult;
     // The handler is reached (not a 404) and it tells the truth about a watch

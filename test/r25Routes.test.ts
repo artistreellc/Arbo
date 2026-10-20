@@ -91,7 +91,7 @@ describe('server wiring', () => {
       expect((await get('/api/permits/db', 'admin-k')).status).toBe(200);
       expect((await get('/api/crew/workorders')).status).toBe(401);
       // A crew key IS set, so a wrong one is plain "unauthorized".
-      expect(await (await get('/api/crew/workorders', 'wrong')).json()).toEqual({ error: 'unauthorized' });
+      expect(await (await get('/api/crew/workorders', 'wrong')).json()).toEqual({ error: 'unauthorized', message: 'That is not the crew door key. Check it with the office.' });
     } finally { srv.close(); }
   });
 
@@ -101,10 +101,10 @@ describe('server wiring', () => {
       const get = (p: string, k?: string) => fetch(base + p, { headers: k ? { 'x-arbor-key': k } : {} });
       const crew = await get('/api/crew/workorders');
       expect(crew.status).toBe(401);
-      expect(await crew.json()).toEqual({ error: 'crew_key_not_set' });
+      expect(await crew.json()).toEqual({ error: 'crew_key_not_set', message: 'No crew door key has been set up on the server yet. Ask Mike to set one.' });
       const leads = await get('/api/leads');
       expect(leads.status).toBe(401);
-      expect(await leads.json()).toEqual({ error: 'unauthorized' });
+      expect(await leads.json()).toEqual({ error: 'unauthorized', message: 'Arbo needs the app key. Enter it on the app’s key screen — an iPhone Shortcut sends it in the x-arbor-key header.' });
       // Mike's own key still opens the crew door while no crew key exists.
       expect((await get('/api/crew/workorders', 'admin-k')).status).not.toBe(401);
     } finally { srv.close(); }

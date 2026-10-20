@@ -76,6 +76,7 @@ import { simQuoTexts } from './dev/simQuoTexts.js';
 import { createQuoSender } from './integrations/quoSend.js';
 import { GOOGLE_READ_ONLY, GOOGLE_HOLDS_OFF_LINE, QUO_READ_ONLY_LINE, quoWritesLive, readOnlyBootLines } from './integrations/readOnly.js';
 import { OutreachEngine } from './ops/outreach.js';
+import { startQuoWiring, type WireAttempt } from './ops/quoWiring.js';
 import {
   listLeads,
   listStopsBetween,
@@ -193,12 +194,15 @@ import {
   unavailablePass,
   type InboxWatchHandle,
 } from './ops/inboxWatch.js';
+import { InboxStateFile } from './ops/inboxWatchState.js';
+import { buildFeedHealth, trackedAlerts, type FeedLog } from './ops/feedHealth.js';
 import { IntentWatch } from './ops/intentWatch.js';
 import { IntentRegistry } from './ops/intentRegistry.js';
 import { InboxSurfaceStore } from './ops/inboxSurface.js';
 import { createOpusIntentModel } from './ops/inboxIntent.js';
 import { createSimSource } from './dev/simSource.js';
 import { Assistant } from './assistant/assistant.js';
+import { KeyAttemptGuard, checkApiDoor, keyFromHeader, clientAddress, accessBootLine } from './server/accessDoor.js';
 
 /**
  * The source the server actually runs on. In SIM mode this is in-memory fake
@@ -611,10 +615,19 @@ const consoleAlerter: Alerter = {
  * nothing unless ARBO_AGENT is exactly 'live' and every id is set.
  * `opts.quoMedia` is the photo-id store (view-only Quo photos, R34); tests
  * hand in one with a fake Quo host. The server builds its own.
+ *
+ * `opts.keyGuard` is the M2 wrong-key limiter; tests hand in one on a fake
+ * clock. Unset, one is built per handler (in memory, capped).
  */
-export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedia?: QuoMediaStore } = {}) {
+export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedia?: QuoMediaStore; keyGuard?: KeyAttemptGuard } = {}) {
   boot(); // validates guardrails + legal or throws
-  const alertsProvider = createNwsAlertsProvider((url, init) => fetch(url, init));
+  const keyGuard = opts.keyGuard ?? new KeyAttemptGuard();
+  // On Railway the edge names the caller in X-Real-IP; with it missing there,
+  // a wrong key is not counted rather than pool every caller into one address.
+  const behindRailway = Boolean(process.env.RAILWAY_ENVIRONMENT_NAME || process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID);
+  // M14: the storm feed's last good read and last failure, for /health/feeds.
+  const stormLog: FeedLog = { lastOkAt: null, lastErrorAt: null, lastError: null };
+  const alertsProvider = trackedAlerts(createNwsAlertsProvider((url, init) => fetch(url, init)), stormLog);
   // R26: the owner-only storm-law flag — OpenFEMA, read-only, asked at most
   // once an hour. It never prices; a failed read is named, never 'none'.
   const stormLaw = createStormLawCheck((url, init) => fetch(url, init));
@@ -655,7 +668,10 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
           startIso: string;
           endIso: string;
         }) => {
-          await calApi.createEvent({ calendarId: 'primary', ...hold });
+          // Resolves only when Google has the event; any refusal rejects, so
+          // the caller records 'failed', never 'filed' (H1).
+          const ev = await calApi.createEvent({ calendarId: 'primary', ...hold });
+          return { eventId: ev.id };
         };
       })()
     : null;
@@ -758,9 +774,12 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
       guardrails,
       legal,
       extractor: sonaExtractor,
-      // Only a hold Sona's call actually ATTEMPTED is a booking — never one
-      // R33 kept off (the intake says whether holds are filed at all).
+      // H1 + R33: "booked" is a hold Google CONFIRMED ('filed') — never one
+      // that was only tried, never one that failed, never a transcript read on
+      // its own — and while Google is read-only (R33) no hold is ever made, so
+      // nobody is booked from one. The intake says whether holds are made at all.
       bookedCallers: () => bookedFromHolds(quoIntake.list()),
+      holdFor: (callId) => quoIntake.bookingState(callId),
       sonaFilesHolds: quoIntake.holdsLive(),
       enabled: () => env.outreachAuto,
     });
@@ -798,19 +817,13 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
       res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
       res.end(JSON.stringify(body));
     };
-    // Lead/brief data is customer PII — the /api surface fails CLOSED (§4.3):
-    // with a key configured it must match; with no key configured it only
-    // opens while the DB is disconnected (nothing to leak). /health and the
-    // voice bridge (own secret) stay outside this gate.
-    const apiAuthorized = (): boolean => {
-      if (env.appAccessKey) {
-        const given = req.headers['x-arbor-key'] ?? url.searchParams.get('key');
-        // R25: the crew key opens the crew door's own routes and nothing else.
-        if (env.crewAccessKey && given === env.crewAccessKey && url.pathname.startsWith('/api/crew/')) return true;
-        return given === env.appAccessKey;
-      }
-      return !hasDb();
-    };
+    // Lead/brief data is customer PII — the /api surface fails CLOSED (§4.3).
+    // The door itself lives in src/server/accessDoor.ts (audit 2026-10-20):
+    // no APP_ACCESS_KEY = LOCKED in every data mode (M1 — Quo, Gmail and the
+    // relays never lived in the database, so "links cut" was never "nothing
+    // to leak"); the key rides the x-arbor-key header only, never ?key= (L1);
+    // constant-time compare (L2); wrong keys limited per connection (M2).
+    // /health and the voice bridge (own secret) stay outside this gate.
     try {
       // §8C.1 the CREW door. Separate surface, separate shell — a crew phone
       // never loads the admin cockpit.
@@ -931,7 +944,55 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=3600' });
         return res.end(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Arbo — ${title}</title><style>body{font-family:system-ui,sans-serif;max-width:640px;margin:40px auto;padding:0 16px;line-height:1.6;color:#1a1a1a}h1{font-size:1.5rem}a{color:#6d28d9}</style></head><body><h1>Arbo — ${title}</h1><p><i>Art-is-Tree LLC · Effective 2026-09-24</i></p>${bodyHtml}</body></html>`);
       }
-      if (req.method === 'GET' && url.pathname === '/health') return send(...unpack(await api.health()));
+      // M2: the wrong-key counts ride /health — counts only, never an address or a key.
+      if (req.method === 'GET' && url.pathname === '/health') {
+        const h = await api.health();
+        return send(h.status, { ...(h.body as Record<string, unknown>), access: keyGuard.counts() });
+      }
+      // M14: every feed, its named state and when it last worked. OWNER key
+      // only, through Lane A's own door (M1/M2/L1/L2): locked with no
+      // APP_ACCESS_KEY (401 no_app_key), the x-arbor-key header only (?key= is
+      // never compared), constant time, and the SAME wrong-key limiter as
+      // /api — so this page is never a way round M2 to guess the key. The
+      // crew key never opens it. 503 when a feed is DOWN, so an outside
+      // monitor can page Mike (which monitor is his call — docs/GO_LIVE.md).
+      // Counts, times, reasons.
+      if (req.method === 'GET' && url.pathname === '/health/feeds') {
+        const door = checkApiDoor({
+          pathname: url.pathname,
+          given: keyFromHeader(req.headers),
+          keyInUrl: url.searchParams.has('key'),
+          addr: clientAddress(req, behindRailway),
+          appKey: env.appAccessKey,
+          crewKey: env.crewAccessKey,
+          guard: keyGuard,
+        });
+        if (!door.ok) {
+          res.writeHead(door.status, {
+            'content-type': 'application/json',
+            'cache-control': 'no-store',
+            ...(door.retryAfterSec ? { 'retry-after': String(door.retryAfterSec) } : {}),
+          });
+          return res.end(JSON.stringify(door.body));
+        }
+        let positions: { state: Awaited<ReturnType<typeof bouncie.status>>['positions']['state']; readAt: string | null } | null = null;
+        try {
+          positions = (await bouncie.status()).positions;
+        } catch {
+          positions = { state: 'unreadable', readAt: null };
+        }
+        const h = buildFeedHealth({
+          gmail: { configured: googleCredsNow() !== null, started: inboxWatch !== null, last: inboxWatch?.last() ?? null, state: inboxWatch?.state() ?? null },
+          // R33: holds are OFF on purpose while Google is read-only — 'off', never down (no page).
+          holds: { configured: Boolean(calendarHold), readOnly: GOOGLE_READ_ONLY },
+          quo: { configured: Boolean(env.quoApiKey), status: quoIntake.status() },
+          study: quoStudy?.status() ?? null,
+          storm: stormLog,
+          bouncie: positions,
+        }, new Date());
+        if (!h.ok) console.error(`[health] feeds DOWN: ${h.down.join(', ')}`);
+        return send(h.ok ? 200 : 503, h);
+      }
       // R19 webhook receivers — PUBLIC paths, each gated by its own
       // signature/secret, exactly like the voice bridge. An unwired source
       // refuses by name; nothing is ever accepted unverified.
@@ -1029,11 +1090,28 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
         return send(out.status, out.body);
       }
       // ═══ end Bouncie (public) ═══
-      if (url.pathname.startsWith('/api/') && !apiAuthorized()) {
-        // D89: with no CREW_ACCESS_KEY there is no crew key to ask for. Say so
-        // by name, so the crew page does not send the office looking for one
-        // (and a crew phone does not end up holding Mike's key instead).
-        return send(401, { error: url.pathname.startsWith('/api/crew/') && env.appAccessKey && !env.crewAccessKey ? 'crew_key_not_set' : 'unauthorized' });
+      if (url.pathname.startsWith('/api/')) {
+        // D89 lives on in checkApiDoor: with no CREW_ACCESS_KEY the crew door
+        // says 'crew_key_not_set' by name, so the crew page does not send the
+        // office looking for one (and a crew phone never ends up holding
+        // Mike's key instead). Every refusal carries a plain `message`.
+        const door = checkApiDoor({
+          pathname: url.pathname,
+          given: keyFromHeader(req.headers),
+          keyInUrl: url.searchParams.has('key'),
+          addr: clientAddress(req, behindRailway),
+          appKey: env.appAccessKey,
+          crewKey: env.crewAccessKey,
+          guard: keyGuard,
+        });
+        if (!door.ok) {
+          res.writeHead(door.status, {
+            'content-type': 'application/json',
+            'cache-control': 'no-store',
+            ...(door.retryAfterSec ? { 'retry-after': String(door.retryAfterSec) } : {}),
+          });
+          return res.end(JSON.stringify(door.body));
+        }
       }
       // R26 (defence in depth): the office's look-only crew preview sends
       // x-arbo-preview: 1 on every request. A crew route that is not a read is
@@ -1328,6 +1406,9 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
         return send(200, {
           pipeline: !gmailReadable ? 'no_gmail' : !s.modelConfigured ? 'pattern_only' : 'live',
           gmailReason: !gmailReadable ? (last?.reason ?? 'inbox watch has not completed a pass') : null,
+          // M12: mail the watch knows it has NOT read, and how long Gmail has been down — named, never "nothing needs you".
+          gmailGap: inboxWatch?.state().gap ?? null,
+          gmailUnavailableSince: inboxWatch?.state().unavailableSince ?? null,
           ...intentWatch.store.snapshot(now),
           zeroFlag: intentWatch.store.zeroSurfacedFlag(now, gmailReadable),
           proposals: intentWatch.registry.pendingProposals(),
@@ -1731,9 +1812,10 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
           knownCallers: callMemory.size,
           calendarHolds: GOOGLE_READ_ONLY ? GOOGLE_HOLDS_OFF_LINE : calendarHold ? 'configured' : 'DISABLED — no Google token (this is not zero holds)',
           // R33: no hold is ever made while Google is read-only, so it can't be the lasting copy.
+          // H1: only a hold marked 'filed' is on the calendar; a 'failed' one is not.
           note: GOOGLE_READ_ONLY
             ? 'In-memory since deploy — calendar holds are off (R33), so Quo’s own record is the lasting copy.'
-            : 'In-memory since deploy — the calendar hold is the durable copy until the data links go live.',
+            : 'In-memory since deploy. A hold marked filed is on your Google Calendar; one marked failed is NOT — book that one yourself. Nothing else keeps these records across a restart until the data links go live.',
         });
       }
       // R19: webhook state + captured payloads, keywall-only (customer
@@ -1938,7 +2020,7 @@ let inboxWatch: InboxWatchHandle | null = null;
 let intentWatch: IntentWatch | null = null;
 /** The Quo intake the running handler uses — startServer hands it its webhook keys. */
 let currentQuoIntake: QuoIntake | null = null;
-/** Learning from Quo's record: a week back at boot, a day back every 10 minutes. */
+/** Learning from Quo's record: a week back at boot, then every 10 minutes a day back (the week until it was read whole — M10). */
 const QUO_LEARN_BACKFILL_MS = 7 * 24 * 60 * 60 * 1000;
 const QUO_LEARN_WINDOW_MS = 24 * 60 * 60 * 1000;
 const QUO_LEARN_EVERY_MS = 10 * 60 * 1000;
@@ -1969,26 +2051,36 @@ let currentQuoStudy: QuoStudy | null = null;
 /** The R28 business assistant the running handler uses — startServer starts its clock. */
 let currentAssistant: Assistant | null = null;
 
+/** The Quo line Arbo reads and texts from, learned from Quo at wiring. */
+type QuoLine = { api: ReturnType<typeof createQuoApi>; phoneNumberId: string; numbers: string[] };
+
 /**
  * Register Arbo's webhooks with Quo and hand the intake its signing keys.
  * Every outcome is a NAMED state on /api/quo and a boot log line — a Quo
- * that is not wired must never look like a quiet phone (§1B).
+ * that is not wired must never look like a quiet phone (§1B). `retry` says
+ * whether a later try could fix what is missing (M15: startQuoWiring tries
+ * again on a bounded backoff instead of waiting for the next deploy).
  */
-async function wireQuo(intake: QuoIntake, outreach: OutreachEngine | null): Promise<{ api: ReturnType<typeof createQuoApi>; phoneNumberId: string; numbers: string[] } | null> {
-  if (!env.quoApiKey) return null;
+async function wireQuo(intake: QuoIntake, outreach: OutreachEngine | null): Promise<WireAttempt<QuoLine>> {
+  if (!env.quoApiKey) return { line: null, retry: false };
   const domain = process.env.RAILWAY_PUBLIC_DOMAIN;
   if (!domain) {
     intake.setRegistration('failed', 'Arbo has no public web address to give Quo — Sona’s calls cannot reach Arbo. That doesn’t mean no calls came in.');
     console.error('[quo] NOT wired — no public URL');
-    return null;
+    return { line: null, retry: false }; // a config gap, not a blip — a retry would not fix it
   }
   intake.setRegistration('pending', 'Registering with Quo…');
   const api = createQuoApi(env.quoApiKey);
   try {
-    const [hooks, lines] = await Promise.all([
+    const [hooks, listed] = await Promise.all([
       ensureQuoWebhooks(api, `https://${domain}/webhooks/quo`),
-      api.phoneNumbers().catch(() => []),
+      // M15: a failed phone-number read is NAMED, never swallowed into "no lines".
+      api.phoneNumbers().then(
+        (lines) => ({ lines, why: null as string | null }),
+        (err: unknown) => ({ lines: [] as Awaited<ReturnType<typeof api.phoneNumbers>>, why: err instanceof Error ? err.message : 'error' }),
+      ),
     ]);
+    const lines = listed.lines;
     const numbers = lines.map((l) => l.number);
     // R22: Arbo texts from the FIRST Quo line — one number, no ambiguity.
     const first = lines[0];
@@ -1996,22 +2088,37 @@ async function wireQuo(intake: QuoIntake, outreach: OutreachEngine | null): Prom
     // (Mike's cell) and Arbo's own line — docs/PHONE_SETUP.md.
     if (outreach && first) outreach.setLine({ phoneNumberId: first.id, number: first.number, ownNumbers: [...numbers, ...OWN_PHONE_NUMBERS] });
     else if (outreach) console.error('[outreach] NOT wired — Quo returned no phone number; nothing can be texted');
+    // Webhooks registered but no line: live calls still arrive, but Quo's
+    // record, the customer study and texting cannot start — said, not hidden (M15).
+    const noLine = first
+      ? ''
+      : listed.why
+        ? ` Quo would not list its phone numbers (${listed.why}) — Arbo is not reading Quo’s record, studying customer threads or texting until it can.`
+        : ' Quo listed no phone number — Arbo is not reading Quo’s record, studying customer threads or texting until it does.';
     // R33: read-only names a hook it won't create as its own state, never 'failed'.
+    // M15: a line Arbo could not learn IS a failure, named after it.
     const reg = registrationFrom(hooks);
-    intake.setRegistration(reg.state, reg.detail, hooks.keys, numbers);
+    intake.setRegistration(noLine ? 'failed' : reg.state, `${reg.detail}${noLine}`, hooks.keys, numbers);
     intake.setTextsHookMissing(textsHookMissing(hooks));
-    console.log(`[quo] wired${hooks.readOnly ? ' READ-ONLY' : ''} — created ${hooks.created.length}, reused ${hooks.reused.length}, missing ${hooks.missing.length}, failed ${hooks.failed.length}, ${numbers.length} number(s)`);
-    return first ? { api, phoneNumberId: first.id, numbers } : null;
+    console.log(`[quo] wired${hooks.readOnly ? ' READ-ONLY' : ''} — created ${hooks.created.length}, reused ${hooks.reused.length}, missing ${hooks.missing.length}, failed ${hooks.failed.length}, ${numbers.length} number(s)${listed.why ? ' (phone numbers NOT read)' : ''}`);
+    // M15: try again only for what a later try could fix — a Quo refusal or a
+    // missing line. R33: a hook Arbo WON'T create while read-only (`missing`)
+    // is off on purpose, not a blip; a retry only reads, and never creates it.
+    return { line: first ? { api, phoneNumberId: first.id, numbers } : null, retry: hooks.failed.length > 0 || !first };
   } catch (err) {
     const why = err instanceof Error ? err.message : 'error';
     intake.setRegistration('failed', `Quo registration failed (${why}) — Sona calls are NOT reaching Arbo. That doesn’t mean no calls came in.`);
     console.error('[quo] registration FAILED:', why);
-    return null;
+    return { line: null, retry: true };
   }
 }
 
 export function startServer(port: number) {
   const summary = boot();
+  // M1: the boot log names whether each door key is set — never a value.
+  const door = accessBootLine(Boolean(env.appAccessKey), Boolean(env.crewAccessKey));
+  if (door.ok) console.log(door.line);
+  else console.error(door.line);
   const server = createServer(createArborRequestHandler());
   // Mike, 2026-08-03: "it needs to run a sweep every 5 mins". The platform
   // scheduler floors at an hour and its routines carry no Gmail connector,
@@ -2039,20 +2146,28 @@ export function startServer(port: number) {
     new IntentRegistry(),
     new InboxSurfaceStore(),
   );
-  inboxWatch = startInboxWatch(gmailReader, { onMessage: intentWatch.observer });
+  // M12: the last good read is kept on the storage disk, so the first good
+  // pass after a Gmail outage (or a restart) reads from there, bounded.
+  inboxWatch = startInboxWatch(gmailReader, { onMessage: intentWatch.observer, stateStore: new InboxStateFile() });
   // Sona via Quo: register Arbo's webhooks in the background — the server
   // listens meanwhile, and every outcome is named on /api/quo.
-  if (currentQuoIntake) {
+  if (currentQuoIntake && env.quoApiKey) {
     const outreach = currentOutreach;
     const intake = currentQuoIntake;
-    void wireQuo(intake, outreach).then((line) => {
-      // "Need arbo to start learning from QUO" (Mike, 2026-09-24): read
-      // Sona's calls from Quo's own record — the last week at boot (learned
-      // without new holds), then every 10 minutes (catches any call the
-      // webhook missed). reconcile() names its own failures; it never throws.
-      if (line) {
+    // M15: wiring is retried (1, 5, 15 minutes, then every 15) until it is
+    // whole; the work below starts ONCE, when the Quo line is first learned.
+    startQuoWiring<QuoLine>({
+      wire: () => wireQuo(intake, outreach),
+      onRetry: (nextAt, attempts) => intake.noteWiringRetry(nextAt, attempts),
+      onLine: (line) => {
+        // "Need arbo to start learning from QUO" (Mike, 2026-09-24): read
+        // Sona's calls from Quo's own record — the last week at boot (learned
+        // without new holds), then every 10 minutes (catches any call the
+        // webhook missed). reconcile() names its own failures; it never throws.
+        // M10: the 10-minute pass keeps reading the week until a week read has
+        // finished whole, and reads back past any outage — nextWindowMs says how far.
         void intake.reconcile(line.api, line.phoneNumberId, QUO_LEARN_BACKFILL_MS);
-        setInterval(() => { void intake.reconcile(line.api, line.phoneNumberId, QUO_LEARN_WINDOW_MS); }, QUO_LEARN_EVERY_MS).unref();
+        setInterval(() => { void intake.reconcile(line.api, line.phoneNumberId, intake.nextWindowMs(QUO_LEARN_WINDOW_MS)); }, QUO_LEARN_EVERY_MS).unref();
         // R24 study: a week back, 2 minutes after boot (so it never shares
         // Quo's rate limit with the boot read above), then every 30 minutes.
         // run() never throws; unchanged threads cost no model call.
@@ -2064,28 +2179,28 @@ export function startServer(port: number) {
             setInterval(() => { void study.run(line.phoneNumberId, QUO_LEARN_BACKFILL_MS, own); }, QUO_STUDY_EVERY_MS).unref();
           }, QUO_STUDY_BOOT_DELAY_MS).unref();
         }
-      } else if (env.quoApiKey) console.error('[quo] NOT learning from Quo\'s record — no Quo line to read');
-      if (!outreach) return;
-      if (!quoWritesLive()) {
-        // R33: off on purpose — not "template refused", not "nothing to send".
-        console.log('[outreach] READ-ONLY (R33) — Quo is read-only: no text is sent; the catch-up and follow-ups are off until Mike sets ARBO_QUO_SEND=live');
-        return;
-      }
-      const tv = outreach.verifyTemplate();
-      console.log(tv.ok
-        ? `[outreach] template OK — follow-ups ${env.outreachAuto ? 'AUTO (hourly, 48h after an inquiry)' : 'OFF until ARBO_OUTREACH=live'}; catch-up ${env.outreachCatchupAtBoot ? 'RUNNING at boot' : 'waits for Mike\'s tap or ARBO_OUTREACH_CATCHUP=live'}`
-        : `[outreach] template REFUSED — nothing will be texted: ${tv.problems.join('; ')}`);
-      if (env.outreachCatchupAtBoot) {
-        // A Quo failure at boot is a named log line, never a crashed server.
-        outreach.runCatchup('auto').catch((err) => {
-          console.error('[outreach] boot catch-up FAILED — nothing sent:', err instanceof Error ? err.message : 'error');
-        });
-      }
-      // Every 15 minutes: release texts held for quiet hours, and on the hour
-      // queue the 48-hour follow-ups. Same shape as the agent scheduler.
-      setInterval(() => { void outreach.tick(); }, 15 * 60_000).unref();
+        if (!outreach) return;
+        if (!quoWritesLive()) {
+          // R33: off on purpose — not "template refused", not "nothing to send".
+          console.log('[outreach] READ-ONLY (R33) — Quo is read-only: no text is sent; the catch-up and follow-ups are off until Mike sets ARBO_QUO_SEND=live');
+          return;
+        }
+        const tv = outreach.verifyTemplate();
+        console.log(tv.ok
+          ? `[outreach] template OK — follow-ups ${env.outreachAuto ? 'AUTO (hourly, 48h after an inquiry)' : 'OFF until ARBO_OUTREACH=live'}; catch-up ${env.outreachCatchupAtBoot ? 'RUNNING at boot' : 'waits for Mike\'s tap or ARBO_OUTREACH_CATCHUP=live'}`
+          : `[outreach] template REFUSED — nothing will be texted: ${tv.problems.join('; ')}`);
+        if (env.outreachCatchupAtBoot) {
+          // A Quo failure at boot is a named log line, never a crashed server.
+          outreach.runCatchup('auto').catch((err) => {
+            console.error('[outreach] boot catch-up FAILED — nothing sent:', err instanceof Error ? err.message : 'error');
+          });
+        }
+        // Every 15 minutes: release texts held for quiet hours, and on the hour
+        // queue the 48-hour follow-ups. Same shape as the agent scheduler.
+        setInterval(() => { void outreach.tick(); }, 15 * 60_000).unref();
+      },
     });
-  } else console.error('[quo] intake missing at boot — not wired');
+  } else if (!currentQuoIntake) console.error('[quo] intake missing at boot — not wired');
   // R31: once a minute, outside working hours nothing about the trucks is held even when nobody
   // asks, a renewed Bouncie sign-in Supabase refused is saved again, and the daily keep-alive
   // (Mike, 2026-10-20: "Keep the sign-in alive") swaps the refresh token. Never reads a truck, never throws.

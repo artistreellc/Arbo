@@ -84,7 +84,7 @@ describe('parseRequestedWindow', () => {
 
   it('"Wednesday after 4" → next day 16:00 ET, 20-minute hold', () => {
     const w = parseRequestedWindow('Is he available Wednesday after 4:00?', now)!;
-    expect(w.label).toBe('wednesday after 4');
+    expect(w.label).toBe('wednesday after 4 (Wed Sep 23)');
     expect(w.startIso).toBe('2026-09-23T20:00:00.000Z'); // 16:00 EDT
     expect(Date.parse(w.endIso) - Date.parse(w.startIso)).toBe(20 * 60 * 1000);
   });
@@ -151,8 +151,8 @@ describe('bridge finalize (R18)', () => {
     expect(rec.calls).toBe(1);
 
     expect(records.list()).toHaveLength(1);
-    expect(records.list()[0]!.calendarHold).toBe('attempted');
-    expect(records.list()[0]!.requestedWindow).toBe('wednesday after 4');
+    expect(records.list()[0]!.calendarHold).toBe('filed');
+    expect(records.list()[0]!.requestedWindow).toBe('wednesday after 4 (Wed Sep 23)');
 
     // a third turn with another marker must NOT double-finalize
     await bridge.handle(AUTH, body(['x', 'y', 'z', 'w', 'one more thing'], 'c1', TOOLS));

@@ -211,7 +211,9 @@ export function createGoogleGmailReader(
       // be more behind the cap. Say so rather than let a busy hour look quiet.
       if (ids.length >= limit) unreadable.push(`hit the ${limit}-message cap — there may be more`);
 
-      return { ok: true, messages, unreadable };
+      // M12: what Gmail listed and what could not be opened travel as counts,
+      // so a catch-up judges its cap on the list — never on what was fetched.
+      return { ok: true, messages, unreadable, listed: ids.length, missed };
     },
   };
 }

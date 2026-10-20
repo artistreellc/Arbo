@@ -664,7 +664,7 @@ describe('read-only: what the operator and Mike are told', () => {
       for (const p of ['/api/crew/workorders', '/api/crew/briefing']) {
         const r = await call(base, p);
         expect(r.status, p).toBe(401);
-        expect(await r.json(), p).toEqual({ error: 'crew_key_not_set' });
+        expect(await r.json(), p).toEqual({ error: 'crew_key_not_set', message: 'No crew door key has been set up on the server yet. Ask Mike to set one.' });
       }
       // Mike's look-only preview: the jobs link is kept cut, so work orders are a named cut — never real rows.
       const r = await call(base, '/api/crew/workorders', { headers: { 'x-arbor-key': 'admin-k', 'x-arbo-preview': '1' } });

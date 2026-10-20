@@ -101,9 +101,21 @@ go to T-Mobile voicemail until the two optional codes are dialed.
   Gate: consent (they called in), STOP (Quo's WHOLE history, plain words
   count, re-read before every send), 8am–9pm ET, no price/diagnosis/date.
   Never texted: our own numbers (Quo lines, 757-319-5131, 757-821-6983),
-  anyone on the line right now, anyone Mike already called back. Quo refuses every send until Mike
+  anyone on the line right now, anyone Mike already called back **from the
+  Quo line**, anyone whose Sona hold Google confirmed. Quo refuses every send until Mike
   completes US texting registration in Quo → Settings → Trust center; the app
   names that state.
+  **Blind spot (audit M13, 2026-10-20):** the "already called back" and
+  "already texted" checks read Quo only. A call back or text from the
+  business iPhone (757-319-5131, T-Mobile, not ported) never reaches Quo, so
+  Arbo cannot see it — the outreach panel and every card say so, and Mike's
+  "Don't text" tap is the way to hold someone back. A caller who asked Sona
+  for an estimate is "booked" only when Google confirmed the hold; one whose
+  hold Arbo cannot see (after a restart, or still being filed) is held back
+  by name (`hold_unknown`), and one whose hold FAILED is a normal follow-up.
+  While Google is read-only (R33) no hold is made at all, so nobody is
+  "booked" from one: a caller who asked Sona for an estimate is a normal
+  follow-up for Mike to book himself — never `hold_unknown`, never "failed".
 
 **Still to do in Quo (Mike's side, Sona settings):**
 1. Sona answers **immediately** — not after ringing Mike in the Quo app. The

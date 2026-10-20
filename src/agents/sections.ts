@@ -488,14 +488,15 @@ const INPUTS: Record<SectionId, InputSpec[]> = {
       async read(d) {
         if (!d.booking) return hourlyOnly(d);
         const r = await d.booking();
-        const wrapped = { agent: 'booking', status: r.status, summary: `stops=${r.stopsChecked} issues=${r.issues} newly_raised=${r.newlyRaised}` };
+        const wrapped = { agent: 'booking', status: r.status, summary: `stops=${r.stopsChecked} issues=${r.issues} newly_raised=${r.newlyRaised} scope=arbo_tables_only` };
         if (r.status !== 'ok') return { state: 'unreadable', detail: 'the booking agent reported an error', wrapped };
         return {
           state: 'read', wrapped,
-          detail: `${plural(r.stopsChecked, 'stop', 'stops')} checked for tomorrow`,
+          // H4: Arbo's own bookings only — the Google Calendar is not read, and every finding says so.
+          detail: `${plural(r.stopsChecked, 'stop', 'stops')} in Arbo's own bookings checked for tomorrow — your Google Calendar is not read here`,
           findings: r.issues > 0
-            ? [{ severity: 'act', text: `${plural(r.issues, 'booking issue', 'booking issues')} on tomorrow's route (double-booked slot or ZIP-run break).` }]
-            : [{ severity: 'info', text: `No double-booking or ZIP-run break across ${plural(r.stopsChecked, 'stop', 'stops')} tomorrow.` }],
+            ? [{ severity: 'act', text: `${plural(r.issues, 'booking issue', 'booking issues')} on tomorrow's route in Arbo's own bookings (double-booked slot or ZIP-run break). Your Google Calendar is not read here.` }]
+            : [{ severity: 'watch', text: `No double-booking or ZIP-run break across ${plural(r.stopsChecked, 'stop', 'stops')} in Arbo's own bookings tomorrow — your Google Calendar is not read here, so a clash there would not show.` }],
           proposals: r.issues > 0
             ? [propose('route_fix', `Resolve ${plural(r.issues, 'booking issue', 'booking issues')} tonight. A suggestion only — Mike moves the event (§3.22).`)]
             : [],

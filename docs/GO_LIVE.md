@@ -15,11 +15,34 @@ Mike's own look at the crew page is the **Crew** tile in More, or the
 **Crew preview** shortcut on the installed app's icon (press and hold). It is
 look-only: nothing there signs, files or clocks in (R26).
 
-The crew door key is the Railway variable **`CREW_ACCESS_KEY`** — pick any
-long phrase, set it on Railway, give it to the crew. It opens the crew
+The crew door key is the Railway variable **`CREW_ACCESS_KEY`** — set it on
+Railway, give it to the crew. It opens the crew
 routes only; it can never open Mike's side. Until it is set, a crew phone
 shows "the crew door key isn't set up yet — ask Mike" and asks for nothing
 (a phone already holding a working key keeps working).
+
+**Making the two keys (audit 2026-10-20, M2).** `APP_ACCESS_KEY` (Mike's) and
+`CREW_ACCESS_KEY` (the crew's) are the only things between the public address
+and live Quo transcripts and the customer text button, so make each one
+random, not a memorable phrase. On any computer with Node:
+`node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`
+— run it once per key, paste each into Railway, deploy, and enter it once per
+phone. How the door treats them now:
+
+- **No `APP_ACCESS_KEY` = Arbo is locked.** Every `/api` route answers
+  `401 no_app_key` in every data mode, and the app's key screen says the
+  server has no key. (It used to open with no key while the links were cut.)
+- **The key travels in the `x-arbor-key` header only.** A `?key=` in a web
+  address is refused. The app and the iPhone Shortcuts already use the header.
+  (The Railway and Twilio *webhook* addresses keep their own `?key=` secrets —
+  those are separate keys for services that cannot send headers.)
+- **Wrong guesses are slowed.** Ten *different* wrong keys from one connection
+  inside ten minutes, and that connection gets one key check a minute for the
+  next fifteen (429, "Too many wrong keys from this connection"). A phone still
+  holding an old key after a change counts once, never ten times. The right key
+  opens on the next check — at most a minute — or at once from another network
+  (Wi-Fi ↔ cellular). `/health` shows the counts under `access`, never an
+  address or a key.
 
 ## 2. What to field-test (links still cut — nothing live is touched)
 
@@ -54,6 +77,37 @@ shows "the crew door key isn't set up yet — ask Mike" and asks for nothing
 - [x] **The Supabase project `arbor` was paused** — restored 2026-10-20 on Mike's yes (R29); ACTIVE_HEALTHY. If Supabase pauses it again for being idle, restore it the same day (Supabase dashboard → the project → Restore) — a paused project can only be restored for a limited time.
 - [x] **Migration 0020** (brake/steering hold) applied live 2026-10-20 after the restore, and checked. (0016–0019 were already applied, `docs/DATA_LINKS.md` step 1.)
 - [ ] **Delete the 11 mistaken job rows** (R29, Mike: "Delete the 11"). The backup `archive.job_mistaken_import_20260802` is made and verified. Supabase → project arbor → SQL Editor → New query → `delete from public.job where id in (select id from archive.job_mistaken_import_20260802);` → Run. Afterwards `public.job` holds 0 rows; leads stay 37.
+
+### Being told when something dies (audit M14, 2026-10-20) — Mike's choice
+
+Nothing tells you today when Arbo goes down, crash-loops, or loses a feed:
+`/health` stayed green through the whole week Google was dead. Arbo itself
+never texts or emails you (hard boundary), so the alert has to come from
+outside. Built, waiting on your pick:
+
+- **`GET /health/feeds`** — every feed Arbo depends on (Gmail, Google
+  Calendar holds, Quo webhooks, Quo's record, reading Sona's calls, the
+  customer study, the Drive lead logs, storm alerts, Bouncie), each with its
+  state in words (`ok` / `degraded` / `down` / `waiting` / `off`) and when it
+  last worked. It answers **503 when any feed is `down`**, 200 otherwise, and
+  the body names which (`down: [...]`). It needs the owner key in the
+  `x-arbor-key` header — never `?key=` — and is locked if `APP_ACCESS_KEY` is
+  not set. Times, counts and reasons only; no customer. Wrong keys here
+  count toward the same per-connection limit as the app's own door (audit
+  M2). While Google and Quo are read-only (R33), the calendar holds — and a
+  Quo webhook Arbo won't create — read `off`, never `down`: they never page.
+- [ ] **Railway notifications** (no code): in Railway's account settings, under Notifications —
+      turn on crashed, failed and out-of-memory deployments, to your phone or email.
+- [ ] **An outside uptime monitor — which one is your call.** Any monitor
+      that can send a custom header works (UptimeRobot and Better Stack both
+      can; a header may need their paid tier). Point it at
+      `https://<the Arbo address>/health/feeds`, header `x-arbor-key: <your app
+      key>`, every 5 minutes, alert on any non-200. It pages you through the
+      monitor's own app — Arbo sends nothing. A plain second check on `/health`
+      (no key) catches "the whole server is down".
+- Not built, on purpose: a public, keyless feeds page, and wiring
+  `OWNER_ALERT_PHONE` (Arbo texting you would be a new send path — your ruling,
+  not a build's).
 
 ## 5. Held for Mike (not decided by a build)
 
@@ -100,6 +154,7 @@ after the first tap needs a touch.
 | "I lost the microphone — a call or Siri may have it…" | Finish the call (or Siri), then tap End, then Start — it tries the mic again. |
 | "I can't hear you in this mode…" | The mic never opened, twice. Tap End, then Start to try again; if it keeps saying this, try the Safari tab. The typing box works either way — tap it, then the mic on the keyboard. |
 | "Talk is locked…" | Check the key in Settings. If the key is right, `APP_ACCESS_KEY` is not set on Railway. |
+| "Talk is locked. Too many wrong keys from this connection…" | Your key may be right — this connection is slowed after wrong keys. Wait a minute (or switch between Wi-Fi and cellular), then tap Start. |
 | "Arbo's brain is off — there's no AI key…" | `ANTHROPIC_API_KEY` is not set on Railway. |
 | "Arbo's brain didn't answer — try again." (or "…didn't answer (503)…") | Arbo's brain failed or took too long that turn. Say it again — Talk keeps listening. |
 | "I can't say that one out loud…" | The answer broke one of your rules (a price, a promised day, a permit "clear", a phone number, a claim that Arbo did something…) twice — Arbo gets one second try first — and was held back. Ask another way, or look in the app. |

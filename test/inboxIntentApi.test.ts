@@ -1,10 +1,15 @@
 // The intent engine's HTTP surface + the Today-screen pins that keep it
 // rendering in production (the links-cut early-return has hidden a feature
 // before — the talk button — so placement is pinned, not assumed).
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, afterAll, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { createArborRequestHandler } from '../src/server.js';
+import { ownerFetch } from './ownerKey.js';
+// Audit M1 (2026-10-20): the /api door is locked without APP_ACCESS_KEY in every
+// data mode, so this file sets the owner key before src/env.ts reads it and
+// calls /api with it (test/ownerKey.ts).
+vi.hoisted(() => { process.env.APP_ACCESS_KEY = 'test-owner-key'; });
 
 let server: Server | null = null;
 async function listen(): Promise<string> {
@@ -20,7 +25,7 @@ afterAll(() => {
 describe('inbox intents API (engine not started — honest states, never invented data)', () => {
   it('GET /api/inbox/intents says not_started instead of an empty inbox', async () => {
     const base = await listen();
-    const res = await fetch(`${base}/api/inbox/intents`);
+    const res = await ownerFetch(`${base}/api/inbox/intents`);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ pipeline: 'not_started' });
   });
@@ -28,7 +33,7 @@ describe('inbox intents API (engine not started — honest states, never invente
   it('POST relabel/approve/reject refuse loudly without the engine', async () => {
     const base = `http://127.0.0.1:${(server!.address() as { port: number }).port}`;
     for (const path of ['/api/inbox/relabel', '/api/inbox/intents/approve', '/api/inbox/intents/reject']) {
-      const res = await fetch(`${base}${path}`, {
+      const res = await ownerFetch(`${base}${path}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ threadId: 't', intent: 'callrail', id: 'x' }),
@@ -40,7 +45,7 @@ describe('inbox intents API (engine not started — honest states, never invente
 
   it('POST /api/inbox/convert refuses by name while the links are cut — nothing is changed', async () => {
     const base = `http://127.0.0.1:${(server!.address() as { port: number }).port}`;
-    const res = await fetch(`${base}/api/inbox/convert`, {
+    const res = await ownerFetch(`${base}/api/inbox/convert`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ threadId: 't' }),
@@ -117,7 +122,7 @@ describe('POST /api/inbox/backfill (catch-up sweep)', () => {
     await new Promise<void>((r) => srv2.listen(0, r));
     const base = `http://127.0.0.1:${(srv2.address() as { port: number }).port}`;
     const post = (body: unknown) =>
-      fetch(`${base}/api/inbox/backfill`, {
+      ownerFetch(`${base}/api/inbox/backfill`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),

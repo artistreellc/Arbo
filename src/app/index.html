@@ -804,6 +804,14 @@ const el = (tag, cls, text) => {
 };
 
 let KEY = localStorage.getItem('arborKey') || '';
+// The key screen's words when the server NAMED why a key was refused (audit
+// 2026-10-20, M1/M2) — never "that key didn't work" when the server has no
+// app key at all, or when this connection only has to wait.
+const KEY_REFUSED = {
+  no_app_key: 'Arbo’s server has no app key set (APP_ACCESS_KEY), so no key can open it yet. Set it on Railway and deploy again.',
+  too_many_attempts: 'Too many wrong keys from this connection. Wait a minute, then enter the right key — or switch between Wi-Fi and cellular.',
+};
+let KEY_REFUSED_WHY = ''; // the last refusal's words, for a key screen opened without its own line
 
 // R32: the one plain line for a tap that would have saved while Arbo is read-only.
 const READ_ONLY_LINE = 'Read-only: Arbo can look but not save. Nothing was written.';
@@ -831,8 +839,16 @@ async function api(path, opts) {
     headers: Object.assign({ 'content-type': 'application/json' }, KEY ? { 'x-arbor-key': KEY } : {}),
     body: opts && opts.body ? JSON.stringify(opts.body) : undefined,
   });
-  if (res.status === 401) throw Object.assign(new Error('unauthorized'), { code: 401 });
   const body = await res.json().catch(() => ({}));
+  // The key gate's refusals open the key screen: a missing or wrong key, or no
+  // app key on the server, is a 401; a connection slowed after too many
+  // different wrong keys is the gate's 429 (too_many_attempts — the LiDAR busy
+  // flag is a 429 too, and is not about keys). The server's reason rides along
+  // as `why`, so the screen can say it, and a 429 is never read as "key good".
+  if (res.status === 401 || (res.status === 429 && body.error === 'too_many_attempts')) {
+    KEY_REFUSED_WHY = KEY_REFUSED[body.error] || '';
+    throw Object.assign(new Error('unauthorized'), { code: 401, why: typeof body.error === 'string' ? body.error : null });
+  }
   if (!res.ok && body.error === 'read_only') readOnlyToast(typeof body.line === 'string' ? body.line : READ_ONLY_LINE);
   // A refusal the server words for a person (body.line) rides along, so the screen can say it.
   if (!res.ok) throw Object.assign(new Error(body.error || 'error'), { code: res.status, line: typeof body.line === 'string' ? body.line : null });
@@ -984,6 +1000,8 @@ async function stormBanner() {
     if (worst.headline) box.appendChild(el('small', '', worst.headline));
     const nr = s.atRisk.length;
     if (nr) box.appendChild(el('small', '', plural(nr, 'booked stop') + (nr === 1 ? ' falls' : ' fall') + ' inside the alert window — consider moving ' + (nr === 1 ? 'it' : 'them') + ' early.'));
+    // H4: the check sees Arbo's own bookings only — a stop that is only on the Google Calendar is not checked, and that is said.
+    if (s.atRiskScope === 'arbo_tables_only' && !s.atRiskUnread) box.appendChild(el('small', '', 'Checked against Arbo\u2019s own bookings only \u2014 your Google Calendar isn\u2019t read here, so check it for stops in the window.'));
     // The schedule could not be read (R30 review): the alert shows, and no stops at risk is never implied (§1B).
     if (s.atRiskUnread) box.appendChild(el('small', '', 'Arbo couldn’t check which booked stops fall inside the alert window.'));
     return box;
@@ -1043,6 +1061,19 @@ async function locationStrip() {
 
 // ---------- Inbox intents (R17 — mail that means something, surfaced; a dead feed NAMED, never a quiet zero) ----------
 async function inboxIntentPanel() {
+  // M12: mail the watch knows it has NOT read — named until a catch-up reads it, never "nothing needs you".
+  const gmailGapLine = (g) => {
+    if (!g) return null;
+    const to = fmtTime(g.toIso);
+    const words = g.why === 'no_record'
+      ? 'Arbo has no record of reading Gmail before ' + to + ' \u2014 mail from before then was not checked here. Tap Catch up \u2192 Last week.'
+      : g.why === 'catchup_capped'
+        ? 'Arbo\u2019s catch-up from ' + fmtTime(g.fromIso) + ' to ' + to + ' hit its 250-message limit \u2014 some mail in that stretch may not have been read. Check Gmail for it.'
+      : g.why === 'catchup_unread'
+        ? 'Arbo\u2019s catch-up from ' + fmtTime(g.fromIso) + ' to ' + to + ' could not open some mail Gmail listed \u2014 it was not read here. Catch up that stretch again, or check Gmail for it.'
+        : 'Gmail from ' + fmtTime(g.fromIso) + ' to ' + to + ' is older than Arbo can reach (10 days) and was never read here \u2014 check Gmail directly.';
+    return el('div', 'feed-state unread', words);
+  };
   let d;
   try { d = await api('/api/inbox/intents'); }
   catch (e) { return e.code === 401 ? null : feedLine(e, 'Inbox'); }
@@ -1060,10 +1091,14 @@ async function inboxIntentPanel() {
     const why = sim ? Cap(FEED_WORD.sim) + ' — Arbo isn’t reading your Gmail here.'
       : unset ? 'Gmail isn’t connected, so Arbo can’t check your inbox.'
       : (!r || r === 'inbox watch has not completed a pass') ? 'Arbo hasn’t finished its first inbox check yet.'
-      : 'Arbo couldn’t read Gmail on its last check.';
+      : 'Arbo couldn’t read Gmail on its last check' + (d.gmailUnavailableSince ? ' (not since ' + fmtTime(d.gmailUnavailableSince) + ')' : '') + '.';
     wrap.appendChild(el('div', 'feed-state ' + (sim ? 'sim' : unset ? 'unset' : 'unread'), why + ' That doesn’t mean no mail came in.'));
+    const gl0 = gmailGapLine(d.gmailGap);
+    if (gl0) wrap.appendChild(gl0);
     return wrap;
   }
+  const gapLine = gmailGapLine(d.gmailGap);
+  if (gapLine) wrap.appendChild(gapLine);
   if (d.pipeline === 'pattern_only') {
     wrap.appendChild(el('div', 'storm-muted',
       '⚠ Arbo’s mail reader is down — sorting mail by simple rules for now. Odd-format mail may sit in the ignored log.'));
@@ -1152,7 +1187,8 @@ async function inboxIntentPanel() {
 
   for (const it of d.surfaced.slice(0, 10)) wrap.appendChild(intentCard(it));
   if (d.surfaced.length === 0 && d.maybe.length === 0) {
-    wrap.appendChild(el('div', 'storm-muted', 'Nothing needs you in the inbox right now.'));
+    // M12: never "nothing needs you" over mail Arbo knows it did not read.
+    wrap.appendChild(el('div', 'storm-muted', d.gmailGap ? 'Nothing needs you in the mail Arbo has read \u2014 but see the gap above.' : 'Nothing needs you in the inbox right now.'));
   }
   if (d.maybe.length > 0) {
     wrap.appendChild(el('div', 'panel-title', 'Maybe — check this'));
@@ -1178,10 +1214,17 @@ async function inboxIntentPanel() {
   {
     const row = el('div', 'actions');
     const sel = el('select', 'minibtn');
-    for (const [mins, lab] of [[5, 'Last 5 minutes'], [15, 'Last 15 minutes'], [30, 'Last 30 minutes'], [60, 'Last hour'], [1440, 'Last day'], [10080, 'Last week']]) {
+    for (const [mins, lab] of [[5, 'Last 5 minutes'], [15, 'Last 15 minutes'], [30, 'Last 30 minutes'], [60, 'Last hour'], [1440, 'Last day'], [10080, 'Last week'], [14390, 'Last 10 days']]) {
       sel.appendChild(new Option(lab, String(mins)));
     }
     sel.value = '1440';
+    // M12: a gap Arbo can still reach is offered first — "Since <when>".
+    const g = d.gmailGap;
+    if (g && g.why === 'no_record') sel.value = '10080';
+    else if (g && g.fromIso && (g.why === 'catchup_capped' || g.why === 'catchup_unread')) {
+      const mins = Math.ceil((Date.now() - Date.parse(g.fromIso)) / 60000) + 1;
+      if (mins <= 14390) { sel.insertBefore(new Option('Since ' + fmtTime(g.fromIso) + ' (the gap)', String(mins)), sel.firstChild); sel.value = String(mins); }
+    }
     const cu = el('button', 'minibtn', 'Catch up');
     cu.onclick = async () => {
       cu.disabled = true; sel.disabled = true; cu.textContent = 'Scanning…';
@@ -1379,7 +1422,10 @@ async function studyPanel(limit) {
   const notes = (d.notes || []).filter((n) => n.stage !== 'not_a_customer');
   const waiting = notes.filter((n) => n.stage === 'waiting_on_us').length;
   if (!st.lastAt) { wrap.appendChild(el('div', 'storm-muted', 'Reading your customer threads\u2026 (the first read starts 2 minutes after Arbo restarts)')); return wrap; }
-  wrap.appendChild(el('div', 'storm-muted', plural(notes.length, 'customer') + ' in the last 7 days \u00b7 ' + waiting + ' waiting on you \u00b7 lead log ' + (st.driveError ? 'not read' : plural(st.driveFiles, 'file') + ' read')));
+  // M10: a capped read is never the whole week \u2014 "the 60 most recent of N" is said, with what went unread.
+  const capped = st.threadsInWindow != null && st.threadsStudied != null && st.threadsInWindow > st.threadsStudied;
+  if (capped) wrap.appendChild(el('div', 'feed-state unread', 'Arbo studied the ' + st.threadsStudied + ' most recent customer threads of ' + st.threadsInWindow + ' in the last 7 days \u2014 ' + plural(st.threadsInWindow - st.threadsStudied, 'older thread was', 'older threads were') + ' not read. The counts below are not the whole week.'));
+  wrap.appendChild(el('div', 'storm-muted', plural(notes.length, 'customer') + (capped ? ' (first ' + st.threadsStudied + ' customer threads of ' + st.threadsInWindow + ')' : ' in the last 7 days') + ' \u00b7 ' + waiting + ' waiting on you' + (capped ? ' among them' : '') + ' \u00b7 lead log ' + (st.driveError ? 'not read' : plural(st.driveFiles, 'file') + ' read')));
   for (const n of notes.slice(0, limit)) {
     // Waiting on Mike is a call-back, not an emergency: the clay call-back edge Leads uses.
     const card = el('div', 'card' + (n.stage === 'waiting_on_us' ? ' callback' : ''));
@@ -1464,6 +1510,8 @@ function openSonaCall(callId) {
   look();
 }
 async function sonaPanel(limit, withTranscripts) {
+  // M15: wiring that is not whole is tried again on its own \u2014 the line says when, so a wait never reads as a quiet phone.
+  const quoRegLine = (reg) => reg.detail + (reg.retryAt ? ' Arbo tries again at ' + fmtTime(reg.retryAt) + ' \u2014 no redeploy needed.' : '');
   let d;
   try { d = await api('/api/quo'); }
   catch (e) {
@@ -1483,13 +1531,21 @@ async function sonaPanel(limit, withTranscripts) {
     return wrap;
   }
   if (st.registration.state !== 'ok') {
-    wrap.appendChild(el('div', st.registration.state === 'failed' ? 'storm' : 'storm-muted', st.registration.detail));
+    wrap.appendChild(el('div', st.registration.state === 'failed' ? 'storm' : 'storm-muted', quoRegLine(st.registration)));
   }
   if (!st.reading) {
     // R33: with holds off on purpose, the missing key costs the rule check — not the holds.
     wrap.appendChild(el('div', 'storm', st.holds === 'read_only'
       ? 'Arbo cannot read Sona calls right now (no model key) — calls are kept but not checked, so a rule slip can be missed.'
       : 'Arbo cannot read Sona calls right now (no model key) — calls are kept, but no calendar holds are filed.'));
+  }
+  // H1: a hold that failed is NOT on the calendar — loud on Today and Calls alike, never folded into "filed".
+  if (st.holdsFailed > 0) {
+    wrap.appendChild(el('div', 'storm', plural(st.holdsFailed, 'calendar hold') + ' did NOT reach your calendar — book ' + (st.holdsFailed === 1 ? 'that caller' : 'those callers') + ' yourself (the red ' + (st.holdsFailed === 1 ? 'card' : 'cards') + ' below).'));
+  }
+  // M16: a call the model could not read is read again — named until it is.
+  if (st.readsRetrying > 0) {
+    wrap.appendChild(el('div', 'feed-state unread', 'Arbo could not read ' + plural(st.readsRetrying, 'Sona call') + ' yet (the AI model was unavailable) — trying again every 10 minutes.' + (st.holds === 'read_only' ? '' : ' No hold is filed until it can.')));
   }
   const sona = d.calls.filter((c) => c.handledBy === 'sona');
   if (st.callsWithSlips > 0) {
@@ -1515,24 +1571,39 @@ async function sonaPanel(limit, withTranscripts) {
   }
   // A read of Quo that failed is a dead feed (§1B): the feed-state row, never the help-tip style.
   if (rec.unreadable) wrap.appendChild(el('div', 'feed-state unread', 'Last read of Quo: ' + rec.unreadable + ' \u2014 tried again in 10 minutes.'));
+  // M10: the week's read stops at a cap \u2014 the threads it never reached are counted, never dropped in silence.
+  if (rec.weekThreadsNotRead > 0) {
+    wrap.appendChild(el('div', 'feed-state unread', 'Arbo read the first ' + rec.callCap + ' calls of the past week from Quo\u2019s record \u2014 ' + plural(rec.weekThreadsNotRead, 'older customer thread was', 'older customer threads were') + ' not read, so the Sona calls here are not the whole week.'));
+  }
+  // M10: a week read that has not finished (it failed, or left a call unread) is not an empty week.
+  if (rec.lastAt && !rec.weekReadOkAt && !(rec.weekThreadsNotRead > 0)) {
+    wrap.appendChild(el('div', 'feed-state unread', 'Arbo has not finished reading the past week of Quo\u2019s record \u2014 the Sona calls here are not the whole week yet.'));
+  }
   const notUsed = Object.entries(st.notUsed || {});
   if (notUsed.length) {
     wrap.appendChild(el('div', 'storm', 'Quo sent ' + plural(notUsed.reduce((n, [, k]) => n + k, 0), 'event') + ' Arbo could not use (' + notUsed.map(([r, k]) => k + ' ' + r).join(', ') + ') \u2014 Arbo reads those calls from Quo\u2019s record instead.'));
   }
   if (withTranscripts) {
-    // R33: holds off on purpose is said as off — never "0 calendar holds filed".
-    const holdsSaid = st.holds === 'read_only' ? 'calendar holds off (Google is read-only)' : plural(st.holdsAttempted, 'calendar hold') + ' filed';
+    // R33: holds off on purpose is said as off — never "0 calendar holds filed", never "failed".
+    // H1: otherwise filed, failed and waiting are three numbers \u2014 only "filed" is on the calendar.
+    const holdsSaid = st.holds === 'read_only'
+      ? 'calendar holds off (Google is read-only)'
+      : plural(st.holdsFiled, 'calendar hold') + ' filed' + (st.holdsFailed ? ' \u00b7 ' + st.holdsFailed + ' FAILED (not on your calendar)' : '') + (st.holdsWaiting ? ' \u00b7 ' + st.holdsWaiting + ' waiting on Google' : '');
     wrap.appendChild(el('div', 'storm-muted', plural(st.sonaCalls, 'Sona call') + ' learned (' + (st.learnedFromRecord || 0) + ' read from Quo\u2019s record, last 7 days) \u00b7 ' + holdsSaid + ' \u00b7 ' + plural(st.hangups, 'hang-up') + ' \u00b7 ' + st.callsWithSlips + ' with rule slips.'));
   }
   if (!sona.length) {
     // A webhook Arbo won't create (R33, 'read_only') changes nothing here: the calls are read from Quo's record.
-    if ((st.registration.state === 'ok' || st.registration.state === 'read_only') && !rec.error) {
-      wrap.appendChild(el('div', 'storm-muted', rec.lastAt ? 'No Sona calls in the last 7 days \u2014 checked against Quo\u2019s own record.' : 'Wired \u2014 reading Sona\u2019s calls from Quo\u2026'));
+    // M10: "none this week" only when the week's read was whole \u2014 finished, nothing left unread.
+    if ((st.registration.state === 'ok' || st.registration.state === 'read_only') && !rec.error && !(rec.weekThreadsNotRead > 0)) {
+      if (!rec.lastAt) wrap.appendChild(el('div', 'storm-muted', 'Wired \u2014 reading Sona\u2019s calls from Quo\u2026'));
+      else if (rec.weekReadOkAt) wrap.appendChild(el('div', 'storm-muted', 'No Sona calls in the last 7 days \u2014 checked against Quo\u2019s own record.'));
     }
     return wrap;
   }
   const holdText = {
-    attempted: 'Calendar hold filed (unconfirmed)',
+    // H1: "filed" only once Google said yes. Sent-but-unanswered is its own words.
+    filed: 'Calendar hold filed (unconfirmed — you confirm the time)',
+    attempted: 'Calendar hold sent to Google — no answer yet. Check your calendar before booking it again.',
     not_requested: 'No estimate asked for',
     hangup: 'Caller hung up',
     extraction_unavailable: 'Arbo could not read this call — no hold filed',
@@ -1542,14 +1613,34 @@ async function sonaPanel(limit, withTranscripts) {
     read_only: 'Calendar holds are off — Google is connected read-only (Mike, 2026-10-20). Sona’s requested time is shown on the call card for you to book.',
     not_sona: '',
   };
-  const urgent = (c) => c.slips.length > 0 || !!(c.facts && c.facts.emergency);
+  const holdWhy = { google_signin: 'Google sign-in isn’t working (Settings → Reconnect Google)', calendar_refused: 'Google Calendar refused it' };
+  // [class, words] for one call's hold line, or null for none.
+  const holdLine = (c) => {
+    if (c.hold === 'failed') return ['storm', 'NOT on your calendar — ' + (holdWhy[c.holdError] || 'the calendar write failed') + '. Book it yourself.'];
+    // R33: holds off on purpose is the muted line, never red — and when the caller gave
+    // no time, never point Mike at a time the card doesn't show.
+    if (c.hold === 'read_only' && !(c.facts && c.facts.requestedTime)) {
+      return ['storm-muted', 'Calendar holds are off — Google is connected read-only (Mike, 2026-10-20). The caller gave no time — call them to set one.'];
+    }
+    // M16: a model outage is retried; the card says which try, then says it gave up.
+    // R33: while holds are off no hold is ever filed, so the card does not promise one later.
+    if (c.hold === 'extraction_unavailable' && c.extractAttempts > 0) {
+      return c.extractAttempts < st.readRetryMax
+        ? ['feed-state unread', 'Arbo could not read this call yet — trying again (' + c.extractAttempts + ' of ' + st.readRetryMax + ' tries).' + (st.holds === 'read_only' ? '' : ' No hold filed yet.')]
+        : ['storm', 'Arbo could not read this call after ' + st.readRetryMax + ' tries' + (st.holds === 'read_only' ? '' : ' — no hold filed') + '. If they want an estimate, book it yourself.'];
+    }
+    // R33: a call not retried (no model key, or a transcript Quo failed to write) promises no hold either while holds are off.
+    if (c.hold === 'extraction_unavailable' && st.holds === 'read_only') return ['storm-muted', 'Arbo could not read this call. If they want an estimate, book it yourself.'];
+    return holdText[c.hold] ? ['storm-muted', holdText[c.hold]] : null;
+  };
+  const urgent = (c) => c.slips.length > 0 || !!(c.facts && c.facts.emergency) || c.hold === 'failed';
   const order = withTranscripts ? sona : [...sona.filter(urgent), ...sona.filter((c) => !urgent(c))];
   const shown = order.slice(0, limit);
   // Calls keeps every red call even past its limit, so a row on Today always finds its card.
   if (withTranscripts) for (const c of order.slice(limit)) if (urgent(c)) shown.push(c);
   for (const c of shown) {
     const f = c.facts || {};
-    const card = el('div', 'card' + (c.slips.length || f.emergency ? ' emergency' : ''));
+    const card = el('div', 'card' + (c.slips.length || f.emergency || c.hold === 'failed' ? ' emergency' : ''));
     card.dataset.sonaCall = c.callId;
     const top = el('div', 'toprow');
     top.appendChild(el('div', 'who', f.name || c.from || 'Caller'));
@@ -1565,11 +1656,8 @@ async function sonaPanel(limit, withTranscripts) {
     else if (f.treeDetails) card.appendChild(el('div', 'scope', f.treeDetails));
     if (f.requestedTime) card.appendChild(el('div', 'scope', 'Asked for: ' + f.requestedTime));
     for (const sl of c.slips) card.appendChild(el('div', 'storm', slipRuleLabel(sl.rule) + ' — Sona said: \u201c' + sl.said + '\u201d'));
-    // R33: holds off, and the caller gave no time — never point Mike at a time the card doesn't show.
-    const holdSaid = c.hold === 'read_only' && !f.requestedTime
-      ? 'Calendar holds are off — Google is connected read-only (Mike, 2026-10-20). The caller gave no time — call them to set one.'
-      : holdText[c.hold];
-    if (holdSaid) card.appendChild(el('div', 'storm-muted', holdSaid));
+    const hl = holdLine(c);
+    if (hl) card.appendChild(el('div', hl[0], hl[1]));
     const actions = el('div', 'actions');
     if (c.from) { const call = el('a', 'callbtn', 'Call back'); call.href = 'tel:' + c.from; actions.appendChild(call); }
     card.appendChild(actions);
@@ -1645,7 +1733,11 @@ async function outreachPanel(full) {
   // Re-render the screen this panel is on — Calls shows it in full, Today in short.
   const rerender = () => (full ? renderCalls() : renderToday());
   const row = el('div', 'actions');
-  const pv = el('button', 'minibtn', st.lastRunAt ? 'Refresh list' : 'Find past-week callers');
+  // M13: what the "already reached" checks can't see — beside the button that sends.
+  if (st.blindSpot) wrap.appendChild(el('div', 'feed-state unset', st.blindSpot));
+  // H1 × R33: holds off on purpose — nobody on this list is skipped as booked. Muted, never red.
+  if (st.holdsOff) wrap.appendChild(el('div', 'storm-muted', st.holdsOff));
+  const pv =el('button', 'minibtn', st.lastRunAt ? 'Refresh list' : 'Find past-week callers');
   pv.onclick = async () => { pv.disabled = true; pv.textContent = 'Checking Quo\u2026'; try { await api('/api/outreach/preview', { method: 'POST', body: {} }); } catch (e) {} rerender(); };
   row.appendChild(pv);
   if (st.candidates.eligible > 0 && st.readOnly) {
@@ -1666,7 +1758,9 @@ async function outreachPanel(full) {
   wrap.appendChild(row);
   const skipped = Object.entries(st.candidates.skipped || {});
   if (skipped.length) {
-    const labels = { no_inbound: 'we called them, they never called us', opted_out: 'asked us to stop texting', already_texted: 'already heard from us', not_customer: 'solicitor or wrong number', own_number: 'our own number', excluded: 'you excluded', estimate_booked: 'estimate already booked', called_back: 'you already called them back', call_in_progress: 'on the phone right now', not_registered: 'held until Quo approves texting registration', unreadable: 'Arbo could not read the call or texts' };
+    // M13: "called back" and "already heard from us" are read from the Quo line only — said in the label.
+    // H1: "booked" is a hold Google confirmed; a hold Arbo cannot see is its own words.
+    const labels = { no_inbound: 'we called them, they never called us', opted_out: 'asked us to stop texting', already_texted: 'already heard from us on the Quo line', not_customer: 'solicitor or wrong number', own_number: 'our own number', excluded: 'you excluded', estimate_booked: 'calendar hold filed', hold_unknown: 'asked Sona for an estimate — Arbo can’t tell if the hold reached your calendar; check it', called_back: 'you called them back from the Quo line', call_in_progress: 'on the phone right now', not_registered: 'held until Quo approves texting registration', unreadable: 'Arbo could not read the call or texts' };
     wrap.appendChild(el('div', 'storm-muted', 'Not texting: ' + skipped.map(([k, n]) => n + ' ' + (labels[k] || k)).join(' \u00b7 ')));
   }
   if (full) {
@@ -1677,6 +1771,8 @@ async function outreachPanel(full) {
       top.appendChild(el('div', 'when', c.lastInboundAt ? fmtTime(c.lastInboundAt) : ''));
       card.appendChild(top);
       card.appendChild(el('div', 'scope', plural(c.inboundCalls, 'call') + ', ' + plural(c.inboundTexts, 'text') + ' in \u00b7 ' + (c.classification === 'customer' ? 'asked about tree work' : c.classification === 'unclear' ? 'hung up or said little \u2014 could be a customer' : c.classification)));
+      // M13: on every card \u2014 a call back from the iPhone never reaches Quo.
+      card.appendChild(el('div', 'storm-muted', 'Reached them from your iPhone? Arbo can\u2019t see that \u2014 tap Don\u2019t text.'));
       const a = el('div', 'actions');
       const ex = el('button', 'minibtn bad', 'Don\u2019t text');
       ex.onclick = async () => { ex.disabled = true; try { await api('/api/outreach/exclude', { method: 'POST', body: { conversationId: c.conversationId } }); } catch (e) {} renderCalls(); };
@@ -2427,6 +2523,10 @@ async function renderToday() {
     return;
   }
   const s = brief.summary;
+  // H4: the brief reads Arbo's own estimate and job rows; Mike's Google Calendar is not read (his call).
+  const onlyArbo = brief.scheduleSource === 'arbo_tables_only';
+  // H4: the top numbers count Arbo's own bookings too \u2014 labelled so, never "0 jobs today" over a calendar Arbo does not read.
+  if (onlyArbo) { jobsTile.querySelector('span').textContent = 'jobs in Arbo'; estTile.querySelector('span').textContent = 'estimates in Arbo'; }
   setTile(jobsTile, s.jobs || 0); setTile(estTile, s.estimates || 0);
   // A safety flag takes the first slot of the grid: emergencies (stops and leads, setEmergencies), then flagged stops.
   if (s.redFlagCount) hud.prepend(tile(s.redFlagCount, s.redFlagCount === 1 ? 'flagged stop' : 'flagged stops', 'hot wide'));
@@ -2440,14 +2540,16 @@ async function renderToday() {
       // A red count says why on its own tile — the strongest reason, as a count (never a name).
       // Every emergency stop is also a flagged stop, so emergencies go first.
       const flagNote = s.emergencies ? plural(s.emergencies, 'emergency', 'emergencies') : s.redFlagCount ? s.redFlagCount + ' flagged' : '';
-      HERO.stat('stops', s.totalStops, (s.emergencies || s.redFlagCount) ? 'hot' : '', plural(s.totalStops, 'stop') + ' today', flagNote);
+      HERO.stat('stops', s.totalStops, (s.emergencies || s.redFlagCount) ? 'hot' : '', plural(s.totalStops, 'stop') + (onlyArbo ? ' in Arbo today' : ' today'), flagNote);
       HERO.ring('stops', s.totalStops ? passed / s.totalStops : 0);
       // Clock time past each stop's slot — nothing records a stop as done (D85).
       // The run is in route order, not clock order: the next stop is the earliest time still ahead.
       const next = timed.filter((st) => Date.parse(st.timeIso) >= nowMs).sort((a, b) => Date.parse(a.timeIso) - Date.parse(b.timeIso))[0];
-      HERO.legend('stops', next ? 'next ' + fmtWhen(next.timeIso) : !s.totalStops ? 'none today' : timed.length ? 'all times passed' : 'no times set');
+      // H4: an empty list is "none in Arbo", never "none today" — the Google Calendar is not read here.
+      HERO.legend('stops', next ? 'next ' + fmtWhen(next.timeIso) : !s.totalStops ? (onlyArbo ? 'none in Arbo' : 'none today') : timed.length ? 'all times passed' : 'no times set');
     }
-    sysSet('schedule', 'ok', s.totalStops + ' stops');
+    // H4: Arbo's own bookings are not the day — never marked healthy as if they were.
+    sysSet('schedule', onlyArbo ? 'warn' : 'ok', onlyArbo ? s.totalStops + ' in Arbo \u00b7 Calendar not read' : s.totalStops + ' stops');
   }
 
   if (s.zipRun && s.zipRun.length) {
@@ -2458,7 +2560,18 @@ async function renderToday() {
   }
 
   if (!brief.stops.length) {
-    day.appendChild(state('Nothing on the books today', 'New bookings land here automatically.'));
+    // H4: never "Nothing on the books" over a calendar Arbo does not read — the gap is named, and the real calendar is one tap away.
+    const none = onlyArbo
+      ? state('No bookings in Arbo today', 'Arbo only sees bookings made in Arbo \u2014 your Google Calendar isn\u2019t read here, so your real day may not be empty.')
+      : state('Nothing on the books today', 'New bookings land here automatically.');
+    if (onlyArbo) {
+      const calBtn = el('button', 'hudbtn', 'Open the Calendar tab');
+      calBtn.prepend(icon('i-calendar'));
+      calBtn.style.margin = '14px 0 0';
+      calBtn.addEventListener('click', () => { switchTab('cal'); renderCalendar(); });
+      none.appendChild(calBtn);
+    }
+    day.appendChild(none);
     return;
   }
   day.appendChild(el('div', 'panel-title', 'Today’s run'));
@@ -4893,7 +5006,7 @@ async function renderFollowUps() {
 
 // ---------- Shell ----------
 function showKeywall(msg) {
-  $('keyerr').textContent = msg || '';
+  $('keyerr').textContent = msg || KEY_REFUSED_WHY;
   $('keywall').classList.add('show');
   keywallChrome(true);
 }
@@ -4922,7 +5035,7 @@ async function unlockWithKey() {
   try {
     await api('/api/leads?limit=1');
   } catch (e) {
-    if (e.code === 401) return showKeywall('That key didn’t work — check it and try again.');
+    if (e.code === 401) return showKeywall(KEY_REFUSED[e.why] || 'That key didn’t work — check it and try again.');
     // No signal, or the host's own non-JSON 502/504 mid-deploy: the key was never checked.
     if (!e.code || e.message === 'error') return showKeywall('Couldn’t reach Arbo to check the key — check your signal and try again.');
     // Any other answer is Arbo's own, from past the key gate (a cut link's 503): the key is good.
@@ -5264,7 +5377,7 @@ async function buildSettings(v, gen) {
     // The row names Quo once: Settings words the not-connected state itself, and
     // a failed or pending registration reads as the intake's own sentence after the label.
     row.appendChild(el('span', '', 'Quo (Sona calls & texts) \u2014 ' + (ok ? q.received + ' received' + (q.lastAt ? ', last ' + fmtTime(q.lastAt) : ' since Arbo last restarted')
-      : reg.state === 'not_configured' ? 'not connected to Arbo yet, so Sona\u2019s calls aren\u2019t reaching Arbo' : reg.detail)));
+      : reg.state === 'not_configured' ? 'not connected to Arbo yet, so Sona\u2019s calls aren\u2019t reaching Arbo' : reg.detail + (reg.retryAt ? ' Arbo tries again at ' + fmtTime(reg.retryAt) + ' \u2014 no redeploy needed.' : ''))));
     v.appendChild(row);
     // R33 (Mike, 2026-10-20: "connect quo as read only"): what Arbo may do in Quo — only as the server says it.
     if (reg.state !== 'not_configured' && q.quoWrites) {
@@ -6058,8 +6171,14 @@ function renderMeasure() {
       const res = await fetch('/api/lidar/measure?name=' + encodeURIComponent(f.name) + (LIDAR_UP ? '&up=' + LIDAR_UP : ''), {
         method: 'POST', headers: KEY ? { 'x-arbor-key': KEY } : {}, body: f,
       });
-      if (res.status === 401) return showKeywall();
       const body = await res.json().catch(() => ({}));
+      // The key gate's refusals, as api() takes them: a 401, or the gate's own
+      // 429 (too_many_attempts — the busy 429 below is not about keys). The key
+      // screen says THIS refusal's reason, never an earlier one's.
+      if (res.status === 401 || (res.status === 429 && body.error === 'too_many_attempts')) {
+        KEY_REFUSED_WHY = KEY_REFUSED[body.error] || '';
+        return showKeywall();
+      }
       if (!res.ok) {
         status.className = 'storm';
         // Every server detail already ends in a full stop; drop it so the line never reads "..".
@@ -6421,8 +6540,10 @@ async function talkAsk() {
 }
 function talkFailLine(e) {
   if (e && e.line) return e.line; // the server's own words: no AI key, or the brain did not answer
-  // A 401 is this phone's key, or a server with no app key at all (no_app_key) — the body is not read here, so both are named.
-  if (e && e.code === 401) return 'Talk is locked. Either this phone’s key was not accepted — check it in Settings — or the server has no app key set yet.';
+  // The door's refusals arrive as code 401 with the server's reason as `why` (api()): a throttled
+  // connection (too_many_attempts, really a 429) or no app key on the server is said in the key
+  // screen's own words. Only a refusal with no named reason is this phone's key — or no key on the server.
+  if (e && e.code === 401) return 'Talk is locked. ' + (KEY_REFUSED[e.why] || 'Either this phone’s key was not accepted — check it in Settings — or the server has no app key set yet.');
   if (e && e.slow) return 'Arbo took too long to answer — say it again, or tap End.';
   if (e && e.code) return 'Arbo’s brain didn’t answer (' + e.code + ') — try again.';
   return 'Arbo couldn’t reach the server — check your signal, then say it again.';

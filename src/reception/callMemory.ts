@@ -132,12 +132,17 @@ export interface CallRecordEntry {
   /** What the caller asked for, when a window was parseable. */
   requestedWindow?: string;
   /**
-   * Whether a calendar hold was ATTEMPTED for this call. 'attempted' means
-   * fired, not confirmed — the insert is async and a failure lands in the
-   * server log, not back in this record. Honest label over a pleasing one.
-   * 'read_only' (R33): Google is connected read-only — no hold, on purpose.
+   * What happened to this call's calendar hold. 'attempted' means sent to
+   * Google and not answered yet; Google's answer lands back HERE as 'filed'
+   * or 'failed' (H1, 2026-10-20 — a failed hold once read "filed" for a
+   * week). 'learned_only' = learned from Quo's record after a restart, so
+   * this process filed nothing. 'read_only' (R33): Google is connected
+   * read-only — no hold, ON PURPOSE; never 'failed', never 'filed'. Honest
+   * label over a pleasing one.
    */
-  calendarHold: 'attempted' | 'no_writer' | 'not_requested' | 'read_only';
+  calendarHold: 'attempted' | 'filed' | 'failed' | 'no_writer' | 'not_requested' | 'learned_only' | 'read_only';
+  /** Why a 'failed' hold failed — a short code only, never the error text (§4.3). */
+  calendarHoldError?: string;
 }
 
 const RECORDS_CAP = 200;

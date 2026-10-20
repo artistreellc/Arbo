@@ -147,7 +147,8 @@ export function buildMorningBrief(stops: StopInput[]): MorningBrief {
 export function briefToSpeech(brief: MorningBrief): string {
   const s = brief.summary;
   const parts: string[] = [];
-  parts.push(`Good morning. ${s.totalStops === 0 ? 'Nothing on the books today.' : `${s.totalStops} stop${s.totalStops === 1 ? '' : 's'} today: ${s.jobs} job${s.jobs === 1 ? '' : 's'} and ${s.estimates} estimate${s.estimates === 1 ? '' : 's'}.`}`);
+  // H4: these are Arbo's own bookings — the Google Calendar is not read, so "nothing" is never the whole day.
+  parts.push(`Good morning. ${s.totalStops === 0 ? "Nothing booked in Arbo today — your Google Calendar isn't read here, so check it." : `${s.totalStops} stop${s.totalStops === 1 ? '' : 's'} today in Arbo's bookings: ${s.jobs} job${s.jobs === 1 ? '' : 's'} and ${s.estimates} estimate${s.estimates === 1 ? '' : 's'}.`}`);
   if (s.emergencies > 0) parts.push(`Heads up: ${s.emergencies} emergency stop${s.emergencies === 1 ? '' : 's'} lead${s.emergencies === 1 ? 's' : ''} the day.`);
   if (s.redFlagCount > 0) parts.push(`${s.redFlagCount} stop${s.redFlagCount === 1 ? ' has' : 's have'} red flags — check power lines before you cut.`);
   if (s.firstTimers > 0) parts.push(`${s.firstTimers} first-timer${s.firstTimers === 1 ? '' : 's'} — extra hand-holding.`);

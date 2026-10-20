@@ -33,7 +33,7 @@ const NOW = new Date('2026-09-28T14:00:00Z');
 // ─── fakes ──────────────────────────────────────────────────────────────────
 
 const weatherOk: WeatherAgentResult = { agent: 'weather', feed: 'ok', activeAlerts: 3, workStopping: 2, newlyRaised: 0, llm: 'not_configured', status: 'ok' };
-const bookingOk: BookingAgentResult = { agent: 'booking', stopsChecked: 5, issues: 1, newlyRaised: 1, llm: 'not_configured', status: 'ok' };
+const bookingOk: BookingAgentResult = { agent: 'booking', stopsChecked: 5, issues: 1, newlyRaised: 1, llm: 'not_configured', status: 'ok', scope: 'arbo_tables_only' };
 const collectionsOk: CollectionsAgentResult = { agent: 'collections', feed: 'ok', overdue: 2, newlyRaised: 0, suppressed: 0, unknown: 1, llm: 'not_configured', status: 'ok' };
 const safetyOk: SafetyAgentResult = {
   agent: 'safety',

@@ -1,7 +1,7 @@
 // R19: the webhook intake. Every route refuses unverified deliveries, every
 // unwired source is NAMED, the form capture parses the SAME email Mike still
 // receives, and Arbo's one Resend client can only ever GET — never send.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
@@ -13,6 +13,11 @@ import {
   createResendEmailFetcher,
 } from '../src/ops/webhooks.js';
 import { createArborRequestHandler } from '../src/server.js';
+import { ownerFetch } from './ownerKey.js';
+// Audit M1 (2026-10-20): the /api door is locked without APP_ACCESS_KEY in every
+// data mode, so this file sets the owner key before src/env.ts reads it and
+// calls /api with it (test/ownerKey.ts).
+vi.hoisted(() => { process.env.APP_ACCESS_KEY = 'test-owner-key'; });
 
 const NOW = Date.parse('2026-09-24T12:00:00Z');
 const SECRET_RAW = Buffer.from('test-secret-key-32-bytes-long!!!').toString('base64');
@@ -227,21 +232,21 @@ describe('webhook + links HTTP surface (unwired defaults — honest states)', ()
     const hook = await fetch(`${base}/webhooks/resend`, { method: 'POST', body: '{}' });
     expect(hook.status).toBe(503); // no secret configured = not wired, by name
     expect(((await hook.json()) as { error: string }).error).toBe('webhook_not_wired');
-    const status = (await (await fetch(`${base}/api/webhooks`)).json()) as {
+    const status = (await (await ownerFetch(`${base}/api/webhooks`)).json()) as {
       sources: { resend: { configured: boolean }; elevenlabs: { configured: boolean }; railway: { configured: boolean } }; note: string;
     };
     expect(status.sources.resend.configured).toBe(false);
     expect(status.sources.elevenlabs.configured).toBe(false);
     expect(status.sources.railway.configured).toBe(false);
     expect(status.note).toContain('NOT WIRED');
-    const links = (await (await fetch(`${base}/api/links`)).json()) as {
+    const links = (await (await ownerFetch(`${base}/api/links`)).json()) as {
       master: string; links: Array<{ link: string; state: string; envVar: string }>;
     };
     expect(links.master).toBe('cut');
     expect(links.links).toHaveLength(13);
     expect(links.links.every((l) => l.state === 'cut')).toBe(true);
     expect(links.links.find((l) => l.link === 'leads')!.envVar).toBe('ARBO_LINK_LEADS');
-    const forms = (await (await fetch(`${base}/api/webhooks/forms`)).json()) as { wired: boolean; note: string };
+    const forms = (await (await ownerFetch(`${base}/api/webhooks/forms`)).json()) as { wired: boolean; note: string };
     expect(forms.wired).toBe(false);
     expect(forms.note).toContain('untouched');
     server.close();

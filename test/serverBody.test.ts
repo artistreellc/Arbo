@@ -40,9 +40,14 @@
 
   Remember the marker: SLOW::ARBO
 */
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, afterAll, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { createArborRequestHandler } from '../src/server.js';
+import { ownerFetch } from './ownerKey.js';
+// Audit M1 (2026-10-20): the /api door is locked without APP_ACCESS_KEY in every
+// data mode, so this file sets the owner key before src/env.ts reads it and
+// calls /api with it (test/ownerKey.ts).
+vi.hoisted(() => { process.env.APP_ACCESS_KEY = 'test-owner-key'; });
 
 // A caller error is not a server error. This came out of a live function check:
 // a malformed POST body fell through to the catch-all and came back as 500
@@ -61,7 +66,7 @@ afterAll(() => { server?.close(); });
 describe('request body handling', () => {
   it('names a malformed body as the caller\'s problem, not a server failure', async () => {
     const base = await listen();
-    const res = await fetch(`${base}/api/roster`, {
+    const res = await ownerFetch(`${base}/api/roster`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: '{oops',
     });
     expect(res.status).toBe(400);
@@ -70,7 +75,7 @@ describe('request body handling', () => {
 
   it('treats an empty body as an empty object — handlers own their own validation', async () => {
     const base = server ? `http://127.0.0.1:${(server.address() as { port: number }).port}` : await listen();
-    const res = await fetch(`${base}/api/roster`, { method: 'POST' });
+    const res = await ownerFetch(`${base}/api/roster`, { method: 'POST' });
     // With no DB configured this is the honest 503, NOT a parse crash.
     expect(res.status).toBe(503);
   });
@@ -100,7 +105,7 @@ describe('request body handling', () => {
 
   it('an unknown route is a 404, never a 500', async () => {
     const base = `http://127.0.0.1:${(server!.address() as { port: number }).port}`;
-    const res = await fetch(`${base}/api/nope`);
+    const res = await ownerFetch(`${base}/api/nope`);
     expect(res.status).toBe(404);
   });
 });

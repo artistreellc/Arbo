@@ -8,6 +8,11 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { WebhookIntake } from '../src/ops/webhooks.js';
 import { createArborRequestHandler } from '../src/server.js';
+import { ownerFetch } from './ownerKey.js';
+// Audit M1 (2026-10-20): the /api door is locked without APP_ACCESS_KEY in every
+// data mode, so this file sets the owner key before src/env.ts reads it and
+// calls /api with it (test/ownerKey.ts).
+vi.hoisted(() => { process.env.APP_ACCESS_KEY = 'test-owner-key'; });
 
 const NOW = Date.parse('2026-09-24T12:00:00Z');
 
@@ -54,12 +59,14 @@ describe('business-cell relays', () => {
     const srv = createServer(createArborRequestHandler());
     await new Promise<void>((r) => srv.listen(0, r));
     const base = `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
-    const post = (p: string, b: unknown) => fetch(`${base}${p}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) });
+    const post = (p: string, b: unknown) => ownerFetch(`${base}${p}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) });
     expect((await post('/api/relay/text', { from: '+17575550100', text: 'hi' })).status).toBe(200);
     expect((await post('/api/relay/text', {})).status).toBe(400);
     expect((await post('/api/relay/call-notes', { text: 'notes' })).status).toBe(200);
-    // The list of customers' texts is locked with no APP_ACCESS_KEY (held in memory, not in the database).
+    // The list of customers' texts is locked without the owner key (held in memory, not in the database).
     expect((await fetch(`${base}/api/webhooks/texts`)).status).toBe(401);
+    const texts = (await (await ownerFetch(`${base}/api/webhooks/texts`)).json()) as { texts: Array<{ line: string }> };
+    expect(texts.texts.some((t) => t.line === 'business')).toBe(true);
     srv.close();
     const saved = { ...process.env };
     try {
