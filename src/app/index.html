@@ -1069,6 +1069,8 @@ async function inboxIntentPanel() {
       ? 'Arbo has no record of reading Gmail before ' + to + ' \u2014 mail from before then was not checked here. Tap Catch up \u2192 Last week.'
       : g.why === 'catchup_capped'
         ? 'Arbo\u2019s catch-up from ' + fmtTime(g.fromIso) + ' to ' + to + ' hit its 250-message limit \u2014 some mail in that stretch may not have been read. Check Gmail for it.'
+      : g.why === 'catchup_unread'
+        ? 'Arbo\u2019s catch-up from ' + fmtTime(g.fromIso) + ' to ' + to + ' could not open some mail Gmail listed \u2014 it was not read here. Catch up that stretch again, or check Gmail for it.'
         : 'Gmail from ' + fmtTime(g.fromIso) + ' to ' + to + ' is older than Arbo can reach (10 days) and was never read here \u2014 check Gmail directly.';
     return el('div', 'feed-state unread', words);
   };
@@ -1219,7 +1221,7 @@ async function inboxIntentPanel() {
     // M12: a gap Arbo can still reach is offered first — "Since <when>".
     const g = d.gmailGap;
     if (g && g.why === 'no_record') sel.value = '10080';
-    else if (g && g.fromIso && g.why === 'catchup_capped') {
+    else if (g && g.fromIso && (g.why === 'catchup_capped' || g.why === 'catchup_unread')) {
       const mins = Math.ceil((Date.now() - Date.parse(g.fromIso)) / 60000) + 1;
       if (mins <= 14390) { sel.insertBefore(new Option('Since ' + fmtTime(g.fromIso) + ' (the gap)', String(mins)), sel.firstChild); sel.value = String(mins); }
     }

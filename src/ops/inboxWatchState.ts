@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import type { InboxGap, InboxStateStore, InboxWatchState } from './inboxWatch.js';
 
 const FILE = 'inbox-watch.json';
-const WHY = new Set<InboxGap['why']>(['older_than_catchup', 'catchup_capped', 'no_record']);
+const WHY = new Set<InboxGap['why']>(['older_than_catchup', 'catchup_capped', 'catchup_unread', 'no_record']);
 const isoOrNull = (v: unknown): string | null => (typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? v : null);
 
 /** Only a well-formed state is believed; anything else is "no record" (and the screen says so). */
