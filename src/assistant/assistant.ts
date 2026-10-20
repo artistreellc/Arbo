@@ -28,8 +28,8 @@
 // payment, Drive write and calendar booking waits for his tap — that is set
 // in the agent's permission policies (always_ask) and surfaces here. A
 // customer text he allows outside 8am–9pm ET is refused here by name
-// (quiet_hours), unless it answers that customer's own text or call or goes
-// to one of his crew numbers (ARBO_AGENT_CREW_NUMBERS).
+// (quiet_hours), unless it answers, within the hour, that customer's own text
+// or call, or goes to one of his crew numbers (ARBO_AGENT_CREW_NUMBERS).
 //
 // Law it keeps: OFF unless ARBO_AGENT is exactly 'live' (like
 // ARBO_DATA_LINKS); a missing key or id is NAMED, never a quiet no-op (§1B);
@@ -40,7 +40,7 @@
 import { assistantEnv } from '../env.js';
 import { etOffsetMs, etToday } from '../lib/etDay.js';
 import { AssistantApiError, createAnthropicAssistantApi, type AgentEvent, type AssistantApi, type EventStream } from './client.js';
-import { classify, clip, describeToolCall, draftIdOf, textRecipients, toolLabel, type ApprovalDetail } from './describe.js';
+import { classify, clip, describeToolCall, draftIdOf, familyOf, textRecipients, toolLabel, type ApprovalDetail } from './describe.js';
 import { AssistantStore, type ActivityItem, type ActivityKind, type Approval, type QueuedTrigger, type SessionRec, type StoredApproval, type Trigger } from './store.js';
 
 /** At most this many sessions WORKING at once; the rest queue, in order. A session parked on Mike's OK does not hold a slot. */
@@ -62,10 +62,14 @@ const OFFICE_DAYS = new Set([1, 2, 3, 4, 5, 6]);
 /** TCPA quiet hours for customer texts: they may go out from 8:00 until 21:00 ET. */
 const TEXTS_FROM = 8 * 60;
 const TEXTS_UNTIL = 21 * 60;
+/** A reply to the customer whose own text or call started a session is not held — within this long of it coming in. */
+const REPLY_WINDOW_MS = 60 * 60_000;
+/** The office check's report is kept whole up to this many characters (Activity clips at 1,000). */
+const REPORT_LIMIT = 4000;
 const TICK_MS = 60_000;
 /** Waits between session-start retries after Anthropic refuses or is unreachable. */
 const START_BACKOFF_MS = [60_000, 2 * 60_000, 5 * 60_000, 15 * 60_000, 30 * 60_000];
-/** Waits between stream reconnects, then every minute (the last) for as long as it takes; this many quick failures in a row and the loss is named. */
+/** Waits between stream reconnects, then every minute (the last) for as long as it takes; this many tries in a row that never reach the session and the loss is named. */
 const RECONNECT_MS = [1_000, 2_000, 5_000, 15_000, 30_000, 60_000, 60_000, 60_000];
 /** A stream that stayed open this long before dropping was healthy — the failure count starts over. */
 const HEALTHY_STREAM_MS = 60_000;
@@ -74,6 +78,8 @@ const LOST_AFTER_MS = 5 * 60_000;
 /** A Limited environment, once read back, is trusted this long before Arbo reads it again (every minute while it is not). */
 const ENV_RECHECK_MS = 15 * 60_000;
 const NOTE_CAP = 2000;
+/** What the agent is told about a call Arbo never saw end (a redeploy, or Quo's events out of order). */
+const DIRECTION_UNKNOWN = 'unknown — Arbo did not see this call end. Check Quo first: an outgoing call (Mike calling out) is not an item — stop without acting.';
 /** Incoming call states that mean nobody — not Mike, not Sona — picked up. */
 const MISSED_STATUSES = new Set(['missed', 'no-answer', 'busy', 'canceled', 'abandoned']);
 
@@ -91,7 +97,7 @@ const weekdayOf = (day: string): number => new Date(`${day}T12:00:00Z`).getUTCDa
 const officeMessage = (day: string): string => [
   `Daily office check from Arbo for ${WEEKDAY[weekdayOf(day)]} ${day}. Look, report, then stop:`,
   "1. Weather: the forecast for today's and tomorrow's jobs and estimates on the calendar. Flag any storm, high wind, heavy rain or other hazard to outdoor work, with a suggested new day. Never move an event.",
-  "2. Unpaid invoices: Square invoices unpaid past their due date. List each one. A reminder to a customer may be requested by email — it waits for Mike's OK, points to the invoice and never restates the amount. A text reminder before 8am goes in your update instead.",
+  "2. Unpaid invoices: Square invoices unpaid past their due date. List each one. Every Square call waits for Mike's OK for now, lookups included, so find them in as few calls as you can. A reminder to a customer may be requested by email — it waits for Mike's OK, points to the invoice and never restates the amount. A text reminder before 8am goes in your update instead.",
   '3. Equipment: trucks, chippers and other equipment due for service soon, from the equipment log in Drive.',
   '4. Waiting on Mike: anything in Gmail, Quo, Calendar or Drive that needs his decision or his call.',
   'Finish with one short update under four headings — Weather, Unpaid invoices, Equipment, Waiting on you. Say plainly what you could not read: "I couldn\'t read it" is never "there\'s nothing there".',
@@ -105,6 +111,8 @@ export interface OfficeCheckStatus {
   day: string;
   state: 'queued' | 'working' | 'waiting' | 'done' | 'error' | 'missed';
   line: string;
+  /** A done check's report, in its own words — kept apart from Activity, so a busy morning never scrolls it away. */
+  report?: { at: string; text: string };
 }
 
 export interface AssistantStatus {
@@ -180,17 +188,21 @@ const tail10 = (v: string): string | null => {
 };
 
 /**
- * An email or text that went out, a calendar write, or a Square call that
- * changes money — each should have waited for Mike. Drive is left out on
- * purpose: its reads share the server and would cry wolf. A calendar READ is
- * not a write; every calendar write waits (Mike, 2026-10-20: "Each booking
- * waits for my OK"). Square reads ride the same one tool as its writes, so
- * only a write-shaped method counts.
+ * An email or text that went out, a calendar, Drive or Quo write, or a Square
+ * call that changes money — each should have waited for Mike (R28: every send
+ * and every write waits). A READ is not a write: the read tools Arbo turns on
+ * are named list / get / search / read / download / fetch / suggest, and every
+ * calendar write waits too (Mike, 2026-10-20: "Each booking waits for my
+ * OK"). Square reads ride the same one tool as its writes, so only a
+ * write-shaped method counts.
  */
 function sentWithoutAsking(ev: AgentEvent): boolean {
   const kind = classify(ev.mcp_server_name, ev.name ?? '');
+  const name = ev.name ?? '';
   if (kind === 'email' || kind === 'text') return true;
-  if (kind === 'calendar') return !/^(list|get|search|suggest|find|query|free)/i.test(ev.name ?? '');
+  if (kind === 'calendar') return !/^(list|get|search|suggest|find|query|free)/i.test(name);
+  if (kind === 'drive') return !/^(search|read|download|get|list)/i.test(name);
+  if (familyOf(ev.mcp_server_name) === 'quo') return !/^(fetch|list|get)/i.test(name); // contact, note and task writes
   if (kind !== 'payment') return false;
   const method = `${ev.name ?? ''} ${typeof ev.input?.method === 'string' ? ev.input.method : ''}`;
   return /create|pay|publish|send|update|cancel|refund|charge|complete|delete/i.test(method);
@@ -206,6 +218,8 @@ interface QuoItem {
   message: string;
   /** Last 10 digits of the customer whose own text or call this is — kept off the message, the title and the log. */
   contact: string | null;
+  /** When that text or call came in, by Quo's clock — a reply is let through quiet hours only within the hour of it. */
+  contactAt: string | null;
 }
 
 const s = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
@@ -253,6 +267,7 @@ export function quoItemFrom(event: unknown, calls: Map<string, CallInfo>): QuoIt
         eventId,
         label: 'quo text',
         contact: tail10(s(o.from) ?? ''),
+        contactAt: s(o.createdAt) ?? s(e.createdAt),
         message: itemMessage('an inbound text', eventId, [
           ['Message id', id],
           ['Conversation id', s(o.conversationId)],
@@ -279,6 +294,7 @@ export function quoItemFrom(event: unknown, calls: Map<string, CallInfo>): QuoIt
         eventId,
         label: 'quo missed call',
         contact: info.from,
+        contactAt: info.at ?? s(e.createdAt),
         message: itemMessage('a missed call', eventId, [
           ['Call id', id],
           ['Conversation id', info.conversationId],
@@ -305,11 +321,13 @@ export function quoItemFrom(event: unknown, calls: Map<string, CallInfo>): QuoIt
         eventId,
         label: transcript ? 'quo call transcript' : 'quo call summary',
         contact: info?.from ?? null,
+        contactAt: info?.at ?? null,
         message: itemMessage(transcript ? "a finished call's transcript" : "a finished call's summary", eventId, [
           ['Call id', callId],
           ['Conversation id', info?.conversationId ?? s(o.conversationId)],
           ['At', info?.at ?? s(o.createdAt) ?? s(e.createdAt)],
-          ['Direction', info?.direction ?? null],
+          // Mike's own call out is not an item: when Arbo cannot tell, the agent checks first.
+          ['Direction', info?.direction ?? DIRECTION_UNKNOWN],
         ]),
       };
     }
@@ -353,6 +371,8 @@ export class Assistant {
     this.store = deps.store ?? new AssistantStore();
     this.now = deps.now ?? (() => Date.now());
     this.sleep = deps.sleep ?? ((ms) => new Promise<void>((r) => setTimeout(r, ms)));
+    // Which way each recent call went survives a redeploy (ids and direction only).
+    for (const c of this.store.data.callDirections) this.calls.set(c.id, { direction: c.direction, conversationId: null, at: null, from: null });
   }
 
   // ── state ──
@@ -416,7 +436,11 @@ export class Assistant {
     if (!rec) return { day, state: 'error', line: "Today's office check could not start — see More → Assistant." };
     if (rec.state === 'working') return { day, state: 'working', line: "Today's office check is running." };
     if (rec.state === 'waiting') return { day, state: 'waiting', line: "Today's office check is waiting — on your OK, or paused at its budget. See More → Assistant." };
-    if (rec.state === 'done') return { day, state: 'done', line: "Today's office check is done — its report is in More → Assistant." };
+    if (rec.state === 'done') {
+      const r = d.officeReport?.day === day ? d.officeReport : null;
+      if (!r) return { day, state: 'done', line: "Today's office check finished without a report — see More → Assistant." };
+      return { day, state: 'done', line: "Today's office check is done. Its report:", report: { at: r.at, text: r.text } };
+    }
     return { day, state: 'error', line: "Today's office check stopped before it finished — see More → Assistant." };
   }
 
@@ -480,14 +504,17 @@ export class Assistant {
     const nowMs = this.now();
     const mins = etMinutes(nowMs);
     if (mins >= TEXTS_FROM && mins < TEXTS_UNTIL) return null;
-    // Not held: a reply to the customer whose own text or call started this
-    // session, or a text to one of Mike's crew phones. Anything Arbo cannot
-    // tell — no recipient it can read — is held.
+    // Not held: a reply, within the hour, to the customer whose own text or
+    // call started this session, or a text to one of Mike's crew phones.
+    // Anything Arbo cannot tell — no recipient it can read, no time the
+    // customer's text came in — is held.
     const crew = new Set(this.cfg().crewNumbers);
-    const replyTo = this.store.data.sessions.find((x) => x.id === a.sessionId)?.replyTo ?? null;
+    const rec = this.store.data.sessions.find((x) => x.id === a.sessionId);
+    const since = rec?.replyToAt ? Date.parse(rec.replyToAt) : NaN;
+    const replyTo = rec?.replyTo && Number.isFinite(since) && Math.abs(nowMs - since) <= REPLY_WINDOW_MS ? rec.replyTo : null; // an hour either side of Arbo's clock, no more
     const to = (a.textTo ?? []).map(tail10);
     if (to.length && to.every((t) => t !== null && (crew.has(t) || t === replyTo))) return null;
-    return `It is ${etClock(nowMs)} ET — a text can go to a customer only from 8am to 9pm (TCPA quiet hours). Nothing was sent — it is still waiting: allow it after 8am, or deny it. A reply to the customer whose own text or call started this, or a text to a number in ARBO_AGENT_CREW_NUMBERS, is not held.`;
+    return `It is ${etClock(nowMs)} ET — a text can go to a customer only from 8am to 9pm (TCPA quiet hours). Nothing was sent — it is still waiting: allow it after 8am, or deny it. A reply within the hour to the customer whose own text or call started this, or a text to a number in ARBO_AGENT_CREW_NUMBERS, is not held.`;
   }
 
   approvals(): RouteAnswer {
@@ -502,7 +529,7 @@ export class Assistant {
         // Worked out when Mike looks, not when it was asked: what matters is
         // the time the text would go out. Same rule as the refusal at Allow.
         if (a.kind === 'text' && this.quietHold(a)) {
-          details.push({ label: 'Heads-up', value: `It is ${etClock(nowMs)} ET — outside 8am–9pm. Arbo holds a customer text until 8am (TCPA quiet hours): Allow is refused until then. A reply to the customer whose own text or call started this, or a text to your crew (ARBO_AGENT_CREW_NUMBERS), is not held.` });
+          details.push({ label: 'Heads-up', value: `It is ${etClock(nowMs)} ET — outside 8am–9pm. Arbo holds a customer text until 8am (TCPA quiet hours): Allow is refused until then. A reply within the hour to the customer whose own text or call started this, or a text to your crew (ARBO_AGENT_CREW_NUMBERS), is not held.` });
         }
         return { id: a.id, sessionId: a.sessionId, tool: a.tool, kind: a.kind, summary: a.summary, details, requestedAt: a.requestedAt };
       });
@@ -648,22 +675,40 @@ export class Assistant {
   noteQuoEvent(rawBody: string): void {
     try {
       if (!this.ready()) return;
-      const item = quoItemFrom(JSON.parse(rawBody), this.calls);
+      const event: unknown = JSON.parse(rawBody);
+      const item = quoItemFrom(event, this.calls);
+      this.rememberDirection(event);
       if (!item) return;
       this.enqueue({
         trigger: 'quo',
         label: item.label,
         message: item.message,
         keys: [item.itemKey, ...(item.eventId ? [`quo:event:${item.eventId}`] : [])],
-        ...(item.contact ? { replyTo: item.contact } : {}),
+        ...(item.contact ? { replyTo: item.contact, ...(item.contactAt ? { replyToAt: item.contactAt } : {}) } : {}),
       });
     } catch (err) {
       console.error('[assistant] Quo event not read:', err instanceof Error ? err.name : 'error');
     }
   }
 
+  /**
+   * A finished call's direction, kept on disk (id and direction only), so a
+   * summary that arrives after a redeploy still knows Mike's own call out is
+   * not an item.
+   */
+  private rememberDirection(event: unknown): void {
+    const e = event as { type?: unknown; data?: { object?: Record<string, unknown> } } | null;
+    if (!e || typeof e !== 'object' || e.type !== 'call.completed') return;
+    const id = s(e.data?.object?.id);
+    const direction = s(e.data?.object?.direction);
+    const list = this.store.data.callDirections;
+    if (!id || !direction || list.some((c) => c.id === id)) return;
+    list.push({ id, direction });
+    this.store.save();
+  }
+
   /** Queue a session unless one of its keys was already started or queued. Persisted before anything starts. */
-  private enqueue(t: { trigger: Trigger; label: string; message: string; keys: string[]; replyTo?: string }): boolean {
+  private enqueue(t: { trigger: Trigger; label: string; message: string; keys: string[]; replyTo?: string; replyToAt?: string }): boolean {
     const d = this.store.data;
     if (t.keys.some((k) => d.processed.includes(k))) return false;
     d.processed.push(...t.keys);
@@ -682,6 +727,7 @@ export class Assistant {
       message: t.message,
       queuedAt: at,
       ...(t.replyTo ? { replyTo: t.replyTo } : {}),
+      ...(t.replyToAt ? { replyToAt: t.replyToAt } : {}),
     };
     d.queue.push(q);
     this.store.save();
@@ -823,6 +869,7 @@ export class Assistant {
             seen: [],
             key,
             ...(q.replyTo ? { replyTo: q.replyTo } : {}),
+            ...(q.replyToAt ? { replyToAt: q.replyToAt } : {}),
           };
           d.sessions.push(rec);
           this.activity_(id, 'started', adopted ? `Started — ${q.label} (its session had already started; Arbo picked it up)` : `Started — ${q.label}`);
@@ -871,7 +918,10 @@ export class Assistant {
    */
   private async runWatch(rec: SessionRec): Promise<void> {
     const seen = new Set(rec.seen);
+    /** Streams that ended within a minute in a row — sets the wait only. */
     let quickFailures = 0;
+    /** Tries in a row that never reached the session — this, not quickFailures, names a loss. */
+    let unreached = 0;
     let lastReachedAt = this.now();
     while (!this.finished(rec)) {
       const api = this.api();
@@ -906,14 +956,17 @@ export class Assistant {
       }
       if (this.finished(rec)) break;
       quickFailures = this.now() - openedAt >= HEALTHY_STREAM_MS ? 0 : quickFailures + 1;
-      // Named lost after many quick failures, or after LOST_AFTER_MS with no
-      // reach at all (an outage where each try hangs before it fails).
-      const lost = quickFailures > RECONNECT_MS.length || this.now() - lastReachedAt >= LOST_AFTER_MS;
+      unreached = reached ? 0 : unreached + 1;
+      // Named lost after many tries in a row that never reached it, or after
+      // LOST_AFTER_MS with no reach at all (an outage where each try hangs
+      // before it fails). Short streams that still read the history are not
+      // a loss, so one blip after them is not either.
+      const lost = unreached > RECONNECT_MS.length || this.now() - lastReachedAt >= LOST_AFTER_MS;
       if (!reached && lost && !this.lostTouch.has(rec.id)) {
         this.lostTouch.add(rec.id);
         this.activity_(rec.id, 'error', `Arbo lost touch with this session (${rec.label}) — still trying every minute. Anything it asks for meanwhile shows up here once Arbo reconnects; if this stays, open ${rec.id} in the Claude Console.`);
         this.store.save();
-        console.error(`[assistant] session ${rec.id} — lost touch after ${quickFailures} quick reconnects; still trying every minute`);
+        console.error(`[assistant] session ${rec.id} — lost touch after ${unreached} tries in a row; still trying every minute`);
       }
       await this.sleep(RECONNECT_MS[Math.min(Math.max(0, quickFailures - 1), RECONNECT_MS.length - 1)]!);
     }
@@ -1064,6 +1117,11 @@ export class Assistant {
         remember();
         const text = (ev.content ?? []).map((b) => (b.type === 'text' && typeof b.text === 'string' ? b.text : '')).join('').trim();
         if (text) this.activity_(rec.id, 'message', text, { at });
+        // The office check's words are also kept on their own for Today —
+        // Activity keeps only the newest lines, and clips each at 1,000.
+        if (text && rec.trigger === 'office' && rec.key?.startsWith('office:')) {
+          this.store.data.officeReport = { day: rec.key.slice('office:'.length), at, text: clip(text, REPORT_LIMIT) };
+        }
         break;
       }
       case 'session.error': {

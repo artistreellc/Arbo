@@ -157,9 +157,9 @@ const unreadableHistory = (err: Error) => (): AsyncIterable<AgentEvent> => ({ [S
 
 const SIM = { name: 'SIM-Brooks', phone: '+17575550123', email: 'sim.brooks@example.com', street: '14 Simulation Row', words: 'my oak is leaning on the shed' };
 
-const quoText = (evId: string, msgId: string, direction = 'incoming') => JSON.stringify({
-  id: evId, object: 'event', createdAt: '2026-10-20T14:00:00.000Z', type: 'message.received',
-  data: { object: { id: msgId, conversationId: 'CNsim1', direction, from: SIM.phone, to: '+17576069432', body: `Hi this is ${SIM.name} at ${SIM.street}, ${SIM.words}`, createdAt: '2026-10-20T14:00:00.000Z' } },
+const quoText = (evId: string, msgId: string, direction = 'incoming', at = '2026-10-20T14:00:00.000Z') => JSON.stringify({
+  id: evId, object: 'event', createdAt: at, type: 'message.received',
+  data: { object: { id: msgId, conversationId: 'CNsim1', direction, from: SIM.phone, to: '+17576069432', body: `Hi this is ${SIM.name} at ${SIM.street}, ${SIM.words}`, createdAt: at } },
 });
 const quoCall = (evId: string, callId: string, extra: Record<string, unknown>) => JSON.stringify({
   id: evId, type: 'call.completed',
@@ -644,9 +644,9 @@ describe('R28 review fixes — what Mike sees is what happens', () => {
 });
 
 describe('quiet hours are enforced at Allow (TCPA, 8am–9pm ET)', () => {
-  async function textAsk(nowMs: number, to: string, cfg: Partial<Cfg> = {}) {
+  async function textAsk(nowMs: number, to: string, cfg: Partial<Cfg> = {}, inboundAt?: string) {
     const made = make({ now: () => nowMs, cfg });
-    made.a.noteQuoEvent(quoText('EVqh', 'ACqh')); // SIM-Brooks texted in from SIM.phone
+    made.a.noteQuoEvent(quoText('EVqh', 'ACqh', 'incoming', inboundAt)); // SIM-Brooks texted in from SIM.phone
     await vi.waitFor(() => expect(made.api.created).toHaveLength(1));
     made.api.emit('sesn_sim1', { id: 'sevt_txt', type: 'agent.mcp_tool_use', mcp_server_name: 'quo', name: 'send-message', evaluated_permission: 'ask', input: { from: '+17576069432', to, content: 'Hi, this is Art-is-Tree. Reply STOP to opt out.' } });
     await vi.waitFor(() => expect(cards(made.a)).toHaveLength(1));
@@ -666,15 +666,33 @@ describe('quiet hours are enforced at Allow (TCPA, 8am–9pm ET)', () => {
     expect((await a.decide('sevt_txt', 'deny')).status).toBe(200);
   });
 
-  it('a reply to the customer who texted in, and a text to a listed crew number, are not held', async () => {
-    const reply = await textAsk(LATE, SIM.phone);
+  const TEXTED_IN = '2026-10-21T02:20:00.000Z'; // 10:20 PM ET — ten minutes before LATE
+
+  it('a reply to the customer who texted in (within the hour), and a text to a listed crew number, are not held', async () => {
+    const reply = await textAsk(LATE, SIM.phone, {}, TEXTED_IN);
     expect((await reply.a.decide('sevt_txt', 'allow')).status).toBe(200);
     expect(cards(reply.a)).toHaveLength(0);
     const crew = await textAsk(LATE, '+17575550188', { crewNumbers: ['7575550188'] });
     expect((await crew.a.decide('sevt_txt', 'allow')).status).toBe(200);
     // The heads-up on the card follows the same rule: none on either of these.
-    const reply2 = await textAsk(LATE, SIM.phone);
+    const reply2 = await textAsk(LATE, SIM.phone, {}, TEXTED_IN);
     expect(cards(reply2.a)[0]!.details.some((d) => d.label === 'Heads-up')).toBe(false);
+  });
+
+  it('the reply rule has a time limit: a customer who texted at 4 PM is not answered at 10:15 PM — 409 quiet_hours', async () => {
+    const { a, api } = await textAsk(Date.parse('2026-10-21T02:15:00.000Z'), SIM.phone, {}, '2026-10-20T20:00:00.000Z');
+    expect(cards(a)[0]!.details.some((d) => d.label === 'Heads-up')).toBe(true);
+    const r = await a.decide('sevt_txt', 'allow');
+    expect(r.status).toBe(409);
+    expect(r.body).toMatchObject({ error: 'quiet_hours' });
+    expect((r.body as { line: string }).line).toMatch(/A reply within the hour to the customer whose own text or call started this/);
+    expect(api.sent).toHaveLength(0);
+    // Inside the hour it goes: the same reply, ten minutes after they texted.
+    const soon = await textAsk(Date.parse('2026-10-21T02:15:00.000Z'), SIM.phone, {}, '2026-10-21T02:05:00.000Z');
+    expect((await soon.a.decide('sevt_txt', 'allow')).status).toBe(200);
+    // A time Arbo cannot trust — a day ahead of its own clock — opens nothing.
+    const ahead = await textAsk(Date.parse('2026-10-21T02:15:00.000Z'), SIM.phone, {}, '2026-10-22T02:05:00.000Z');
+    expect((await ahead.a.decide('sevt_txt', 'allow')).status).toBe(409);
   });
 
   it('at 10 AM nothing is held', async () => {
@@ -873,6 +891,68 @@ describe('a short outage never ends a session', () => {
     await vi.waitFor(() => expect(a.status().reason ?? '').toMatch(/lost touch with 1 session/), { timeout: 4000 });
     expect(a.store.data.sessions[0]!.state).toBe('working');
   });
+
+  it('one failed try after many short streams that each reached the session is not a lost touch — no false alarm', async () => {
+    const api = new FakeApi();
+    const { a } = make({ api, sleep: tinySleep });
+    a.noteQuoEvent(quoText('EVshort', 'ACshort'));
+    await vi.waitFor(() => expect(api.opened).toEqual(['sesn_sim1']));
+    let tries = 0;
+    const open = FakeApi.prototype.openStream.bind(api);
+    api.openStream = async (id: string) => {
+      tries += 1;
+      if (tries === 13) throw new AssistantApiError(503, 'overloaded'); // one blip
+      const s = await open(id);
+      s.close(); // Anthropic closes each stream at once — but the history was read every time
+      return s;
+    };
+    api.channels.get('sesn_sim1')!.close();
+    await vi.waitFor(() => expect(tries).toBeGreaterThan(16), { timeout: 4000 });
+    expect(acts(a).some((x) => /lost touch/i.test(x.text))).toBe(false);
+    expect(a.status().state).toBe('ready');
+    api.emit('sesn_sim1', idle('sevt_short_end', 'end_turn')); // let the watcher finish
+    await vi.waitFor(() => expect(a.isWatching('sesn_sim1')).toBe(false));
+  });
+});
+
+describe('R28 re-review — what ran unasked, and calls Mike made himself', () => {
+  it('a Drive write, or a Quo contact, note or task write, that RAN unasked is named — their reads are not', async () => {
+    const { a, api } = make();
+    a.noteQuoEvent(quoText('EVdw', 'ACdw'));
+    await vi.waitFor(() => expect(api.created).toHaveLength(1));
+    const reads: Array<[string, string]> = [
+      ['google-drive-drivemcp', 'search_files'], ['google-drive-drivemcp', 'read_file_content'], ['google-drive-drivemcp', 'download_file_content'],
+      ['google-drive-drivemcp', 'get_file_metadata'], ['google-drive-drivemcp', 'list_recent_files'],
+      ['quo', 'fetch-messages'], ['quo', 'fetch-call-transcripts'], ['quo', 'list-contacts'], ['quo', 'get-contact'], ['quo', 'list-tasks'],
+    ];
+    const writes: Array<[string, string]> = [
+      ['google-drive-drivemcp', 'create_file'], ['google-drive-drivemcp', 'update_file'], ['google-drive-drivemcp', 'copy_file'],
+      ['quo', 'create-contact'], ['quo', 'update-contact-note'], ['quo', 'create-task'],
+    ];
+    [...reads, ...writes].forEach(([server, name], i) => api.emit('sesn_sim1', { id: `sevt_w${i}`, type: 'agent.mcp_tool_use', mcp_server_name: server, name, evaluated_permission: 'allow', input: {} }));
+    await vi.waitFor(() => expect(a.store.data.sessions[0]!.seen).toContain(`sevt_w${reads.length + writes.length - 1}`));
+    const warned = acts(a).filter((x) => x.kind === 'error' && /WITHOUT your OK/.test(x.text)).map((x) => x.tool).sort();
+    expect(warned).toEqual(writes.map(([server, name]) => `${server}.${name}`).sort());
+  });
+
+  it("an outgoing call's direction survives a redeploy: its summary after the restart starts nothing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'arbo-asst-'));
+    const first = make({ dir });
+    first.a.noteQuoEvent(quoCall('EVo5', 'ACout5', { direction: 'outgoing', status: 'completed', answeredAt: '2026-10-20T15:00:05.000Z' }));
+    const second = make({ dir }); // a redeploy between the call ending and its summary
+    second.a.noteQuoEvent(quoSummary('EVo6', 'ACout5'));
+    second.a.noteQuoEvent(quoTranscript('EVo7', 'ACout5'));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(second.api.created).toHaveLength(0);
+    expect(second.a.store.data.queue).toHaveLength(0);
+    // Only the call id and its direction are kept — never who called.
+    expect(readFileSync(join(dir, 'assistant.json'), 'utf8')).not.toContain('5550123');
+  });
+
+  it('a summary for a call Arbo never saw end tells the agent to check Quo first and stop if Mike made the call', () => {
+    const item = quoItemFrom(JSON.parse(quoSummary('EVo8', 'ACunseen')), new Map());
+    expect(item!.message).toContain('Direction: unknown — Arbo did not see this call end. Check Quo first: an outgoing call (Mike calling out) is not an item — stop without acting.');
+  });
 });
 
 // ─── persistence ──────────────────────────────────────────────────────────
@@ -1026,7 +1106,7 @@ describe('the daily office check (Mike, 2026-10-20: "One daily office check")', 
     api.emit(id, { id: 'sevt_oc1', type: 'agent.message', content: [{ type: 'text', text: 'Weather: clear both days. Unpaid invoices: none past due. Equipment: chipper due in 9 days. Waiting on you: nothing.' }] });
     api.emit(id, idle('sevt_oc2', 'end_turn'));
     await vi.waitFor(() => expect(a.status().officeCheck).toMatchObject({ state: 'done' }));
-    expect(a.status().officeCheck!.line).toMatch(/done — its report is in More → Assistant/);
+    expect(a.status().officeCheck!.line).toBe("Today's office check is done. Its report:");
     expect(acts(a).some((x) => x.sessionId === id && x.kind === 'message')).toBe(true); // the report itself is in Activity
   });
 
@@ -1060,6 +1140,51 @@ describe('the daily office check (Mike, 2026-10-20: "One daily office check")', 
     await new Promise((r) => setTimeout(r, 20));
     expect(api.created).toHaveLength(0);
     expect(a.status()).toMatchObject({ state: 'off', officeCheck: null });
+  });
+
+  /** Sat 7:05 AM EDT: the office check runs and ends its turn with `report`. */
+  async function officeDone(report: string | null) {
+    const now = Date.parse('2026-10-24T11:05:00.000Z');
+    const made = make({ now: () => now });
+    made.a.tick();
+    await vi.waitFor(() => expect(made.api.created.some((c) => c.metadata.arbo_trigger === 'office')).toBe(true));
+    const id = `sesn_sim${made.api.created.findIndex((c) => c.metadata.arbo_trigger === 'office') + 1}`;
+    if (report !== null) made.api.emit(id, { id: 'sevt_rep', type: 'agent.message', content: [{ type: 'text', text: report }] });
+    made.api.emit(id, idle('sevt_repi', 'end_turn'));
+    await vi.waitFor(() => expect(made.a.status().officeCheck).toMatchObject({ state: 'done' }));
+    return { ...made, id, now };
+  }
+  const REPORT = 'Weather: rain Sunday.\nUnpaid invoices: one past due.\nEquipment: chipper due in 9 days.\nWaiting on you: one estimate hold.';
+
+  it('the report stays on Today however much Activity follows it — and after a redeploy', async () => {
+    const { a, api, dir, now } = await officeDone(REPORT);
+    expect(a.status().officeCheck).toEqual({ day: '2026-10-24', state: 'done', line: "Today's office check is done. Its report:", report: { at: expect.any(String), text: REPORT } });
+    // A busy morning: 120 more lines push the report out of the 100 the app reads.
+    a.noteQuoEvent(quoText('EVbusy', 'ACbusy'));
+    await vi.waitFor(() => expect(api.created.some((c) => c.firstMessage.includes('ACbusy'))).toBe(true));
+    const busy = `sesn_sim${api.created.findIndex((c) => c.firstMessage.includes('ACbusy')) + 1}`;
+    for (let i = 0; i < 120; i++) api.emit(busy, { id: `sevt_used${i}`, type: 'agent.mcp_tool_use', mcp_server_name: 'quo', name: 'fetch-messages', evaluated_permission: 'allow', input: {} });
+    await vi.waitFor(() => expect(a.store.data.sessions.find((x) => x.id === busy)!.seen).toContain('sevt_used119'));
+    expect(acts(a).some((x) => x.text === REPORT)).toBe(false);
+    expect(a.status().officeCheck!.report!.text).toBe(REPORT);
+    const again = make({ dir, now: () => now });
+    expect(again.a.status().officeCheck).toMatchObject({ state: 'done', report: { text: REPORT } });
+  });
+
+  it('a check that ended its turn without a word says so — never "done" with nothing to read (§1B)', async () => {
+    const { a } = await officeDone(null);
+    expect(a.status().officeCheck).toEqual({ day: '2026-10-24', state: 'done', line: "Today's office check finished without a report — see More → Assistant." });
+  });
+
+  it('a finished check still reads done after 50 later sessions finish — never "could not start"', async () => {
+    const { a } = await officeDone(REPORT);
+    for (let i = 0; i < 50; i++) {
+      a.store.data.sessions.push({ id: `sesn_later${i}`, trigger: 'quo', label: 'quo text', startedAt: '2026-10-24T12:00:00.000Z', state: 'done', seen: [], key: `quo:message:L${i}` });
+    }
+    a.store.save();
+    expect(a.status().officeCheck).toMatchObject({ state: 'done', report: { text: REPORT } });
+    // Only today's check is spared: the 50 newest finished, plus it.
+    expect(a.store.data.sessions.filter((x) => x.state === 'done' || x.state === 'error')).toHaveLength(51);
   });
 });
 

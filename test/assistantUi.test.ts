@@ -663,6 +663,18 @@ describe('R28 — Today: "Waiting for your OK"', () => {
     expect(await said('done', 'Done.', { approvals: many(1) })).toEqual(['panel-title:Waiting for your OK', 'approw:Ask 0', 'storm-muted:Done.']);
   });
 
+  it('a done office check shows its report on Today, under its line, in its own words and line breaks', async () => {
+    const report = 'Weather: rain Sunday.\nUnpaid invoices: one past due.';
+    const t = today({ ...READY, officeCheck: { day: '2026-10-20', state: 'done', line: 'Today’s office check is done. Its report:', report: { at: '2026-10-20T11:20:00Z', text: report } } }, { approvals: [] });
+    await t.run();
+    expect(t.slot.children.map((n) => n.className + ':' + n.textContent)).toEqual(['storm-muted:Today’s office check is done. Its report:', 'asst-report:' + report]);
+    // A report that is not words is left out — the line still says where it stands.
+    const odd = today({ ...READY, officeCheck: { day: '2026-10-20', state: 'done', line: 'Done.', report: { text: 42 } } }, { approvals: [] });
+    await odd.run();
+    expect(odd.slot.children.map((n) => n.className)).toEqual(['storm-muted']);
+    expect(css).toMatch(/\n\.asst-report\{[^}]*white-space:pre-wrap[^}]*\}/);
+  });
+
   it('a problem the assistant reports is named on the card, with the rows still there to decide', async () => {
     const err = { ...READY, state: 'error', reason: 'Anthropic refused the API key.' };
     const t = today(err, { approvals: many(1) });
@@ -790,6 +802,9 @@ describe('R28 — the Assistant desk', () => {
     const none = desk(READY, { approvals: [] }, { items: [] });
     await none.run();
     expect(none.slot('Status').children).toHaveLength(2); // nothing due today: no line
+    const rep = desk({ ...READY, officeCheck: { day: '2026-10-20', state: 'done', line: 'Done. Its report:', report: { at: '2026-10-20T11:20:00Z', text: 'Weather: clear.' } } }, { approvals: [] }, { items: [] });
+    await rep.run();
+    expect(rep.slot('Status').children.slice(2).map((n) => n.className + ':' + n.textContent)).toEqual(['storm-muted:Done. Its report:', 'asst-report:Weather: clear.']);
   });
 
   it('a status Arbo could not read is named, never drawn as off (§1B)', async () => {

@@ -617,6 +617,8 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 .asst-list li{position:relative;padding:5px 0 5px 20px;font-size:14.5px;line-height:1.45;color:var(--ink-2)}
 .asst-list li::before{content:'';position:absolute;left:3px;top:.95em;width:7px;height:7px;border-radius:50%;background:var(--gold-5)}
 .asst-list.own li::before{background:var(--forest)}
+/* The office check's report: its own words and line breaks, in a box that scrolls on its own if it runs long. */
+.asst-report{margin:8px 0 4px;max-height:min(40vh,360px);overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--card);border:1px solid var(--hairline);border-radius:var(--r-md);padding:12px 14px;font-size:14.5px;line-height:1.45;color:var(--ink-1);white-space:pre-wrap;overflow-wrap:anywhere}
 .actrow{padding:10px 0;border-bottom:1px solid var(--hairline)}
 .actrow:last-child{border-bottom:0}
 .actrow .ameta{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:3px}
@@ -1880,8 +1882,10 @@ async function fillAssistToday(slot) {
     slot.appendChild(more);
   }
   // Today's office check in the server's words: a day it could not run, or that stopped, is named in amber.
+  // A done check's report follows in its own words, kept apart from Activity so a busy morning never scrolls it away.
   const oc = s && s.officeCheck && typeof s.officeCheck.line === 'string' && s.officeCheck.line ? s.officeCheck : null;
   if (oc) slot.appendChild(el('div', oc.state === 'missed' || oc.state === 'error' ? 'feed-state unread' : 'storm-muted', oc.line));
+  if (oc && oc.report && typeof oc.report.text === 'string' && oc.report.text) slot.appendChild(el('div', 'asst-report', oc.report.text));
 }
 
 // The assistant's switches and a failed read, each in its own words (§1B):
@@ -1972,6 +1976,7 @@ async function renderAssistant() {
     stSlot.appendChild(row);
     const oc = s.officeCheck && typeof s.officeCheck.line === 'string' && s.officeCheck.line ? s.officeCheck : null;
     if (oc) stSlot.appendChild(el('div', oc.state === 'missed' || oc.state === 'error' ? 'feed-state unread' : 'storm-muted', oc.line));
+    if (oc && oc.report && typeof oc.report.text === 'string' && oc.report.text) stSlot.appendChild(el('div', 'asst-report', oc.report.text));
   }
   waitSlot.appendChild(el('div', 'panel-title', 'Waiting for your OK'));
   const list = ap.status === 'fulfilled' && ap.value && Array.isArray(ap.value.approvals) ? ap.value.approvals : null;

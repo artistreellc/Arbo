@@ -32,7 +32,7 @@ export function clip(s: string, limit = BODY_LIMIT): string {
 type Family = 'gmail' | 'square' | 'quo' | 'drive' | 'calendar' | null;
 
 /** Which service an MCP server is, from the name Mike gave it in the agent config. */
-function familyOf(server: string | undefined): Family {
+export function familyOf(server: string | undefined): Family {
   const s = (server ?? '').toLowerCase();
   if (!s) return null;
   if (/gmail|mail/.test(s)) return 'gmail';

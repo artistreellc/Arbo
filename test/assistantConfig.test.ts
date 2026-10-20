@@ -349,11 +349,13 @@ describe('R28 agent config — the system prompt carries every standing rule', (
     ['one item per session', /For a Quo item: handle exactly that one item/],
     // What starts a session is exactly what Arbo's server sends (src/assistant/assistant.ts).
     ['the four things that start a session, and nothing else', /It is one of these four, and nothing else starts you/],
-    ['starter: one Quo item', /One thing that arrived in Quo — an inbound text, a missed call, or a finished call's summary or transcript/],
+    ['starter: one Quo item', /One thing that arrived in Quo — an inbound text, a missed call, or a finished INBOUND call's summary or transcript/],
+    ['an outgoing call is never an item; an unknown direction is checked in Quo first', /an outgoing call is never an item; if the direction is unknown, check Quo and stop if it was outgoing/],
     ['starter: the Gmail sweep', /The Gmail sweep, every 30 minutes from 7am to 9pm Eastern/],
     ['starter: the crew summaries', /The morning crew summaries, at 6:30am Eastern/],
     ['starter: the daily office check', /The daily office check, at 7am Eastern, Monday to Saturday/],
-    ['the sweep is the one time it goes through the inbox', /The Gmail sweep is the one time you go through the inbox\. Treat each new email in its window .* as its own item and handle each one/],
+    ['the sweep is the one time it works new emails; the office check only reads them', /The Gmail sweep is the one time you work new emails; the office check only reads them to report\. Treat each new email in its window .* as its own item and handle each one/],
+    ['the sweep skips only an email already answered — a new email in an older thread is a new item', /Skip an email only if Art-is-Tree already replied to it after it arrived, or a draft answering it is already saved\. A new email in an older thread is a new item\./],
     ['a sweep never covers Quo', /A sweep never covers Quo texts or calls/],
     ['office check: the four things Mike asked for', /weather for today's and tomorrow's jobs, Square invoices unpaid past their due date, equipment due for service .*, and anything waiting on Mike/],
     ['office check: sends still wait', /anything you want sent — a reminder email, a text — still waits for Mike's OK/],
@@ -368,6 +370,7 @@ describe('R28 agent config — the system prompt carries every standing rule', (
     ['R18: an estimate hold is marked unconfirmed (description)', /its description begins "UNCONFIRMED - Mike confirms the time\."/],
     ['R22: a text Arbo starts names the business and the opt-out', /names Art-is-Tree and ends with "Reply STOP to opt out\."/],
     ['quiet hours are enforced at Allow', /Arbo refuses Mike's Allow on a text outside those hours/],
+    ['the reply rule has a time limit', /unless it answers, within the hour, that customer's own text or call/],
     ['never claim sent before the result', /Never claim something was sent, booked, filed, charged or saved until the tool result says it happened/],
     ['§1B: unreadable is not empty', /"I couldn't read it" is never the same as "there's nothing there"/],
     ['never edit/move/delete an event', /You never edit, move or delete an existing event/],
@@ -438,6 +441,8 @@ describe('R28 agent config — the system prompt carries every standing rule', (
     expect(agent.system).not.toMatch(/may tell customers/i);
     // A hosted agent has no voice line.
     expect(agent.system).not.toMatch(/reachable by voice|hands-free/i);
+    // A whole thread is never skipped because Art-is-Tree once replied in it.
+    expect(agent.system).not.toMatch(/whose thread already has a reply/);
   });
 });
 
@@ -476,6 +481,11 @@ describe('R28 setup guide — says exactly what runs', () => {
   it('names the Allow refusals Arbo makes: quiet hours and a send by draft id', () => {
     expect(flat).toContain('ARBO_AGENT_CREW_NUMBERS');
     expect(flat).toMatch(/Arbo refuses your Allow on a customer text before 8am or after 9pm Eastern/);
+    expect(flat).toMatch(/a reply, within the hour, to the customer whose own text or call started that job/);
     expect(flat).toMatch(/A send by draft id never reaches you/);
+  });
+
+  it('says the office check stops for a Square tap until Square reads are loosened', () => {
+    expect(flat).toMatch(/Until then, the 7am office check asks you to allow each Square lookup before it can list unpaid invoices/);
   });
 });

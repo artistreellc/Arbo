@@ -774,14 +774,14 @@ What this changes:
    crew-route summaries at 6:30am ET; and **the daily office check at 7am ET,
    Monday to Saturday** — weather for today's and tomorrow's jobs, invoices
    unpaid past their terms, equipment due for service, and anything waiting on
-   Mike. The office check reports in the app (its report in Activity, one line
-   on Today); anything it wants to send still waits for his OK; a day it could
+   Mike. The office check reports in the app (its report on Today and in
+   Activity); anything it wants to send still waits for his OK; a day it could
    not run is named on Today, never a quiet nothing (§1B). No switch of its own
    beyond `ARBO_AGENT`.
 5. **TCPA quiet hours are enforced at Allow:** a customer text Mike allows
    before 8am or after 9pm ET is refused by name (`quiet_hours`) and keeps
-   waiting — unless it answers that customer's own text or call, or goes to a
-   number in `ARBO_AGENT_CREW_NUMBERS`.
+   waiting — unless it answers, within the hour, that customer's own text or
+   call, or goes to a number in `ARBO_AGENT_CREW_NUMBERS`.
 
 Defaults Claude used where Mike did not say (he may change any):
 - Opus 5.5 at medium effort (his paste said low).

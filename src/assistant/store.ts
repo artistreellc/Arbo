@@ -1,8 +1,9 @@
 // R28: what the assistant must not forget across a redeploy — the approvals
 // waiting on Mike, the last 300 things it did, the Quo events it already
 // started a session for (so one event never starts two), the sessions it is
-// still watching, the triggers queued behind the three-at-once cap, and the
-// days the daily office check ran or was missed.
+// still watching, the triggers queued behind the three-at-once cap, the days
+// the daily office check ran or was missed and its latest report, and which
+// way each recent Quo call went (id and direction only — never who called).
 //
 // Same shape as the Learn desk's LessonBook and the Google token store: one
 // JSON file on the storage disk (ARBO_SECRET_DIR, else /data), written
@@ -70,8 +71,10 @@ export interface SessionRec {
   seen: string[];
   /** The dedupe key it was started for (e.g. 'quo:message:AC…', 'office:2026-10-20') — ids and dates only. */
   key?: string;
-  /** Last 10 digits of the customer whose own text or call started it — a reply to them is not held by quiet hours. */
+  /** Last 10 digits of the customer whose own text or call started it — a reply to them within the hour is not held by quiet hours. */
   replyTo?: string;
+  /** When that text or call came in (Quo's own time) — the hour runs from here. */
+  replyToAt?: string;
 }
 
 export interface QueuedTrigger {
@@ -83,8 +86,23 @@ export interface QueuedTrigger {
   queuedAt: string;
   /** Set (and saved) just before each create: a create whose answer was lost is looked up by its key before another is made. */
   triedAt?: string;
-  /** Carried onto the session — see SessionRec.replyTo. */
+  /** Carried onto the session — see SessionRec.replyTo / replyToAt. */
   replyTo?: string;
+  replyToAt?: string;
+}
+
+/** The office check's last words for the day — kept apart from Activity, which a busy morning scrolls past. */
+export interface OfficeReport {
+  /** ET date (YYYY-MM-DD) of the check. */
+  day: string;
+  at: string;
+  text: string;
+}
+
+/** Which way a Quo call went, so Mike's own call out still starts nothing after a redeploy. */
+export interface CallDirection {
+  id: string;
+  direction: string;
 }
 
 export interface AssistantState {
@@ -102,6 +120,9 @@ export interface AssistantState {
   lastOfficeDay: string | null;
   /** ET date whose office check was named as missed — so it is said once. */
   officeMissedDay: string | null;
+  officeReport: OfficeReport | null;
+  /** Newest last; the last CALLS_KEEP. */
+  callDirections: CallDirection[];
   lastEventAt: string | null;
 }
 
@@ -110,6 +131,7 @@ const PROCESSED_CAP = 2000;
 const DECIDED_KEEP = 200;
 const FINISHED_SESSIONS_KEEP = 50;
 const SEEN_CAP = 1000;
+const CALLS_KEEP = 500;
 const FILE = 'assistant.json';
 
 const fresh = (): AssistantState => ({
@@ -123,11 +145,17 @@ const fresh = (): AssistantState => ({
   lastRouteDay: null,
   lastOfficeDay: null,
   officeMissedDay: null,
+  officeReport: null,
+  callDirections: [],
   lastEventAt: null,
 });
 
 const arr = <T>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 const strOrNull = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
+const reportOf = (v: unknown): OfficeReport | null => {
+  const r = v as Partial<OfficeReport> | null;
+  return r && typeof r === 'object' && typeof r.day === 'string' && typeof r.at === 'string' && typeof r.text === 'string' ? { day: r.day, at: r.at, text: r.text } : null;
+};
 
 export class AssistantStore {
   data: AssistantState = fresh();
@@ -161,6 +189,8 @@ export class AssistantStore {
         lastRouteDay: strOrNull(p.lastRouteDay),
         lastOfficeDay: strOrNull(p.lastOfficeDay),
         officeMissedDay: strOrNull(p.officeMissedDay),
+        officeReport: reportOf(p.officeReport),
+        callDirections: arr<CallDirection>(p.callDirections).filter((c) => c && typeof c.id === 'string' && typeof c.direction === 'string'),
         lastEventAt: strOrNull(p.lastEventAt),
       };
       this.where = 'disk';
@@ -175,6 +205,7 @@ export class AssistantStore {
     const d = this.data;
     if (d.activity.length > ACTIVITY_CAP) d.activity = d.activity.slice(-ACTIVITY_CAP);
     if (d.processed.length > PROCESSED_CAP) d.processed = d.processed.slice(-PROCESSED_CAP);
+    if (d.callDirections.length > CALLS_KEEP) d.callDirections = d.callDirections.slice(-CALLS_KEEP);
     const decided = d.approvals.filter((a) => a.decided);
     if (decided.length > DECIDED_KEEP) {
       const drop = new Set(decided.slice(0, decided.length - DECIDED_KEEP).map((a) => a.id));
@@ -182,11 +213,14 @@ export class AssistantStore {
     }
     // A finished session with an approval still waiting is kept whole: Mike's
     // decision re-attaches to it, and its seen ids stop a replay repeating lines.
+    // Today's office check is never trimmed: Today reads its state from it,
+    // and a busy day must not turn "done" into "could not start" (§1B).
     const pending = new Set(d.approvals.filter((a) => !a.decided).map((a) => a.sessionId));
+    const todaysOffice = d.lastOfficeDay ? `office:${d.lastOfficeDay}` : null;
     const finished = d.sessions.filter((s) => s.state === 'done' || s.state === 'error');
     for (const s of finished) if (!pending.has(s.id)) s.seen = [];
     if (finished.length > FINISHED_SESSIONS_KEEP) {
-      const drop = new Set(finished.slice(0, finished.length - FINISHED_SESSIONS_KEEP).filter((s) => !pending.has(s.id)).map((s) => s.id));
+      const drop = new Set(finished.slice(0, finished.length - FINISHED_SESSIONS_KEEP).filter((s) => !pending.has(s.id) && s.key !== todaysOffice).map((s) => s.id));
       d.sessions = d.sessions.filter((s) => !drop.has(s.id));
     }
     for (const s of d.sessions) if (s.seen.length > SEEN_CAP) s.seen = s.seen.slice(-SEEN_CAP);

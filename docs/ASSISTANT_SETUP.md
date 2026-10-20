@@ -186,9 +186,9 @@ agent's prompt names the same four — nothing else starts it:
 4. **The daily office check** (your answer, 2026-10-20: *"One daily office
    check"*): at 7am Eastern, Monday to Saturday — never Sunday — weather for
    today's and tomorrow's jobs, invoices unpaid past their terms, equipment due
-   for service, and anything waiting on you. It reports in the app: the report
-   is in Activity, and Today shows one line for it (running, done, or that it
-   could not run). Anything it wants to send still waits for your OK. It has no
+   for service, and anything waiting on you. It reports in the app: Today shows
+   where it stands (running, done, or that it could not run) and, once it is
+   done, its report in its own words; the report is in Activity too. Anything it wants to send still waits for your OK. It has no
    switch of its own: it runs whenever `ARBO_AGENT` is `live`. If Arbo was off or
    down between 7 and 10am, Today says the check did not run that day.
 
@@ -256,8 +256,10 @@ agent's prompt names the same four — nothing else starts it:
    description starts "UNCONFIRMED - Mike confirms the time." (R18, R14).
 5. **Quiet hours: Arbo refuses your Allow on a customer text before 8am or after
    9pm Eastern.** The card stays and nothing is sent; allow it after 8, or deny
-   it. Two kinds are not held: a reply to the customer whose own text or call
-   started that job, and a text to a number in `ARBO_AGENT_CREW_NUMBERS` (step 4).
+   it. Two kinds are not held: a reply, within the hour, to the customer whose
+   own text or call started that job, and a text to a number in
+   `ARBO_AGENT_CREW_NUMBERS` (step 4). A reply to someone who texted hours
+   earlier waits until 8, like any other text.
    A text the agent starts — an offer, a review request, an invoice reminder —
    names Art-is-Tree and ends with "Reply STOP to opt out." That is a prompt
    rule; the card shows you the words before it goes.
@@ -270,7 +272,8 @@ agent's prompt names the same four — nothing else starts it:
    list hasn't been seen yet. After the first session, the Console shows
    Square's tools on the agent. Send Claude that list, and the read-only ones
    (looking up invoices and payments) can be set to run on their own, one line
-   each. A Square call with no amount in it (a lookup, sending an invoice) says
+   each. Until then, the 7am office check asks you to allow each Square lookup
+   before it can list unpaid invoices. A Square call with no amount in it (a lookup, sending an invoice) says
    "no amount in this request" with a warning. Every Square Allow takes two
    taps, the second a moment after the first, so a bump never charges.
 8. **Customer details never go into a web search.** Names, numbers, emails and
