@@ -47,49 +47,49 @@
 // The hold is 20 minutes (the estimate slot length the route planner uses)
 // and it is ALWAYS unconfirmed: Mike confirms, never Arbo (golden rule 3).
 
+import { etOffsetMs, etToday } from '../lib/etDay.js';
+
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 export const HOLD_MINUTES = 20;
 
 export interface RequestedWindow {
   startIso: string;
   endIso: string;
-  /** What the parser understood, for the event description. */
+  /** What the parser understood, for the event description — with the ET date it resolved to. */
   label: string;
 }
 
-const ET_PARTS = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'America/New_York',
-  weekday: 'short',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: 'numeric',
-  hour12: false,
-});
-
-function etNow(now: Date): { weekdayIdx: number; hour: number } {
-  const parts = ET_PARTS.formatToParts(now);
-  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
-  const idx = WEEKDAYS.findIndex((d) => d.startsWith(get('weekday').toLowerCase()));
-  return { weekdayIdx: idx, hour: Number(get('hour')) % 24 };
+/**
+ * Today in Hampton Roads, read ONCE from the shared ET-day helper — the day
+ * and the weekday both come from that one reading, never a second clock.
+ * The weekday is UTC arithmetic on the ET date label, which carries no zone.
+ */
+function etTodayParts(now: Date): { y: number; m: number; d: number; weekdayIdx: number } {
+  const [y, m, d] = etToday(now).split('-').map(Number) as [number, number, number];
+  return { y, m, d, weekdayIdx: new Date(Date.UTC(y, m - 1, d)).getUTCDay() };
 }
 
 /**
- * The ET wall-clock slot, expressed as a UTC instant. Built by taking the
- * current UTC time, adding whole days, then pinning the ET hour via the
- * fixed-offset trick: format the target day in ET, rebuild at the hour.
+ * The ET wall-clock slot `hour:00` on the ET calendar day `daysAhead` after
+ * today, as a UTC instant. The day is calendar-label arithmetic on ET's own
+ * date (H3, 2026-10-20: the UTC date of now + N×24h put every call after
+ * 8pm EDT / 7pm EST a day late). The hour is pinned with ET's offset AT the
+ * slot (two reads, so a DST change between midnight and the slot lands right).
  */
 function etSlot(now: Date, daysAhead: number, hour: number): Date {
-  const day = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000);
-  // Find the UTC timestamp at which ET shows `hour:00` on `day`'s ET date.
-  // Probe: take day at 12:00 UTC, read its ET hour, and shift.
-  const probe = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), 12, 0, 0));
-  const probeEtHour = Number(
-    new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false })
-      .formatToParts(probe)
-      .find((p) => p.type === 'hour')?.value ?? '12',
-  ) % 24;
-  return new Date(probe.getTime() + (hour - probeEtHour) * 60 * 60 * 1000);
+  const { y, m, d } = etTodayParts(now);
+  const wall = Date.UTC(y, m - 1, d + daysAhead, hour, 0, 0); // the slot's ET wall clock, written as if UTC
+  const guess = wall - etOffsetMs(new Date(wall));
+  return new Date(wall - etOffsetMs(new Date(guess)));
+}
+
+/** "Tue Oct 20" — the ET calendar day `daysAhead` after today, for the hold label. */
+function etDateLabel(now: Date, daysAhead: number): string {
+  const { y, m, d } = etTodayParts(now);
+  const day = new Date(Date.UTC(y, m - 1, d + daysAhead));
+  return `${DAY_SHORT[day.getUTCDay()]} ${MONTH_SHORT[day.getUTCMonth()]} ${day.getUTCDate()}`;
 }
 
 /**
@@ -111,7 +111,7 @@ export function parseRequestedWindow(text: string, now: Date = new Date()): Requ
   } else {
     for (let i = 0; i < WEEKDAYS.length; i++) {
       if (t.includes(WEEKDAYS[i]!)) {
-        const { weekdayIdx } = etNow(now);
+        const { weekdayIdx } = etTodayParts(now);
         let ahead = (i - weekdayIdx + 7) % 7;
         if (ahead === 0) ahead = 7; // "Wednesday" said ON a Wednesday means next week
         daysAhead = ahead;
@@ -156,6 +156,7 @@ export function parseRequestedWindow(text: string, now: Date = new Date()): Requ
   return {
     startIso: start.toISOString(),
     endIso: new Date(start.getTime() + HOLD_MINUTES * 60 * 1000).toISOString(),
-    label: `${dayLabel} ${timeLabel}`.trim(),
+    // The absolute date rides the label, so the hold says which day "tomorrow" was.
+    label: `${`${dayLabel} ${timeLabel}`.trim()} (${etDateLabel(now, daysAhead)})`,
   };
 }
