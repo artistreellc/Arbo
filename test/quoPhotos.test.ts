@@ -246,7 +246,7 @@ describe('where the ids come from: Quo’s own read and its signed webhook', () 
 
   const FACTS: StudyFacts = { customerName: 'SIM-Dana', wants: 'oak over the fence', stage: 'waiting_on_us', nextStep: null, toldThem: [], sourcesDisagree: null };
   const msg = (id: string, at: number, direction: 'incoming' | 'outgoing', text: string, media: QuoMessage['media'] = []): QuoMessage => ({ id, direction, text, status: 'delivered', createdAt: new Date(at).toISOString(), media });
-  function studyWith(msgs: QuoMessage[], media: QuoMediaStore | null) {
+  function studyWith(msgs: QuoMessage[], media: QuoMediaStore | null, read: (thread: string) => Promise<StudyFacts> = async () => FACTS) {
     const quo: QuoApi = {
       listPhoneNumbers: async () => [], phoneNumbers: async () => [],
       listConversations: async () => [{ id: 'CN1', phoneNumberId: 'PN1', participants: [CALLER], lastActivityAt: null, updatedAt: null }],
@@ -254,7 +254,7 @@ describe('where the ids come from: Quo’s own read and its signed webhook', () 
       listWebhooks: async () => [], getWebhook: async () => null,
       createWebhook: async () => { throw new Error('never'); }, deleteWebhook: async () => { throw new Error('never'); },
     };
-    return new QuoStudy({ quo, reader: { read: async () => FACTS }, drive: null, media, now: () => NOW, sleep: async () => {} });
+    return new QuoStudy({ quo, reader: { read }, drive: null, media, now: () => NOW, sleep: async () => {} });
   }
 
   it('the R24 study lists what the customer texted, newest first, as ids — and a re-read refreshes the address without a model call', async () => {
@@ -290,6 +290,53 @@ describe('where the ids come from: Quo’s own read and its signed webhook', () 
     const s2 = studyWith(many.slice(0, 2), null);
     await s2.run('PN1', 7 * DAY);
     expect(s2.notes()[0]).toMatchObject({ media: [], mediaNotShown: 2 });
+  });
+
+  it('the study mints ids only for the photos a card shows — one customer’s flood never pushes another customer’s photo out', async () => {
+    const logs = quietLogs();
+    const { http, calls } = fakeHttp(() => photo());
+    const store = new QuoMediaStore({ http, now: () => NOW });
+    // Customer A's photo, minted the way the signed webhook mints it.
+    const earlier = store.mint('MSGW-A', 0, { url: quoUrl('A'), contentType: 'image/jpeg' }).mediaId!;
+    // One thread past the store's cap: 350 texts × 10 photos = 3,500.
+    const flood = Array.from({ length: 350 }, (_, i) => msg(`F${i}`, NOW - (i + 1) * 1000, 'incoming', '', Array.from({ length: 10 }, (_, j) => ({ url: quoUrl(`F${i}-${j}`), contentType: 'image/jpeg' }))));
+    const study = studyWith(flood, store);
+    try {
+      await study.run('PN1', 7 * DAY);
+      const [n] = study.notes();
+      expect(n!.media).toHaveLength(12);
+      expect(n!.mediaNotShown).toBe(3_488); // counted and named, never minted
+      expect(store.size()).toBeLessThanOrEqual(13);
+      // The shown twelve are the newest, in order: F0's ten, then F1's first two.
+      await store.load(n!.media[11]!.mediaId!);
+      expect(calls.at(-1)!.url).toBe(quoUrl('F1-1'));
+      // A second pass (nothing new: no model call) refreshes the same twelve and mints nothing more.
+      expect(await study.run('PN1', 7 * DAY)).toEqual({ read: 0, unchanged: 1, failed: 0 });
+      expect(store.size()).toBeLessThanOrEqual(13);
+      expect(await store.load(earlier)).toMatchObject({ ok: true });
+      expect(calls.at(-1)!.url).toBe(quoUrl('A'));
+    } finally { logs.restore(); }
+  });
+
+  it('a new photo reaches the card even when the model re-read fails — photos need no model', async () => {
+    const store = new QuoMediaStore({ now: () => NOW });
+    const msgs = [msg('M1', NOW - 60_000, 'incoming', 'SIM- the oak by the fence', [{ url: quoUrl('P1'), contentType: 'image/jpeg' }])];
+    let down = false;
+    const study = studyWith(msgs, store, async () => { if (down) throw new Error('model overloaded'); return FACTS; });
+    expect(await study.run('PN1', 7 * DAY)).toEqual({ read: 1, unchanged: 0, failed: 0 });
+    expect(study.notes()[0]!.media).toHaveLength(1);
+    // The customer texts a second photo; the thread changed, so the model re-reads — and fails.
+    msgs.push(msg('M2', NOW - 10_000, 'incoming', '', [{ url: quoUrl('P2'), contentType: 'image/png' }]));
+    down = true;
+    expect(await study.run('PN1', 7 * DAY)).toEqual({ read: 0, unchanged: 0, failed: 1 });
+    const [n] = study.notes();
+    expect(n!.media.map((m) => m.contentType)).toEqual(['image/png', 'image/jpeg']); // the new one first
+    expect(n!.media.every((m) => m.mediaId)).toBe(true);
+    expect(study.status().failed).toBe(1); // the failed read is still named for the panel
+    // The words on the card stay from the last good read until the next one lands.
+    down = false;
+    expect(await study.run('PN1', 7 * DAY)).toEqual({ read: 1, unchanged: 0, failed: 0 });
+    expect(study.notes()[0]!.media).toHaveLength(2);
   });
 
   it('a signed Quo text reaches the Texts list with ids, never an address — wired exactly as the server wires it', async () => {
@@ -389,6 +436,22 @@ describe('GET /api/quo/media/<id> — owner only, an id Arbo minted, the bytes a
       const r = await get(base, `/api/quo/media/${id}`);
       expect(r.status).toBe(401);
       expect(await r.json()).toMatchObject({ error: 'no_app_key' });
+    } finally { srv.close(); logs.restore(); }
+  });
+
+  it('with no APP_ACCESS_KEY the Texts list is locked too — customer numbers and words held in memory never open because the database is cut', async () => {
+    const logs = quietLogs();
+    const store = new QuoMediaStore({ now: () => Date.now() });
+    const { base, srv } = await serve({ APP_ACCESS_KEY: undefined, CREW_ACCESS_KEY: undefined, ARBO_DATA_LINKS: undefined }, store);
+    try {
+      // A text from the business-cell relay sits in memory (that door is open while the database is cut).
+      expect((await fetch(`${base}/api/relay/text`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ from: CALLER, text: 'SIM- private words' }) })).status).toBe(200);
+      const r = await get(base, '/api/webhooks/texts');
+      expect(r.status).toBe(401);
+      const raw = await r.text();
+      expect(JSON.parse(raw)).toMatchObject({ error: 'no_app_key' });
+      expect(raw).not.toContain('5550142');
+      expect(raw).not.toContain('private words');
     } finally { srv.close(); logs.restore(); }
   });
 
@@ -665,6 +728,22 @@ describe('the page: a thumbnail per photo, a named line for everything else', ()
     const strips = w.find('qphotos');
     expect(strips).toHaveLength(1);
     expect(strips[0]!.lines()).toEqual(['storm-muted | 2 more attachments on record — open Quo to see them.']);
+  });
+
+  it('a customer thread the study could not read this pass is named on the panel, never a quietly stale card (§1B)', async () => {
+    const panelFor = (failed: number) => pageFn<(limit: number) => Promise<N>>('studyPanel', {
+      api: async () => ({ status: { reading: true, lastAt: '2026-10-20T14:00:00Z', quoError: null, driveError: null, driveFiles: 0, failed }, notes: [] }),
+      el, chip: (t: string) => el('span', 'badge', t), plural: (k: number, one: string) => `${k} ${one}${k === 1 ? '' : 's'}`, fmtTime: () => '', feedLine: () => el('div'),
+      STUDY_STAGE: {}, photoStrip: () => el('div', 'qphotos'),
+    });
+    expect((await panelFor(2)(5)).lines()).toContain('feed-state unread | 2 customer threads could not be read this pass — those cards may be out of date until the next read.');
+    expect((await panelFor(0)(5)).lines().join('\n')).not.toContain('could not be read this pass');
+  });
+
+  it('Calls › Texts: a 401 is named, not a missing panel — the server locks the list with no APP_ACCESS_KEY (§1B)', () => {
+    const calls = fnSrc('renderCalls');
+    expect(calls).not.toContain("if (e.code !== 401) { txSlot.appendChild(el('div', 'panel-title', 'Texts'));");
+    expect(calls).toContain("'Texts: locked — either this phone’s key was not accepted, or APP_ACCESS_KEY isn’t set on the server. That doesn’t mean there are no texts.'");
   });
 
   it('the page names no media host and never builds a photo address with the key in it', () => {

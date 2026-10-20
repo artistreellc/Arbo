@@ -1806,6 +1806,9 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
         }
       }
       if (req.method === 'GET' && url.pathname === '/api/webhooks/texts') {
+        // Customers' numbers and words, held in MEMORY — "nothing to leak while
+        // the database is cut" does not hold here, so no app key means locked.
+        if (!env.appAccessKey) return send(401, { error: 'no_app_key', message: 'APP_ACCESS_KEY is not set — customer texts are locked until it is.' });
         // Practice mode adds one SIM text whose photo is the repo placeholder — never a customer's.
         const texts = dataLinksSim() ? [...simQuoTexts(quoMedia, Date.now()), ...webhooks.texts()].sort((a, b) => b.at.localeCompare(a.at)) : webhooks.texts();
         return send(200, {

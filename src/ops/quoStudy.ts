@@ -256,14 +256,14 @@ export class QuoStudy {
       ...msgs.map((m) => m.id),
       ...mine.map((l) => `${l.file}:${l.text.length}:${l.text.slice(0, 40)}`),
     ].join('|');
-    // Before the unchanged return: every pass re-mints from this read, so a
-    // photo's address stays as fresh as Quo's last answer, at no model cost.
+    // Before the unchanged return AND before the model: every pass re-mints
+    // from this read, so a photo's address stays as fresh as Quo's last
+    // answer at no model cost — and a new photo reaches the card even when
+    // the re-read below fails (the failure is counted on status()).
     const attached = this.mediaOf(msgs);
     const prev = this.byConversation.get(conversationId);
-    if (prev && prev.key === key) {
-      prev.note = { ...prev.note, ...attached };
-      return 'unchanged';
-    }
+    if (prev) prev.note = { ...prev.note, ...attached };
+    if (prev && prev.key === key) return 'unchanged';
 
     const events: Array<{ at: string; text: string }> = [];
     for (const c of done) events.push({ at: c.createdAt ?? '', text: this.callText(c, t10) });
@@ -296,21 +296,23 @@ export class QuoStudy {
     return 'read';
   }
 
-  /** What the customer texted besides words — newest first, an id per photo, the overflow counted. */
+  /**
+   * What the customer texted besides words — newest first, the overflow
+   * counted. Ids are minted ONLY for what the card shows: the store is
+   * shared and capped, so minting a whole thread's attachments would let one
+   * customer's flood push every other customer's photo out of it.
+   */
   private mediaOf(msgs: QuoMessage[]): { media: StudyMedia[]; mediaNotShown: number } {
-    const all: StudyMedia[] = [];
-    let unlisted = 0;
+    const all: Array<{ messageId: string; index: number; item: NonNullable<QuoMessage['media']>[number]; at: string | null }> = [];
     for (const m of msgs) {
       if (m.direction !== 'incoming' || !m.media?.length) continue;
-      if (!this.deps.media) {
-        unlisted += m.media.length;
-        continue;
-      }
-      const ids = this.deps.media;
-      m.media.forEach((item, i) => all.push({ ...ids.mint(m.id, i, item), at: m.createdAt }));
+      m.media.forEach((item, index) => all.push({ messageId: m.id, index, item, at: m.createdAt }));
     }
-    all.sort((a, b) => (b.at ?? '').localeCompare(a.at ?? ''));
-    return { media: all.slice(0, MEDIA_PER_NOTE), mediaNotShown: unlisted + Math.max(0, all.length - MEDIA_PER_NOTE) };
+    const ids = this.deps.media;
+    if (!ids) return { media: [], mediaNotShown: all.length };
+    all.sort((a, b) => (b.at ?? '').localeCompare(a.at ?? '')); // stable: one text's items keep their order
+    const media = all.slice(0, MEDIA_PER_NOTE).map((x) => ({ ...ids.mint(x.messageId, x.index, x.item), at: x.at }));
+    return { media, mediaNotShown: all.length - media.length };
   }
 
   private callText(c: QuoCall, t10: string): string {

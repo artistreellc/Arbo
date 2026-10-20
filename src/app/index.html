@@ -1374,6 +1374,8 @@ async function studyPanel(limit) {
   if (st.quoError) wrap.appendChild(el('div', 'storm', 'Arbo could not read Quo (' + st.quoError + ') \u2014 notes below are from the last good read.'));
   // A log Arbo could not read is a dead feed (§1B) — the feed-state row, never the help-tip style.
   if (st.driveError) wrap.appendChild(el('div', 'feed-state unread', 'Your assistant\u2019s lead logs: not read (' + st.driveError + ').'));
+  // A thread the model could not re-read keeps its last good words — named, never a quietly stale card (§1B).
+  if (st.failed) wrap.appendChild(el('div', 'feed-state unread', plural(st.failed, 'customer thread') + ' could not be read this pass \u2014 those cards may be out of date until the next read.'));
   const notes = (d.notes || []).filter((n) => n.stage !== 'not_a_customer');
   const waiting = notes.filter((n) => n.stage === 'waiting_on_us').length;
   if (!st.lastAt) { wrap.appendChild(el('div', 'storm-muted', 'Reading your customer threads\u2026 (the first read starts 2 minutes after Arbo restarts)')); return wrap; }
@@ -1422,7 +1424,7 @@ function fillQuoSlots(reads, slots) {
       const q = el('div');
       q.appendChild(el('div', 'panel-title', 'Quo'));
       q.appendChild(links === 'simulation'
-        ? el('div', 'feed-state sim', Cap(FEED_WORD.sim) + ' — no customer threads, texts or Sona calls show here; the real ones stay in Quo.')
+        ? el('div', 'feed-state sim', Cap(FEED_WORD.sim) + ' — no real customer threads, texts or Sona calls show here; those stay in Quo.') // "real": the PRACTICE text under Calls › Texts is made up
         : el('div', 'feed-state unset', 'Quo isn’t connected to Arbo yet — Arbo can’t read your customer threads, can’t text anyone, and Sona’s calls aren’t reaching Arbo. That doesn’t mean there are no customer threads or Sona calls.'));
       slots[0].appendChild(q);
       return;
@@ -3077,7 +3079,11 @@ async function renderCalls() {
     let t;
     try { t = await api('/api/webhooks/texts'); }
     catch (e) {
-      if (e.code !== 401) { txSlot.appendChild(el('div', 'panel-title', 'Texts')); txSlot.appendChild(feedLine(e, 'Texts')); }
+      txSlot.appendChild(el('div', 'panel-title', 'Texts'));
+      // A 401 is this phone's key, or a server with no APP_ACCESS_KEY (customer texts are locked then) — named either way (§1B), never a missing panel.
+      txSlot.appendChild(e.code === 401
+        ? el('div', 'feed-state unset', 'Texts: locked — either this phone’s key was not accepted, or APP_ACCESS_KEY isn’t set on the server. That doesn’t mean there are no texts.')
+        : feedLine(e, 'Texts'));
       return;
     }
     txSlot.appendChild(el('div', 'panel-title', 'Texts'));

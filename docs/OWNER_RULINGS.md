@@ -1144,10 +1144,17 @@ and crew preview refused; locked with no `APP_ACCESS_KEY`), fetching only https
 on Quo's media host with no Quo key attached, no redirect off that host, 10 MB
 at most, photo types only (never SVG), within 8 seconds. An id Arbo did not
 mint is a 404. A photo Arbo could not load says so (§1B): *"Photo from Quo —
-couldn't load it, open Quo to see it."*
+couldn't load it, open Quo to see it."* The Calls › Texts list is locked the
+same way with no `APP_ACCESS_KEY` (it holds customers' numbers and words in
+memory, so "nothing to leak while the database is cut" does not apply), and the
+page names the lock instead of dropping the panel.
 
 Defaults Claude used (Mike may change any): customer photos only, not ones our
-side sent; at most 12 per card, newest first, the rest counted; the phone is
+side sent; at most 12 per card, newest first, the rest counted (ids are made
+only for the 12 shown, so one customer's flood of photos never pushes another
+customer's photo out of the in-memory list); a card's photos stay current even
+when the model could not re-read that thread, and the panel names any thread it
+could not read that pass; the phone is
 told not to cache (`no-store`) and the open page holds each photo in memory
 instead; practice mode shows one SIM text with a SIM placeholder photo from the
 repo; the cut Arbo line's (Twilio, R21) attachments are named, no longer linked.

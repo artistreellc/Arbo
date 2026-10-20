@@ -73,10 +73,28 @@ describe('Twilio text HTTP surface', () => {
     const base = `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
     const hook = await fetch(`${base}/webhooks/twilio/sms?key=x`, { method: 'POST', body: 'Body=hi' });
     expect(hook.status).toBe(503);
-    const t = (await (await fetch(`${base}/api/webhooks/texts`)).json()) as { wired: boolean; note: string };
-    expect(t.wired).toBe(false);
-    expect(t.note).toContain('never replies');
+    // Customers' texts are held in memory: with no APP_ACCESS_KEY the list is locked, by name.
+    const locked = await fetch(`${base}/api/webhooks/texts`);
+    expect(locked.status).toBe(401);
+    expect(await locked.json()).toMatchObject({ error: 'no_app_key' });
     srv.close();
+    const saved = { ...process.env };
+    try {
+      vi.resetModules();
+      process.env.APP_ACCESS_KEY = 'admin-k';
+      delete process.env.TWILIO_SMS_WEBHOOK_KEY;
+      const { createArborRequestHandler: fresh } = await import('../src/server.js');
+      const keyed = createServer(fresh());
+      await new Promise<void>((r) => keyed.listen(0, r));
+      const kbase = `http://127.0.0.1:${(keyed.address() as { port: number }).port}`;
+      const t = (await (await fetch(`${kbase}/api/webhooks/texts`, { headers: { 'x-arbor-key': 'admin-k' } })).json()) as { wired: boolean; note: string };
+      expect(t.wired).toBe(false);
+      expect(t.note).toContain('never replies');
+      keyed.close();
+    } finally {
+      process.env = { ...saved };
+      vi.resetModules();
+    }
   });
 
   it('R21: a set key does not hide the cut — /api/webhooks/texts and /calls say linkCut until the link is live', async () => {
@@ -85,20 +103,22 @@ describe('Twilio text HTTP surface', () => {
       // env is read at import, so the key needs a fresh module graph.
       vi.resetModules();
       process.env.TWILIO_SMS_WEBHOOK_KEY = 'tw-key';
+      process.env.APP_ACCESS_KEY = 'admin-k';
       delete process.env.ARBO_LINK_TWILIO;
       delete process.env.ARBO_LINK_ELEVENLABS;
       const { createArborRequestHandler: fresh } = await import('../src/server.js');
       const srv = createServer(fresh());
       await new Promise<void>((r) => srv.listen(0, r));
       const base = `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
-      const t = (await (await fetch(`${base}/api/webhooks/texts`)).json()) as { wired: boolean; linkCut: boolean };
+      const k = { headers: { 'x-arbor-key': 'admin-k' } };
+      const t = (await (await fetch(`${base}/api/webhooks/texts`, k)).json()) as { wired: boolean; linkCut: boolean };
       expect(t.wired).toBe(true);
       expect(t.linkCut).toBe(true);
-      const c = (await (await fetch(`${base}/api/webhooks/calls`)).json()) as { linkCut: boolean };
+      const c = (await (await fetch(`${base}/api/webhooks/calls`, k)).json()) as { linkCut: boolean };
       expect(c.linkCut).toBe(true);
       // Read at call time: reconnecting is the one variable, no restart.
       process.env.ARBO_LINK_TWILIO = 'live';
-      const live = (await (await fetch(`${base}/api/webhooks/texts`)).json()) as { linkCut: boolean };
+      const live = (await (await fetch(`${base}/api/webhooks/texts`, k)).json()) as { linkCut: boolean };
       expect(live.linkCut).toBe(false);
       srv.close();
     } finally {
