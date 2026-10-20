@@ -936,12 +936,13 @@ What this changes in R31:
    separate API key, so it is never sent or shown until Mike says which
    portal field it is.
 
-Open, for Mike, at the amendment (four of these are answered below): applying
-migration 0021 live (his go only); what `BOUNCIE_API_KEY` is; whether the
-day's trips may be reviewed after 8pm (built: no); whether keeping the
-sign-in in Supabase while the business links stay cut is what he meant
-(built: cut by its own switch until he says — setting
-`ARBO_LINK_CREDENTIALS=live` is his yes, and opens that one table only).
+Open, for Mike, at the amendment (three of these four are answered below;
+trips after 8pm is still open): applying migration 0021 live (his go only);
+what `BOUNCIE_API_KEY` is; whether the day's trips may be reviewed after
+8pm (built: no); whether keeping the sign-in in Supabase while the business
+links stay cut is what he meant (built: cut by its own switch until he
+says — setting `ARBO_LINK_CREDENTIALS=live` is his yes, and opens that one
+table only).
 
 *Carried by (amendment):* `src/db/credentialStore.ts`,
 `supabase/migrations/0021_integration_credential.sql`,

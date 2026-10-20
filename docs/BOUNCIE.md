@@ -21,8 +21,10 @@ says where things stand.
 - **Owner only.** The crew door never shows it, and the crew key cannot open it.
 - **Working hours only: 8am–8pm, Monday to Saturday** — the same hours as
   the office phone's location (`src/ops/locationIntel.ts`). Outside them
-  Arbo reads nothing from Bouncie and holds no position (what it held is
-  dropped within a minute of 8pm, whether or not anyone has the app open);
+  Arbo reads nothing from Bouncie — the once-a-day sign-in renewal
+  (*Good to know*) is the only call then, and it reads no truck — and holds
+  no position (what it held is dropped within a minute of 8pm, whether or
+  not anyone has the app open);
   the Fleet line says *After hours — not tracking*. A report stamped after hours is never kept or
   shown, even if it arrives the next morning.
 - **Reads only.** Arbo signs in and reads your vehicles and their trips. It
@@ -223,7 +225,10 @@ answer, never "no trips". At most one read a minute per truck and day.
   fails (Bouncie didn't answer), Settings says **NOT RENEWED** — *couldn't
   renew the sign-in at* the time — and offers **Reconnect Bouncie**; Arbo
   tries again within the hour (never more often). Tap Reconnect if it keeps
-  failing. If Bouncie refuses it outright, Settings says **EXPIRED**.
+  failing. If Bouncie refuses it outright, Settings says **EXPIRED**. If
+  Supabase couldn't be read (at a restart, say), the sign-in is read again
+  within the hour, nights and Sunday too — nobody has to open Settings — and
+  renewed once it can be.
 - Bouncie gives a new refresh token every time Arbo renews the sign-in, and
   the old one stops working. Arbo saves the new one in Supabase **before**
   using it. If Supabase won't take it, Settings says **NOT SAVED**: Arbo holds

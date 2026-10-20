@@ -1342,7 +1342,8 @@ export class Bouncie {
    *     within a minute of 8pm even when nobody asks; a request is not what makes it true.
    *   - A renewed sign-in Supabase would not take is saved again, whatever the hour: it is Arbo's
    *     own sign-in, not a location, and if Arbo restarts before it is saved the sign-in is lost.
-   *   - The daily keep-alive (keepAlive): the one call to Bouncie the tick may make — a token swap.
+   *   - The daily keep-alive (keepAlive): the one call to Bouncie the tick may make — a token swap —
+   *     and, while the sign-in store could not be read, one read of that row at most hourly.
    */
   async tick(): Promise<void> {
     try {
@@ -1370,31 +1371,53 @@ export class Bouncie {
    * at every tick) or the sign-in is not connected — keys missing, not connected,
    * expired, a store problem, or a renewal still waiting to be saved. A failed one
    * is named in Settings (status().keepAlive) and tried again no more than hourly.
+   *
+   * A store problem would otherwise stop it for good: only ensureLoaded() clears
+   * one, and nothing on the minute tick calls it (Settings does; the Fleet card
+   * does not while positions are cut). So a sign-in store that could not be read —
+   * at boot, or the look after a refused renewal — is read again HERE, no more
+   * than hourly, and only while the switch is open (rereadFailedStore).
    */
   private async keepAlive(): Promise<void> {
-    if (this.keepAliveBusy || !credentialLinkOpen() || this.signInState() !== 'connected') return;
+    if (this.keepAliveBusy || !credentialLinkOpen()) return;
+    this.keepAliveBusy = true;
+    try {
+      await this.rereadFailedStore();
+      if (this.signInState() !== 'connected') return;
+      await this.renewIfDue();
+    } finally {
+      this.keepAliveBusy = false;
+    }
+  }
+
+  /** The sign-in store could not be read: read it again, at most hourly. Not configured needs a deploy, so it is not retried. */
+  private async rereadFailedStore(): Promise<void> {
+    const p = this.store.problemNow();
+    if (!this.configured() || p === null || p === 'unconfigured' || this.unsaved) return;
+    const at = this.store.lastLoad();
+    if (at !== null && this.now() - at < KEEP_ALIVE_RETRY_MS) return;
+    await this.store.load(this.now());
+  }
+
+  /** The renewal itself, on a connected sign-in: due 20 hours after the last one, a failure retried at most hourly. */
+  private async renewIfDue(): Promise<void> {
     const rec = this.store.current();
     if (!rec) return;
     const now = this.now();
     const renewedAt = Date.parse(rec.savedAt);
     if (Number.isFinite(renewedAt) && now - renewedAt < KEEP_ALIVE_AFTER_MS) return; // renewed within 20 hours
     if (this.keepAliveFailedAt !== null && now - this.keepAliveFailedAt < KEEP_ALIVE_RETRY_MS) return; // at most hourly
-    this.keepAliveBusy = true;
     const gen = this.generation;
-    try {
-      const r = await this.oneAtATime(() => this.refresh(rec));
-      if (gen !== this.generation) return; // a Connect landed meanwhile: newer than this renewal — not a failure
-      if (r.ok) {
-        this.keepAliveFailedAt = null;
-        console.log('[bouncie] keep-alive: the sign-in is renewed');
-        return;
-      }
-      if (this.unsaved) return; // renewed at Bouncie, not saved yet: NOT SAVED names it, and the tick saves it
-      this.keepAliveFailedAt = now;
-      console.error(`[bouncie] keep-alive: the sign-in was not renewed (${r.reason}) — Arbo tries again within the hour`);
-    } finally {
-      this.keepAliveBusy = false;
+    const r = await this.oneAtATime(() => this.refresh(rec));
+    if (gen !== this.generation) return; // a Connect landed meanwhile: newer than this renewal — not a failure
+    if (r.ok) {
+      this.keepAliveFailedAt = null;
+      console.log('[bouncie] keep-alive: the sign-in is renewed');
+      return;
     }
+    if (this.unsaved) return; // renewed at Bouncie, not saved yet: NOT SAVED names it, and the tick saves it
+    this.keepAliveFailedAt = now;
+    console.error(`[bouncie] keep-alive: the sign-in was not renewed (${r.reason}) — Arbo tries again within the hour`);
   }
 
   /** A keep-alive failure still standing: none since, and the sign-in not renewed after it some other way. */

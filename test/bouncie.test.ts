@@ -2399,6 +2399,100 @@ describe('keep the sign-in alive (Mike, 2026-10-20: "Keep the sign-in alive") �
     expect((await b.status()).keepAlive).toEqual({ failedAt: null });
   });
 
+  it('a sign-in store that failed its one read at boot is read again by the tick, no more than hourly — a Sunday with nobody opening Settings is still renewed (review)', async () => {
+    delete process.env.ARBO_LINK_BOUNCIE; // positions cut, as at go-live: the Fleet card never reloads the sign-in then
+    const sb = fakeSupabase();
+    await connected({ clock: { t: SUNDAY - 21 * H }, http: fakeBouncie({ grants: [grant(1)] }).http, tokens: sbTokens(sb) }); // saved Saturday 3:00 PM by the Arbo before this one
+    const gets = () => sb.calls.filter((c) => c.method === 'GET').length;
+    sb.state.read = 'throw'; // a redeploy Sunday noon: Supabase fails this Arbo's one read at boot
+    const f = fakeBouncie({ grants: [grant(2)] });
+    const boot = SUNDAY;
+    const { b, clock } = make({ clock: { t: boot }, http: f.http, tokens: sbTokens(sb) });
+    await b.ready();
+    sb.state.read = 200; // and is fine from then on
+    expect(b.signInState()).toBe('store_unreadable');
+    const booted = gets();
+    // Inside the hour: neither the tick nor the Fleet card's poll reads Supabase again, and nothing is renewed.
+    for (const m of [1, 10, 30, 59]) {
+      clock.t = boot + m * min;
+      await b.tick();
+      expect((await b.positions(UNITS)).state).toBe('link_cut');
+    }
+    expect(gets()).toBe(booted);
+    // An hour on, read again — still failing: named, and not read again for another hour.
+    sb.state.read = 503;
+    clock.t = boot + H;
+    await b.tick();
+    expect(gets()).toBe(booted + 1);
+    expect(b.signInState()).toBe('store_unreadable');
+    sb.state.read = 200;
+    clock.t = boot + H + 59 * min;
+    await b.tick();
+    expect(gets()).toBe(booted + 1);
+    expect(f.calls).toEqual([]);
+    // With the switch cut the tick touches Supabase not at all, however long it has been.
+    delete process.env.ARBO_LINK_CREDENTIALS;
+    const sbCalls = sb.calls.length;
+    for (let h = 2; h <= 5; h++) {
+      clock.t = boot + h * H;
+      await b.tick();
+    }
+    expect(sb.calls).toHaveLength(sbCalls);
+    expect(f.calls).toEqual([]);
+    // Open, Supabase answering: one read, and the 21-hour-old sign-in is renewed — one swap, saved sealed.
+    process.env.ARBO_LINK_CREDENTIALS = 'live';
+    const renewed = boot + 5 * H + min; // Sunday 5:01 PM
+    clock.t = renewed;
+    await b.tick();
+    expect(gets()).toBe(booted + 2);
+    expect(f.tokenCalls()).toHaveLength(1);
+    expect(f.tokenCalls()[0]!.body).toMatchObject({ grant_type: 'refresh_token', refresh_token: 'REFRESH-FAKE-1' });
+    expect(sb.plain()).toMatchObject({ accessToken: 'ACCESS-FAKE-2', refreshToken: 'REFRESH-FAKE-2', savedAt: iso(renewed) });
+    expect(b.signInState()).toBe('connected');
+    // Connected: nothing more read from Supabase or asked of Bouncie for the rest of the day.
+    for (let h = 1; h <= 6; h++) {
+      clock.t = renewed + h * H;
+      await b.tick();
+    }
+    expect(gets()).toBe(booted + 2);
+    expect(f.tokenCalls()).toHaveLength(1);
+    onlyTokenSwaps(f);
+  });
+
+  it('a refused renewal whose look in Supabase failed is not UNREADABLE for good: the tick reads the store again within the hour, and the same refusal is then EXPIRED (review)', async () => {
+    const sb = fakeSupabase();
+    const refused = () => answer(400, { error: 'invalid_grant' });
+    const f = fakeBouncie({ grants: [grant(1), refused, refused] });
+    const { b, clock } = await connected({ http: f.http, tokens: sbTokens(sb) });
+    const gets = () => sb.calls.filter((c) => c.method === 'GET').length;
+    const first = T0 + 20 * H; // Wednesday 6:00 AM
+    clock.t = first;
+    sb.state.read = 503; // Bouncie refuses, and Supabase can't be read to look for a newer pair
+    await b.tick();
+    expect(f.tokenCalls()).toHaveLength(2);
+    expect(b.signInState()).toBe('store_unreadable'); // a look that failed is never "expired"
+    sb.state.read = 200;
+    const looked = gets();
+    for (const m of [1, 30, 59]) {
+      clock.t = first + m * min;
+      await b.tick();
+    }
+    expect(gets()).toBe(looked);
+    expect(f.tokenCalls()).toHaveLength(2);
+    clock.t = first + H;
+    await b.tick();
+    // Read again: the same pair, so the renewal is tried once more, Supabase holds nothing newer — EXPIRED, by name.
+    expect(f.tokenCalls()).toHaveLength(3);
+    expect(b.signInState()).toBe('expired');
+    for (let h = 2; h <= 4; h++) {
+      clock.t = first + h * H;
+      await b.tick();
+    }
+    expect(f.tokenCalls()).toHaveLength(3); // the refused token is never sent again
+    expect(bouncieRows(await b.status())[0]![0]).toBe('EXPIRED');
+    onlyTokenSwaps(f);
+  });
+
   it('the Settings card: a failed renewal offers Reconnect on a connected sign-in; without one there is no button', async () => {
     const run = async (status: unknown) => {
       const api = async () => status;
@@ -2491,6 +2585,20 @@ describe('Mike\'s three answers are filed in his words, and the docs say what is
     expect(doc).toContain('20 hours');
     expect(doc).toContain('applied live 2026-10-20');
     expect(doc).not.toContain('It is **not applied yet**');
+  });
+
+  it('the count and the claims are exact (review): three of four answered, the renewal named as the one call after hours, a failed store read retried by the tick', () => {
+    const rulings = read('../docs/OWNER_RULINGS.md');
+    const r31 = rulings.slice(rulings.indexOf('## R31 — '));
+    expect(r31).not.toContain('(four of these are answered below)');
+    expect(r31).toContain('(three of these four are answered below; trips after 8pm is still open)');
+    const doc = read('../docs/BOUNCIE.md');
+    expect(doc).toContain('Outside them Arbo reads nothing from Bouncie — the once-a-day sign-in renewal (*Good to know*) is the only call then, and it reads no truck —');
+    expect(doc).toContain('read again within the hour');
+    const decisions = read('../DECISIONS.md');
+    const d95 = decisions.slice(decisions.indexOf('| D95 |'));
+    expect(d95).not.toContain('once a request reloads it');
+    expect(d95).toContain('reads it again itself, at most hourly');
   });
 
   it('0021 says applied live; DATA_LINKS names the credential door; GO_LIVE has the Bouncie steps; CLAUDE.md §3 names the one exception', () => {
