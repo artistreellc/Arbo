@@ -1059,6 +1059,17 @@ async function locationStrip() {
 
 // ---------- Inbox intents (R17 — mail that means something, surfaced; a dead feed NAMED, never a quiet zero) ----------
 async function inboxIntentPanel() {
+  // M12: mail the watch knows it has NOT read — named until a catch-up reads it, never "nothing needs you".
+  const gmailGapLine = (g) => {
+    if (!g) return null;
+    const to = fmtTime(g.toIso);
+    const words = g.why === 'no_record'
+      ? 'Arbo has no record of reading Gmail before ' + to + ' \u2014 mail from before then was not checked here. Tap Catch up \u2192 Last week.'
+      : g.why === 'catchup_capped'
+        ? 'Arbo\u2019s catch-up from ' + fmtTime(g.fromIso) + ' to ' + to + ' hit its 250-message limit \u2014 some mail in that stretch may not have been read. Check Gmail for it.'
+        : 'Gmail from ' + fmtTime(g.fromIso) + ' to ' + to + ' is older than Arbo can reach (10 days) and was never read here \u2014 check Gmail directly.';
+    return el('div', 'feed-state unread', words);
+  };
   let d;
   try { d = await api('/api/inbox/intents'); }
   catch (e) { return e.code === 401 ? null : feedLine(e, 'Inbox'); }
@@ -1076,10 +1087,14 @@ async function inboxIntentPanel() {
     const why = sim ? Cap(FEED_WORD.sim) + ' — Arbo isn’t reading your Gmail here.'
       : unset ? 'Gmail isn’t connected, so Arbo can’t check your inbox.'
       : (!r || r === 'inbox watch has not completed a pass') ? 'Arbo hasn’t finished its first inbox check yet.'
-      : 'Arbo couldn’t read Gmail on its last check.';
+      : 'Arbo couldn’t read Gmail on its last check' + (d.gmailUnavailableSince ? ' (not since ' + fmtTime(d.gmailUnavailableSince) + ')' : '') + '.';
     wrap.appendChild(el('div', 'feed-state ' + (sim ? 'sim' : unset ? 'unset' : 'unread'), why + ' That doesn’t mean no mail came in.'));
+    const gl0 = gmailGapLine(d.gmailGap);
+    if (gl0) wrap.appendChild(gl0);
     return wrap;
   }
+  const gapLine = gmailGapLine(d.gmailGap);
+  if (gapLine) wrap.appendChild(gapLine);
   if (d.pipeline === 'pattern_only') {
     wrap.appendChild(el('div', 'storm-muted',
       '⚠ Arbo’s mail reader is down — sorting mail by simple rules for now. Odd-format mail may sit in the ignored log.'));
@@ -1168,7 +1183,8 @@ async function inboxIntentPanel() {
 
   for (const it of d.surfaced.slice(0, 10)) wrap.appendChild(intentCard(it));
   if (d.surfaced.length === 0 && d.maybe.length === 0) {
-    wrap.appendChild(el('div', 'storm-muted', 'Nothing needs you in the inbox right now.'));
+    // M12: never "nothing needs you" over mail Arbo knows it did not read.
+    wrap.appendChild(el('div', 'storm-muted', d.gmailGap ? 'Nothing needs you in the mail Arbo has read \u2014 but see the gap above.' : 'Nothing needs you in the inbox right now.'));
   }
   if (d.maybe.length > 0) {
     wrap.appendChild(el('div', 'panel-title', 'Maybe — check this'));
@@ -1194,10 +1210,17 @@ async function inboxIntentPanel() {
   {
     const row = el('div', 'actions');
     const sel = el('select', 'minibtn');
-    for (const [mins, lab] of [[5, 'Last 5 minutes'], [15, 'Last 15 minutes'], [30, 'Last 30 minutes'], [60, 'Last hour'], [1440, 'Last day'], [10080, 'Last week']]) {
+    for (const [mins, lab] of [[5, 'Last 5 minutes'], [15, 'Last 15 minutes'], [30, 'Last 30 minutes'], [60, 'Last hour'], [1440, 'Last day'], [10080, 'Last week'], [14390, 'Last 10 days']]) {
       sel.appendChild(new Option(lab, String(mins)));
     }
     sel.value = '1440';
+    // M12: a gap Arbo can still reach is offered first — "Since <when>".
+    const g = d.gmailGap;
+    if (g && g.why === 'no_record') sel.value = '10080';
+    else if (g && g.fromIso && g.why === 'catchup_capped') {
+      const mins = Math.ceil((Date.now() - Date.parse(g.fromIso)) / 60000) + 1;
+      if (mins <= 14390) { sel.insertBefore(new Option('Since ' + fmtTime(g.fromIso) + ' (the gap)', String(mins)), sel.firstChild); sel.value = String(mins); }
+    }
     const cu = el('button', 'minibtn', 'Catch up');
     cu.onclick = async () => {
       cu.disabled = true; sel.disabled = true; cu.textContent = 'Scanning…';
@@ -1482,11 +1505,9 @@ function openSonaCall(callId) {
   };
   look();
 }
-// M15: wiring that is not whole is tried again on its own \u2014 the line says when, so a wait never reads as a quiet phone.
-function quoRegLine(reg) {
-  return reg.detail + (reg.retryAt ? ' Arbo tries again at ' + fmtTime(reg.retryAt) + ' \u2014 no redeploy needed.' : '');
-}
 async function sonaPanel(limit, withTranscripts) {
+  // M15: wiring that is not whole is tried again on its own \u2014 the line says when, so a wait never reads as a quiet phone.
+  const quoRegLine = (reg) => reg.detail + (reg.retryAt ? ' Arbo tries again at ' + fmtTime(reg.retryAt) + ' \u2014 no redeploy needed.' : '');
   let d;
   try { d = await api('/api/quo'); }
   catch (e) {
@@ -5328,7 +5349,7 @@ async function buildSettings(v, gen) {
     // The row names Quo once: Settings words the not-connected state itself, and
     // a failed or pending registration reads as the intake's own sentence after the label.
     row.appendChild(el('span', '', 'Quo (Sona calls & texts) \u2014 ' + (ok ? q.received + ' received' + (q.lastAt ? ', last ' + fmtTime(q.lastAt) : ' since Arbo last restarted')
-      : reg.state === 'not_configured' ? 'not connected to Arbo yet, so Sona\u2019s calls aren\u2019t reaching Arbo' : quoRegLine(reg))));
+      : reg.state === 'not_configured' ? 'not connected to Arbo yet, so Sona\u2019s calls aren\u2019t reaching Arbo' : reg.detail + (reg.retryAt ? ' Arbo tries again at ' + fmtTime(reg.retryAt) + ' \u2014 no redeploy needed.' : ''))));
     v.appendChild(row);
     // R33 (Mike, 2026-10-20: "connect quo as read only"): what Arbo may do in Quo — only as the server says it.
     if (reg.state !== 'not_configured' && q.quoWrites) {

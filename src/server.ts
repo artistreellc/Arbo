@@ -194,6 +194,7 @@ import {
   unavailablePass,
   type InboxWatchHandle,
 } from './ops/inboxWatch.js';
+import { InboxStateFile } from './ops/inboxWatchState.js';
 import { IntentWatch } from './ops/intentWatch.js';
 import { IntentRegistry } from './ops/intentRegistry.js';
 import { InboxSurfaceStore } from './ops/inboxSurface.js';
@@ -1358,6 +1359,9 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
         return send(200, {
           pipeline: !gmailReadable ? 'no_gmail' : !s.modelConfigured ? 'pattern_only' : 'live',
           gmailReason: !gmailReadable ? (last?.reason ?? 'inbox watch has not completed a pass') : null,
+          // M12: mail the watch knows it has NOT read, and how long Gmail has been down — named, never "nothing needs you".
+          gmailGap: inboxWatch?.state().gap ?? null,
+          gmailUnavailableSince: inboxWatch?.state().unavailableSince ?? null,
           ...intentWatch.store.snapshot(now),
           zeroFlag: intentWatch.store.zeroSurfacedFlag(now, gmailReadable),
           proposals: intentWatch.registry.pendingProposals(),
@@ -2095,7 +2099,9 @@ export function startServer(port: number) {
     new IntentRegistry(),
     new InboxSurfaceStore(),
   );
-  inboxWatch = startInboxWatch(gmailReader, { onMessage: intentWatch.observer });
+  // M12: the last good read is kept on the storage disk, so the first good
+  // pass after a Gmail outage (or a restart) reads from there, bounded.
+  inboxWatch = startInboxWatch(gmailReader, { onMessage: intentWatch.observer, stateStore: new InboxStateFile() });
   // Sona via Quo: register Arbo's webhooks in the background — the server
   // listens meanwhile, and every outcome is named on /api/quo.
   if (currentQuoIntake && env.quoApiKey) {

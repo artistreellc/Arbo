@@ -107,9 +107,9 @@ describe('M15 — Quo wiring tries again instead of waiting for the next deploy'
     expect(src).toContain('startQuoWiring<QuoLine>({');
     expect(src).toContain('onRetry: (nextAt, attempts) => intake.noteWiringRetry(nextAt, attempts),');
     const html = readFileSync(new URL('../src/app/index.html', import.meta.url), 'utf8');
-    expect(html).toContain("reg.detail + (reg.retryAt ? ' Arbo tries again at ' + fmtTime(reg.retryAt)");
+    expect(html).toContain("const quoRegLine = (reg) => reg.detail + (reg.retryAt ? ' Arbo tries again at ' + fmtTime(reg.retryAt)");
     expect(html).toContain('quoRegLine(st.registration)');
-    expect(html).toContain(': quoRegLine(reg))));');
+    expect(html).toContain(": reg.detail + (reg.retryAt ? ' Arbo tries again at ' + fmtTime(reg.retryAt)");
   });
 
   it('every Quo call carries a deadline, so a hung Quo fails and is named instead of stalling the wiring', async () => {
