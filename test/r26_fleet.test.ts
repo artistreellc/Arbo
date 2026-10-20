@@ -57,7 +57,10 @@ describe('R26 state machine — a brake or steering defect HOLDS the unit, whate
   it('reads every way a crew says it — and a hydraulic hint for parts never hides the hold', () => {
     for (const d of ['brakes are soft', 'braking pulls left', 'Brake light stays on', 'ABS light came on',
       'e-brake will not hold', 'power steering pump whining', 'steers hard', 'tierod looks bent',
-      'brake line leaking fluid', 'power steering hose leaking']) {
+      'brake line leaking fluid', 'power steering hose leaking',
+      // The same defects written as one word must hold too — a hold that
+      // depends on a space is a hold a crew can miss by typing fast.
+      'handbrake will not hold', 'airbrake leaking', 'brakeline cut', 'powersteering failing', 'footbrake soft']) {
       expect(isBrakeOrSteering(d), d).toBe(true);
       expect(buildActionPlan(report({ description: d }), []).newStatus, d).toBe('held');
     }
@@ -245,6 +248,148 @@ describe('R26 API — the hold is named, and only the owner signs it back on', (
     expect(held.name).toMatch(/^SIM /);
     expect(held.schedulable).toBe(false);
     expect(held.holdReason).toBe(HOLD_REASON);
+  });
+});
+
+// ── The breakdown write is a compare-and-set ────────────────────────────────
+// Only Mike lifts a hold, so the breakdown writer must never LOWER one. The
+// plan is built from the status read before it; the write only lands on a
+// unit still at that status, and a unit that moved in between is refused by
+// name with nothing saved — no status, no task, no event.
+describe('R26 breakdown write — a report that read a stale status is refused, never written over a hold', () => {
+  const CHANGED_LINE = 'This unit changed while the report was being filed. Nothing was saved. File it again.';
+
+  it('a write the store refused comes back 409 in plain words, with no task and no event', async () => {
+    const events: string[] = [];
+    const api = createApi(fleetSource({
+      unitStatus: async () => 'up',
+      recordBreakdown: async () => ({ conflict: true }),
+      emit: async (t) => { events.push(t); return true; },
+    }));
+    const res = await api.reportBreakdown({ unitId: UNIT, description: 'belt squeals', immobilized: false });
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: 'unit_changed', line: CHANGED_LINE });
+    expect(events).toEqual([]);
+    assertLawfulCopy(CHANGED_LINE);
+  });
+
+  it('hands the writer the status the plan was built from', async () => {
+    for (const read of ['up', 'maintenance', 'down', 'held'] as UnitStatus[]) {
+      let written: { expectedStatus: UnitStatus | null; newStatus: string } | null = null;
+      const api = createApi(fleetSource({
+        unitStatus: async () => read,
+        recordBreakdown: async (i) => { written = i; return { taskId: 't' }; },
+      }));
+      await api.reportBreakdown({ unitId: UNIT, description: 'belt squeals', immobilized: false });
+      expect(written!.expectedStatus, read).toBe(read);
+    }
+  });
+
+  // A store that does what the repository now does: move the unit only if it
+  // is still at the status the plan was built from. With no expected status
+  // it writes unconditionally — the old repository — so this reproduces the
+  // race against the old handler.
+  function racedStore(storedAtWrite: UnitStatus, reads: UnitStatus[]) {
+    let stored = storedAtWrite;
+    const tasks: string[] = [];
+    const events: string[] = [];
+    const api = createApi(fleetSource({
+      unitStatus: async () => reads.shift() ?? stored,
+      recordBreakdown: async (i) => {
+        const expected = (i as { expectedStatus?: UnitStatus | null }).expectedStatus ?? null;
+        if (expected !== null && stored !== expected) return { conflict: true };
+        stored = i.newStatus as UnitStatus;
+        tasks.push(i.description);
+        return { taskId: 'task-' + tasks.length };
+      },
+      units: async () => [{ id: UNIT, name: 'Bucket truck', status: stored }],
+      emit: async (t) => { events.push(t); return true; },
+    }));
+    return { api, tasks, events, stored: () => stored };
+  }
+
+  it('two overlapping reports on an UP unit: the brake HOLD stands, the stale minor report is refused', async () => {
+    // Both reports read 'up' before either wrote.
+    const s = racedStore('up', ['up', 'up']);
+    const a = await s.api.reportBreakdown({ unitId: UNIT, description: 'brakes are soft', immobilized: false });
+    const b = await s.api.reportBreakdown({ unitId: UNIT, description: 'belt squeals', immobilized: false });
+    expect(a.status).toBe(200);
+    expect(a.body).toMatchObject({ newStatus: 'held', holdReason: HOLD_REASON, taskId: 'task-1' });
+    expect(b.status).toBe(409);
+    expect(b.body).toEqual({ error: 'unit_changed', line: CHANGED_LINE });
+    expect(s.stored(), 'a minor report lowered a hold only Mike can lift').toBe('held');
+    expect(s.tasks).toEqual(['brakes are soft']);
+    expect(s.events).toEqual(['equipment.failed']);
+    const fleet = (await s.api.fleetUnits()).body as { held: number; units: Array<{ schedulable: boolean; holdReason: string | null }> };
+    expect(fleet.held).toBe(1);
+    expect(fleet.units[0]).toMatchObject({ schedulable: false, holdReason: HOLD_REASON });
+  });
+
+  it('a stale read cannot re-hold a unit Mike just signed back on, un-retire one, or lower a fresh hold to DOWN', async () => {
+    for (const [read, now] of [['held', 'up'], ['up', 'retired'], ['down', 'held']] as Array<[UnitStatus, UnitStatus]>) {
+      const s = racedStore(now, [read]);
+      const res = await s.api.reportBreakdown({ unitId: UNIT, description: 'belt squeals', immobilized: false });
+      expect(res.status, `${read} → ${now}`).toBe(409);
+      expect(s.stored(), `${read} → ${now}`).toBe(now);
+      expect(s.tasks, `${read} → ${now}`).toEqual([]);
+      expect(s.events, `${read} → ${now}`).toEqual([]);
+    }
+  });
+});
+
+// The repository itself, against a stand-in for the Supabase client: the
+// status filter is on the write, and zero rows touched opens no task.
+describe('R26 recordBreakdown — the status write carries the compare, and a miss writes no task', () => {
+  type Call = { table: string; op: string; patch?: unknown; filters: Array<[string, unknown]> };
+
+  async function repoWith(rowsTouched: number) {
+    const calls: Call[] = [];
+    const db = {
+      from(table: string) {
+        const c: Call = { table, op: 'select', filters: [] };
+        calls.push(c);
+        const answer = () => (c.op === 'update'
+          ? { data: Array.from({ length: rowsTouched }, () => ({ id: UNIT })), error: null }
+          : { data: { id: 'task-new' }, error: null });
+        const b = {
+          update(p: unknown) { c.op = 'update'; c.patch = p; return b; },
+          insert(p: unknown) { c.op = 'insert'; c.patch = p; return b; },
+          eq(col: string, v: unknown) { c.filters.push([col, v]); return b; },
+          select() { return b; },
+          single() { return Promise.resolve(answer()); },
+          then(ok: (v: unknown) => unknown, bad?: (e: unknown) => unknown) { return Promise.resolve(answer()).then(ok, bad); },
+        };
+        return b;
+      },
+    };
+    vi.resetModules();
+    vi.doMock('../src/db/client.js', () => ({ getDb: () => db }));
+    const repo = await import('../src/db/repositories.js');
+    return { repo, calls };
+  }
+  const unmock = () => { vi.doUnmock('../src/db/client.js'); vi.resetModules(); };
+  const input = (expectedStatus: UnitStatus | null) => ({
+    unitId: UNIT, newStatus: 'maintenance', expectedStatus, description: 'belt squeals', reportedBy: 'owner', mediaRefs: [],
+  });
+
+  it('a unit no longer at the expected status touches zero rows: conflict, and no task row', async () => {
+    try {
+      const { repo, calls } = await repoWith(0);
+      expect(await repo.recordBreakdown(input('up'))).toEqual({ conflict: true });
+      const upd = calls.find((c) => c.op === 'update')!;
+      expect(upd.table).toBe('equipment_unit');
+      expect(upd.filters).toEqual([['id', UNIT], ['status', 'up']]);
+      expect(calls.some((c) => c.op === 'insert'), 'a task was opened for a report that was not saved').toBe(false);
+    } finally { unmock(); }
+  });
+
+  it('a unit still at the expected status moves, and then its task is opened', async () => {
+    try {
+      const { repo, calls } = await repoWith(1);
+      expect(await repo.recordBreakdown(input('up'))).toEqual({ taskId: 'task-new' });
+      expect(calls.map((c) => [c.table, c.op])).toEqual([['equipment_unit', 'update'], ['maintenance_task', 'insert']]);
+      expect(calls[0]!.filters).toEqual([['id', UNIT], ['status', 'up']]);
+    } finally { unmock(); }
   });
 });
 

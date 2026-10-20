@@ -67,9 +67,16 @@ export const HOLD_REASON = "brake/steering defect — needs Mike's sign-off";
  */
 export const OWNER_SIGNER = 'Mike (owner key)';
 
-/** R26: the words that mean a brake or steering defect. */
-const BRAKE = /\bbrak(e|es|ed|ing)\b|\babs\b/i;
-const STEERING = /\bsteer(s|ed|ing)?\b|\btie ?rods?\b/i;
+/**
+ * R26: the words that mean a brake or steering defect. No word boundary in
+ * FRONT on purpose, so the one-word spellings hold too — handbrake, footbrake,
+ * airbrake, powersteering, oversteer — and brakeline / brakepad are
+ * read as brake words. The boundary BEHIND is what keeps "brakeman" and
+ * "steerage" out. "breaks" is deliberately NOT a brake word: "limb breaks" is
+ * an everyday report on a tree crew and would hold a unit for nothing.
+ */
+const BRAKE = /brak(e|es|ed|ing)(lines?|pads?)?\b|\babs\b/i;
+const STEERING = /steer(s|ed|ing)?\b|\btie ?rods?\b/i;
 
 /**
  * Does this field report name a brake or steering defect? Matched on its own

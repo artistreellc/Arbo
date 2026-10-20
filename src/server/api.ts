@@ -216,7 +216,16 @@ export interface DataSource {
   unitOpenTaskCount?(unitId: string): Promise<number>;
   /** Current status, or null when no such unit exists. */
   unitStatus?(unitId: string): Promise<UnitStatus | null>;
-  recordBreakdown?(input: { unitId: string; newStatus: string; description: string; reportedBy: string; mediaRefs: string[] }): Promise<{ taskId: string }>;
+  /**
+   * Move the unit to `newStatus` and open its task. The status write is a
+   * compare-and-set against `expectedStatus` (the status the plan was built
+   * from; null = none was read): a unit that moved in between answers
+   * { conflict: true } and NO task is opened — a report never lowers a hold.
+   */
+  recordBreakdown?(input: {
+    unitId: string; newStatus: string; expectedStatus: UnitStatus | null;
+    description: string; reportedBy: string; mediaRefs: string[];
+  }): Promise<{ taskId: string } | { conflict: true }>;
   closeMaintenanceTask?(input: { taskId: string; proofPhotoFile: string; completedBy: string }): Promise<void>;
   /**
    * R26: move a HELD unit to `status` (afterSignBack decides it) and record
@@ -1206,9 +1215,19 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       const plan = buildActionPlan(report, parts, {
         openTasks, assignment: 'unknown', currentStatus: current ?? 'up',
       });
+      // The write only lands on a unit still at the status this plan was built
+      // from. One that moved in between — another report's HOLD, Mike's
+      // sign-back, a retirement — is refused by name with nothing saved, never
+      // written over: only Mike lifts a hold (R26), so a report must not lower one.
       const saved = await source.recordBreakdown({
-        unitId, newStatus: plan.newStatus, description, reportedBy, mediaRefs: report.mediaRefs,
+        unitId, newStatus: plan.newStatus, expectedStatus: current, description, reportedBy, mediaRefs: report.mediaRefs,
       });
+      if ('conflict' in saved) {
+        return {
+          status: 409,
+          body: { error: 'unit_changed', line: 'This unit changed while the report was being filed. Nothing was saved. File it again.' },
+        };
+      }
       if (source.emit) await source.emit('equipment.failed', { unitId, taskId: saved.taskId, status: plan.newStatus });
       return { status: 200, body: { ...plan, taskId: saved.taskId } };
     },

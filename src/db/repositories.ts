@@ -1489,16 +1489,29 @@ export async function unitStatus(unitId: string): Promise<'up' | 'down' | 'maint
   return (res.data?.status as 'up' | 'down' | 'maintenance' | 'held' | 'retired' | undefined) ?? null;
 }
 
-/** Record the breakdown: set the unit's status and open a maintenance task. */
+/**
+ * Record the breakdown: set the unit's status and open a maintenance task.
+ *
+ * The status write is a compare-and-set against `expectedStatus` — the status
+ * the action plan was built from — the same shape signBackOnUnit and
+ * retireEquipmentUnit use. A unit that moved between that read and this write
+ * (a second report's HOLD, Mike's sign-back, a retirement) touches zero rows
+ * and answers { conflict: true } BEFORE any task row is written. Without it a
+ * minor report could lower a hold that only Mike may lift (R26). null means
+ * the caller read no status to compare against.
+ */
 export async function recordBreakdown(input: {
-  unitId: string; newStatus: string; description: string;
+  unitId: string; newStatus: string; expectedStatus: string | null; description: string;
   reportedBy: string; mediaRefs: string[];
-}): Promise<{ taskId: string }> {
+}): Promise<{ taskId: string } | { conflict: true }> {
   const db = getDb();
-  const upd = await db.from('equipment_unit')
+  let write = db.from('equipment_unit')
     .update({ status: input.newStatus, updated_at: new Date().toISOString() })
     .eq('id', input.unitId);
+  if (input.expectedStatus !== null) write = write.eq('status', input.expectedStatus);
+  const upd = await write.select('id');
   if (upd.error) throw upd.error;
+  if ((upd.data ?? []).length === 0) return { conflict: true };
   const task = await db.from('maintenance_task').insert({
     unit_id: input.unitId,
     description: `FIELD REPORT: ${input.description}`,
