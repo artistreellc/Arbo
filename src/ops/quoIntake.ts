@@ -36,8 +36,8 @@ import type { Guardrails } from '../config/guardrails.schema.js';
 import { guardReply } from '../reception/outputGuard.js';
 import type { QualState } from '../reception/qualification.js';
 import { resolveServiceCity } from '../lib/address.js';
-import { CallMemory, CallRecordStore, normalizeCallerId } from '../reception/callMemory.js';
-import { buildEstimateHold, type CallHold } from '../reception/estimateHold.js';
+import { CallMemory, CallRecordStore, normalizeCallerId, type CallRecordEntry } from '../reception/callMemory.js';
+import { buildEstimateHold, holdErrorCode, type CallHold } from '../reception/estimateHold.js';
 import { parseRequestedWindow } from './requestedWindow.js';
 import type { SonaCallFacts, SonaExtractor } from './quoExtract.js';
 import { verifySvixSignature } from './webhooks.js';
@@ -59,6 +59,18 @@ const SETTLE_MS = 30 * 60 * 1000;
 const PACE_MS = 150;
 /** On Quo's 429, wait and try again — twice — before naming the pass failed. */
 const RATE_RETRY_MS = 2_000;
+/**
+ * H1: how long the serial queue waits for Google's answer on a hold. A slower
+ * answer still lands (the entry flips to filed/failed when it comes); the
+ * call stays 'attempted' — named "no answer yet" — until then.
+ */
+const HOLD_WAIT_MS = 15_000;
+/**
+ * M16: a call the MODEL could not read (an outage, an overload) is read again
+ * on the next passes over Quo's record — this many reads in all. Never the
+ * no-key case and never a transcript Quo itself failed to write.
+ */
+export const EXTRACT_MAX_ATTEMPTS = 5;
 
 // ─── Signature ────────────────────────────────────────────────────────────
 
@@ -128,8 +140,27 @@ export interface QuoDialogueLine {
   text: string;
 }
 
-/** 'read_only' (R33): the caller wants an estimate and Google is connected read-only — no hold, on purpose. */
-export type HoldOutcome = 'attempted' | 'no_writer' | 'not_requested' | 'hangup' | 'extraction_unavailable' | 'not_sona' | 'learned_only' | 'read_only';
+/**
+ * What happened to a Sona call's calendar hold. 'attempted' = sent to Google,
+ * no answer yet; only 'filed' means it is on Mike's calendar; 'failed' means
+ * it is NOT (H1, 2026-10-20: eleven failed holds read "filed" for a week).
+ * 'read_only' (R33): the caller wants an estimate and Google is connected
+ * read-only — no hold, ON PURPOSE. Its own state: never 'failed', never
+ * 'filed', never 'attempted' (§1B).
+ */
+export type HoldOutcome = 'attempted' | 'filed' | 'failed' | 'no_writer' | 'not_requested' | 'hangup' | 'extraction_unavailable' | 'not_sona' | 'learned_only' | 'read_only';
+
+/**
+ * What R22 outreach may conclude about a call's hold: on the calendar, known
+ * not, Arbo cannot tell (yet) — or 'read_only' (R33): holds are off on
+ * purpose, so no hold was made and the caller is not booked.
+ */
+export type BookingState = 'filed' | 'not_filed' | 'unknown' | 'read_only';
+
+/** M16: a call the model could not read that the next pass of Quo's record reads again. */
+export function readRetryDue(e: Pick<QuoCallEntry, 'processed' | 'hold' | 'extractAttempts'>): boolean {
+  return e.processed && e.hold === 'extraction_unavailable' && e.extractAttempts > 0 && e.extractAttempts < EXTRACT_MAX_ATTEMPTS;
+}
 
 export interface QuoCallEntry {
   callId: string;
@@ -146,6 +177,10 @@ export interface QuoCallEntry {
   slips: Array<{ rule: string; said: string }>;
   facts: SonaCallFacts | null;
   hold: HoldOutcome;
+  /** Why a 'failed' hold failed — a short code (google_signin, calendar_refused, error), never the error text. */
+  holdError: string | null;
+  /** M16: model reads tried on this call that failed; a model outage is retried up to EXTRACT_MAX_ATTEMPTS. */
+  extractAttempts: number;
   processed: boolean;
   /** Quo's own flag: 'ai-agent' when Sona answered. Trusted over per-line user tags. */
   aiHandled: string | null;
@@ -158,7 +193,8 @@ export interface QuoIntakeDeps {
   extractor: SonaExtractor | null;
   callMemory: CallMemory;
   callRecords: CallRecordStore;
-  calendarHold: ((hold: CallHold) => Promise<void>) | null;
+  /** R18's one-method hold writer. Resolves when Google has the event; rejects when it does not. */
+  calendarHold: ((hold: CallHold) => Promise<unknown>) | null;
   /**
    * May a hold be written to Google at all? Defaults to "no" while Google is
    * connected read-only (R33) — the server never passes it. Only a test of
@@ -296,6 +332,8 @@ export class QuoIntake {
         slips: [],
         facts: null,
         hold: 'not_sona',
+        holdError: null,
+        extractAttempts: 0,
         processed: false,
         aiHandled: null,
         source: 'webhook',
@@ -434,8 +472,12 @@ export class QuoIntake {
     try {
       facts = await this.deps.extractor.extract(transcript);
     } catch (err) {
+      // M16: a model outage is not the end of this call — the next passes over
+      // Quo's record read it again (readRetryDue), a few times, never forever.
+      e.extractAttempts += 1;
       e.hold = 'extraction_unavailable';
-      console.error('[quo] sona call NOT read — no hold filed:', err instanceof Error ? err.message : 'error');
+      const again = e.extractAttempts < EXTRACT_MAX_ATTEMPTS ? 'read again on the next pass' : 'giving up';
+      console.error(`[quo] sona call NOT read (try ${e.extractAttempts} of ${EXTRACT_MAX_ATTEMPTS}, ${again}) — no hold filed:`, err instanceof Error ? err.message : 'error');
       return;
     }
     e.facts = facts;
@@ -461,20 +503,16 @@ export class QuoIntake {
       atIso,
     );
 
-    if (!facts.wantsEstimate) e.hold = 'not_requested';
+    let outcome: 'not_requested' | 'read_only' | 'learned_only' | 'no_writer' | 'attempted';
+    if (!facts.wantsEstimate) outcome = 'not_requested';
     // R33 — the writer is never called. Checked BEFORE learned_only: a call
     // re-read after a deploy says holds are off too, never "Arbo filed no hold".
-    else if (!this.googleWrites) e.hold = 'read_only';
-    else if (!opts.fileHold) e.hold = 'learned_only';
-    else if (!this.deps.calendarHold) e.hold = 'no_writer';
-    else {
-      e.hold = 'attempted';
-      const hold = buildEstimateHold({ state, callerId, window, nowMs, bookedBy: 'Sona (Quo)' });
-      void this.deps.calendarHold(hold).catch((err) => {
-        console.error('[calendar] sona hold failed:', err instanceof Error ? err.message : 'error');
-      });
-    }
-    this.deps.callRecords.add({
+    else if (!this.googleWrites) outcome = 'read_only';
+    else if (!opts.fileHold) outcome = 'learned_only';
+    else if (!this.deps.calendarHold) outcome = 'no_writer';
+    else outcome = 'attempted';
+    e.hold = outcome;
+    const record: CallRecordEntry = {
       atIso,
       callerId,
       state,
@@ -482,9 +520,49 @@ export class QuoIntake {
       emergency: facts.emergency,
       turns: e.dialogue.length,
       ...(window ? { requestedWindow: window.label } : {}),
-      calendarHold: e.hold === 'attempted' ? 'attempted' : e.hold === 'not_requested' ? 'not_requested' : e.hold === 'read_only' ? 'read_only' : 'no_writer',
+      calendarHold: outcome,
+    };
+    this.deps.callRecords.add(record);
+    if (outcome === 'attempted' && this.googleWrites && this.deps.calendarHold) {
+      await this.fileHold(e, record, this.deps.calendarHold, buildEstimateHold({ state, callerId, window, nowMs, bookedBy: 'Sona (Quo)' }));
+    }
+    console.error(`[quo] sona call processed (${e.source}) — hold ${e.hold}${e.hold === 'attempted' ? ' (no answer from Google yet)' : ''}, ${e.slips.length} slip(s)${facts.emergency ? ', EMERGENCY' : ''}`);
+  }
+
+  /**
+   * H1 (audit 2026-10-20): a hold is "filed" only when Google says so. The
+   * write is awaited inside the serial queue — briefly: a slow Google leaves
+   * the call 'attempted' (named "no answer yet"), and the late answer still
+   * lands on the entry and the record. A refusal is 'failed' with a short
+   * code, and is never shown or counted as filed — nor taken as "booked".
+   * R33: never reached while Google is read-only (process() checks first).
+   */
+  private async fileHold(e: QuoCallEntry, record: CallRecordEntry, writer: (hold: CallHold) => Promise<unknown>, hold: CallHold): Promise<void> {
+    const write = Promise.resolve()
+      .then(() => writer(hold))
+      .then(
+        () => {
+          e.hold = 'filed';
+          e.holdError = null;
+          record.calendarHold = 'filed';
+          delete record.calendarHoldError;
+        },
+        (err: unknown) => {
+          const code = holdErrorCode(err);
+          e.hold = 'failed';
+          e.holdError = code;
+          record.calendarHold = 'failed';
+          record.calendarHoldError = code;
+          console.error(`[calendar] sona hold FAILED (${code}) — NOT on the calendar:`, err instanceof Error ? err.message : 'error');
+        },
+      );
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const waited = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, HOLD_WAIT_MS);
+      timer.unref?.();
     });
-    console.error(`[quo] sona call processed (${e.source}) — hold ${e.hold}, ${e.slips.length} slip(s)${facts.emergency ? ', EMERGENCY' : ''}`);
+    await Promise.race([write, waited]);
+    globalThis.clearTimeout(timer);
   }
 
   /**
@@ -532,7 +610,8 @@ export class QuoIntake {
           // Re-read ONLY a webhook entry filed as "not Sona's" when Quo says she
           // answered — once. Never loop on Arbo's own record read.
           const misread = known?.processed && known.source === 'webhook' && known.handledBy !== 'sona' && c.aiHandled === 'ai-agent';
-          if (known?.processed && !misread) continue;
+          // M16: a call the model could not read is read again — a few times, never forever.
+          if (known?.processed && !misread && !readRetryDue(known)) continue;
           examined += 1;
           if (LIVE_CALL.has(c.status ?? '')) {
             pending += 1;
@@ -571,7 +650,7 @@ export class QuoIntake {
           const dialogue = tr.dialogue.map((l) => ({ identifier: l.identifier, content: l.content, userId: l.userId }));
           this.queue = this.queue.then(async () => {
             const e = this.entry(c.id);
-            if (e.processed && !(e.source === 'webhook' && e.handledBy !== 'sona' && c.aiHandled === 'ai-agent')) return;
+            if (e.processed && !(e.source === 'webhook' && e.handledBy !== 'sona' && c.aiHandled === 'ai-agent') && !readRetryDue(e)) return;
             Object.assign(e, { at: c.createdAt ?? e.at, from: participant, status: c.status, aiHandled: c.aiHandled, source: 'quo_record', processed: true, dialogue: [], slips: [], facts: null, handledBy: 'unknown' });
             await this.process(e, dialogue, { fileHold: atMs >= this.bootMs, atMs });
             learned += 1;
@@ -597,6 +676,28 @@ export class QuoIntake {
     return [...this.calls.values()].reverse();
   }
 
+  /**
+   * What R22 outreach may conclude about one call's hold (H1, M16). Only a
+   * hold Google confirmed is 'filed'. A hold still waiting on Google, a call
+   * learned after a restart (an earlier process may have filed it), a call
+   * still being read, and a call this process never saw are 'unknown' —
+   * never "booked", and never quietly "not booked" either.
+   */
+  bookingState(callId: string): BookingState {
+    const e = this.calls.get(callId);
+    if (!e || !e.processed) return 'unknown';
+    if (e.hold === 'filed') return 'filed';
+    // R33: off on purpose — no hold was made, so the caller is not booked. Its own answer, never 'unknown'.
+    if (e.hold === 'read_only') return 'read_only';
+    if (e.hold === 'attempted' || e.hold === 'learned_only' || readRetryDue(e)) return 'unknown';
+    return 'not_filed';
+  }
+
+  /** Numbers whose hold Google CONFIRMED (H1) — the only callers outreach treats as booked. */
+  filedCallers(): Set<string> {
+    return bookedFromHolds([...this.calls.values()]);
+  }
+
   status() {
     const all = [...this.calls.values()];
     const sona = all.filter((c) => c.handledBy === 'sona');
@@ -610,11 +711,17 @@ export class QuoIntake {
       sonaCalls: sona.length,
       slips: sona.reduce((n, c) => n + c.slips.length, 0),
       callsWithSlips: sona.filter((c) => c.slips.length > 0).length,
-      holdsAttempted: sona.filter((c) => c.hold === 'attempted').length,
-      /** R33: 'read_only' = off on purpose (Google is read-only) — never "0 holds filed". */
+      // H1: three numbers, never one. Only 'filed' is on Mike's calendar.
+      holdsFiled: sona.filter((c) => c.hold === 'filed').length,
+      holdsFailed: sona.filter((c) => c.hold === 'failed').length,
+      holdsWaiting: sona.filter((c) => c.hold === 'attempted').length,
+      /** R33: 'read_only' = off on purpose (Google is read-only) — never "0 holds filed", never "failed". */
       holds: (!this.googleWrites ? 'read_only' : this.deps.calendarHold ? 'on' : 'no_writer') as 'read_only' | 'on' | 'no_writer',
       /** R33: Quo writes — 'read_only' unless ARBO_QUO_SEND is exactly 'live'. */
       quoWrites: (quoWritesLive() ? 'live' : 'read_only') as 'live' | 'read_only',
+      // M16: calls the model could not read yet, still being retried.
+      readsRetrying: sona.filter((c) => readRetryDue(c)).length,
+      readRetryMax: EXTRACT_MAX_ATTEMPTS,
       hangups: sona.filter((c) => c.hold === 'hangup').length,
       learnedFromRecord: all.filter((c) => c.source === 'quo_record').length,
       notUsed: { ...this.dropped },
@@ -625,15 +732,17 @@ export class QuoIntake {
 
 /**
  * The callers Sona booked an estimate hold for, as normalized numbers — only
- * a hold that was actually ATTEMPTED counts. A 'read_only' call (R33), a
- * learned-after-the-fact call, or a call with no writer is never a booking,
- * so outreach never skips someone as "estimate booked" for a hold that did
- * not happen.
+ * a hold Google CONFIRMED counts ('filed', H1). A hold only tried and not yet
+ * answered ('attempted'), one that failed, a 'read_only' call (R33 — holds
+ * off on purpose), a learned-after-the-fact call, or a call with no writer is
+ * never a booking, so outreach never skips someone as "estimate booked" for a
+ * hold that did not happen. While Google is read-only no call can be 'filed'
+ * (the writer is never called), so nobody is booked from a hold.
  */
 export function bookedFromHolds(calls: QuoCallEntry[]): Set<string> {
   const booked = new Set<string>();
   for (const c of calls) {
-    if (c.hold !== 'attempted' || !c.from) continue;
+    if (c.hold !== 'filed' || !c.from) continue;
     const n = c.from.replace(/[^\d+]/g, '');
     if (n) booked.add(n);
   }

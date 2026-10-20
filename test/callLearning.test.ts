@@ -151,7 +151,7 @@ describe('bridge finalize (R18)', () => {
     expect(rec.calls).toBe(1);
 
     expect(records.list()).toHaveLength(1);
-    expect(records.list()[0]!.calendarHold).toBe('attempted');
+    expect(records.list()[0]!.calendarHold).toBe('filed');
     expect(records.list()[0]!.requestedWindow).toBe('wednesday after 4 (Wed Sep 23)');
 
     // a third turn with another marker must NOT double-finalize

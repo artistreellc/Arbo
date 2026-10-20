@@ -663,7 +663,10 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
           startIso: string;
           endIso: string;
         }) => {
-          await calApi.createEvent({ calendarId: 'primary', ...hold });
+          // Resolves only when Google has the event; any refusal rejects, so
+          // the caller records 'failed', never 'filed' (H1).
+          const ev = await calApi.createEvent({ calendarId: 'primary', ...hold });
+          return { eventId: ev.id };
         };
       })()
     : null;
@@ -766,9 +769,12 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
       guardrails,
       legal,
       extractor: sonaExtractor,
-      // Only a hold Sona's call actually ATTEMPTED is a booking — never one
-      // R33 kept off (the intake says whether holds are filed at all).
+      // H1 + R33: "booked" is a hold Google CONFIRMED ('filed') — never one
+      // that was only tried, never one that failed, never a transcript read on
+      // its own — and while Google is read-only (R33) no hold is ever made, so
+      // nobody is booked from one. The intake says whether holds are made at all.
       bookedCallers: () => bookedFromHolds(quoIntake.list()),
+      holdFor: (callId) => quoIntake.bookingState(callId),
       sonaFilesHolds: quoIntake.holdsLive(),
       enabled: () => env.outreachAuto,
     });
@@ -1754,9 +1760,10 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
           knownCallers: callMemory.size,
           calendarHolds: GOOGLE_READ_ONLY ? GOOGLE_HOLDS_OFF_LINE : calendarHold ? 'configured' : 'DISABLED — no Google token (this is not zero holds)',
           // R33: no hold is ever made while Google is read-only, so it can't be the lasting copy.
+          // H1: only a hold marked 'filed' is on the calendar; a 'failed' one is not.
           note: GOOGLE_READ_ONLY
             ? 'In-memory since deploy — calendar holds are off (R33), so Quo’s own record is the lasting copy.'
-            : 'In-memory since deploy — the calendar hold is the durable copy until the data links go live.',
+            : 'In-memory since deploy. A hold marked filed is on your Google Calendar; one marked failed is NOT — book that one yourself. Nothing else keeps these records across a restart until the data links go live.',
         });
       }
       // R19: webhook state + captured payloads, keywall-only (customer

@@ -371,9 +371,17 @@ function sonaSection(q: QuoRead | null, detail: boolean, now: number): Section {
     const city = safe(c.facts?.city, '');
     lines.push(`- Emergency call: ${safe(c.facts?.name, 'a caller who gave no name')}${city ? ` in ${city}` : ''}, ${when(c.at, now)}. Call back from the Arbo app.`);
   }
-  // R33: holds off on purpose is said as off — never "Calendar holds filed: 0" — and
-  // the time a caller asked for is pointed at only when they gave one.
-  let holdsSaid = `Calendar holds filed: ${st.holdsAttempted}`;
+  // H1: a hold that failed is NOT on the calendar — said every time, never folded into "filed".
+  if (st.holdsFailed > 0) {
+    lines.push(`${plural(st.holdsFailed, 'calendar hold', 'calendar holds')} did NOT reach your calendar — book ${st.holdsFailed === 1 ? 'that caller' : 'those callers'} yourself from the Arbo app.`);
+  }
+  if (st.readsRetrying > 0) {
+    lines.push(`Arbo could not read ${plural(st.readsRetrying, 'Sona call', 'Sona calls')} yet — it is trying again${st.holds === 'read_only' ? '' : ', and no hold is filed until it can'}.`);
+  }
+  // H1: three numbers, never one "filed" count. R33: holds off on purpose is
+  // said as off — never "on your calendar: 0", never "failed" — and the time a
+  // caller asked for is pointed at only when they gave one.
+  let holdsSaid = `Calendar holds on your calendar: ${st.holdsFiled}. Failed: ${st.holdsFailed}. Still waiting on Google: ${st.holdsWaiting}`;
   if (st.holds === 'read_only') {
     const off = sona.filter((c) => c.hold === 'read_only');
     const timed = off.filter((c) => c.facts?.requestedTime).length;

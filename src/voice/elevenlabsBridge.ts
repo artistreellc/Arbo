@@ -63,9 +63,9 @@ import type { Guardrails } from '../config/guardrails.schema.js';
 import type { LegalConfig } from '../config/legal.schema.js';
 import { Receptionist, END_CALL_MARKER, type Alerter, type Escalator, type LlmClient } from '../reception/receptionist.js';
 import { extractVaZip, hintContextLine, proximityHint, type RouteAnchors } from '../reception/routingHint.js';
-import { CallMemory, CallRecordStore, normalizeCallerId, repeatCallerNote } from '../reception/callMemory.js';
+import { CallMemory, CallRecordStore, normalizeCallerId, repeatCallerNote, type CallRecordEntry } from '../reception/callMemory.js';
 import { parseRequestedWindow, type RequestedWindow } from '../ops/requestedWindow.js';
-import { buildEstimateHold, type CallHold } from '../reception/estimateHold.js';
+import { buildEstimateHold, holdErrorCode, type CallHold } from '../reception/estimateHold.js';
 import { GOOGLE_READ_ONLY } from '../integrations/readOnly.js';
 import { secretEqual } from '../lib/secretEqual.js';
 
@@ -154,8 +154,9 @@ export interface BridgeDeps {
    * R18: creates the unconfirmed calendar hold during the call. ONE method by
    * type — the bridge structurally cannot edit or delete anything on the
    * calendar. null/undefined = no writer configured, recorded as such.
+   * Resolves when Google has the event; rejects when it does not.
    */
-  calendarHold?: ((hold: CallHold) => Promise<void>) | null;
+  calendarHold?: ((hold: CallHold) => Promise<unknown>) | null;
   /**
    * R33 (Mike, 2026-10-20: "Connect Google as a read only"): may a hold be
    * written to Google at all? Defaults to "no" while Google is connected
@@ -391,9 +392,23 @@ export function createElevenLabsBridge(deps: BridgeDeps): ElevenLabsBridge {
           },
           atIso,
         );
-        let holdOutcome: 'attempted' | 'no_writer' | 'read_only' = 'no_writer';
-        if (!(deps.googleWrites ?? !GOOGLE_READ_ONLY)) holdOutcome = 'read_only'; // R33 — never calls the writer
-        else if (deps.calendarHold) {
+        // R33 — while Google is read-only the writer is never called and the
+        // record says 'read_only' (off on purpose): never 'attempted', never
+        // 'failed', never 'filed' (H1 + R33).
+        const googleWrites = deps.googleWrites ?? !GOOGLE_READ_ONLY;
+        const record: CallRecordEntry = {
+          atIso,
+          callerId: session.callerId,
+          state,
+          ...(session.callerZip ? { zip: session.callerZip } : {}),
+          intent: turn.intent,
+          emergency: session.emergencyCounted,
+          turns: session.turns,
+          ...(session.window ? { requestedWindow: session.window.label } : {}),
+          calendarHold: !googleWrites ? 'read_only' : deps.calendarHold ? 'attempted' : 'no_writer',
+        };
+        deps.callRecords?.add(record);
+        if (googleWrites && deps.calendarHold) {
           // Filed EXACTLY the way Mike files his own estimates — the one
           // shared builder (src/reception/estimateHold.ts), so Arbo's calls
           // and Sona's calls can never drift into two formats.
@@ -405,24 +420,25 @@ export function createElevenLabsBridge(deps: BridgeDeps): ElevenLabsBridge {
             nowMs,
             bookedBy: 'Arbo',
           });
-          holdOutcome = 'attempted';
-          void deps.calendarHold(hold).catch((err) => {
-            // Status/reason only — an error that quoted the event would put
-            // a customer in the logs (§4.3).
-            console.error('[calendar] hold failed:', err instanceof Error ? err.message : 'error');
-          });
+          const writer = deps.calendarHold;
+          // Still fire-and-forget (the goodbye is never delayed), but Google's
+          // answer lands back in the record: 'filed' only when Google has it,
+          // 'failed' when it does not — never left reading as filed (H1).
+          void Promise.resolve()
+            .then(() => writer(hold))
+            .then(
+              () => {
+                record.calendarHold = 'filed';
+              },
+              (err: unknown) => {
+                record.calendarHold = 'failed';
+                record.calendarHoldError = holdErrorCode(err);
+                // Status/reason only — an error that quoted the event would put
+                // a customer in the logs (§4.3).
+                console.error('[calendar] hold failed:', err instanceof Error ? err.message : 'error');
+              },
+            );
         }
-        deps.callRecords?.add({
-          atIso,
-          callerId: session.callerId,
-          state,
-          ...(session.callerZip ? { zip: session.callerZip } : {}),
-          intent: turn.intent,
-          emergency: session.emergencyCounted,
-          turns: session.turns,
-          ...(session.window ? { requestedWindow: session.window.label } : {}),
-          calendarHold: holdOutcome,
-        });
       }
       const toolCalls = [
         { index: 0, id: `call_${id}`, type: 'function', function: { name: 'end_call', arguments: '{}' } },

@@ -27,7 +27,9 @@
 //      me") — the FCC counts any reasonable revocation. "Already heard from
 //      us": any outgoing text in the last 30 days, from Arbo OR Mike (or in
 //      Arbo's own send record), or a call back after their last contact,
-//      means no automated text.
+//      means no automated text. Both are read from the QUO LINE only — a
+//      call or text from Mike's iPhone never reaches Quo, and the screen
+//      says so (M13).
 //   3. A solicitor or a wrong number, decided ONLY from the caller's own
 //      words — spoken to Sona or TEXTED (never a carrier label — "spam likely
 //      calls could be clients", Mike, 2026-09-24). A hang-up stays a
@@ -57,7 +59,7 @@ import { inspectMessage } from '../binder/policyEngine.js';
 import { clampToQuietHours } from './followUps.js';
 import { QuoHttpError, type QuoApi, type QuoCall, type QuoMessage } from '../integrations/quo.js';
 import type { QuoSender } from '../integrations/quoSend.js';
-import { quoWritesLive } from '../integrations/readOnly.js';
+import { GOOGLE_HOLDS_OFF_OUTREACH_LINE, GOOGLE_READ_ONLY, quoWritesLive } from '../integrations/readOnly.js';
 import type { SonaExtractor } from './quoExtract.js';
 import { normalizeCallerId } from '../reception/callMemory.js';
 
@@ -69,6 +71,8 @@ export type SkipReason =
   | 'own_number'
   | 'excluded'
   | 'estimate_booked'
+  /** Asked Sona for an estimate, and Arbo cannot tell whether the hold reached the calendar (H1). */
+  | 'hold_unknown'
   | 'called_back'
   | 'call_in_progress'
   | 'not_registered'
@@ -106,14 +110,22 @@ export interface OutreachDeps {
   guardrails: Guardrails;
   legal: LegalConfig;
   extractor: SonaExtractor | null;
-  /** Normalized numbers Sona already booked an estimate hold for (QuoIntake, since deploy). */
+  /** Normalized numbers whose Sona hold Google CONFIRMED (QuoIntake, since deploy). A failed hold is not here (H1). */
   bookedCallers: () => Set<string>;
   /**
-   * Does QuoIntake file a hold for a Sona caller who wants an estimate (a
-   * calendar writer is configured)? Lets a redeploy re-derive "booked" from
-   * Quo's transcript instead of forgetting it.
+   * Does QuoIntake file holds at all (a calendar writer is configured AND
+   * Google is not read-only — QuoIntake.holdsLive())? Without that no hold
+   * was ever filed — still a follow-up. R33: false while Google is
+   * read-only, so nobody is booked from a hold.
    */
   sonaFilesHolds?: boolean;
+  /**
+   * What QuoIntake knows about one Sona call's hold: 'filed' (Google has it),
+   * 'not_filed' (it failed, or none was due), 'unknown' (still being filed or
+   * read, or learned after a restart), 'read_only' (R33 — holds off on
+   * purpose, so no hold was made). Absent = 'unknown' for every call.
+   */
+  holdFor?: (callId: string) => 'filed' | 'not_filed' | 'unknown' | 'read_only';
   /** ARBO_OUTREACH === 'live' — gates AUTOMATIC sends only; Mike's tap is never gated. */
   enabled: () => boolean;
   now?: () => number;
@@ -159,10 +171,21 @@ export function isStopText(text: string): boolean {
   return STOP_FIRST.test(text) || STOP_ANYWHERE.test(text) || STOP_LAST.test(text);
 }
 
-/** Internal verdict: 'booked' = Sona set up a time with them (same rule QuoIntake files a hold by). */
-type Verdict = CallerClass | 'booked';
-/** Which verdict wins when a caller has several calls/texts: a booking, then any real inquiry, then "could not read". */
-const RANK: Record<Verdict, number> = { booked: 6, customer: 5, unreadable: 4, solicitor: 3, wrong_number: 3, unclear: 1 };
+/**
+ * Internal verdict. 'booked' = a hold Google CONFIRMED for a Sona call that
+ * asked for an estimate; 'hold_unknown' = such a call whose hold Arbo cannot
+ * see (being filed, being read, or learned after a restart). A transcript
+ * that asked for an estimate is never "booked" on its own (H1, 2026-10-20:
+ * eleven failed holds were all treated as booked).
+ */
+type Verdict = CallerClass | 'booked' | 'hold_unknown';
+/** Which verdict wins when a caller has several calls/texts: a booking, a booking Arbo can't see, any real inquiry, then "could not read". */
+const RANK: Record<Verdict, number> = { booked: 7, hold_unknown: 6, customer: 5, unreadable: 4, solicitor: 3, wrong_number: 3, unclear: 1 };
+/** One read of the caller's words: who they are, and whether they asked for an estimate. */
+interface Judgment {
+  v: CallerClass;
+  wantsEstimate: boolean;
+}
 const strongest = (vs: Verdict[]): Verdict => vs.reduce<Verdict>((a, b) => (RANK[b] > RANK[a] ? b : a), 'unclear');
 
 interface Line {
@@ -186,8 +209,8 @@ export class OutreachEngine {
   private line: Line | null = null;
   private readonly optOuts = new Set<string>();
   private readonly excluded = new Set<string>();
-  /** Opus verdicts by call id / text set — so the hourly run never re-reads the same words. */
-  private readonly verdicts = new Map<string, Verdict>();
+  /** Opus reads by call id / text set — so the hourly run never re-reads the same words. The hold is looked up fresh each time. */
+  private readonly verdicts = new Map<string, Judgment>();
   private queue: QueuedText[] = [];
   private draining: Promise<void> = Promise.resolve();
   private readonly records: SendRecord[] = [];
@@ -273,26 +296,38 @@ export class OutreachEngine {
 
   // ─── Who qualifies ────────────────────────────────────────────────────
 
-  /** Opus reads the words. Only a real verdict is remembered — "could not read" is retried next run. */
-  private async judge(key: string, transcript: string, fromCall: boolean): Promise<Verdict> {
+  /** Opus reads the words. Only a real read is remembered — "could not read" is retried next run. */
+  private async judge(key: string, transcript: string): Promise<Judgment> {
     const known = this.verdicts.get(key);
     if (known) return known;
-    if (!this.deps.extractor) return 'unreadable';
-    let v: Verdict;
+    if (!this.deps.extractor) return { v: 'unreadable', wantsEstimate: false };
+    let j: Judgment;
     try {
       const f = await this.deps.extractor.extract(transcript);
-      // The rule QuoIntake files a hold by (a Sona CALL that wants an
-      // estimate, with a calendar writer) — read from Quo's transcript, so it
-      // survives a redeploy. A text never files a hold.
-      if (fromCall && f.wantsEstimate && this.deps.sonaFilesHolds) v = 'booked';
-      else if (f.callerType === 'customer' || f.wantsEstimate) v = 'customer';
-      else v = f.callerType ?? 'unclear';
+      j = { v: f.callerType === 'customer' || f.wantsEstimate ? 'customer' : f.callerType ?? 'unclear', wantsEstimate: f.wantsEstimate };
     } catch {
-      return 'unreadable';
+      return { v: 'unreadable', wantsEstimate: false };
     }
-    this.verdicts.set(key, v);
+    this.verdicts.set(key, j);
     if (this.verdicts.size > VERDICT_CAP) this.verdicts.delete(this.verdicts.keys().next().value!);
-    return v;
+    return j;
+  }
+
+  /**
+   * A Sona CALL that asked for an estimate (a text never files a hold). It is
+   * "booked" only when QuoIntake saw Google confirm the hold. A hold that
+   * failed leaves a customer to follow up. A hold Arbo cannot see — still
+   * being filed or read, or from before a restart — is named 'hold_unknown'
+   * and not auto-texted: never "booked", never quietly eligible (§1B).
+   * R33: while holds are off on purpose (Google read-only) no hold was made —
+   * the caller is a customer, never "booked" and never "unknown".
+   */
+  private bookingVerdict(callId: string): Verdict {
+    if (!this.deps.sonaFilesHolds) return 'customer'; // no writer, or Google read-only (R33): no hold was ever filed
+    const known = this.deps.holdFor?.(callId) ?? 'unknown';
+    if (known === 'filed') return 'booked';
+    if (known === 'not_filed' || known === 'read_only') return 'customer';
+    return 'hold_unknown';
   }
 
   /** One Sona call: 'hangup' says nothing either way; a transcript not (yet) written is "could not read". */
@@ -314,7 +349,8 @@ export class OutreachEngine {
     const transcript = tr.dialogue
       .map((l) => `${normalizeCallerId(l.identifier ?? undefined) === norm ? 'Caller' : 'Sona'}: ${l.content}`)
       .join('\n');
-    return this.judge(`call:${callId}`, transcript, true);
+    const j = await this.judge(`call:${callId}`, transcript);
+    return j.v !== 'unreadable' && j.wantsEstimate ? this.bookingVerdict(callId) : j.v;
   }
 
   private async classifyCalls(participant: string, calls: QuoCall[]): Promise<Verdict> {
@@ -339,7 +375,7 @@ export class OutreachEngine {
     const said = [...texts].sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? '')).filter((t) => t.text.trim());
     if (said.length === 0) return 'unclear'; // photos only — a possible client
     const key = `texts:${said.map((t) => t.id).sort().join(',')}`;
-    return this.judge(key, said.map((t) => `Caller (text message): ${t.text}`).join('\n'), false);
+    return (await this.judge(key, said.map((t) => `Caller (text message): ${t.text}`).join('\n'))).v;
   }
 
   private sentByUs(norm: string, sinceIso: string): boolean {
@@ -378,6 +414,8 @@ export class OutreachEngine {
     const live = (x: QuoCall) => (x.createdAt ?? '') >= liveSinceIso && (LIVE_CALL.has(x.status ?? '') || (x.status === 'answered' && !x.completedAt));
     if (inCalls.some(live)) return { ...c, skip: 'call_in_progress' };
     // Mike called them back from the Quo line after their last contact — they heard from us.
+    // ONLY the Quo line: a call back from his iPhone is invisible here (M13),
+    // which status().blindSpot says on screen.
     if (lastInboundAt && calls.some((x) => x.direction === 'outgoing' && (x.createdAt ?? '') > lastInboundAt)) return { ...c, skip: 'called_back' };
     if (this.deps.bookedCallers().has(norm)) return { ...c, skip: 'estimate_booked' };
     if (this.excluded.has(conversationId)) return { ...c, skip: 'excluded' };
@@ -386,6 +424,7 @@ export class OutreachEngine {
     if (inCalls.length > 0) found.push(await this.classifyCalls(participant, inCalls));
     const v = strongest(found);
     if (v === 'booked') return { ...c, classification: 'customer', skip: 'estimate_booked' };
+    if (v === 'hold_unknown') return { ...c, classification: 'customer', skip: 'hold_unknown' };
     if (v === 'solicitor' || v === 'wrong_number') return { ...c, classification: v, skip: 'not_customer' };
     if (v === 'unreadable') return { ...c, classification: v, skip: 'unreadable' };
     return { ...c, classification: v };
@@ -623,7 +662,14 @@ export class OutreachEngine {
       blocked: this.records.filter((r) => r.outcome === 'blocked').length,
       optOuts: this.optOuts.size,
       excludedSinceDeploy: this.excluded.size,
-      note: 'Sends are one at a time, 8am–9pm ET only, never to a number that ever texted STOP (or "please stop", "opt me out"…) or heard from us in 30 days — checked against Quo before every send. STOP, texts and Sona bookings are re-read from Quo, so a redeploy keeps them. "Don\'t text" taps are NOT kept across a redeploy until a data link is opened for them.',
+      note: 'Sends are one at a time, 8am–9pm ET only, never to a number that ever texted STOP (or "please stop", "opt me out"…) or heard from us in 30 days — checked against Quo before every send. STOP and texts are re-read from Quo, so a redeploy keeps them. "Booked" means a calendar hold Google confirmed; a caller who asked Sona for an estimate whose hold Arbo cannot see (after a restart, or while it is being filed) is held back and named, never texted automatically. "Don\'t text" taps are NOT kept across a redeploy until a data link is opened for them.',
+      // M13 (audit 2026-10-20): what "already called back" and "already
+      // texted" can NOT see. The business line is Mike's iPhone, not Quo.
+      blindSpot: 'Arbo sees only calls and texts on the Quo line. A call back or text from your iPhone (the business line) never shows here — tap Don’t text for anyone you already reached.',
+      // H1 × R33: while Google is read-only no hold is made, so nobody is
+      // skipped as booked — said on the list, never left to read as "Sona
+      // booked no one" or as a failure (§1B). null while holds are made.
+      holdsOff: GOOGLE_READ_ONLY && !this.deps.sonaFilesHolds ? GOOGLE_HOLDS_OFF_OUTREACH_LINE : null,
     };
   }
 }

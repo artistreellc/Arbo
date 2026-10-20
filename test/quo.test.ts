@@ -280,7 +280,7 @@ describe('learning from Quo — no call dropped in silence (Mike, 2026-09-24: "N
     expect(r).toEqual({ learned: 2, pending: 0 });
     const byId = Object.fromEntries(h.intake.list().map((c) => [c.callId, c]));
     expect(byId['AC-OLD']).toMatchObject({ handledBy: 'sona', hold: 'learned_only', source: 'quo_record' });
-    expect(byId['AC-NEW']).toMatchObject({ handledBy: 'sona', hold: 'attempted', source: 'quo_record' });
+    expect(byId['AC-NEW']).toMatchObject({ handledBy: 'sona', hold: 'filed', source: 'quo_record' });
     expect(h.holds).toHaveLength(1);
     // A second pass, or the late webhook, never processes a call twice.
     await h.intake.reconcile(h.api, 'PN1', 7 * 24 * 60 * MIN);
@@ -296,7 +296,7 @@ describe('learning from Quo — no call dropped in silence (Mike, 2026-09-24: "N
     h.post({ type: 'call.completed', data: { object: { id: 'AC7', from: CALLER, direction: 'incoming', status: 'completed', aiHandled: 'ai-agent' } } });
     h.post(transcript('AC7', [[QUO_NUMBER, "Hi, you've reached Art-is-Tree.", 'USsona'], [CALLER, 'I need a big oak taken down in the back yard please.']]));
     await h.intake.settled();
-    expect(h.intake.list()[0]).toMatchObject({ handledBy: 'sona', hold: 'attempted' });
+    expect(h.intake.list()[0]).toMatchObject({ handledBy: 'sona', hold: 'filed' });
     // And a call the webhook filed as "not Sona's" is re-read when Quo says Sona answered.
     const h2 = learner({ calls: [{ id: 'AC8', at: NOW }], transcripts: { AC8: { status: 'completed', dialogue: talkLines('USsona') } } });
     h2.post(transcript('AC8', [[QUO_NUMBER, "Hi, you've reached Art-is-Tree.", 'USsona'], [CALLER, 'I need a big oak taken down in the back yard please.']]));
@@ -327,7 +327,7 @@ describe('learning from Quo — no call dropped in silence (Mike, 2026-09-24: "N
     const h = learner();
     h.post({ type: 'call.transcript.completed', data: { object: { id: 'AC11', status: 'completed', dialogue: [{ identifier: QUO_NUMBER, content: 'Hi.' }, { identifier: CALLER, content: 'I need a big oak taken down please.' }] } } });
     await h.intake.settled();
-    expect(h.intake.list()[0]).toMatchObject({ callId: 'AC11', handledBy: 'sona', hold: 'attempted' });
+    expect(h.intake.list()[0]).toMatchObject({ callId: 'AC11', handledBy: 'sona', hold: 'filed' });
   });
 
   it('not-yet-written transcripts wait; ones Quo will never write settle as named hang-ups; a live call is left alone', async () => {
@@ -356,7 +356,7 @@ describe('learning from Quo — no call dropped in silence (Mike, 2026-09-24: "N
     deps.callRecords.add = realAdd;
     h.post(transcript('AC-Y', [[QUO_NUMBER, 'Hi.'], [CALLER, 'I need a big oak taken down please.']]));
     await h.intake.settled();
-    expect(h.intake.list().find((c) => c.callId === 'AC-Y')).toMatchObject({ handledBy: 'sona', hold: 'attempted' });
+    expect(h.intake.list().find((c) => c.callId === 'AC-Y')).toMatchObject({ handledBy: 'sona', hold: 'filed' });
     spy.mockRestore();
   });
 
@@ -433,7 +433,7 @@ describe('QuoIntake — Sona calls', () => {
     const [call] = h.intake.list();
     expect(call!.handledBy).toBe('sona');
     expect(call!.slips.some((s) => s.rule === 'no-price')).toBe(true);
-    expect(call!.hold).toBe('attempted');
+    expect(call!.hold).toBe('filed');
     expect(h.holds).toHaveLength(1);
     expect(h.holds[0]!.summary).toBe('SIM-Dana - 7575550142');
     expect(h.holds[0]!.colorId).toBe('4');

@@ -96,7 +96,7 @@ function quoRead(status: Record<string, unknown>, calls: Array<Record<string, un
   return {
     status: {
       registration: { state: 'ok', detail: 'wired' }, reading: true, received: 0, rejected: 0, lastAt: null, lastError: null,
-      sonaCalls: calls.length, slips: 0, callsWithSlips: 0, holdsAttempted: 0, hangups: 0, learnedFromRecord: 0, notUsed: {},
+      sonaCalls: calls.length, slips: 0, callsWithSlips: 0, holdsFiled: 0, holdsFailed: 0, holdsWaiting: 0, readsRetrying: 0, readRetryMax: 5, hangups: 0, learnedFromRecord: 0, notUsed: {},
       quoRecord: { lastAt: NOW, learned: 0, pending: 0, error: null, unreadable: null },
       ...status,
     },
@@ -215,13 +215,13 @@ describe('Talk tools — read-only, and a feed it could not read is NAMED (§1B)
       sonaCall({ callId: 'AC2', slips: [{ rule: 'no-date-promise', said: 'We can be there Tuesday.' }, { rule: 'no-price', said: '$1,200' }], facts: { name: null, city: 'Chesapeake', emergency: false } }),
       sonaCall({ callId: 'AC3', slips: [], facts: { name: 'SIM-Dogwood, Test', city: 'Portsmouth', emergency: true } }),
     ];
-    const tools = createTalkTools(simReads({ quo: () => quoRead({ callsWithSlips: 2, slips: 3, holdsAttempted: 1, hangups: 0 }, calls) }));
+    const tools = createTalkTools(simReads({ quo: () => quoRead({ callsWithSlips: 2, slips: 3, holdsFiled: 1, hangups: 0 }, calls) }));
     const text = (await tools.run('arbo_sona_calls')).text;
     expect(text).toContain('Red flags: Sona broke your rules on 2 calls.');
     expect(text).toMatch(/- SIM-Carver, Test, \d{1,2}:\d{2} [AP]M: gave a price\. Call back from the Arbo app\./);
     expect(text).toMatch(/- A caller who gave no name, \d{1,2}:\d{2} [AP]M: promised a day or time, gave a price\./);
     expect(text).toMatch(/- Emergency call: SIM-Dogwood, Test in Portsmouth, \d{1,2}:\d{2} [AP]M\. Call back from the Arbo app\./);
-    expect(text).toContain('Sona calls Arbo holds: 3. Calendar holds filed: 1. Hang-ups: 0.');
+    expect(text).toContain('Sona calls Arbo holds: 3. Calendar holds on your calendar: 1. Failed: 0. Still waiting on Google: 0. Hang-ups: 0.');
     for (const never of ['$800', '$1,200', 'Tuesday', 'about', '7575550103', '+1757']) expect(text).not.toContain(never);
     expect(text).not.toMatch(PHONE);
   });
@@ -269,7 +269,7 @@ describe('Talk tools — read-only, and a feed it could not read is NAMED (§1B)
     const rules = ['no-price', 'no-diagnosis', 'no-date-promise', 'no-financial-authority', 'forbidden-term', 'opus-read', 'something-new'];
     const calls = rules.map((rule, i) => sonaCall({ callId: `AC${i}`, slips: [{ rule, said: '$900 Tuesday' }], facts: { name: `SIM-Caller ${i}, Test`, city: 'Norfolk', emergency: i === 0 } }));
     const tools = createTalkTools(simReads({
-      quo: () => quoRead({ callsWithSlips: rules.length, holdsAttempted: 2, hangups: 1 }, calls),
+      quo: () => quoRead({ callsWithSlips: rules.length, holdsFiled: 2, holdsFailed: 1, readsRetrying: 1, hangups: 1 }, calls),
       storm: async () => ({ status: 200, body: { alerts: [{ id: 'a', event: 'Tornado Warning', severity: 'Extreme', headline: null, onset: null, ends: new Date(Date.now() + 3_600_000).toISOString(), cities: ['Norfolk'] }], atRisk: [{}] } }),
       stormLaw: async () => ({ ...lawNone, state: 'active', flag: STORM_LAW_FLAG }),
     }));

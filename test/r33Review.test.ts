@@ -304,7 +304,9 @@ describe('Settings → Google says what Google actually granted (review #4, #5)'
 // ═══ 6, 8, 9: Sona call cards and the holds-off lines ═════════════════════
 describe('holds-off lines never promise what the card can’t show (review #6, #8, #9)', () => {
   const status = {
-    registration: { state: 'ok', detail: '' }, reading: true, callsWithSlips: 0, sonaCalls: 2, learnedFromRecord: 0, holdsAttempted: 0, holds: 'read_only',
+    registration: { state: 'ok', detail: '' }, reading: true, callsWithSlips: 0, sonaCalls: 2, learnedFromRecord: 0,
+    // H1 merge: the intake's real shape — holdsAttempted split into filed / failed / waiting.
+    holdsFiled: 0, holdsFailed: 0, holdsWaiting: 0, readsRetrying: 0, readRetryMax: 5, holds: 'read_only',
     hangups: 0, quoRecord: { lastAt: 'x' }, notUsed: {},
   };
   const card = (callId: string, requestedTime: string | null) => ({

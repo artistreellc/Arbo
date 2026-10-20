@@ -369,9 +369,11 @@ describe('review fixes (R22 adversarial review, 2026-09-24)', () => {
     expect((await harness(s).engine.buildCandidates())[0]!.skip).toBeNull();
   });
 
-  it('a Sona booking survives a redeploy — re-read from Quo’s transcript, not memory', async () => {
-    // Empty bookedCallers = a fresh deploy. With a calendar writer, Sona filed a hold for this caller.
-    expect((await harness(base(), { sonaFilesHolds: true }).engine.buildCandidates())[0]).toMatchObject({ skip: 'estimate_booked' });
+  it('after a redeploy Arbo cannot see whether Sona’s hold was filed — named hold_unknown, never "booked", never auto-texted (H1)', async () => {
+    // Empty bookedCallers + no hold on record = a fresh deploy. With a calendar
+    // writer a hold MAY exist — or may have failed. The transcript alone
+    // proves neither, so it is held back by name (it once read "booked").
+    expect((await harness(base(), { sonaFilesHolds: true }).engine.buildCandidates())[0]).toMatchObject({ classification: 'customer', skip: 'hold_unknown' });
     // Without a calendar writer no hold was ever filed — still a follow-up.
     expect((await harness(base(), { sonaFilesHolds: false }).engine.buildCandidates())[0]!.skip).toBeNull();
   });
