@@ -268,6 +268,19 @@ describe('every screen H1 touched shows R33’s line when holds are off — neve
     expect(panel.textContent).not.toMatch(/No hold (is )?filed (yet|until)/);
   });
 
+  // Wave-1 verify (R33 base): the card for a call Arbo could not read and will not retry
+  // (no model key, or a transcript Quo failed to write) still said "no hold filed" while holds are off.
+  it('a call Arbo could not read and will not retry promises no hold while holds are off — muted; with holds on it still says none was filed', async () => {
+    const unread = card({ hold: 'extraction_unavailable', extractAttempts: 0, facts: null });
+    const panel = await sonaPanel(status(), [unread], true);
+    const c = panel.all().find((n) => n.dataset.sonaCall === 'AC1')!;
+    expect(c.textContent).toContain('Arbo could not read this call. If they want an estimate, book it yourself.');
+    expect(c.textContent).not.toMatch(/no hold filed/i);
+    expect(panel.all().some(red)).toBe(false);
+    const on = await sonaPanel(status({ holds: 'on' }), [unread], true);
+    expect(on.all().find((n) => n.dataset.sonaCall === 'AC1')!.textContent).toContain('Arbo could not read this call — no hold filed');
+  });
+
   it('with holds on (the dormant path), H1 is as built: the red count, the red card, the three numbers', async () => {
     const panel = await sonaPanel(status({ holds: 'on', holdsFailed: 1 }), [card({ hold: 'failed', holdError: 'google_signin' })], true);
     expect(panel.textContent).toContain('1 calendar hold did NOT reach your calendar');

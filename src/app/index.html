@@ -1629,6 +1629,8 @@ async function sonaPanel(limit, withTranscripts) {
         ? ['feed-state unread', 'Arbo could not read this call yet — trying again (' + c.extractAttempts + ' of ' + st.readRetryMax + ' tries).' + (st.holds === 'read_only' ? '' : ' No hold filed yet.')]
         : ['storm', 'Arbo could not read this call after ' + st.readRetryMax + ' tries' + (st.holds === 'read_only' ? '' : ' — no hold filed') + '. If they want an estimate, book it yourself.'];
     }
+    // R33: a call not retried (no model key, or a transcript Quo failed to write) promises no hold either while holds are off.
+    if (c.hold === 'extraction_unavailable' && st.holds === 'read_only') return ['storm-muted', 'Arbo could not read this call. If they want an estimate, book it yourself.'];
     return holdText[c.hold] ? ['storm-muted', holdText[c.hold]] : null;
   };
   const urgent = (c) => c.slips.length > 0 || !!(c.facts && c.facts.emergency) || c.hold === 'failed';
