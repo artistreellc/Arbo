@@ -168,6 +168,24 @@ describe('H1 × R33 — holds off is its own outcome, and nobody is booked from 
     expect(serverOutreach(live, NOW).status().holdsOff).toBeNull();
   });
 
+  it('M15 × R33: the wiring retry speaks R33’s registration, names a missing line as failed, and never retries a hook Arbo won’t create', () => {
+    const server = readFileSync(new URL('../src/server.ts', import.meta.url), 'utf8');
+    const wire = server.slice(server.indexOf('async function wireQuo('), server.indexOf('export function startServer('));
+    expect(wire).toContain('const reg = registrationFrom(hooks);');
+    expect(wire).toContain("intake.setRegistration(noLine ? 'failed' : reg.state, `${reg.detail}${noLine}`, hooks.keys, numbers);");
+    expect(wire).toContain('intake.setTextsHookMissing(textsHookMissing(hooks));');
+    // Retried: a Quo refusal or a missing line. Never the read-only `missing` list (off on purpose).
+    expect(wire).toContain('retry: hooks.failed.length > 0 || !first');
+    expect(wire).not.toMatch(/retry:[^\n]*missing/);
+    // The work that starts once the line is learned still stops at R33's door before any send.
+    const onLine = server.slice(server.indexOf('onLine: (line) => {'), server.indexOf('} else if (!currentQuoIntake)'));
+    expect(onLine).toContain('if (!quoWritesLive()) {');
+    expect(onLine.indexOf('if (!quoWritesLive())')).toBeLessThan(onLine.indexOf("outreach.runCatchup('auto')"));
+    // R31 and R33 boot lines survive the M15 restructure.
+    expect(server).toContain('for (const line of readOnlyBootLines()) console.log(line);');
+    expect(server).toContain('if (bouncieNow) setInterval(() => { void bouncieNow.tick(); }, 60_000).unref();');
+  });
+
   it('the server asks the intake — confirmed holds, its booking state, and whether holds are made at all', () => {
     const server = readFileSync(new URL('../src/server.ts', import.meta.url), 'utf8');
     expect(server).toContain('bookedCallers: () => bookedFromHolds(quoIntake.list()),');
@@ -205,6 +223,8 @@ const deps = {
   el, plural, chip: (t: string, tone: string) => el('span', 'badge ' + tone, t), fmtTime: () => '', feedLine: () => el('div', 'feed-state unread', 'x'),
   renderCalls: () => {}, renderToday: () => {}, slipRuleLabel: (r: string) => r, openSonaCall: () => {},
   document: { createElement: (t: string) => el(t) },
+  // M15: the Sona panel words a registration through the page's own quoRegLine — the real one, lifted from the page.
+  quoRegLine: (reg: unknown) => pageFn<(r: unknown) => string>('quoRegLine', { fmtTime: () => '' })(reg),
 };
 
 /** The status the intake really returns (H1 + R33 fields). */

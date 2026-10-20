@@ -255,8 +255,11 @@ export class QuoIntake {
   };
   private readonly googleWrites: boolean;
   private textsHook = false;
-  /** 'read_only' (R33): Arbo would not create or replace a webhook Quo is missing — named, never 'failed'. */
-  private registration: { state: 'not_configured' | 'pending' | 'ok' | 'failed' | 'read_only'; detail: string } = {
+  /**
+   * 'read_only' (R33): Arbo would not create or replace a webhook Quo is missing — named, never 'failed'.
+   * retryAt (M15): when the next wiring try runs, while wiring is not whole — null otherwise.
+   */
+  private registration: { state: 'not_configured' | 'pending' | 'ok' | 'failed' | 'read_only'; detail: string; retryAt?: string | null; attempts?: number } = {
     state: 'not_configured',
     // Owner words: this shows on Today and Calls. The variable name stays in the boot log.
     detail: 'Quo isn’t connected to Arbo yet — Sona’s calls are not reaching Arbo. That doesn’t mean no calls came in.',
@@ -281,7 +284,7 @@ export class QuoIntake {
   }
 
   setRegistration(state: 'pending' | 'ok' | 'failed' | 'read_only', detail: string, keys: string[] = [], ownNumbers: string[] = []): void {
-    this.registration = { state, detail };
+    this.registration = { state, detail, retryAt: null, attempts: this.registration.attempts ?? 0 };
     if (keys.length) this.keys = keys;
     if (ownNumbers.length) this.ownNumbers = new Set(ownNumbers.map((n) => normalizeCallerId(n) ?? n));
   }
@@ -294,6 +297,11 @@ export class QuoIntake {
   /** True when new Quo texts can't reach the Texts list — said on the Texts panel, never an empty list (§1B). */
   textsHookMissing(): boolean {
     return this.textsHook;
+  }
+
+  /** M15: wiring is not whole yet — say when Arbo tries again, so a wait never reads as a quiet phone. */
+  noteWiringRetry(nextAt: Date, attempts: number): void {
+    this.registration = { ...this.registration, retryAt: nextAt.toISOString(), attempts };
   }
 
   /** POST /webhooks/quo — verify, answer at once, work off the request. */

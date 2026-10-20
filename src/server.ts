@@ -76,6 +76,7 @@ import { simQuoTexts } from './dev/simQuoTexts.js';
 import { createQuoSender } from './integrations/quoSend.js';
 import { GOOGLE_READ_ONLY, GOOGLE_HOLDS_OFF_LINE, QUO_READ_ONLY_LINE, quoWritesLive, readOnlyBootLines } from './integrations/readOnly.js';
 import { OutreachEngine } from './ops/outreach.js';
+import { startQuoWiring, type WireAttempt } from './ops/quoWiring.js';
 import {
   listLeads,
   listStopsBetween,
@@ -1999,26 +2000,36 @@ let currentQuoStudy: QuoStudy | null = null;
 /** The R28 business assistant the running handler uses — startServer starts its clock. */
 let currentAssistant: Assistant | null = null;
 
+/** The Quo line Arbo reads and texts from, learned from Quo at wiring. */
+type QuoLine = { api: ReturnType<typeof createQuoApi>; phoneNumberId: string; numbers: string[] };
+
 /**
  * Register Arbo's webhooks with Quo and hand the intake its signing keys.
  * Every outcome is a NAMED state on /api/quo and a boot log line — a Quo
- * that is not wired must never look like a quiet phone (§1B).
+ * that is not wired must never look like a quiet phone (§1B). `retry` says
+ * whether a later try could fix what is missing (M15: startQuoWiring tries
+ * again on a bounded backoff instead of waiting for the next deploy).
  */
-async function wireQuo(intake: QuoIntake, outreach: OutreachEngine | null): Promise<{ api: ReturnType<typeof createQuoApi>; phoneNumberId: string; numbers: string[] } | null> {
-  if (!env.quoApiKey) return null;
+async function wireQuo(intake: QuoIntake, outreach: OutreachEngine | null): Promise<WireAttempt<QuoLine>> {
+  if (!env.quoApiKey) return { line: null, retry: false };
   const domain = process.env.RAILWAY_PUBLIC_DOMAIN;
   if (!domain) {
     intake.setRegistration('failed', 'Arbo has no public web address to give Quo — Sona’s calls cannot reach Arbo. That doesn’t mean no calls came in.');
     console.error('[quo] NOT wired — no public URL');
-    return null;
+    return { line: null, retry: false }; // a config gap, not a blip — a retry would not fix it
   }
   intake.setRegistration('pending', 'Registering with Quo…');
   const api = createQuoApi(env.quoApiKey);
   try {
-    const [hooks, lines] = await Promise.all([
+    const [hooks, listed] = await Promise.all([
       ensureQuoWebhooks(api, `https://${domain}/webhooks/quo`),
-      api.phoneNumbers().catch(() => []),
+      // M15: a failed phone-number read is NAMED, never swallowed into "no lines".
+      api.phoneNumbers().then(
+        (lines) => ({ lines, why: null as string | null }),
+        (err: unknown) => ({ lines: [] as Awaited<ReturnType<typeof api.phoneNumbers>>, why: err instanceof Error ? err.message : 'error' }),
+      ),
     ]);
+    const lines = listed.lines;
     const numbers = lines.map((l) => l.number);
     // R22: Arbo texts from the FIRST Quo line — one number, no ambiguity.
     const first = lines[0];
@@ -2026,17 +2037,28 @@ async function wireQuo(intake: QuoIntake, outreach: OutreachEngine | null): Prom
     // (Mike's cell) and Arbo's own line — docs/PHONE_SETUP.md.
     if (outreach && first) outreach.setLine({ phoneNumberId: first.id, number: first.number, ownNumbers: [...numbers, ...OWN_PHONE_NUMBERS] });
     else if (outreach) console.error('[outreach] NOT wired — Quo returned no phone number; nothing can be texted');
+    // Webhooks registered but no line: live calls still arrive, but Quo's
+    // record, the customer study and texting cannot start — said, not hidden (M15).
+    const noLine = first
+      ? ''
+      : listed.why
+        ? ` Quo would not list its phone numbers (${listed.why}) — Arbo is not reading Quo’s record, studying customer threads or texting until it can.`
+        : ' Quo listed no phone number — Arbo is not reading Quo’s record, studying customer threads or texting until it does.';
     // R33: read-only names a hook it won't create as its own state, never 'failed'.
+    // M15: a line Arbo could not learn IS a failure, named after it.
     const reg = registrationFrom(hooks);
-    intake.setRegistration(reg.state, reg.detail, hooks.keys, numbers);
+    intake.setRegistration(noLine ? 'failed' : reg.state, `${reg.detail}${noLine}`, hooks.keys, numbers);
     intake.setTextsHookMissing(textsHookMissing(hooks));
-    console.log(`[quo] wired${hooks.readOnly ? ' READ-ONLY' : ''} — created ${hooks.created.length}, reused ${hooks.reused.length}, missing ${hooks.missing.length}, failed ${hooks.failed.length}, ${numbers.length} number(s)`);
-    return first ? { api, phoneNumberId: first.id, numbers } : null;
+    console.log(`[quo] wired${hooks.readOnly ? ' READ-ONLY' : ''} — created ${hooks.created.length}, reused ${hooks.reused.length}, missing ${hooks.missing.length}, failed ${hooks.failed.length}, ${numbers.length} number(s)${listed.why ? ' (phone numbers NOT read)' : ''}`);
+    // M15: try again only for what a later try could fix — a Quo refusal or a
+    // missing line. R33: a hook Arbo WON'T create while read-only (`missing`)
+    // is off on purpose, not a blip; a retry only reads, and never creates it.
+    return { line: first ? { api, phoneNumberId: first.id, numbers } : null, retry: hooks.failed.length > 0 || !first };
   } catch (err) {
     const why = err instanceof Error ? err.message : 'error';
     intake.setRegistration('failed', `Quo registration failed (${why}) — Sona calls are NOT reaching Arbo. That doesn’t mean no calls came in.`);
     console.error('[quo] registration FAILED:', why);
-    return null;
+    return { line: null, retry: true };
   }
 }
 
@@ -2076,15 +2098,19 @@ export function startServer(port: number) {
   inboxWatch = startInboxWatch(gmailReader, { onMessage: intentWatch.observer });
   // Sona via Quo: register Arbo's webhooks in the background — the server
   // listens meanwhile, and every outcome is named on /api/quo.
-  if (currentQuoIntake) {
+  if (currentQuoIntake && env.quoApiKey) {
     const outreach = currentOutreach;
     const intake = currentQuoIntake;
-    void wireQuo(intake, outreach).then((line) => {
-      // "Need arbo to start learning from QUO" (Mike, 2026-09-24): read
-      // Sona's calls from Quo's own record — the last week at boot (learned
-      // without new holds), then every 10 minutes (catches any call the
-      // webhook missed). reconcile() names its own failures; it never throws.
-      if (line) {
+    // M15: wiring is retried (1, 5, 15 minutes, then every 15) until it is
+    // whole; the work below starts ONCE, when the Quo line is first learned.
+    startQuoWiring<QuoLine>({
+      wire: () => wireQuo(intake, outreach),
+      onRetry: (nextAt, attempts) => intake.noteWiringRetry(nextAt, attempts),
+      onLine: (line) => {
+        // "Need arbo to start learning from QUO" (Mike, 2026-09-24): read
+        // Sona's calls from Quo's own record — the last week at boot (learned
+        // without new holds), then every 10 minutes (catches any call the
+        // webhook missed). reconcile() names its own failures; it never throws.
         void intake.reconcile(line.api, line.phoneNumberId, QUO_LEARN_BACKFILL_MS);
         setInterval(() => { void intake.reconcile(line.api, line.phoneNumberId, QUO_LEARN_WINDOW_MS); }, QUO_LEARN_EVERY_MS).unref();
         // R24 study: a week back, 2 minutes after boot (so it never shares
@@ -2098,28 +2124,28 @@ export function startServer(port: number) {
             setInterval(() => { void study.run(line.phoneNumberId, QUO_LEARN_BACKFILL_MS, own); }, QUO_STUDY_EVERY_MS).unref();
           }, QUO_STUDY_BOOT_DELAY_MS).unref();
         }
-      } else if (env.quoApiKey) console.error('[quo] NOT learning from Quo\'s record — no Quo line to read');
-      if (!outreach) return;
-      if (!quoWritesLive()) {
-        // R33: off on purpose — not "template refused", not "nothing to send".
-        console.log('[outreach] READ-ONLY (R33) — Quo is read-only: no text is sent; the catch-up and follow-ups are off until Mike sets ARBO_QUO_SEND=live');
-        return;
-      }
-      const tv = outreach.verifyTemplate();
-      console.log(tv.ok
-        ? `[outreach] template OK — follow-ups ${env.outreachAuto ? 'AUTO (hourly, 48h after an inquiry)' : 'OFF until ARBO_OUTREACH=live'}; catch-up ${env.outreachCatchupAtBoot ? 'RUNNING at boot' : 'waits for Mike\'s tap or ARBO_OUTREACH_CATCHUP=live'}`
-        : `[outreach] template REFUSED — nothing will be texted: ${tv.problems.join('; ')}`);
-      if (env.outreachCatchupAtBoot) {
-        // A Quo failure at boot is a named log line, never a crashed server.
-        outreach.runCatchup('auto').catch((err) => {
-          console.error('[outreach] boot catch-up FAILED — nothing sent:', err instanceof Error ? err.message : 'error');
-        });
-      }
-      // Every 15 minutes: release texts held for quiet hours, and on the hour
-      // queue the 48-hour follow-ups. Same shape as the agent scheduler.
-      setInterval(() => { void outreach.tick(); }, 15 * 60_000).unref();
+        if (!outreach) return;
+        if (!quoWritesLive()) {
+          // R33: off on purpose — not "template refused", not "nothing to send".
+          console.log('[outreach] READ-ONLY (R33) — Quo is read-only: no text is sent; the catch-up and follow-ups are off until Mike sets ARBO_QUO_SEND=live');
+          return;
+        }
+        const tv = outreach.verifyTemplate();
+        console.log(tv.ok
+          ? `[outreach] template OK — follow-ups ${env.outreachAuto ? 'AUTO (hourly, 48h after an inquiry)' : 'OFF until ARBO_OUTREACH=live'}; catch-up ${env.outreachCatchupAtBoot ? 'RUNNING at boot' : 'waits for Mike\'s tap or ARBO_OUTREACH_CATCHUP=live'}`
+          : `[outreach] template REFUSED — nothing will be texted: ${tv.problems.join('; ')}`);
+        if (env.outreachCatchupAtBoot) {
+          // A Quo failure at boot is a named log line, never a crashed server.
+          outreach.runCatchup('auto').catch((err) => {
+            console.error('[outreach] boot catch-up FAILED — nothing sent:', err instanceof Error ? err.message : 'error');
+          });
+        }
+        // Every 15 minutes: release texts held for quiet hours, and on the hour
+        // queue the 48-hour follow-ups. Same shape as the agent scheduler.
+        setInterval(() => { void outreach.tick(); }, 15 * 60_000).unref();
+      },
     });
-  } else console.error('[quo] intake missing at boot — not wired');
+  } else if (!currentQuoIntake) console.error('[quo] intake missing at boot — not wired');
   // R31: once a minute, outside working hours nothing about the trucks is held even when nobody
   // asks, a renewed Bouncie sign-in Supabase refused is saved again, and the daily keep-alive
   // (Mike, 2026-10-20: "Keep the sign-in alive") swaps the refresh token. Never reads a truck, never throws.

@@ -48,8 +48,11 @@ export interface QuoWebhook {
 
 type FetchLike = (
   url: string,
-  init: { method: string; headers: Record<string, string>; body?: string },
+  init: { method: string; headers: Record<string, string>; body?: string; signal?: globalThis.AbortSignal },
 ) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
+
+/** M15: no Quo call may hang the boot wiring or a pass — 15 s, then it fails and is named. */
+const QUO_CALL_DEADLINE_MS = 15_000;
 
 export interface QuoPhoneNumber {
   id: string;
@@ -165,6 +168,7 @@ export function createQuoApi(apiKey: string, fetchImpl: FetchLike = fetch as unk
       method,
       headers,
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      signal: globalThis.AbortSignal.timeout(QUO_CALL_DEADLINE_MS),
     });
     // Status and Quo's error code only — never echo a response body (§4.3).
     if (!res.ok) {

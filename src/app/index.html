@@ -1482,6 +1482,10 @@ function openSonaCall(callId) {
   };
   look();
 }
+// M15: wiring that is not whole is tried again on its own \u2014 the line says when, so a wait never reads as a quiet phone.
+function quoRegLine(reg) {
+  return reg.detail + (reg.retryAt ? ' Arbo tries again at ' + fmtTime(reg.retryAt) + ' \u2014 no redeploy needed.' : '');
+}
 async function sonaPanel(limit, withTranscripts) {
   let d;
   try { d = await api('/api/quo'); }
@@ -1502,7 +1506,7 @@ async function sonaPanel(limit, withTranscripts) {
     return wrap;
   }
   if (st.registration.state !== 'ok') {
-    wrap.appendChild(el('div', st.registration.state === 'failed' ? 'storm' : 'storm-muted', st.registration.detail));
+    wrap.appendChild(el('div', st.registration.state === 'failed' ? 'storm' : 'storm-muted', quoRegLine(st.registration)));
   }
   if (!st.reading) {
     // R33: with holds off on purpose, the missing key costs the rule check — not the holds.
@@ -5324,7 +5328,7 @@ async function buildSettings(v, gen) {
     // The row names Quo once: Settings words the not-connected state itself, and
     // a failed or pending registration reads as the intake's own sentence after the label.
     row.appendChild(el('span', '', 'Quo (Sona calls & texts) \u2014 ' + (ok ? q.received + ' received' + (q.lastAt ? ', last ' + fmtTime(q.lastAt) : ' since Arbo last restarted')
-      : reg.state === 'not_configured' ? 'not connected to Arbo yet, so Sona\u2019s calls aren\u2019t reaching Arbo' : reg.detail)));
+      : reg.state === 'not_configured' ? 'not connected to Arbo yet, so Sona\u2019s calls aren\u2019t reaching Arbo' : quoRegLine(reg))));
     v.appendChild(row);
     // R33 (Mike, 2026-10-20: "connect quo as read only"): what Arbo may do in Quo — only as the server says it.
     if (reg.state !== 'not_configured' && q.quoWrites) {
