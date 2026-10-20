@@ -1320,7 +1320,10 @@ describe('the callback at /api/bouncie/callback — one Redirect URI, written on
     expect(server).toContain('url.pathname === RETIRED_CALLBACK_PATH');
     expect(html).not.toContain('bouncie/callback');
     // The callback is answered BEFORE the /api key gate — Bouncie's redirect carries no key.
-    expect(server.indexOf('url.pathname === BOUNCIE_CALLBACK_PATH')).toBeLessThan(server.indexOf("if (url.pathname.startsWith('/api/') && !apiAuthorized())"));
+    // (Audit M1/L1: the gate is now `if (url.pathname.startsWith('/api/')) { … checkApiDoor(…) }`.)
+    const gateAt = server.indexOf('const door = checkApiDoor(');
+    expect(gateAt).toBeGreaterThan(-1);
+    expect(server.indexOf('url.pathname === BOUNCIE_CALLBACK_PATH')).toBeLessThan(gateAt);
     // And the docs Mike follows carry the same address and Client ID.
     const doc = read('../docs/BOUNCIE.md');
     expect(doc).toContain(BOUNCIE_REDIRECT);
