@@ -158,8 +158,12 @@ Reconnecting makes Google itself hold the line.
    Copy its whole address.
 4. **Paste it into the box in Settings → Google and tap Connect** within a few
    minutes (the code expires). It should say *"Connected read-only. Gmail, the
-   calendar and Drive are read again — saved on the storage disk."* The card
-   shows a green **READ-ONLY** chip and the three permissions.
+   calendar and Drive are read again — saved on the storage disk."* That message
+   is the sign it worked. If it says *"Connected, but Google didn't grant: …"*,
+   a box was left unticked on Google's screen — tap Open Google and approve all
+   three. (The READ-ONLY chip and the three permissions show before you connect
+   too — as what Arbo *asks for*. Once a sign-in is saved, the chip turns green
+   and each permission gets a ✓.)
 5. **Optional tidy-up on Railway:** the variable `GMAIL_OAUTH_REFRESH_TOKEN` is
    the older sign-in, used only when Arbo has none saved. After step 1 it no
    longer works; you can delete it.
@@ -167,7 +171,8 @@ Reconnecting makes Google itself hold the line.
 What you'll see afterwards: each Sona call that wants an estimate says
 *"Calendar holds are off — Google is connected read-only (Mike, 2026-10-20).
 Sona's requested time is shown on the call card for you to book."* — book it
-yourself. The deploy log says `[google] READ-ONLY (R33)` and
+yourself. A caller who gave no time says *"… The caller gave no time — call
+them to set one."* instead. The deploy log says `[google] READ-ONLY (R33)` and
 `[calendar] holds OFF`.
 
 The business assistant (R28) has its own Google connection in your Claude

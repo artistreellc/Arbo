@@ -207,6 +207,7 @@ export class QuoIntake {
   private readonly bootMs: number;
   private sweep: { lastAt: string | null; learned: number; pending: number; error: string | null; unreadable: string | null } = { lastAt: null, learned: 0, pending: 0, error: null, unreadable: null };
   private readonly googleWrites: boolean;
+  private textsHook = false;
   /** 'read_only' (R33): Arbo would not create or replace a webhook Quo is missing — named, never 'failed'. */
   private registration: { state: 'not_configured' | 'pending' | 'ok' | 'failed' | 'read_only'; detail: string } = {
     state: 'not_configured',
@@ -236,6 +237,16 @@ export class QuoIntake {
     this.registration = { state, detail };
     if (keys.length) this.keys = keys;
     if (ownNumbers.length) this.ownNumbers = new Set(ownNumbers.map((n) => normalizeCallerId(n) ?? n));
+  }
+
+  /** R33: set at boot from ensureQuoWebhooks — the texts hook is one Arbo won't create (textsHookMissing, quo.ts). */
+  setTextsHookMissing(missing: boolean): void {
+    this.textsHook = missing;
+  }
+
+  /** True when new Quo texts can't reach the Texts list — said on the Texts panel, never an empty list (§1B). */
+  textsHookMissing(): boolean {
+    return this.textsHook;
   }
 
   /** POST /webhooks/quo — verify, answer at once, work off the request. */
@@ -451,8 +462,10 @@ export class QuoIntake {
     );
 
     if (!facts.wantsEstimate) e.hold = 'not_requested';
+    // R33 — the writer is never called. Checked BEFORE learned_only: a call
+    // re-read after a deploy says holds are off too, never "Arbo filed no hold".
+    else if (!this.googleWrites) e.hold = 'read_only';
     else if (!opts.fileHold) e.hold = 'learned_only';
-    else if (!this.googleWrites) e.hold = 'read_only'; // R33 — the writer is never called
     else if (!this.deps.calendarHold) e.hold = 'no_writer';
     else {
       e.hold = 'attempted';
@@ -479,8 +492,9 @@ export class QuoIntake {
    * window that Arbo has not processed (or processed as "not Sona's" while
    * Quo says Sona answered). Serial with the webhook queue, so one call is
    * never processed twice. A call from before this process started is
-   * learned without a hold (hold 'learned_only'); a later one the webhook
-   * missed is handled exactly as the webhook would have.
+   * learned without a hold (hold 'learned_only'; 'read_only' while Google is
+   * read-only, R33); a later one the webhook missed is handled exactly as the
+   * webhook would have.
    */
   async reconcile(api: QuoApi, phoneNumberId: string, windowMs: number): Promise<{ learned: number; pending: number }> {
     const sleep = this.deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));

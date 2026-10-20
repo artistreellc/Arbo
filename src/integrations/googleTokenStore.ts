@@ -110,6 +110,17 @@ export function extraScopes(granted: string[]): string[] {
   return granted.filter((s) => s && !GOOGLE_SCOPES.includes(s));
 }
 
+/**
+ * Asked-for scopes a grant does NOT carry — Google's consent screen lets Mike
+ * untick a box. Named so the card never says "all three are read" over a
+ * partial grant. An empty `granted` (Google returned no scope list) is
+ * unknown, not "none granted": nothing is named.
+ */
+export function missingScopes(granted: string[]): string[] {
+  if (!granted.length) return [];
+  return GOOGLE_SCOPES.filter((s) => !granted.includes(s));
+}
+
 /** Mike's OAuth client is a Desktop client: Google sends him to http://localhost with the code. */
 export const GOOGLE_REDIRECT = 'http://localhost';
 

@@ -64,12 +64,18 @@ go to T-Mobile voicemail until the two optional codes are dialed.
   What a missing hook costs: **calls** — nothing, Arbo reads Sona's calls from
   Quo's record every 10 minutes; **texts** — new Quo texts stop appearing live
   in the Texts list and stop starting the assistant (R28), but the customer
-  study (R24) still reads every text thread from Quo every 30 minutes.
+  study (R24) still reads every text thread from Quo every 30 minutes. When
+  the missing one is the texts hook, the Quo line adds *"New Quo texts won't
+  show under Texts — read them in the Quo app."* and the Texts panel says
+  *"Quo line: texts webhook missing — Arbo is read-only and won't create it.
+  New Quo texts don't show here; this is not zero texts."*
 - Per Sona call: rule check (code guard + Opus read), call record,
   repeat-caller memory. **No calendar hold (R33):** Google is connected
   read-only, so the call card says *"Calendar holds are off — Google is
   connected read-only (Mike, 2026-10-20). Sona's requested time is shown on
-  the call card for you to book."* and shows the time the caller asked for.
+  the call card for you to book."* and shows it, when the caller gave one.
+  A caller who gave no time gets *"… The caller gave no time — call them to
+  set one."* instead.
   State on `GET /api/quo` and the Today / Calls screens.
   *R26:* the code guard now also flags a promised day or time ("we'll be
   there Tuesday") — expect more SONA BROKE A RULE cards for dates, which is
@@ -81,7 +87,8 @@ go to T-Mobile voicemail until the two optional codes are dialed.
   unused event is now named (`notUsed` on `/api/quo`, a red line on the
   Sona panel, a `[quo] event not used —` log line). A call from before the
   current deploy is learned WITHOUT a calendar hold (the card says "book it
-  yourself"), because an earlier deploy may already have filed one. Boot
+  yourself"; while Google is read-only, R33, it says holds are off like every
+  other call), because an earlier deploy may already have filed one. Boot
   log proof: `[quo] read Quo's record — learned N call(s)`.
 - **PAUSED by Mike's ruling R33 (2026-10-20): Arbo sends no text.** What
   follows is how the R22 text works once Mike sets `ARBO_QUO_SEND=live`.

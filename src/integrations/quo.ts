@@ -24,7 +24,7 @@
 // created; one whose key Quo withholds is named, never replaced. Every read
 // keeps working, and Arbo reads Sona's calls from Quo's own record anyway.
 
-import { QUO_HOOK_MISSING_LINE, QUO_HOOK_NO_KEY_LINE, QuoReadOnlyError, quoWritesLive } from './readOnly.js';
+import { QUO_HOOK_MISSING_LINE, QUO_HOOK_NO_KEY_LINE, QUO_TEXTS_HOOK_LINE, QuoReadOnlyError, quoWritesLive } from './readOnly.js';
 
 export const QUO_API_BASE = 'https://api.quo.com/v1';
 
@@ -402,6 +402,15 @@ async function useWebhooksAsTheyAre(api: QuoApi, existing: QuoWebhook[]): Promis
 }
 
 /**
+ * Is the TEXTS hook one Arbo won't create (read-only, R33)? A hook whose key
+ * Quo withholds counts too: Quo posts, Arbo can't verify it, nothing lands.
+ * Then new Quo texts never reach the Texts list — the panel names it.
+ */
+export function textsHookMissing(hooks: EnsureResult): boolean {
+  return hooks.readOnly && hooks.missing.some((m) => m.family === 'messages');
+}
+
+/**
  * The intake's registration line for what ensureQuoWebhooks found. Three
  * states, never fewer (§1B): every hook in place ('ok'), read-only with a
  * hook missing ('read_only' — off on purpose, said in its own muted line),
@@ -416,7 +425,7 @@ export function registrationFrom(hooks: EnsureResult): { state: 'ok' | 'failed' 
     };
   }
   const missing = hooks.missing.length
-    ? `${[...new Set(hooks.missing.map((m) => m.why))].join(' ')} Missing: ${hooks.missing.map((m) => m.family).join(', ')}.`
+    ? `${[...new Set(hooks.missing.map((m) => m.why))].join(' ')} Missing: ${hooks.missing.map((m) => m.family).join(', ')}.${textsHookMissing(hooks) ? ` ${QUO_TEXTS_HOOK_LINE}` : ''}`
     : '';
   if (hooks.failed.length) return { state: 'failed', detail: `Quo is read-only — ${hooks.reused.length} webhook(s) in place, none created.${failed}${missing ? ` ${missing}` : ''}` };
   if (!missing) return { state: 'ok', detail: `Wired to Quo, read-only — ${hooks.reused.length} webhooks in place, none created.` };

@@ -68,6 +68,13 @@ export const QUO_READ_ONLY_LINE = 'Quo is read-only — send from the Quo app.';
 export const QUO_HOOK_MISSING_LINE =
   'Quo webhook missing — Arbo is read-only and won’t create it; texts and calls are read from Quo’s record instead.';
 
+/**
+ * Added to the hook line when the missing one is the TEXTS hook: Sona's calls
+ * are re-read from Quo's record every 10 minutes, but the Texts list is fed
+ * only by that hook — so say where the texts are instead (§1B).
+ */
+export const QUO_TEXTS_HOOK_LINE = 'New Quo texts won’t show under Texts — read them in the Quo app.';
+
 /** A webhook that exists, whose signing key Quo will not show Arbo — Arbo used to replace it, and won't while read-only. */
 export const QUO_HOOK_NO_KEY_LINE =
   'Quo webhook found, but Quo won’t show Arbo its signing key — Arbo is read-only and won’t replace it; texts and calls are read from Quo’s record instead.';

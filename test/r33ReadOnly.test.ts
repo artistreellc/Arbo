@@ -487,8 +487,10 @@ describe('the app says it', () => {
       return { status: outreachStatus, candidates: [], sends: [] };
     };
     const panel = await pageFn<(full: boolean) => Promise<FakeEl>>('outreachPanel', { ...deps, api })(true);
-    const buttons = panel.all().filter((n) => n.tag === 'button' && /catch-up/i.test(n.textContent));
+    // R33 review: the disabled button says the read-only line itself, never "Send catch-up to N now".
+    const buttons = panel.all().filter((n) => n.tag === 'button' && n.className === 'actbtn');
     expect(buttons).toHaveLength(1);
+    expect(buttons[0]!.textContent).toBe(QUO_READ_ONLY_LINE);
     expect(buttons[0]!.disabled).toBe(true);
     expect(buttons[0]!.onclick).toBeNull();
     expect(panel.textContent).toContain(QUO_READ_ONLY_LINE);
@@ -531,7 +533,7 @@ describe('the app says it', () => {
 
   it('Settings → Google shows READ-ONLY, lists the three read permissions, and the steps say what Google will show', () => {
     const settings = src('buildSettings');
-    expect(settings).toContain("chip('READ-ONLY', 'good')");
+    expect(settings).toContain("chip('READ-ONLY', t.stored ? 'good' : 'info')"); // green only once a sign-in is saved (R33 review)
     expect(settings).toContain('gs.permissions');
     expect(settings).toContain('Google’s screen will list exactly these three');
     expect(settings).toContain("chip(q.quoWrites === 'live' ? 'SENDS ON' : 'READ-ONLY'");

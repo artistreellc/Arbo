@@ -68,9 +68,9 @@ import { vendorLinked, vendorCutBody, cutVendorLinks } from './integrations/vend
 import { createSonaExtractor } from './ops/quoExtract.js';
 import { QuoStudy, createStudyReader } from './ops/quoStudy.js';
 import { createDriveFolderReader } from './integrations/driveRead.js';
-import { GoogleTokenStore, googleCreds, consentUrl, codeFrom, exchangeCode, extraScopes, GOOGLE_SCOPES, GOOGLE_PERMISSIONS } from './integrations/googleTokenStore.js';
+import { GoogleTokenStore, googleCreds, consentUrl, codeFrom, exchangeCode, extraScopes, missingScopes, GOOGLE_SCOPES, GOOGLE_PERMISSIONS } from './integrations/googleTokenStore.js';
 import { Bouncie, BOUNCIE_CALLBACK_PATH, BOUNCIE_REDIRECT, RETIRED_CALLBACK_PATH, bouncieTokenBackend, callbackPage, type UnitLite } from './integrations/bouncie.js';
-import { createQuoApi, ensureQuoWebhooks, registrationFrom } from './integrations/quo.js';
+import { createQuoApi, ensureQuoWebhooks, registrationFrom, textsHookMissing } from './integrations/quo.js';
 import { QuoMediaStore } from './integrations/quoMedia.js';
 import { simQuoTexts } from './dev/simQuoTexts.js';
 import { createQuoSender } from './integrations/quoSend.js';
@@ -1730,7 +1730,10 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
           records: callRecords.list(),
           knownCallers: callMemory.size,
           calendarHolds: GOOGLE_READ_ONLY ? GOOGLE_HOLDS_OFF_LINE : calendarHold ? 'configured' : 'DISABLED — no Google token (this is not zero holds)',
-          note: 'In-memory since deploy — the calendar hold is the durable copy until the data links go live.',
+          // R33: no hold is ever made while Google is read-only, so it can't be the lasting copy.
+          note: GOOGLE_READ_ONLY
+            ? 'In-memory since deploy — calendar holds are off (R33), so Quo’s own record is the lasting copy.'
+            : 'In-memory since deploy — the calendar hold is the durable copy until the data links go live.',
         });
       }
       // R19: webhook state + captured payloads, keywall-only (customer
@@ -1778,8 +1781,10 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
           const where = googleTokenStore.save(r.refreshToken, new Date().toISOString());
           // R33: a grant that also carries an older write permission is named (count only in the log) — Arbo uses it read-only all the same.
           const extra = extraScopes(r.scopes);
-          console.log(`[google] reconnected — token kept on ${where}; ${r.scopes.length} scope(s), ${extra.length} beyond read-only; used read-only (R33)`);
-          return send(200, { ok: true, where, scopes: r.scopes, extraScopes: extra, readOnly: GOOGLE_READ_ONLY, token: googleTokenStore.status() });
+          // R33 review: a box Mike unticked on Google's screen is named too — never "all three are read" over a partial grant.
+          const missing = missingScopes(r.scopes);
+          console.log(`[google] reconnected — token kept on ${where}; ${r.scopes.length} scope(s), ${extra.length} beyond read-only, ${missing.length} asked-for not granted; used read-only (R33)`);
+          return send(200, { ok: true, where, scopes: r.scopes, extraScopes: extra, missingScopes: missing, readOnly: GOOGLE_READ_ONLY, token: googleTokenStore.status() });
         }
       }
       if (req.method === 'GET' && url.pathname === '/api/quo/study') {
@@ -1824,6 +1829,8 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
           // R21: the key can be set while the link is cut — cut wins, and is its own state.
           linkCut: !vendorLinked('twilio'),
           texts,
+          // R33: the Quo texts hook is one Arbo won't create — new Quo texts never land here, and the panel says so.
+          quoTextsHookMissing: quoIntake.textsHookMissing(),
           note: 'Texts and photos sent to the Arbo number. Receive only — Arbo never replies. NOT WIRED is not zero texts.',
         });
       }
@@ -1992,6 +1999,7 @@ async function wireQuo(intake: QuoIntake, outreach: OutreachEngine | null): Prom
     // R33: read-only names a hook it won't create as its own state, never 'failed'.
     const reg = registrationFrom(hooks);
     intake.setRegistration(reg.state, reg.detail, hooks.keys, numbers);
+    intake.setTextsHookMissing(textsHookMissing(hooks));
     console.log(`[quo] wired${hooks.readOnly ? ' READ-ONLY' : ''} — created ${hooks.created.length}, reused ${hooks.reused.length}, missing ${hooks.missing.length}, failed ${hooks.failed.length}, ${numbers.length} number(s)`);
     return first ? { api, phoneNumberId: first.id, numbers } : null;
   } catch (err) {
