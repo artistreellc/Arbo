@@ -914,8 +914,12 @@ What this changes in R31:
    (`integration_credential`, migration 0021), sealed with AES-256-GCM under
    a key derived from `BOUNCIE_CLIENT_SECRET`, reached through one narrow door
    (`src/db/credentialStore.ts`) that touches that table and nothing else. It
-   holds Arbo's own sign-in, not company data, so it sits outside the business
-   data links (§3 stays cut). A disk sign-in from the first build is moved in
+   holds Arbo's own sign-in, not company data, so it is not one of the
+   business data links — but §3 (every Supabase link cut until the app is
+   built) and this spec meet there, and that is Mike's call, not the code's.
+   So the door has its own switch and is CUT unless `ARBO_LINK_CREDENTIALS`
+   is exactly `live`: while cut, Arbo sends nothing to Supabase for the
+   sign-in and Connect refuses by name. A disk sign-in from the first build is moved in
    once, then removed from the disk. Practice mode (`ARBO_DATA_LINKS=sim`)
    opens no database, so there the disk file stays. The rotated refresh token
    is saved before the new access token is used; if Supabase will not take
@@ -924,7 +928,8 @@ What this changes in R31:
    read only, one truck and one day at a time.
 4. **The default "positions show around the clock" is replaced:** positions
    and trips follow `withinWorkingHours()` — 8am–8pm, Monday to Saturday, the
-   office phone's hours. Outside them Arbo reads nothing, holds nothing, and
+   office phone's hours. Outside them Arbo reads nothing, holds nothing (a
+   minute tick drops what was held, whether or not anyone asks), and
    answers Bouncie's webhook 200 while dropping the update unread. "After
    hours" is its own named state, never "no trucks".
 5. **`BOUNCIE_API_KEY`** is read for presence only. Bouncie's docs name no
@@ -934,7 +939,8 @@ What this changes in R31:
 Open, for Mike: applying migration 0021 live (his go only); what
 `BOUNCIE_API_KEY` is; whether the day's trips may be reviewed after 8pm
 (built: no); whether keeping the sign-in in Supabase while the business links
-stay cut is what he meant (built: yes, through its own door).
+stay cut is what he meant (built: cut by its own switch until he says —
+setting `ARBO_LINK_CREDENTIALS=live` is his yes, and opens that one table only).
 
 *Carried by (amendment):* `src/db/credentialStore.ts`,
 `supabase/migrations/0021_integration_credential.sql`,

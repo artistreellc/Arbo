@@ -4119,11 +4119,13 @@ function bouncieRows(b) {
     mismatch: 'the sign-in table in Supabase doesn’t match what Arbo expects (migration 0021)',
   };
   if (s.state === 'keys_missing') rows.push(['NOT SET UP', 'watch', 'Bouncie sign-in isn’t set up on the server — add BOUNCIE_CLIENT_ID and BOUNCIE_CLIENT_SECRET on Railway, then deploy. Nothing is disconnected — it was never set up.']);
+  // §3 vs "store the tokens in Supabase" is Mike's call: until he sets the switch, Supabase is not touched at all.
+  else if (s.state === 'store_cut') rows.push(['CUT', 'info', 'Bouncie can’t be connected yet — the sign-in is kept in Supabase, and that store is cut on purpose until ARBO_LINK_CREDENTIALS is set to live on Railway (your call: the data links are still cut). Nothing is disconnected.']);
   else if (s.state === 'store_unconfigured') rows.push(['NOT SET UP', 'watch', 'Bouncie can’t be connected yet — the sign-in is kept in Supabase, and Supabase isn’t configured on the server (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY). Nothing is disconnected.']);
   else if (s.state === 'store_missing') rows.push(['NOT SET UP', 'watch', 'Bouncie can’t be connected yet — the sign-in table isn’t in Supabase (migration 0021 not applied). Apply it, then tap Connect Bouncie. Nothing is disconnected.']);
   else if (s.state === 'store_unreadable') rows.push(['UNREADABLE', 'watch', 'Arbo couldn’t read the saved Bouncie sign-in — ' + (STORE_WHY[s.problem] || 'Supabase didn’t answer just now') + '. This is not "not connected". ' + RETRY]);
   else if (s.state === 'store_locked') rows.push(['LOCKED', 'stop', 'The saved Bouncie sign-in can’t be opened — BOUNCIE_CLIENT_SECRET changed since it was saved. Tap Reconnect Bouncie. Positions stop until you do.']);
-  else if (s.state === 'unsaved') rows.push(['NOT SAVED', 'watch', 'Bouncie renewed the sign-in, but Supabase hasn’t taken the new one yet. Arbo holds it, unused, and keeps trying; positions pause until it is saved. If Arbo restarts first, tap Reconnect Bouncie.']);
+  else if (s.state === 'unsaved') rows.push(['NOT SAVED', 'watch', 'Bouncie renewed the sign-in, but Supabase hasn’t taken the new one yet. Arbo holds it, unused, and tries again every minute, day or night; positions pause until it is saved. If Arbo restarts first, tap Reconnect Bouncie.']);
   else if (s.state === 'not_connected') rows.push(['NOT CONNECTED', 'watch', 'The Bouncie keys are on the server, but Bouncie isn’t connected yet — tap Connect Bouncie and approve.']);
   else if (s.state === 'expired') rows.push(['EXPIRED', 'stop', 'The Bouncie sign-in expired or was removed — tap Reconnect Bouncie. Positions stop until you do.']);
   else rows.push(['CONNECTED', 'good', s.where === 'supabase'
@@ -4193,7 +4195,7 @@ async function bouncieSettings(v, stale) {
     v.appendChild(row);
   }
   const st = (b.signIn || {}).state;
-  if (st === 'keys_missing' || st === 'store_unconfigured' || st === 'store_missing' || st === 'not_connected') v.appendChild(el('div', 'storm-muted', 'Redirect URI to register in the Bouncie portal: ' + b.redirectUri));
+  if (st === 'keys_missing' || st === 'store_cut' || st === 'store_unconfigured' || st === 'store_missing' || st === 'not_connected') v.appendChild(el('div', 'storm-muted', 'Redirect URI to register in the Bouncie portal: ' + b.redirectUri));
   if (st === 'not_connected' || st === 'expired' || st === 'store_locked') {
     const go = el('button', 'actbtn', st === 'not_connected' ? 'Connect Bouncie' : 'Reconnect Bouncie');
     const out = el('div', 'errline', '');
@@ -4207,9 +4209,10 @@ async function bouncieSettings(v, stale) {
         go.disabled = false;
         out.textContent = 'Not opened — ' + (e.code === 401 ? 'connecting is locked on the server (APP_ACCESS_KEY).'
           : e.message === 'bouncie_keys_missing' ? 'the Bouncie keys aren’t on the server.'
-            : e.message === 'bouncie_store_missing' ? 'the sign-in table isn’t in Supabase yet (migration 0021).'
-              : e.message === 'bouncie_store_unconfigured' ? 'Supabase isn’t configured on the server, and the sign-in is kept only there.'
-                : 'Arbo couldn’t start the sign-in. Try again.');
+            : e.message === 'bouncie_store_cut' ? 'the sign-in store in Supabase is cut on purpose (ARBO_LINK_CREDENTIALS isn’t live).'
+              : e.message === 'bouncie_store_missing' ? 'the sign-in table isn’t in Supabase yet (migration 0021).'
+                : e.message === 'bouncie_store_unconfigured' ? 'Supabase isn’t configured on the server, and the sign-in is kept only there.'
+                  : 'Arbo couldn’t start the sign-in. Try again.');
       }
     });
     v.appendChild(go);

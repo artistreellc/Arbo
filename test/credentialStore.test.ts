@@ -2,12 +2,14 @@
 // server-side in Supabase"). One table, sealed values, one fixed address,
 // and walled off from the business data links in both directions.
 // Every value here is made up: no real key, token or project.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import {
   CredentialStore,
   CREDENTIAL_TABLE,
   CREDENTIAL_KEY_VERSION,
+  CREDENTIAL_LINK_ENV,
+  credentialLinkOpen,
   sealCredential,
   openCredential,
   type CredentialHttp,
@@ -36,6 +38,39 @@ function fake(over: { read?: () => ReturnType<typeof answer>; write?: () => Retu
 }
 const store = (f: ReturnType<typeof fake>, o: Partial<ConstructorParameters<typeof CredentialStore>[0]> = {}) =>
   new CredentialStore({ url: URL_, serviceKey: SB_SECRET_KEY, provider: 'bouncie', secret: SECRET, http: f.http, now: () => Date.parse('2026-10-20T14:00:00Z'), ...o });
+
+// The door's own switch is open for the tests below; cut, it is tested on its own (§3 holds until Mike rules).
+const savedLink = process.env.ARBO_LINK_CREDENTIALS;
+beforeEach(() => {
+  process.env.ARBO_LINK_CREDENTIALS = 'live';
+});
+afterEach(() => {
+  if (savedLink === undefined) delete process.env.ARBO_LINK_CREDENTIALS;
+  else process.env.ARBO_LINK_CREDENTIALS = savedLink;
+});
+
+describe('the door has its own switch — cut unless ARBO_LINK_CREDENTIALS is exactly "live" (§3 vs Mike\'s spec: his call)', () => {
+  it('cut: read and write refuse by name, before "not configured", and nothing leaves the process', async () => {
+    expect(CREDENTIAL_LINK_ENV).toBe('ARBO_LINK_CREDENTIALS');
+    for (const v of [undefined, '', 'off', 'true', 'LIVE', 'live ', ' live']) {
+      if (v === undefined) delete process.env.ARBO_LINK_CREDENTIALS;
+      else process.env.ARBO_LINK_CREDENTIALS = v;
+      expect(credentialLinkOpen(), String(v)).toBe(false);
+      const f = fake();
+      expect(await store(f).read()).toEqual({ ok: false, problem: 'cut' });
+      expect(await store(f).write(PLAIN)).toEqual({ ok: false, problem: 'cut' });
+      expect(await store(f, { url: undefined }).read()).toEqual({ ok: false, problem: 'cut' });
+      expect(f.calls).toEqual([]);
+    }
+    // Read at call time: opened, the same store reaches the table.
+    const f = fake();
+    const s = store(f);
+    process.env.ARBO_LINK_CREDENTIALS = 'live';
+    expect(credentialLinkOpen()).toBe(true);
+    expect(await s.read()).toEqual({ ok: true, plain: null });
+    expect(f.calls).toHaveLength(1);
+  });
+});
 
 describe('sealing: AES-256-GCM under a key derived from the client secret', () => {
   it('round-trips, with a fresh IV every time, and the sealed form carries nothing readable', () => {

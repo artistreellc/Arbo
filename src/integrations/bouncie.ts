@@ -4,8 +4,9 @@
 // kept server-side in Supabase, a read-only pull of vehicles and trips, and
 // location for him only, in working hours only). Built complete and DORMANT:
 // nothing happens until Mike adds BOUNCIE_CLIENT_ID / BOUNCIE_CLIENT_SECRET
-// on Railway, migration 0021 is applied, he taps Connect Bouncie, adds
-// BOUNCIE_WEBHOOK_KEY, and sets ARBO_LINK_BOUNCIE=live.
+// on Railway, migration 0021 is applied, he sets ARBO_LINK_CREDENTIALS=live
+// (his ruling on §3 — see src/db/credentialStore.ts), taps Connect Bouncie,
+// adds BOUNCIE_WEBHOOK_KEY, and sets ARBO_LINK_BOUNCIE=live.
 // Steps for Mike: docs/BOUNCIE.md.
 //
 // The rules this file keeps, each one structural:
@@ -17,8 +18,9 @@
 //     before it leaves the process — no webhook setup, no geo-zones, no settings.
 //   - WORKING HOURS ONLY (brief §4.4; Mike 2026-09-21: 8am–8pm, every day but
 //     Sunday). withinWorkingHours() in src/ops/locationIntel.ts is the ONE
-//     clock: outside it Arbo reads nothing and holds nothing, and a report
-//     stamped outside it is never kept or shown, whenever it arrives.
+//     clock: outside it Arbo reads nothing and holds nothing (tick() drops
+//     what was held within a minute of 8pm, whether or not anyone asks), and
+//     a report stamped outside it is never kept or shown, whenever it arrives.
 //     "After hours" is NAMED — it never reads as "no trucks".
 //   - A NAMED LINK that fails closed: positions are held and shown only when
 //     ARBO_LINK_BOUNCIE is exactly 'live' (same rule as vendorLinks.ts). A
@@ -28,7 +30,8 @@
 //     A redeploy forgets them; Bouncie fills them back in.
 //   - SECRETS stay server-side: the sign-in is kept in Supabase, sealed
 //     (src/db/credentialStore.ts — Mike's "store the tokens server-side in
-//     Supabase"), never in a response, never in a log. Logs carry counts
+//     Supabase"), behind that door's own switch, ARBO_LINK_CREDENTIALS, cut
+//     until he rules on §3 — never in a response, never in a log. Logs carry counts
 //     and the last 4 of a device id at most — never a coordinate, an
 //     address, or a full VIN.
 
@@ -214,7 +217,9 @@ export function noTokenBackend(): TokenBackend {
  * The server's choice, made once at boot. Practice mode (ARBO_DATA_LINKS=sim)
  * opens no database by construction, so there the first build's disk file
  * stays. Everywhere else the sign-in lives in Supabase — and with Supabase
- * not configured there is NO fallback: the state is named, Connect refuses.
+ * not configured, or the credential door cut (ARBO_LINK_CREDENTIALS, checked
+ * by the door itself at every call), there is NO fallback: the state is
+ * named, Connect refuses.
  */
 export function bouncieTokenBackend(e: {
   supabaseUrl: string | null | undefined;
@@ -279,10 +284,18 @@ export class BouncieTokenStore {
     return this.loading;
   }
 
-  /** Read the stored row WITHOUT taking it — to see whether another Arbo saved a newer one. */
-  async peek(): Promise<TokenRecord | null> {
-    const r = await this.backend.load().catch((): LoadResult => ({ ok: false, problem: 'unreachable' }));
-    return r.ok ? r.rec : null;
+  /**
+   * Read the stored row WITHOUT taking it — to see whether another Arbo saved
+   * a newer one. A failed look is its named problem, never "nothing newer".
+   */
+  peek(): Promise<LoadResult> {
+    return this.backend.load().catch((): LoadResult => ({ ok: false, problem: 'unreachable' }));
+  }
+
+  /** A look that failed (peek): named now, and read again by ensureLoaded within a minute. */
+  failed(problem: StoreProblem, now: number): void {
+    this.problem = problem;
+    this.loadedAt = now;
   }
 
   /** Take a pair that is already stored (found by peek). */
@@ -581,6 +594,7 @@ type ReadOutcome = { ok: true; at: number } | TokenFail;
 
 export type SignInState =
   | 'keys_missing'
+  | 'store_cut' // the credential door is cut on purpose (ARBO_LINK_CREDENTIALS is not 'live'): Supabase is not touched
   | 'store_unconfigured' // Supabase is not configured: nowhere to keep a sign-in
   | 'store_missing' // the table is not there: migration 0021 not applied
   | 'store_unreadable' // Supabase did not answer, refused the key, or the row is not the expected shape
@@ -594,6 +608,7 @@ export type TripsState = 'keys_missing' | 'link_cut' | 'sign_in_store' | 'not_co
 type Gate = 'keys_missing' | 'link_cut' | 'sign_in_store' | 'not_connected' | 'token_expired' | 'after_hours';
 
 const STORE_STATE: Record<StoreProblem, SignInState> = {
+  cut: 'store_cut',
   unconfigured: 'store_unconfigured',
   missing_table: 'store_missing',
   refused: 'store_unreadable',
@@ -604,6 +619,7 @@ const STORE_STATE: Record<StoreProblem, SignInState> = {
 
 /** The callback page's words for a store that would not take a sign-in. */
 const STORE_WORDS: Record<StoreProblem, string> = {
+  cut: 'The sign-in store in Supabase is cut on purpose (ARBO_LINK_CREDENTIALS is not "live"), so Arbo touches no Supabase table to keep it.',
   unconfigured: 'Supabase isn’t configured on the server (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY), and the sign-in is kept only there.',
   missing_table: 'The sign-in table isn’t in Supabase yet — migration 0021 has not been applied.',
   refused: 'Supabase refused Arbo’s key (SUPABASE_SERVICE_ROLE_KEY).',
@@ -624,7 +640,10 @@ export class Bouncie {
   private readonly salt = randomBytes(16).toString('hex');
   private refreshing: Promise<TokenOutcome> | null = null;
   private generation = 0; // bumped by every Connect, so a refresh from an older sign-in never overwrites a newer one
-  private expired = false; // Bouncie refused our refresh token (or the app lost access): only Reconnect clears it
+  private expired = false; // Bouncie refused our refresh token (or the app lost access): a Reconnect clears it, or a newer saved pair
+  /** The refresh token Bouncie refused: a stored pair carrying any OTHER one is newer (another Arbo, or a Reconnect there). */
+  private deadRefresh: string | null = null;
+  private expiredLookAt = 0; // when Supabase was last looked at for a newer pair while expired — at most once a minute
   /** A renewed pair Bouncie handed back that the store has not taken yet. Held, never used, until it is saved. */
   private unsaved: { rec: TokenRecord; gen: number } | null = null;
   private saveChain: Promise<unknown> = Promise.resolve();
@@ -639,8 +658,9 @@ export class Bouncie {
     whileCut: 0,
     lastWhileCutAt: null as string | null,
     droppedKeysMissing: 0, // authentic, link open, but no BOUNCIE_CLIENT_ID / SECRET: answered and dropped
-    afterHours: 0, // authentic, link open, arrived outside working hours: answered and dropped unread
-    lastAfterHoursAt: null as string | null,
+    // Authentic, link open, arrived outside working hours: answered and dropped unread. A COUNT only — it
+    // shows the webhook is wired; the minute an after-hours update came is not kept (working hours only).
+    afterHours: 0,
     afterHoursReports: 0, // events or trip points stamped after hours inside a daytime delivery: skipped unread
     lastAuthenticAt: null as string | null, // the last call that carried the key, whatever happened to it
     lastRejectedAt: null as string | null, // the last call without it — Settings tells a stranger from a wrong key by these two
@@ -683,12 +703,38 @@ export class Bouncie {
    * The stored sign-in, read once — and read again at most once a minute
    * while it could not be read (a migration applied meanwhile, Supabase back).
    * Not configured on the server is not retried: that needs a deploy.
+   * While EXPIRED, Supabase is looked at once a minute too: a pair saved
+   * since by another Arbo (a deploy overlap) or a Reconnect there is taken,
+   * so Settings never sits on EXPIRED over a good sign-in.
    */
   private async ensureLoaded(): Promise<void> {
     if (!this.configured()) return;
     const at = this.store.lastLoad();
     const p = this.store.problemNow();
     if (at === null || (p !== null && p !== 'unconfigured' && this.now() - at >= RELOAD_EVERY_MS)) await this.store.load(this.now());
+    else if (this.expired && this.store.kind === 'supabase' && this.now() - this.expiredLookAt >= RELOAD_EVERY_MS) await this.lookPastExpired();
+  }
+
+  /** One look at Supabase while expired. Only a pair whose refresh token is not the refused one is taken. */
+  private async lookPastExpired(): Promise<void> {
+    this.expiredLookAt = this.now(); // set before the wait: a second caller meanwhile does not look again
+    const gen = this.generation;
+    const found = await this.store.peek();
+    if (!this.expired || gen !== this.generation) return; // a Connect landed meanwhile: it is newer than this look
+    if (!found.ok || !found.rec || found.rec.refreshToken === this.deadRefresh) return; // nothing newer: still expired
+    this.generation++; // the stored pair is newer than any refresh still in flight here
+    this.store.adopt(found.rec);
+    this.expired = false;
+    this.deadRefresh = null;
+    this.lastRead = null;
+    console.log('[bouncie] the sign-in had expired here, but a newer one is saved in Supabase — using it');
+  }
+
+  /** Bouncie refused this refresh token (or the access token twice): only a newer pair, or a Reconnect, clears it. */
+  private expire(dead: string | null): void {
+    this.expired = true;
+    this.deadRefresh = dead;
+    this.expiredLookAt = this.now();
   }
 
   /** Resolves once the stored sign-in has been read — the boot line and the Connect route wait for it. */
@@ -755,9 +801,10 @@ export class Bouncie {
    * checked by the route, which awaits ready() first. A store that cannot
    * keep a sign-in at all refuses here, before Mike is sent to Bouncie.
    */
-  beginConnect(): { ok: true; authorizeUrl: string } | { ok: false; error: 'bouncie_keys_missing' | 'bouncie_store_unconfigured' | 'bouncie_store_missing' } {
+  beginConnect(): { ok: true; authorizeUrl: string } | { ok: false; error: 'bouncie_keys_missing' | 'bouncie_store_cut' | 'bouncie_store_unconfigured' | 'bouncie_store_missing' } {
     if (!this.opts.clientId || !this.opts.clientSecret) return { ok: false, error: 'bouncie_keys_missing' };
     const p = this.store.problemNow();
+    if (p === 'cut') return { ok: false, error: 'bouncie_store_cut' };
     if (p === 'unconfigured') return { ok: false, error: 'bouncie_store_unconfigured' };
     if (p === 'missing_table') return { ok: false, error: 'bouncie_store_missing' };
     const { state, verifier } = this.states.mint(this.now());
@@ -784,7 +831,7 @@ export class Bouncie {
     // Nowhere to keep it: say so BEFORE the code is spent at Bouncie.
     await this.ensureLoaded();
     const p = this.store.problemNow();
-    if (p === 'unconfigured' || p === 'missing_table') {
+    if (p === 'cut' || p === 'unconfigured' || p === 'missing_table') {
       console.error(`[bouncie] sign-in not finished — nowhere to keep it (${p})`);
       return { status: 503, ok: false, title: 'Arbo has nowhere to keep the Bouncie sign-in yet', line: `${STORE_WORDS[p]} Bouncie was not asked anything and nothing was saved. ${back}` };
     }
@@ -820,6 +867,7 @@ export class Bouncie {
       return { status: 503, ok: false, title: 'Bouncie said yes, but Arbo couldn’t save the sign-in', line: `${STORE_WORDS[saved.problem]} Nothing was kept, so Bouncie is not connected. ${back}` };
     }
     this.expired = false;
+    this.deadRefresh = null;
     this.unsaved = null;
     this.lastRead = null;
     this.tripCache.clear();
@@ -875,14 +923,23 @@ export class Bouncie {
       if (r.reason === 'rejected') {
         // Before calling it expired: another Arbo (the old one, during a deploy) may have
         // rotated this refresh token and saved the new pair. If Supabase holds a newer one, take it.
-        const newer = this.store.kind === 'supabase' ? await this.store.peek() : null;
-        if (gen !== this.generation) return this.currentOutcome();
-        if (newer && newer.refreshToken !== rec.refreshToken) {
-          this.store.adopt(newer);
-          console.log('[bouncie] refresh refused, but a newer saved sign-in was found in Supabase — using it');
-          return { ok: true, token: newer.accessToken };
+        if (this.store.kind === 'supabase') {
+          const newer = await this.store.peek();
+          if (gen !== this.generation) return this.currentOutcome();
+          if (!newer.ok) {
+            // Supabase could not be read: that is the store, by name — never "expired" on a look that failed.
+            // The store is read again within a minute; a newer pair is taken then, the same dead one expires.
+            this.store.failed(newer.problem, this.now());
+            console.error(`[bouncie] refresh refused, and the saved sign-in could not be read to look for a newer one (${newer.problem}) — not marked expired`);
+            return { ok: false, reason: 'store' };
+          }
+          if (newer.rec && newer.rec.refreshToken !== rec.refreshToken) {
+            this.store.adopt(newer.rec);
+            console.log('[bouncie] refresh refused, but a newer saved sign-in was found in Supabase — using it');
+            return { ok: true, token: newer.rec.accessToken };
+          }
         }
-        this.expired = true;
+        this.expire(rec.refreshToken);
         console.error('[bouncie] refresh refused — the sign-in expired or was removed; Mike reconnects in Settings');
         return { ok: false, reason: 'expired' };
       }
@@ -928,7 +985,7 @@ export class Bouncie {
   }
 
   private markExpired(): void {
-    this.expired = true;
+    this.expire(this.store.current()?.refreshToken ?? null);
     console.error('[bouncie] Bouncie refused the access token twice — the app lost access; Mike reconnects in Settings');
   }
 
@@ -1215,7 +1272,6 @@ export class Bouncie {
       // the webhook on — and dropped UNREAD. Nothing is held after hours.
       this.dropHeld();
       this.hook.afterHours++;
-      this.hook.lastAfterHoursAt = nowIso;
       return { status: 200, body: { ok: true } };
     }
     this.hook.deliveries++;
@@ -1265,6 +1321,22 @@ export class Bouncie {
     this.trucks.clear();
     this.tripCache.clear();
     this.lastRead = null;
+  }
+
+  /**
+   * The server runs this once a minute (startServer). It never reads Bouncie and never throws.
+   *   - Outside working hours (or with the link cut) nothing about the trucks is held — dropped
+   *     within a minute of 8pm even when nobody asks; a request is not what makes it true.
+   *   - A renewed sign-in Supabase would not take is saved again, whatever the hour: it is Arbo's
+   *     own sign-in, not a location, and if Arbo restarts before it is saved the sign-in is lost.
+   */
+  async tick(): Promise<void> {
+    try {
+      if (!bouncieLinked() || !this.inHours()) this.dropHeld();
+      if (this.unsaved) await this.oneAtATime(() => this.saveUnsaved());
+    } catch {
+      /* named where it happened (saveUnsaved / the store); the next tick tries again */
+    }
   }
 
   private view(t: Truck, now: number): TruckView {
@@ -1389,9 +1461,21 @@ export class Bouncie {
     }
     const gate = await this.readGate();
     if (gate) return { status: 200, body: { state: gate, message: TRIPS_SAYS[gate], day, trips: [] } };
-    const t = [...this.trucks.values()].find((x) => this.idOf(x.imei) === q.truck);
+    const find = () => [...this.trucks.values()].find((x) => this.idOf(x.imei) === q.truck);
+    let t = find();
     if (!t) {
-      return { status: 404, body: { error: 'unknown_truck', message: 'Arbo doesn’t know that truck id — ids change when Arbo restarts. Read /api/fleet/positions again for the current ones.' } };
+      // Not held now (after hours drops everything, so every morning starts empty): look at Bouncie's
+      // list first — the once-a-minute vehicles read — before calling the id unknown. A failed look is
+      // "couldn't read", never "unknown truck".
+      const look = await this.read();
+      if (!look.ok) {
+        const state = Bouncie.failState(look);
+        return { status: 200, body: { state, message: TRIPS_SAYS[state], day, trips: [] } };
+      }
+      t = find();
+    }
+    if (!t) {
+      return { status: 404, body: { error: 'unknown_truck', message: 'Arbo doesn’t know that truck id: it isn’t in Bouncie’s list now, or Arbo restarted since it was handed out (ids change on a restart). Read /api/fleet/positions again for the current ones.' } };
     }
     const truck = { id: q.truck, name: t.name, device4: ids(t.imei) };
     const w = workingWindow(day);
@@ -1435,11 +1519,18 @@ export class Bouncie {
         path: path ? path.points : null,
         pathPoints: path ? path.points.length : 0,
         pathThinned: path ? path.thinned : false,
+        pathUnreadablePoints: path ? path.unreadable : null, // points Bouncie sent that could not be read: dropped, counted
       });
     }
     trips.sort((a, b) => String(a.startedAt).localeCompare(String(b.startedAt)));
-    const state: TripsState = trips.length ? 'ok' : 'no_trips';
-    const body = { state, message: TRIPS_SAYS[state], day, truck, window: { from: new Date(w.from).toISOString(), to: new Date(to).toISOString() }, trips, skipped, readAt: new Date(now).toISOString() };
+    // §1B: a trip that could not be read may have been inside the hours, so none read is NOT "no trips".
+    const state: TripsState = trips.length ? 'ok' : skipped.unreadable > 0 ? 'unreadable' : 'no_trips';
+    const n = skipped.unreadable;
+    const unreadNote = `${n} ${n === 1 ? 'trip' : 'trips'} Bouncie sent couldn’t be read and ${n === 1 ? 'isn’t' : 'aren’t'} shown.`;
+    const message = n === 0 ? TRIPS_SAYS[state]
+      : state === 'ok' ? `${TRIPS_SAYS.ok} ${unreadNote}`
+        : `Bouncie answered, but ${unreadNote} This is not "no trips".`;
+    const body = { state, message, day, truck, window: { from: new Date(w.from).toISOString(), to: new Date(to).toISOString() }, trips, skipped, readAt: new Date(now).toISOString() };
     if (this.tripCache.size >= TRIPS_CACHE_CAP) {
       const oldest = this.tripCache.keys().next().value;
       if (oldest !== undefined) this.tripCache.delete(oldest);
@@ -1504,9 +1595,11 @@ export const TRIPS_SAYS: Record<TripsState, string> = {
  * A trip's path from Bouncie's GeoJSON (GeoJSON order is [lon, lat]), as
  * {lat, lon} points — a LineString, a Feature, or the first feature of a
  * collection; it may arrive as text. Thinned evenly (the last point kept)
- * past the cap. Null when it can't be read: never an empty path standing in for one.
+ * past the cap. Null when it can't be read — including coordinates of which
+ * not one reads (a MultiLineString, a Point): never an empty path standing in
+ * for one. A point that doesn't read is dropped and counted (`unreadable`).
  */
-function tripPath(gps: unknown): { points: Array<{ lat: number; lon: number }>; thinned: boolean } | null {
+function tripPath(gps: unknown): { points: Array<{ lat: number; lon: number }>; thinned: boolean; unreadable: number } | null {
   let g: unknown = gps;
   if (typeof g === 'string') {
     if (g.length > GPS_TEXT_CAP) return null;
@@ -1523,19 +1616,18 @@ function tripPath(gps: unknown): { points: Array<{ lat: number; lon: number }>; 
   if (!coords) return null;
   const step = Math.max(1, Math.ceil(coords.length / TRIP_POINTS_CAP));
   const points: Array<{ lat: number; lon: number }> = [];
-  for (let i = 0; i < coords.length; i += step) {
-    const p = coords[i];
+  let unreadable = 0;
+  const take = (p: unknown): void => {
     const c = Array.isArray(p) ? coord(p[1], p[0]) : null;
     if (c) points.push(c);
-  }
+    else unreadable++;
+  };
+  for (let i = 0; i < coords.length; i += step) take(coords[i]);
   // Thinning can step past the last point; the trip still ends where it ended.
   const lastIndex = coords.length - 1;
-  if (step > 1 && lastIndex % step !== 0) {
-    const p = coords[lastIndex];
-    const c = Array.isArray(p) ? coord(p[1], p[0]) : null;
-    if (c) points.push(c);
-  }
-  return { points, thinned: step > 1 };
+  if (step > 1 && lastIndex % step !== 0) take(coords[lastIndex]);
+  if (unreadable > 0 && points.length === 0) return null;
+  return { points, thinned: step > 1, unreadable };
 }
 
 const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);

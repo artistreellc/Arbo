@@ -667,8 +667,9 @@ export function createArborRequestHandler(opts: { assistant?: Assistant } = {}) 
 
   // ═══ R31 — Bouncie truck tracking (docs/BOUNCIE.md). Owner only, read
   // only, working hours only; dormant until Mike adds the keys, applies
-  // migration 0021, connects, and sets ARBO_LINK_BOUNCIE=live. The sign-in
-  // is kept in Supabase, sealed (Mike's spec, 2026-10-20) — in practice mode
+  // migration 0021, sets ARBO_LINK_CREDENTIALS=live (his ruling on §3),
+  // connects, and sets ARBO_LINK_BOUNCIE=live. The sign-in is kept in
+  // Supabase, sealed (Mike's spec, 2026-10-20) — in practice mode
   // (ARBO_DATA_LINKS=sim, which opens no database) on the disk as before.
   // The boot line names each state, never a secret, once the store is read. ═══
   const bouncie = new Bouncie({
@@ -684,6 +685,7 @@ export function createArborRequestHandler(opts: { assistant?: Assistant } = {}) 
     }),
   });
   void bouncie.ready().then(() => console.log(`[bouncie] ${bouncie.bootLine()}`));
+  currentBouncie = bouncie;
 
   // Sona's calls via Quo (Mike, 2026-09-24: "auto do it"). Same R18 stores
   // as Arbo's own calls; keys and numbers arrive when startServer registers.
@@ -1372,8 +1374,9 @@ export function createArborRequestHandler(opts: { assistant?: Assistant } = {}) 
             : send(503, {
               error: c.error,
               message: c.error === 'bouncie_keys_missing' ? 'BOUNCIE_CLIENT_ID and BOUNCIE_CLIENT_SECRET are not on Railway yet.'
-                : c.error === 'bouncie_store_missing' ? 'The sign-in table is not in Supabase yet — migration 0021 must be applied before connecting.'
-                  : 'Supabase is not configured on the server, and the Bouncie sign-in is kept only there.',
+                : c.error === 'bouncie_store_cut' ? 'The sign-in store in Supabase is cut on purpose — ARBO_LINK_CREDENTIALS is not "live" on Railway, so Arbo touches no Supabase table to keep the sign-in.'
+                  : c.error === 'bouncie_store_missing' ? 'The sign-in table is not in Supabase yet — migration 0021 must be applied before connecting.'
+                    : 'Supabase is not configured on the server, and the Bouncie sign-in is kept only there.',
             });
         }
         // Read only, owner only, working hours only: one truck's trips on one day (MAP HOOK, like positions).
@@ -1889,6 +1892,8 @@ const QUO_STUDY_BOOT_DELAY_MS = 2 * 60 * 1000;
 const OWN_PHONE_NUMBERS = ['+17573195131', '+17578216983'];
 /** The outreach engine the running handler uses — startServer hands it the Quo line. */
 let currentOutreach: OutreachEngine | null = null;
+/** The Bouncie integration the running handler uses — startServer gives it its minute tick. */
+let currentBouncie: Bouncie | null = null;
 /**
  * The Google grant Mike makes from Settings → Reconnect Google (2026-09-28).
  * Every Google token provider reads through this, so a new grant takes
@@ -2024,6 +2029,10 @@ export function startServer(port: number) {
       setInterval(() => { void outreach.tick(); }, 15 * 60_000).unref();
     });
   } else console.error('[quo] intake missing at boot — not wired');
+  // R31: once a minute, outside working hours nothing about the trucks is held even when nobody
+  // asks, and a renewed Bouncie sign-in Supabase refused is saved again. Never reads Bouncie, never throws.
+  const bouncieNow = currentBouncie;
+  if (bouncieNow) setInterval(() => { void bouncieNow.tick(); }, 60_000).unref();
   const cutNow = cutVendorLinks();
   console.log(cutNow.length
     ? `[links] CUT while Sona handles calls (R21): ${cutNow.join(', ')} — set ARBO_LINK_<NAME>=live to reconnect`

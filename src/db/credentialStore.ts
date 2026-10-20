@@ -12,8 +12,16 @@
  * sign-in to an outside service — today only Bouncie's. It holds no company
  * data: no customer, lead, job, call, or truck position, only a sealed token
  * pair. That is why it is not one of the business data links in
- * src/db/links.ts, and why the cut (§3) does not stop it: Mike asked for the
- * sign-in to live here, and a cut link must not lose a sign-in.
+ * src/db/links.ts.
+ *
+ * ITS OWN SWITCH, CUT BY DEFAULT. §3 cuts every Supabase link until Mike
+ * says the app is built; his spec asks for the tokens in Supabase now. Two
+ * of his rules meet here, and that is his call, not the code's (CLAUDE.md:
+ * conflicts stop and ask). So the door is CUT unless ARBO_LINK_CREDENTIALS
+ * is exactly 'live' — read at call time, same opt-in shape as every other
+ * link — and while cut it sends nothing at all: no read, no write. Mike
+ * setting that variable is his ruling. It is not ARBO_DATA_LINKS: opening
+ * this one table must not start the agent sweeps the master switch starts.
  *
  * What keeps it narrow — each one structural, each one pinned by a test:
  *   - ONE ADDRESS. It reads and writes `<SUPABASE_URL>/rest/v1/integration_credential`
@@ -46,9 +54,18 @@ const TAG_BYTES = 16;
 
 /**
  * Why the door could not do what was asked — each its own sentence on the
- * screen (§1B). 'locked' is a row that is there but does not open.
+ * screen (§1B). 'locked' is a row that is there but does not open; 'cut' is
+ * the door's own switch, off on purpose.
  */
-export type CredentialProblem = 'unconfigured' | 'missing_table' | 'refused' | 'mismatch' | 'unreachable' | 'locked';
+export type CredentialProblem = 'cut' | 'unconfigured' | 'missing_table' | 'refused' | 'mismatch' | 'unreachable' | 'locked';
+
+/** The door's own switch (see the top of this file). */
+export const CREDENTIAL_LINK_ENV = 'ARBO_LINK_CREDENTIALS';
+
+/** Open ONLY when exactly 'live'. Read at call time, never cached — a restart or a test sees the truth. */
+export function credentialLinkOpen(): boolean {
+  return process.env[CREDENTIAL_LINK_ENV] === 'live';
+}
 
 export interface SealedCredential {
   ciphertext: string;
@@ -164,6 +181,7 @@ export class CredentialStore {
 
   /** The provider's value, null when none is saved, or the named reason it could not be read. */
   async read(): Promise<CredentialRead> {
+    if (!credentialLinkOpen()) return { ok: false, problem: 'cut' }; // first: the switch rules before the config, as at the business door
     if (!this.configured()) return { ok: false, problem: 'unconfigured' };
     let res;
     try {
@@ -185,6 +203,7 @@ export class CredentialStore {
 
   /** Seal and save (insert or replace the one row). Nothing is kept here; the caller holds what it saved. */
   async write(plain: string): Promise<CredentialWrite> {
+    if (!credentialLinkOpen()) return { ok: false, problem: 'cut' };
     if (!this.configured()) return { ok: false, problem: 'unconfigured' };
     const sealed = sealCredential(plain, this.o.secret as string, this.o.provider);
     const row = { provider: this.o.provider, ...sealed, updated_at: new Date(this.now()).toISOString() };
