@@ -243,6 +243,8 @@ export class QuoIntake {
   /** Events verified and then NOT used, by reason — never silence (§1B). */
   private readonly dropped: Record<string, number> = {};
   private readonly bootMs: number;
+  /** M14: when a hold last reached Google, when one last failed (and why), and the last good model read — for /health/feeds. */
+  private readonly feedLog = { holdFiledAt: null as string | null, holdFailedAt: null as string | null, holdError: null as string | null, readOkAt: null as string | null };
   /**
    * threadsNotRead: customer threads the last pass did not reach because it
    * hit RECONCILE_CAP. weekThreadsNotRead: the same, from the last pass that
@@ -250,8 +252,8 @@ export class QuoIntake {
    * a day only, so that shortfall stands until a week pass finishes under
    * the cap (M10: a capped read is never presented as the whole week).
    */
-  private sweep: { lastAt: string | null; learned: number; pending: number; error: string | null; unreadable: string | null; threadsNotRead: number; weekThreadsNotRead: number | null; callCap: number } = {
-    lastAt: null, learned: 0, pending: 0, error: null, unreadable: null, threadsNotRead: 0, weekThreadsNotRead: null, callCap: RECONCILE_CAP,
+  private sweep: { lastAt: string | null; lastOkAt: string | null; learned: number; pending: number; error: string | null; unreadable: string | null; threadsNotRead: number; weekThreadsNotRead: number | null; callCap: number } = {
+    lastAt: null, lastOkAt: null, learned: 0, pending: 0, error: null, unreadable: null, threadsNotRead: 0, weekThreadsNotRead: null, callCap: RECONCILE_CAP,
   };
   private readonly googleWrites: boolean;
   private textsHook = false;
@@ -500,6 +502,7 @@ export class QuoIntake {
       return;
     }
     e.facts = facts;
+    this.feedLog.readOkAt = new Date(this.now()).toISOString();
     // Rule check, part 2: the rules with no word patterns (dates, credentials, area).
     for (const said of facts.agentSlips) e.slips.push({ rule: 'opus-read', said: said.slice(0, 500) });
 
@@ -563,6 +566,7 @@ export class QuoIntake {
         () => {
           e.hold = 'filed';
           e.holdError = null;
+          this.feedLog.holdFiledAt = new Date(this.now()).toISOString();
           record.calendarHold = 'filed';
           delete record.calendarHoldError;
         },
@@ -570,6 +574,8 @@ export class QuoIntake {
           const code = holdErrorCode(err);
           e.hold = 'failed';
           e.holdError = code;
+          this.feedLog.holdFailedAt = new Date(this.now()).toISOString();
+          this.feedLog.holdError = code;
           record.calendarHold = 'failed';
           record.calendarHoldError = code;
           console.error(`[calendar] sona hold FAILED (${code}) — NOT on the calendar:`, err instanceof Error ? err.message : 'error');
@@ -693,7 +699,7 @@ export class QuoIntake {
       await this.queue;
       const wholeWeek = windowMs >= WEEK_MS;
       this.sweep = {
-        lastAt: new Date(nowMs).toISOString(), learned: this.sweep.learned + learned, pending, error: null,
+        lastAt: new Date(nowMs).toISOString(), lastOkAt: new Date(nowMs).toISOString(), learned: this.sweep.learned + learned, pending, error: null,
         unreadable: unreadable ? `${unreadable} call(s) could not be read (${unreadableWhy})` : null,
         threadsNotRead: notRead,
         weekThreadsNotRead: wholeWeek ? notRead : this.sweep.weekThreadsNotRead,
@@ -761,6 +767,7 @@ export class QuoIntake {
       readRetryMax: EXTRACT_MAX_ATTEMPTS,
       hangups: sona.filter((c) => c.hold === 'hangup').length,
       learnedFromRecord: all.filter((c) => c.source === 'quo_record').length,
+      feedLog: { ...this.feedLog },
       notUsed: { ...this.dropped },
       quoRecord: { ...this.sweep },
     };

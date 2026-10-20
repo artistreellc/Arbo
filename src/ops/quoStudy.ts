@@ -175,8 +175,8 @@ export class QuoStudy {
    * window held and how many this pass studied — they differ only when the
    * cap bit, and then the app says so. null until a pass has listed Quo.
    */
-  private state: { lastAt: string | null; read: number; unchanged: number; failed: number; quoError: string | null; driveError: string | null; driveFiles: number; threadsInWindow: number | null; threadsStudied: number | null } = {
-    lastAt: null, read: 0, unchanged: 0, failed: 0, quoError: null, driveError: null, driveFiles: 0, threadsInWindow: null, threadsStudied: null,
+  private state: { lastAt: string | null; lastOkAt: string | null; driveOkAt: string | null; read: number; unchanged: number; failed: number; quoError: string | null; driveError: string | null; driveFiles: number; threadsInWindow: number | null; threadsStudied: number | null } = {
+    lastAt: null, lastOkAt: null, driveOkAt: null, read: 0, unchanged: 0, failed: 0, quoError: null, driveError: null, driveFiles: 0, threadsInWindow: null, threadsStudied: null,
   };
   private running = false;
 
@@ -243,10 +243,12 @@ export class QuoStudy {
       // A note whose thread has left the window is not "in the last 7 days" (M10).
       const inWindow = new Set(threads.map((t) => t.conv.id));
       for (const id of [...this.byConversation.keys()]) if (!inWindow.has(id)) this.byConversation.delete(id);
-      this.state = { lastAt: new Date(nowMs).toISOString(), read: this.state.read + read, unchanged, failed, quoError: null, driveError, driveFiles: files.length, threadsInWindow: threads.length, threadsStudied: studied.length };
+      const at = new Date(nowMs).toISOString();
+      // M14: the last good read of Quo and of the Drive logs, for /health/feeds.
+      this.state = { lastAt: at, lastOkAt: at, driveOkAt: driveError ? this.state.driveOkAt : at, read: this.state.read + read, unchanged, failed, quoError: null, driveError, driveFiles: files.length, threadsInWindow: threads.length, threadsStudied: studied.length };
       if (threads.length > studied.length) console.error(`[study] capped — studied the ${studied.length} most recent of ${threads.length} customer threads; ${threads.length - studied.length} not read this pass`);
     } catch (err) {
-      this.state = { ...this.state, lastAt: new Date(nowMs).toISOString(), failed, quoError: err instanceof Error ? err.message : 'error', driveError, driveFiles: files.length };
+      this.state = { ...this.state, lastAt: new Date(nowMs).toISOString(), failed, quoError: err instanceof Error ? err.message : 'error', driveError, driveFiles: files.length, driveOkAt: driveError ? this.state.driveOkAt : new Date(nowMs).toISOString() };
       console.error(`[study] Quo could not be read — ${this.state.quoError}. Notes are from the last good read.`);
     } finally {
       this.running = false;

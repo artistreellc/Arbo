@@ -78,6 +78,37 @@ phone. How the door treats them now:
 - [x] **Migration 0020** (brake/steering hold) applied live 2026-10-20 after the restore, and checked. (0016–0019 were already applied, `docs/DATA_LINKS.md` step 1.)
 - [ ] **Delete the 11 mistaken job rows** (R29, Mike: "Delete the 11"). The backup `archive.job_mistaken_import_20260802` is made and verified. Supabase → project arbor → SQL Editor → New query → `delete from public.job where id in (select id from archive.job_mistaken_import_20260802);` → Run. Afterwards `public.job` holds 0 rows; leads stay 37.
 
+### Being told when something dies (audit M14, 2026-10-20) — Mike's choice
+
+Nothing tells you today when Arbo goes down, crash-loops, or loses a feed:
+`/health` stayed green through the whole week Google was dead. Arbo itself
+never texts or emails you (hard boundary), so the alert has to come from
+outside. Built, waiting on your pick:
+
+- **`GET /health/feeds`** — every feed Arbo depends on (Gmail, Google
+  Calendar holds, Quo webhooks, Quo's record, reading Sona's calls, the
+  customer study, the Drive lead logs, storm alerts, Bouncie), each with its
+  state in words (`ok` / `degraded` / `down` / `waiting` / `off`) and when it
+  last worked. It answers **503 when any feed is `down`**, 200 otherwise, and
+  the body names which (`down: [...]`). It needs the owner key in the
+  `x-arbor-key` header — never `?key=` — and is locked if `APP_ACCESS_KEY` is
+  not set. Times, counts and reasons only; no customer. Wrong keys here
+  count toward the same per-connection limit as the app's own door (audit
+  M2). While Google and Quo are read-only (R33), the calendar holds — and a
+  Quo webhook Arbo won't create — read `off`, never `down`: they never page.
+- [ ] **Railway notifications** (no code): in Railway's account settings, under Notifications —
+      turn on crashed, failed and out-of-memory deployments, to your phone or email.
+- [ ] **An outside uptime monitor — which one is your call.** Any monitor
+      that can send a custom header works (UptimeRobot and Better Stack both
+      can; a header may need their paid tier). Point it at
+      `https://<the Arbo address>/health/feeds`, header `x-arbor-key: <your app
+      key>`, every 5 minutes, alert on any non-200. It pages you through the
+      monitor's own app — Arbo sends nothing. A plain second check on `/health`
+      (no key) catches "the whole server is down".
+- Not built, on purpose: a public, keyless feeds page, and wiring
+  `OWNER_ALERT_PHONE` (Arbo texting you would be a new send path — your ruling,
+  not a build's).
+
 ## 5. Held for Mike (not decided by a build)
 
 - Settled by R26: the three permit words stay (not add-on -01's CLEAR / EXEMPT / PERMIT REQUIRED).

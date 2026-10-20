@@ -195,6 +195,7 @@ import {
   type InboxWatchHandle,
 } from './ops/inboxWatch.js';
 import { InboxStateFile } from './ops/inboxWatchState.js';
+import { buildFeedHealth, trackedAlerts, type FeedLog } from './ops/feedHealth.js';
 import { IntentWatch } from './ops/intentWatch.js';
 import { IntentRegistry } from './ops/intentRegistry.js';
 import { InboxSurfaceStore } from './ops/inboxSurface.js';
@@ -624,7 +625,9 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
   // On Railway the edge names the caller in X-Real-IP; with it missing there,
   // a wrong key is not counted rather than pool every caller into one address.
   const behindRailway = Boolean(process.env.RAILWAY_ENVIRONMENT_NAME || process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID);
-  const alertsProvider = createNwsAlertsProvider((url, init) => fetch(url, init));
+  // M14: the storm feed's last good read and last failure, for /health/feeds.
+  const stormLog: FeedLog = { lastOkAt: null, lastErrorAt: null, lastError: null };
+  const alertsProvider = trackedAlerts(createNwsAlertsProvider((url, init) => fetch(url, init)), stormLog);
   // R26: the owner-only storm-law flag — OpenFEMA, read-only, asked at most
   // once an hour. It never prices; a failed read is named, never 'none'.
   const stormLaw = createStormLawCheck((url, init) => fetch(url, init));
@@ -945,6 +948,50 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
       if (req.method === 'GET' && url.pathname === '/health') {
         const h = await api.health();
         return send(h.status, { ...(h.body as Record<string, unknown>), access: keyGuard.counts() });
+      }
+      // M14: every feed, its named state and when it last worked. OWNER key
+      // only, through Lane A's own door (M1/M2/L1/L2): locked with no
+      // APP_ACCESS_KEY (401 no_app_key), the x-arbor-key header only (?key= is
+      // never compared), constant time, and the SAME wrong-key limiter as
+      // /api — so this page is never a way round M2 to guess the key. The
+      // crew key never opens it. 503 when a feed is DOWN, so an outside
+      // monitor can page Mike (which monitor is his call — docs/GO_LIVE.md).
+      // Counts, times, reasons.
+      if (req.method === 'GET' && url.pathname === '/health/feeds') {
+        const door = checkApiDoor({
+          pathname: url.pathname,
+          given: keyFromHeader(req.headers),
+          keyInUrl: url.searchParams.has('key'),
+          addr: clientAddress(req, behindRailway),
+          appKey: env.appAccessKey,
+          crewKey: env.crewAccessKey,
+          guard: keyGuard,
+        });
+        if (!door.ok) {
+          res.writeHead(door.status, {
+            'content-type': 'application/json',
+            'cache-control': 'no-store',
+            ...(door.retryAfterSec ? { 'retry-after': String(door.retryAfterSec) } : {}),
+          });
+          return res.end(JSON.stringify(door.body));
+        }
+        let positions: { state: Awaited<ReturnType<typeof bouncie.status>>['positions']['state']; readAt: string | null } | null = null;
+        try {
+          positions = (await bouncie.status()).positions;
+        } catch {
+          positions = { state: 'unreadable', readAt: null };
+        }
+        const h = buildFeedHealth({
+          gmail: { configured: googleCredsNow() !== null, started: inboxWatch !== null, last: inboxWatch?.last() ?? null, state: inboxWatch?.state() ?? null },
+          // R33: holds are OFF on purpose while Google is read-only — 'off', never down (no page).
+          holds: { configured: Boolean(calendarHold), readOnly: GOOGLE_READ_ONLY },
+          quo: { configured: Boolean(env.quoApiKey), status: quoIntake.status() },
+          study: quoStudy?.status() ?? null,
+          storm: stormLog,
+          bouncie: positions,
+        }, new Date());
+        if (!h.ok) console.error(`[health] feeds DOWN: ${h.down.join(', ')}`);
+        return send(h.ok ? 200 : 503, h);
       }
       // R19 webhook receivers — PUBLIC paths, each gated by its own
       // signature/secret, exactly like the voice bridge. An unwired source
