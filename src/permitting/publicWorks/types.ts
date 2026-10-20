@@ -27,6 +27,10 @@ export const TOPICS = [
   'licensing',
   'hazard_order',
   'eagle_wildlife',
+  // R26 (Mike, 2026-10-20): regulatory status of tree pests and diseases —
+  // quarantines in force or ended, and where a sighting is reported. A status,
+  // never a diagnosis of a tree.
+  'pests_quarantine',
 ] as const;
 export type Topic = (typeof TOPICS)[number];
 
