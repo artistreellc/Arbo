@@ -158,14 +158,16 @@ export const env = {
   // portal → the app); the webhook key is one Mike makes up and types into
   // both the portal and Railway. Positions stay off until ARBO_LINK_BOUNCIE
   // is exactly 'live' — read at call time in src/integrations/bouncie.ts.
-  // BOUNCIE_API_KEY (Mike's spec, 2026-10-20) is read for PRESENCE ONLY:
-  // Bouncie's docs name no separate API key, so its value is never sent,
-  // logged or shown until Mike says which portal field it is (docs/BOUNCIE.md).
+  // BOUNCIE_API_KEY (Mike's spec, 2026-10-20) is PRESENCE ONLY. Mike, the
+  // same day: it is the portal's per-user Authorization Code (Users & Devices
+  // → Authorize My Devices). Arbo does not need it — Connect Bouncie gets its
+  // own code — so only a yes/no is kept here: the value never sits in this
+  // object, so it can never be sent, logged or shown (docs/BOUNCIE.md).
   bouncie: {
     clientId: get('BOUNCIE_CLIENT_ID'),
     clientSecret: get('BOUNCIE_CLIENT_SECRET'),
     webhookKey: get('BOUNCIE_WEBHOOK_KEY'),
-    apiKey: get('BOUNCIE_API_KEY'),
+    apiKeySet: get('BOUNCIE_API_KEY') !== undefined,
   },
 } as const;
 

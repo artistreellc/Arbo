@@ -866,12 +866,12 @@ function showSaveFail(box, e) { const n = box.querySelector(':scope > .save-err'
 //     OWES THIS WEEK, OVERDUE, DUE NOW, COMING DUE (property), PAST DUE, SECOND NOTICE, LATE FEE, NEEDS ATTENTION,
 //     N OPEN TASKS, SIZE UNKNOWN, CARDS UNKNOWN, BELOW AVERAGE, WAITING ON YOU, IN RPA, FOLLOW-UP, NO-SHOW SAVE,
 //     a non-power CALL FIRST, an unknown crew role, NOT CONNECTED, REFUSED (after Bouncie’s last update), DROPPED,
-//     the assistant's EMAIL and TEXT asks, ASKED YOU, an unknown kind of ask, NOT SAVED
+//     the assistant's EMAIL and TEXT asks, ASKED YOU, an unknown kind of ask, NOT SAVED, NOT RENEWED
 //   good = READ, OK, GOOD, SOURCED, QUALIFIED, WIRED, OPEN, UP, ABOVE AVERAGE, WEEK DONE, REVIEWED, CONNECTED, ON (the assistant), APPROVED,
 //     READ-ONLY (a data link Arbo may read)
 //   info = CUT / LINK CUT, NOT SIMULATED, NOT RUN, NOT BUILT, NO OVERLAY — VERIFY W/ CITY, JOB, ESTIMATE, FIRST-TIMER,
 //     REPEAT, SPANISH SPEAKER, SPAM, COOL, OFF ROSTER, AT AVERAGE, NOT ENOUGH DATA, RENEWAL DUE, SEASONAL, REVIEW ASK,
-//     COMING DUE (growth nudge), + PROOF OF INSURANCE, REFUSED (someone else knocking), AFTER HOURS, NOT USED, OLDER LEAD,
+//     COMING DUE (growth nudge), + PROOF OF INSURANCE, REFUSED (someone else knocking), AFTER HOURS, NOT NEEDED, OLDER LEAD,
 //     and every identity tag
 //     (city, channel, line, job type, role, source, money amount, counts, study stages other than WAITING ON YOU),
 //     the assistant's DRIVE, CALENDAR and
@@ -4018,7 +4018,8 @@ function paidButton(invoiceId, slot) {
 // MAP HOOK: GET /api/fleet/positions is the one route for truck positions —
 // the upcoming map screen reads it for lat/lon; the Fleet card reads it for
 // one line per unit and never shows a coordinate. Every state has its own
-// words (§1B): not set up, cut, the saved sign-in unreadable, not connected,
+// words (§1B): not set up, cut, the sign-in store cut on purpose (grey, like
+// any gap by choice), the saved sign-in unreadable, not connected,
 // sign-in expired, after hours, couldn't read, no trucks, and a truck with
 // no report since a time. After hours is never "no trucks": Arbo tracks
 // 8am–8pm, Monday to Saturday, and holds nothing outside it.
@@ -4034,6 +4035,7 @@ const TRACK_SAYS = {
   link_cut: ['Tracking cut on purpose — Arbo reads no positions until it is reconnected', 'feed-state cut'],
   not_connected: ['Tracking not connected — connect Bouncie in Settings', 'feed-state unset'],
   token_expired: ['Tracking stopped — the Bouncie sign-in expired; reconnect it in Settings', 'feed-state unset'],
+  sign_in_cut: ['Tracking off — the saved Bouncie sign-in is cut on purpose (ARBO_LINK_CREDENTIALS)', 'feed-state cut'],
   sign_in_store: ['Tracking stopped — Arbo can’t open the saved Bouncie sign-in; Settings says why', 'feed-state unread'],
   after_hours: ['After hours — not tracking (8am–8pm, Mon–Sat)', 'feed-state cut'],
   unreadable: ['Tracking: couldn’t read Bouncie just now', 'feed-state unread'],
@@ -4120,7 +4122,7 @@ function bouncieRows(b) {
   };
   if (s.state === 'keys_missing') rows.push(['NOT SET UP', 'watch', 'Bouncie sign-in isn’t set up on the server — add BOUNCIE_CLIENT_ID and BOUNCIE_CLIENT_SECRET on Railway, then deploy. Nothing is disconnected — it was never set up.']);
   // §3 vs "store the tokens in Supabase" is Mike's call: until he sets the switch, Supabase is not touched at all.
-  else if (s.state === 'store_cut') rows.push(['CUT', 'info', 'Bouncie can’t be connected yet — the sign-in is kept in Supabase, and that store is cut on purpose until ARBO_LINK_CREDENTIALS is set to live on Railway (your call: the data links are still cut). Nothing is disconnected.']);
+  else if (s.state === 'store_cut') rows.push(['CUT', 'info', 'Bouncie can’t be connected yet — the sign-in is kept in Supabase, and that store is cut on purpose until ARBO_LINK_CREDENTIALS is set to live on Railway (you said yes on Oct 20; it opens the sign-in table only). Nothing is disconnected.']);
   else if (s.state === 'store_unconfigured') rows.push(['NOT SET UP', 'watch', 'Bouncie can’t be connected yet — the sign-in is kept in Supabase, and Supabase isn’t configured on the server (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY). Nothing is disconnected.']);
   else if (s.state === 'store_missing') rows.push(['NOT SET UP', 'watch', 'Bouncie can’t be connected yet — the sign-in table isn’t in Supabase (migration 0021 not applied). Apply it, then tap Connect Bouncie. Nothing is disconnected.']);
   else if (s.state === 'store_unreadable') rows.push(['UNREADABLE', 'watch', 'Arbo couldn’t read the saved Bouncie sign-in — ' + (STORE_WHY[s.problem] || 'Supabase didn’t answer just now') + '. This is not "not connected". ' + RETRY]);
@@ -4133,6 +4135,10 @@ function bouncieRows(b) {
     : s.where === 'disk'
       ? 'Bouncie connected — saved on Arbo’s storage disk' + (s.savedAt ? ' ' + fmtWhen(s.savedAt) : '') + '. Survives redeploys.'
       : 'Bouncie connected — but held in memory only (no storage disk). It will need connecting again after the next restart.']);
+  // Mike, 2026-10-20: "Keep the sign-in alive". A daily renewal that failed is said, with when, until one succeeds.
+  // Only on a connected sign-in: EXPIRED, NOT SAVED and the store rows already say what went wrong.
+  const ka = b.keepAlive || {};
+  if (s.state === 'connected' && ka.failedAt) rows.push(['NOT RENEWED', 'watch', 'The daily keep-alive: Arbo couldn’t renew the sign-in at ' + fmtWhen(ka.failedAt) + ' — tap Reconnect if it keeps failing. It tries again within the hour.']);
   if (!b.link || !b.link.open) {
     rows.push(['CUT', 'info', 'Truck positions are cut on purpose — Arbo reads and keeps none until ' + ((b.link && b.link.envVar) || 'ARBO_LINK_BOUNCIE') + ' is set to live on Railway. Nothing was deleted.'
       + (w.whileCut ? ' Bouncie sent ' + plural(w.whileCut, 'update') + ' since Arbo last restarted; each was answered and dropped unread.' : '')]);
@@ -4160,8 +4166,8 @@ function bouncieRows(b) {
       + (w.afterHoursReports ? plural(w.afterHoursReports, 'report') + ' stamped after hours inside daytime updates ' + (w.afterHoursReports === 1 ? 'was' : 'were') + ' skipped too. ' : '')
       + 'Arbo tracks trucks only 8am–8pm, Monday to Saturday.']);
   }
-  // BOUNCIE_API_KEY: Bouncie's sign-in is the Client ID and Secret; its docs name no other API key. Present, never used.
-  if (b.keys && b.keys.apiKey) rows.push(['NOT USED', 'info', 'BOUNCIE_API_KEY is on Railway, but Arbo doesn’t use it: Bouncie signs Arbo in with the Client ID and Client Secret, and its docs name no separate API key. It is never sent anywhere or shown.']);
+  // BOUNCIE_API_KEY (Mike, 2026-10-20): the portal's per-user Authorization Code. Connect Bouncie gets its own — present, never used.
+  if (b.keys && b.keys.apiKey) rows.push(['NOT NEEDED', 'info', 'Not needed — Connect Bouncie gets its own code. You can delete BOUNCIE_API_KEY from Railway.']);
   // Anyone on the internet can POST to the webhook address, so a refused call is only a WRONG KEY
   // when nothing from Bouncie has got through. Bouncie's own calls after the refusals: someone else knocking.
   if (w.rejected) {
@@ -4196,7 +4202,8 @@ async function bouncieSettings(v, stale) {
   }
   const st = (b.signIn || {}).state;
   if (st === 'keys_missing' || st === 'store_cut' || st === 'store_unconfigured' || st === 'store_missing' || st === 'not_connected') v.appendChild(el('div', 'storm-muted', 'Redirect URI to register in the Bouncie portal: ' + b.redirectUri));
-  if (st === 'not_connected' || st === 'expired' || st === 'store_locked') {
+  // A keep-alive that keeps failing says "tap Reconnect", so a connected sign-in offers it then too.
+  if (st === 'not_connected' || st === 'expired' || st === 'store_locked' || (st === 'connected' && (b.keepAlive || {}).failedAt)) {
     const go = el('button', 'actbtn', st === 'not_connected' ? 'Connect Bouncie' : 'Reconnect Bouncie');
     const out = el('div', 'errline', '');
     go.addEventListener('click', async () => {

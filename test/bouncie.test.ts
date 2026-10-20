@@ -628,10 +628,11 @@ describe('the webhook — 401 for a wrong key, 200 at once for anything authenti
 
 // ---------- positions: every state its own ----------
 describe('GET /api/fleet/positions — every state named, and "no trucks" only when Bouncie says so', () => {
-  it('the nine sentences are nine different sentences', () => {
+  it('the ten sentences are ten different sentences', () => {
     // 7 → 9 with Mike's spec (2026-10-20): the saved sign-in unreadable, and after hours.
+    // 9 → 10 after the §11 audit: the sign-in store cut on purpose is not "can't open it".
     const says = Object.values(POSITIONS_SAYS);
-    expect(new Set(says).size).toBe(9);
+    expect(new Set(says).size).toBe(10);
     for (const [k, v] of Object.entries(POSITIONS_SAYS)) {
       if (k === 'no_trucks' || k === 'ok') continue;
       expect(v, k).toContain('This is not "no trucks".');
@@ -1872,16 +1873,16 @@ describe('the page — after hours and the sign-in store, each in its own words'
     for (const [, , t] of stuck) expect(t).not.toMatch(/isn’t connected yet/);
   });
 
-  it('Settings: after hours on the positions row, after-hours updates counted, and BOUNCIE_API_KEY named as not used', () => {
+  it('Settings: after hours on the positions row, after-hours updates counted, and BOUNCIE_API_KEY named as not needed', () => {
     expect(rows({ positions: { state: 'after_hours', readAt: null } })[1]).toEqual(['AFTER HOURS', 'info', 'Positions on, but it is after hours — Arbo tracks trucks only 8am–8pm, Monday to Saturday. Nothing is read or kept now; tracking resumes at 8am on the next working day.']);
     const hookRows = rows({ webhook: { ...base.webhook, afterHours: 3, afterHoursReports: 1 } });
     expect(hookRows.find(([c]) => c === 'AFTER HOURS')![2]).toBe('Bouncie sent 3 updates after hours since Arbo last restarted; each was answered and dropped unread. 1 report stamped after hours inside daytime updates was skipped too. Arbo tracks trucks only 8am–8pm, Monday to Saturday.');
     // Only after-hours updates since the restart is still WIRED — not "nothing has arrived".
     expect(rows({ webhook: { ...base.webhook, deliveries: 0, received: 0, lastAt: null, afterHours: 2 } }).map(([c]) => c)).toContain('WIRED');
-    expect(rows({}).some(([c]) => c === 'NOT USED')).toBe(false);
-    const k = rows({ keys: { ...base.keys, apiKey: true } }).find(([c]) => c === 'NOT USED')!;
-    expect(k[1]).toBe('info');
-    expect(k[2]).toContain('BOUNCIE_API_KEY is on Railway, but Arbo doesn’t use it');
+    expect(rows({}).some(([c]) => c === 'NOT NEEDED')).toBe(false);
+    // Mike, 2026-10-20: it is the portal's per-user Authorization Code — Connect Bouncie gets its own.
+    const k = rows({ keys: { ...base.keys, apiKey: true } }).find(([c]) => c === 'NOT NEEDED')!;
+    expect(k).toEqual(['NOT NEEDED', 'info', 'Not needed — Connect Bouncie gets its own code. You can delete BOUNCIE_API_KEY from Railway.']);
   });
 
   it('Settings: a locked sign-in offers Reconnect; a missing table shows the redirect and no button; its refusal is worded', async () => {
@@ -1913,9 +1914,11 @@ describe('the page — after hours and the sign-in store, each in its own words'
     const words = html.slice(html.indexOf('TONE WORDS (the canonical list)'), html.indexOf('const TONE = {'));
     const line = (tone: string) => words.slice(words.indexOf(`//   ${tone} = `)).split(/\n\/\/ {3}[a-z]+ = /)[0]!;
     expect(line('info')).toContain('AFTER HOURS');
-    expect(line('info')).toContain('NOT USED');
+    expect(line('info')).toContain('NOT NEEDED');
+    expect(line('info')).not.toContain('NOT USED');
     expect(line('stop')).toContain('LOCKED');
     expect(line('watch')).toContain('NOT SAVED');
+    expect(line('watch')).toContain('NOT RENEWED');
   });
 });
 
@@ -2053,7 +2056,8 @@ describe('§3 holds until Mike rules: the sign-in store in Supabase has its own 
       expect(b.beginConnect()).toEqual({ ok: false, error: 'bouncie_store_cut' });
       expect(b.bootLine()).toContain('sign-in store_cut (sign-in store: cut)');
       process.env.ARBO_LINK_BOUNCIE = 'live';
-      expect((await b.positions(UNITS)).state).toBe('sign_in_store');
+      // Its own state (§11 audit tone note): a store cut on purpose is not "can't open the sign-in".
+      expect((await b.positions(UNITS)).state).toBe('sign_in_cut');
       expect(sb.calls).toEqual([]);
     }
   });
@@ -2165,5 +2169,343 @@ describe('the minute tick: after 8pm nothing is held even with nobody asking, an
     const server = readFileSync(new URL('../src/server.ts', import.meta.url), 'utf8');
     expect(server).toContain('currentBouncie = bouncie;');
     expect(server).toMatch(/setInterval\(\(\) => \{ void bouncieNow\.tick\(\); \}, 60_000\)\.unref\(\);/);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// Mike's three answers, 2026-10-20 (after the §11 audit):
+//   1. "Yes, allow the sign-in row" — migration 0021 applied live; ARBO_LINK_CREDENTIALS=live at deploy.
+//   2. BOUNCIE_API_KEY is the portal's per-user Authorization Code (Users & Devices → Authorize My
+//      Devices). Not needed: Connect Bouncie gets its own code. Presence only.
+//   3. "Keep the sign-in alive" — once a day, whatever the hour, the refresh token is swapped and
+//      saved; nothing about a truck is read.
+// ═══════════════════════════════════════════════════════════════════════
+
+const H = 3600_000;
+/** Nothing but token swaps went to Bouncie: no vehicles, no trips, no position. */
+function onlyTokenSwaps(f: ReturnType<typeof fakeBouncie>): void {
+  expect(f.calls.filter((c) => c.url.includes('/v1/vehicles') || c.url.includes('/v1/trips'))).toEqual([]);
+  expect(f.reads()).toEqual([]);
+  for (const c of f.calls) expect([c.method, c.url]).toEqual(['POST', TOKEN_URL]);
+}
+
+describe('keep the sign-in alive (Mike, 2026-10-20: "Keep the sign-in alive") — a daily renewal that reads nothing else', () => {
+  beforeEach(() => {
+    process.env.ARBO_LINK_CREDENTIALS = 'live';
+  });
+
+  it('20 hours after the last renewal the minute tick swaps the refresh token — before 8am, with positions on — and reads no truck', async () => {
+    process.env.ARBO_LINK_BOUNCIE = 'live'; // positions on: even so, the keep-alive never reads a truck
+    const sb = fakeSupabase();
+    const f = fakeBouncie({ grants: [grant(1), grant(2), grant(3)], vehicles: () => answer(200, [vehicle()]) });
+    const { b, clock } = await connected({ http: f.http, tokens: sbTokens(sb) }); // Tuesday 10:00 AM
+    clock.t = T0 + 20 * H - min; // Wednesday 5:59 AM: 19 h 59 min since the sign-in — not yet
+    await b.tick();
+    expect(f.tokenCalls()).toHaveLength(1);
+    clock.t = T0 + 20 * H; // Wednesday 6:00 AM — before working hours
+    await b.tick();
+    expect(f.tokenCalls()).toHaveLength(2);
+    expect(f.tokenCalls()[1]!.body).toEqual({ client_id: CLIENT, client_secret: SECRET, grant_type: 'refresh_token', refresh_token: 'REFRESH-FAKE-1' });
+    // Stored through the credential store: the rotated pair, sealed, with when it was renewed.
+    expect(sb.plain()).toMatchObject({ accessToken: 'ACCESS-FAKE-2', refreshToken: 'REFRESH-FAKE-2', savedAt: iso(T0 + 20 * H) });
+    expect(b.signInState()).toBe('connected');
+    // Renewed: nothing more for another 20 hours, however often the tick runs.
+    for (let i = 1; i <= 5; i++) {
+      clock.t = T0 + 20 * H + i * H;
+      await b.tick();
+    }
+    expect(f.tokenCalls()).toHaveLength(2);
+    onlyTokenSwaps(f); // positions on and 11:00 AM by the last tick — and still no vehicles or trips read
+  });
+
+  it('on a Sunday — no working hours at all — the sign-in is renewed all the same, and nothing else is asked', async () => {
+    const sb = fakeSupabase();
+    const f = fakeBouncie({ grants: [grant(1), grant(2)], vehicles: () => answer(200, [vehicle()]) });
+    const { b, clock } = await connected({ clock: { t: SUNDAY - 20 * H }, http: f.http, tokens: sbTokens(sb) }); // Saturday 4:00 PM
+    clock.t = SUNDAY; // Sunday noon
+    await b.tick();
+    expect(f.tokenCalls()).toHaveLength(2);
+    expect(sb.plain()).toMatchObject({ refreshToken: 'REFRESH-FAKE-2' });
+    expect(b.signInState()).toBe('connected');
+    onlyTokenSwaps(f);
+  });
+
+  it('never while ARBO_LINK_CREDENTIALS is cut — the switch is read at every tick — and never without a good sign-in', async () => {
+    // A sign-in read while the switch was open, then the switch cut: nothing goes to Bouncie or Supabase.
+    const sb = fakeSupabase();
+    const f = fakeBouncie({ grants: [grant(1), grant(2)] });
+    const { b, clock } = await connected({ http: f.http, tokens: sbTokens(sb) });
+    const sbCalls = sb.calls.length;
+    for (const v of [undefined, '', 'off', 'true', 'LIVE', 'live ']) {
+      if (v === undefined) delete process.env.ARBO_LINK_CREDENTIALS;
+      else process.env.ARBO_LINK_CREDENTIALS = v;
+      clock.t += 21 * H;
+      await b.tick();
+    }
+    expect(f.tokenCalls()).toHaveLength(1);
+    expect(sb.calls).toHaveLength(sbCalls);
+    // Cut from boot: Supabase is never read, so there is no sign-in, and no call anywhere.
+    delete process.env.ARBO_LINK_CREDENTIALS;
+    const sb2 = fakeSupabase();
+    const f2 = fakeBouncie({ grants: [grant(1)] });
+    const cut = make({ http: f2.http, tokens: sbTokens(sb2) });
+    await cut.b.ready();
+    cut.clock.t += 48 * H;
+    await cut.b.tick();
+    expect(f2.calls).toEqual([]);
+    expect(sb2.calls).toEqual([]);
+    // Open, but not connected: nothing to renew.
+    process.env.ARBO_LINK_CREDENTIALS = 'live';
+    const f3 = fakeBouncie({ grants: [grant(1)] });
+    const none = make({ http: f3.http, tokens: sbTokens(fakeSupabase()) });
+    await none.b.ready();
+    expect(none.b.signInState()).toBe('not_connected');
+    none.clock.t += 48 * H;
+    await none.b.tick();
+    expect(f3.calls).toEqual([]);
+    // Keys gone from the server: not even a look.
+    const f4 = fakeBouncie({ grants: [grant(1)] });
+    const bare = make({ clientId: null, clientSecret: null, http: f4.http, tokens: sbTokens(fakeSupabase()) });
+    bare.clock.t += 48 * H;
+    await bare.b.tick();
+    expect(f4.calls).toEqual([]);
+  });
+
+  it('a renewal Bouncie refuses is EXPIRED once Supabase holds nothing newer — and the refused token is never sent again', async () => {
+    const sb = fakeSupabase();
+    const f = fakeBouncie({ grants: [grant(1), () => answer(400, { error: 'invalid_grant' })] });
+    const { b, clock } = await connected({ http: f.http, tokens: sbTokens(sb) });
+    clock.t = T0 + 20 * H;
+    await b.tick();
+    expect(b.signInState()).toBe('expired');
+    for (let i = 1; i <= 3; i++) {
+      clock.t = T0 + 20 * H + i * H;
+      await b.tick();
+    }
+    expect(f.tokenCalls()).toHaveLength(2);
+    // EXPIRED says it (with Reconnect); the keep-alive line is not stacked on top of it.
+    const rows = bouncieRows(await b.status());
+    expect(rows[0]![0]).toBe('EXPIRED');
+    expect(rows.some(([c]) => c === 'NOT RENEWED')).toBe(false);
+    onlyTokenSwaps(f);
+  });
+
+  it('the rotated pair is saved before anything uses it: Supabase refusing it keeps the old row, holds the new pair unused, and the tick saves it — one swap', async () => {
+    process.env.ARBO_LINK_BOUNCIE = 'live';
+    const sb = fakeSupabase();
+    const used: Array<[string, unknown]> = [];
+    const f = fakeBouncie({ grants: [grant(1), grant(2, 86_400)], vehicles: (t) => { used.push([t, sb.plain()?.accessToken ?? null]); return answer(200, []); } });
+    const { b, clock } = await connected({ http: f.http, tokens: sbTokens(sb) });
+    const before = { ...sb.state.row };
+    sb.state.write = 503;
+    clock.t = T0 + 20 * H; // Wednesday 6:00 AM
+    await b.tick();
+    expect(f.tokenCalls()).toHaveLength(2);
+    expect(sb.state.row).toEqual(before); // the old row is not discarded
+    expect(sb.plain()).toMatchObject({ refreshToken: 'REFRESH-FAKE-1' });
+    expect(b.signInState()).toBe('unsaved');
+    // Renewed at Bouncie, not saved yet: NOT SAVED says that — it is not a failed renewal.
+    const s = await b.status();
+    expect(s.keepAlive).toEqual({ failedAt: null });
+    expect(bouncieRows(s)[0]![0]).toBe('NOT SAVED');
+    clock.t += min;
+    await b.tick(); // Supabase still refusing: held, and no second swap
+    expect(f.tokenCalls()).toHaveLength(2);
+    sb.state.write = 201;
+    clock.t += min;
+    await b.tick();
+    expect(sb.plain()).toMatchObject({ accessToken: 'ACCESS-FAKE-2', refreshToken: 'REFRESH-FAKE-2' });
+    expect(b.signInState()).toBe('connected');
+    expect(f.tokenCalls()).toHaveLength(2);
+    expect(used).toEqual([]); // nothing read while renewing
+    // At 8:30 the first read uses the renewed token — and Supabase already held it.
+    clock.t = Date.parse('2026-10-21T12:30:00Z');
+    expect((await b.positions(UNITS)).state).toBe('no_trucks');
+    expect(used).toEqual([['ACCESS-FAKE-2', 'ACCESS-FAKE-2']]);
+  });
+
+  it('one swap at a time: a keep-alive and a read that both want a renewal share one refresh', async () => {
+    const sb = fakeSupabase();
+    let release!: () => void;
+    const hold = new Promise<void>((r) => { release = r; });
+    const f = fakeBouncie({ grants: [grant(1), async () => { await hold; return grant(2)(); }] });
+    const { b, clock } = await connected({ http: f.http, tokens: sbTokens(sb) });
+    clock.t = T0 + 22 * H; // Wednesday 8:00 AM — due
+    const tick = b.tick();
+    const read = b.accessToken('ACCESS-FAKE-1'); // a read that got a 401 at the same moment
+    release();
+    await tick;
+    expect(await read).toEqual({ ok: true, token: 'ACCESS-FAKE-2' });
+    expect(f.tokenCalls()).toHaveLength(2);
+    expect(sb.plain()).toMatchObject({ refreshToken: 'REFRESH-FAKE-2' });
+  });
+
+  it('a renewal that fails is named in Settings with its time, offers Reconnect, and is tried again no more than once an hour; the log carries states only', async () => {
+    const lines: string[] = [];
+    const spies = (['log', 'error', 'warn', 'info'] as const).map((k) => vi.spyOn(console, k).mockImplementation((...a: unknown[]) => { lines.push(a.map(String).join(' ')); }));
+    try {
+      const sb = fakeSupabase();
+      const f = fakeBouncie({ grants: [grant(1), () => answer(503, {}), () => answer(502, {}), grant(4)] });
+      const { b, clock } = await connected({ http: f.http, tokens: sbTokens(sb) });
+      const first = T0 + 20 * H; // Wednesday 6:00 AM
+      clock.t = first;
+      await b.tick();
+      expect(f.tokenCalls()).toHaveLength(2);
+      expect(b.signInState()).toBe('connected'); // Bouncie didn't answer: that is not "expired"
+      expect(sb.plain()).toMatchObject({ refreshToken: 'REFRESH-FAKE-1' }); // the good pair is kept
+      const s = await b.status();
+      expect(s.keepAlive).toEqual({ failedAt: iso(first) });
+      expect(bouncieRows(s)[1]).toEqual(['NOT RENEWED', 'watch', 'The daily keep-alive: Arbo couldn’t renew the sign-in at ' + fmtWhen(iso(first)) + ' — tap Reconnect if it keeps failing. It tries again within the hour.']);
+      // Not again inside the hour, however often the tick runs.
+      for (const m of [1, 2, 30, 59]) {
+        clock.t = first + m * min;
+        await b.tick();
+      }
+      expect(f.tokenCalls()).toHaveLength(2);
+      clock.t = first + H;
+      await b.tick();
+      expect(f.tokenCalls()).toHaveLength(3);
+      expect((await b.status()).keepAlive).toEqual({ failedAt: iso(first + H) });
+      clock.t = first + H + 59 * min;
+      await b.tick();
+      expect(f.tokenCalls()).toHaveLength(3);
+      clock.t = first + 2 * H;
+      await b.tick();
+      expect(f.tokenCalls()).toHaveLength(4);
+      expect(sb.plain()).toMatchObject({ accessToken: 'ACCESS-FAKE-4', refreshToken: 'REFRESH-FAKE-4' });
+      const ok = await b.status();
+      expect(ok.keepAlive).toEqual({ failedAt: null });
+      expect(bouncieRows(ok).some(([c]) => c === 'NOT RENEWED')).toBe(false);
+      onlyTokenSwaps(f);
+    } finally {
+      for (const s of spies) s.mockRestore();
+    }
+    const logs = lines.join('\n');
+    expect(logs).toContain('[bouncie] keep-alive: the sign-in was not renewed (unreadable)');
+    expect(logs).toContain('[bouncie] keep-alive: the sign-in is renewed');
+    for (const secret of ['ACCESS-FAKE', 'REFRESH-FAKE', SECRET, SB_KEY, 'CODE-FAKE']) expect(logs, `a log line carried ${secret}`).not.toContain(secret);
+  });
+
+  it('a renewal that a newer one already covers is not a failure: a regular refresh since then clears the line', async () => {
+    const sb = fakeSupabase();
+    const f = fakeBouncie({ grants: [grant(1), () => answer(503, {}), grant(3, 3600)] });
+    const { b, clock } = await connected({ http: f.http, tokens: sbTokens(sb) });
+    clock.t = T0 + 20 * H;
+    await b.tick();
+    expect((await b.status()).keepAlive.failedAt).toBe(iso(T0 + 20 * H));
+    // A read renews the sign-in (the access token ran out) before the keep-alive tries again.
+    clock.t += 10 * min;
+    expect(await b.accessToken()).toEqual({ ok: true, token: 'ACCESS-FAKE-3' });
+    expect((await b.status()).keepAlive).toEqual({ failedAt: null });
+  });
+
+  it('the Settings card: a failed renewal offers Reconnect on a connected sign-in; without one there is no button', async () => {
+    const run = async (status: unknown) => {
+      const api = async () => status;
+      const feedLine = (_e: unknown, what: string) => el('div', 'feed-state', what);
+      const f = pageFn<(v: N, stale: () => boolean) => Promise<void>>('bouncieSettings', { el, api, chip, feedLine, bouncieRows, location: { assign: () => undefined } });
+      const v = el('div');
+      await f(v, () => false);
+      return v;
+    };
+    const connectedStatus = { signIn: { state: 'connected', stored: true, where: 'supabase', savedAt: '2026-10-20T13:00:00Z', problem: null }, link: { envVar: 'ARBO_LINK_BOUNCIE', open: false }, webhook: { wired: false }, keepAlive: { failedAt: null } };
+    expect((await run(connectedStatus)).all().some((n) => n.tag === 'button')).toBe(false);
+    const failed = await run({ ...connectedStatus, keepAlive: { failedAt: '2026-10-21T10:00:00Z' } });
+    expect(failed.all().find((n) => n.tag === 'button')!.textContent).toBe('Reconnect Bouncie');
+    expect(failed.text()).toContain('couldn’t renew the sign-in at');
+  });
+});
+
+describe('BOUNCIE_API_KEY (Mike, 2026-10-20: the portal\'s per-user Authorization Code) — not needed, held as a yes/no only', () => {
+  it('Settings says plainly it is not needed and can be deleted; the server keeps whether it is set, never its value', async () => {
+    const status = { signIn: { state: 'connected', stored: true, where: 'supabase', savedAt: null, problem: null }, keys: { clientId: true, clientSecret: true, webhookKey: true, apiKey: true }, link: { open: false }, webhook: { wired: false } };
+    expect(bouncieRows(status).find(([c]) => c === 'NOT NEEDED')).toEqual(['NOT NEEDED', 'info', 'Not needed — Connect Bouncie gets its own code. You can delete BOUNCIE_API_KEY from Railway.']);
+    expect(bouncieRows({ ...status, keys: { ...status.keys, apiKey: false } }).some(([c]) => c === 'NOT NEEDED')).toBe(false);
+    // The env view holds a yes/no — the value is never kept, so it can never be sent, shown or logged.
+    process.env.BOUNCIE_API_KEY = 'made-up-portal-code-0042';
+    vi.resetModules();
+    const { env } = await import('../src/env.js');
+    expect(env.bouncie.apiKeySet).toBe(true);
+    expect(JSON.stringify(env)).not.toContain('made-up-portal-code-0042');
+    expect(Object.keys(env.bouncie)).not.toContain('apiKey');
+    // Over the wire: Settings' route says "set", never the value.
+    const lines: string[] = [];
+    const spies = (['log', 'error', 'warn', 'info'] as const).map((k) => vi.spyOn(console, k).mockImplementation((...a: unknown[]) => { lines.push(a.map(String).join(' ')); }));
+    const { base, srv } = await serve({ ...KEYS, ARBO_SECRET_DIR: tmp(), BOUNCIE_API_KEY: 'made-up-portal-code-0042' });
+    try {
+      const r = await realFetch(base + '/api/bouncie', { headers: { 'x-arbor-key': 'admin-k' } });
+      const text = await r.text();
+      expect(JSON.parse(text).keys).toMatchObject({ apiKey: true });
+      expect(text).not.toContain('made-up-portal-code-0042');
+    } finally {
+      srv.close();
+      for (const s of spies) s.mockRestore();
+    }
+    expect(lines.join('\n')).not.toContain('made-up-portal-code-0042');
+  });
+});
+
+describe('a store cut on purpose is grey, never amber (the §11 audit\'s tone note)', () => {
+  it('the sign-in store cut: its own state and words, grey on the Fleet line, CUT=info in Settings — and no Supabase call', async () => {
+    delete process.env.ARBO_LINK_CREDENTIALS;
+    process.env.ARBO_LINK_BOUNCIE = 'live';
+    const sb = fakeSupabase();
+    const f = fakeBouncie();
+    const { b } = make({ http: f.http, tokens: sbTokens(sb) });
+    await b.ready();
+    const p = await b.positions(UNITS);
+    expect(p).toMatchObject({ state: 'sign_in_cut', message: POSITIONS_SAYS.sign_in_cut });
+    expect(POSITIONS_SAYS.sign_in_cut).toContain('ARBO_LINK_CREDENTIALS');
+    expect(POSITIONS_SAYS.sign_in_cut).toContain('This is not "no trucks".');
+    expect(POSITIONS_SAYS.sign_in_cut).not.toBe(POSITIONS_SAYS.sign_in_store);
+    expect(new Set(Object.values(POSITIONS_SAYS)).size).toBe(Object.keys(POSITIONS_SAYS).length);
+    const t = await b.trips({ truck: 'abcdefabcdef', day: '2026-10-19' });
+    expect(t.body).toMatchObject({ state: 'sign_in_cut', message: TRIPS_SAYS.sign_in_cut, trips: [] });
+    expect(TRIPS_SAYS.sign_in_cut).toContain('This is not "no trips".');
+    expect(sb.calls).toEqual([]);
+    expect(f.calls).toEqual([]);
+    // The Fleet line: the grey of a gap on purpose — a real "can't open it" stays amber.
+    expect(trackWords(answerFor('sign_in_cut'), 'u1')).toEqual(['Tracking off — the saved Bouncie sign-in is cut on purpose (ARBO_LINK_CREDENTIALS)', 'feed-state cut']);
+    expect(trackWords(answerFor('sign_in_store'), 'u1')[1]).toBe('feed-state unread');
+    // Settings: CUT is info (grey); the positions row waits on it, and nothing on the card is amber for the cut.
+    const rows = bouncieRows(await b.status());
+    expect(rows[0]!.slice(0, 2)).toEqual(['CUT', 'info']);
+    expect(rows[1]).toEqual(['OPEN', 'good', 'Positions on — waiting on the Bouncie sign-in above.']);
+  });
+});
+
+describe('Mike\'s three answers are filed in his words, and the docs say what is live', () => {
+  // Markdown wraps lines anywhere: the checks read each doc with its whitespace folded to single spaces.
+  const read = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8').replace(/\s+/g, ' ');
+
+  it('R31\'s amendment carries the answers; BOUNCIE.md moves them out of "Waiting on Mike"', () => {
+    const rulings = read('../docs/OWNER_RULINGS.md');
+    const r31 = rulings.slice(rulings.indexOf('## R31 — '));
+    expect(r31).toContain('**Answered by Mike, 2026-10-20 (after the §11 audit).**');
+    expect(r31).toContain('*"Yes, allow the sign-in row"*');
+    expect(r31).toContain('*"Keep the sign-in alive"*');
+    expect(r31).toContain('Users & Devices → Authorize My Devices');
+    const doc = read('../docs/BOUNCIE.md');
+    expect(doc).toContain('Users & Devices → Authorize My Devices');
+    expect(doc).toContain('You can delete `BOUNCIE_API_KEY` from Railway');
+    expect(doc).toContain('20 hours');
+    expect(doc).toContain('applied live 2026-10-20');
+    expect(doc).not.toContain('It is **not applied yet**');
+  });
+
+  it('0021 says applied live; DATA_LINKS names the credential door; GO_LIVE has the Bouncie steps; CLAUDE.md §3 names the one exception', () => {
+    const sql = read('../supabase/migrations/0021_integration_credential.sql');
+    expect(sql).toContain('APPLIED LIVE 2026-10-20');
+    const links = read('../docs/DATA_LINKS.md');
+    const door = links.slice(links.indexOf('## The credential door'));
+    for (const s of ['`integration_credential`', 'Sealed rows', '`ARBO_LINK_CREDENTIALS`', 'exactly `live`', '`src/db/credentialStore.ts`', 'outside the business links by Mike\'s 2026-10-20 ruling']) expect(door, s).toContain(s);
+    const golive = readFileSync(new URL('../docs/GO_LIVE.md', import.meta.url), 'utf8');
+    const line = golive.split('\n').find((l) => l.includes('**Bouncie truck tracking**'))!;
+    for (const s of ['0021', '`ARBO_LINK_CREDENTIALS=live`', '/api/bouncie/callback', '`arbo-app`']) expect(line, s).toContain(s);
+    const claude = read('../CLAUDE.md');
+    const s3 = claude.slice(claude.indexOf('## §3 — The data links are CUT'), claude.indexOf('## Guardrails that live in code'));
+    expect(s3).toContain('`src/db/credentialStore.ts`');
+    expect(s3).toContain('`ARBO_LINK_CREDENTIALS`');
+    expect(s3).toContain('Mike 2026-10-20');
   });
 });

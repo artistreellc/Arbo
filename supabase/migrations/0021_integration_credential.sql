@@ -33,10 +33,13 @@
 -- A new provider needs a new migration: the CHECK allows only 'bouncie'.
 --
 -- ───────────────────────────────────────────────────────────────────────
--- NOT APPLIED LIVE. It is applied only on Mike's go (docs/BOUNCIE.md), and
--- it must be in place BEFORE Connect Bouncie: until then Settings says
--- "the sign-in table isn't in Supabase (migration 0021 not applied)" and
--- the sign-in refuses to start rather than lose a token.
+-- APPLIED LIVE 2026-10-20, by Claude, on Mike's go:
+--   "Yes, allow the sign-in row"
+-- — the sealed Bouncie sign-in may sit in Supabase while the business data
+-- links stay cut (R31, answered). Checked after applying: RLS on, 0
+-- policies, anon and authenticated have no SELECT, 0 rows. The server
+-- reaches it only once ARBO_LINK_CREDENTIALS is exactly 'live' on Railway
+-- (set at deploy); until then Settings says CUT and touches nothing here.
 -- ───────────────────────────────────────────────────────────────────────
 
 create table if not exists public.integration_credential (

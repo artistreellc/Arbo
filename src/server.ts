@@ -666,17 +666,18 @@ export function createArborRequestHandler(opts: { assistant?: Assistant } = {}) 
   });
 
   // ═══ R31 — Bouncie truck tracking (docs/BOUNCIE.md). Owner only, read
-  // only, working hours only; dormant until Mike adds the keys, applies
-  // migration 0021, sets ARBO_LINK_CREDENTIALS=live (his ruling on §3),
-  // connects, and sets ARBO_LINK_BOUNCIE=live. The sign-in is kept in
-  // Supabase, sealed (Mike's spec, 2026-10-20) — in practice mode
-  // (ARBO_DATA_LINKS=sim, which opens no database) on the disk as before.
-  // The boot line names each state, never a secret, once the store is read. ═══
+  // only, working hours only; dormant until Mike adds the keys, connects,
+  // and sets ARBO_LINK_BOUNCIE=live. Migration 0021 is applied live and
+  // ARBO_LINK_CREDENTIALS=live is set at deploy (Mike, 2026-10-20: "Yes,
+  // allow the sign-in row"). The sign-in is kept in Supabase, sealed — in
+  // practice mode (ARBO_DATA_LINKS=sim, which opens no database) on the disk
+  // as before — and renewed once a day by the minute tick ("Keep the sign-in
+  // alive"). The boot line names each state, never a secret, once the store is read. ═══
   const bouncie = new Bouncie({
     clientId: env.bouncie.clientId ?? null,
     clientSecret: env.bouncie.clientSecret ?? null,
     webhookKey: env.bouncie.webhookKey ?? null,
-    apiKeySet: Boolean(env.bouncie.apiKey),
+    apiKeySet: env.bouncie.apiKeySet,
     tokens: bouncieTokenBackend({
       supabaseUrl: env.supabase.url,
       serviceKey: env.supabase.serviceRoleKey,
@@ -2030,7 +2031,8 @@ export function startServer(port: number) {
     });
   } else console.error('[quo] intake missing at boot — not wired');
   // R31: once a minute, outside working hours nothing about the trucks is held even when nobody
-  // asks, and a renewed Bouncie sign-in Supabase refused is saved again. Never reads Bouncie, never throws.
+  // asks, a renewed Bouncie sign-in Supabase refused is saved again, and the daily keep-alive
+  // (Mike, 2026-10-20: "Keep the sign-in alive") swaps the refresh token. Never reads a truck, never throws.
   const bouncieNow = currentBouncie;
   if (bouncieNow) setInterval(() => { void bouncieNow.tick(); }, 60_000).unref();
   const cutNow = cutVendorLinks();

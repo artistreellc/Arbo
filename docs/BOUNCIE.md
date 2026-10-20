@@ -41,20 +41,22 @@ says where things stand.
 ## Part 0 — where the sign-in is kept (once, before Part 1 step 8)
 
 Your spec says to keep the tokens in Supabase; §3 keeps every Supabase link
-cut until the app is built. Those two meet here, so it is **your call**
-(*Waiting on Mike* #6), and these two steps are how you make it. Until both
-are done, Settings names which one is missing and **Connect Bouncie**
-refuses, so no sign-in is ever lost.
+cut until the app is built. Those two met here, so it was **your call** — and
+you made it on 2026-10-20: *"Yes, allow the sign-in row."* The sealed
+sign-in row is the one exception to the cut; the business data links stay
+cut. Until both steps below are done, Settings names which one is missing
+and **Connect Bouncie** refuses, so no sign-in is ever lost.
 
-- **The table.** `supabase/migrations/0021_integration_credential.sql`. It
-  is **not applied yet** — it is applied only on your go. Until it is,
-  Settings says *the sign-in table isn't in Supabase (migration 0021 not
-  applied)*.
-- **The switch.** In Railway → **Variables**, add `ARBO_LINK_CREDENTIALS` =
-  `live` (lowercase, no spaces), then deploy. It opens that one table and
-  nothing else — not the data links, not the agent sweeps. Until it is set,
-  Arbo sends **nothing** to Supabase for the sign-in, not even a read, and
-  Settings says **CUT**.
+- **The table.** `supabase/migrations/0021_integration_credential.sql` —
+  applied live 2026-10-20 on your go, and checked: RLS on, no policies, no
+  access for anon or signed-in users, 0 rows. (If it ever went missing,
+  Settings would say *the sign-in table isn't in Supabase (migration 0021
+  not applied)*.)
+- **The switch.** `ARBO_LINK_CREDENTIALS` = `live` (lowercase, no spaces) in
+  Railway → **Variables** — set at the deploy that ships this. It opens that
+  one table and nothing else — not the data links, not the agent sweeps.
+  Until it is set, Arbo sends **nothing** to Supabase for the sign-in, not
+  even a read, and Settings says **CUT** (grey: off on purpose).
 
 ## Part 1 — sign Arbo in (about 10 minutes)
 
@@ -98,13 +100,15 @@ refuses, so no sign-in is ever lost.
 
 ### About `BOUNCIE_API_KEY`
 
-Your spec adds `BOUNCIE_API_KEY` on Railway. Bouncie's developer docs name
-no separate API key: the sign-in is the Client ID and Client Secret above,
-and the webhook uses the key you make up in Part 2. So Arbo reads
-`BOUNCIE_API_KEY` only to see that it is there — it is never sent anywhere
-and never shown — and Settings marks it **NOT USED**. Tell Claude which
-portal field it came from. If it is the webhook key, it belongs in
-`BOUNCIE_WEBHOOK_KEY` instead (one name, one value).
+You told Claude where it came from (2026-10-20): the portal's **Users &
+Devices → Authorize My Devices** — the per-user Authorization Code. Arbo
+does not need it. **Connect Bouncie** gets its own fresh code each time you
+approve, and a Connect in the browser makes the portal's code stop working
+anyway. So Arbo only notes whether `BOUNCIE_API_KEY` is set — its value is
+never read, sent or logged — and Settings says **NOT NEEDED**: *Not needed —
+Connect Bouncie gets its own code. You can delete BOUNCIE_API_KEY from
+Railway.* You can delete `BOUNCIE_API_KEY` from Railway whenever you like;
+nothing changes when you do.
 
 ## Part 2 — live updates from the trucks (the webhook)
 
@@ -171,6 +175,7 @@ and never pairs on a name when the unit's VIN and Bouncie's VIN are different.
 | After hours — not tracking | Outside 8am–8pm, Monday to Saturday. Arbo reads and keeps nothing until 8am on the next working day. |
 | Tracking not set up | Part 1, steps 6–7, are not done. |
 | Tracking not connected | Part 1, step 8, is not done. |
+| Tracking off — the saved Bouncie sign-in is cut on purpose | `ARBO_LINK_CREDENTIALS` is not `live` (Part 0). Grey: off by choice, not a fault. |
 | Tracking stopped — Arbo can't open the saved Bouncie sign-in | Settings → Bouncie says why: the sign-in table is missing (Part 0), Supabase didn't answer, or `BOUNCIE_CLIENT_SECRET` changed (**LOCKED** — tap **Reconnect Bouncie**). |
 | Tracking cut on purpose | `ARBO_LINK_BOUNCIE` is not `live`. |
 | Tracking stopped — sign-in expired | Tap **Reconnect Bouncie** in Settings. |
@@ -205,13 +210,20 @@ answer, never "no trips". At most one read a minute per truck and day.
 ## Good to know
 
 - You can connect while positions are still cut. Arbo only saves the sign-in.
-- Bouncie's sign-in expires if it is not used for a while. Arbo only uses it
-  while positions are on, and only in working hours — so it sits unused every
-  night (8pm–8am) and every weekend, from Saturday 8pm to Monday 8am: 36 hours.
-  Bouncie's docs say a refresh token expires "after some time if not used"
-  but don't say how long. If it is under 36 hours, Monday mornings will say
-  **EXPIRED**; tap **Reconnect Bouncie**, and see *Waiting on Mike* #2. The
-  same goes for connecting and then leaving positions cut for a long time.
+- **Arbo keeps the sign-in alive** (you, 2026-10-20: *"Keep the sign-in
+  alive"*). Bouncie's sign-in expires if it is not used for a while — its
+  docs say "after some time if not used" but not how long — and positions
+  use it only in working hours, so it would sit unused every night and for
+  36 hours every weekend (Saturday 8pm to Monday 8am). So once a day,
+  whatever the hour — nights and Sunday too, and while positions are cut —
+  Arbo renews the sign-in when its last renewal is **20 hours** old. That
+  renewal swaps the refresh token for a new pair and saves it in Supabase,
+  sealed; it reads **no** truck, trip or position. It never runs while
+  `ARBO_LINK_CREDENTIALS` is cut or Bouncie isn't connected. If a renewal
+  fails (Bouncie didn't answer), Settings says **NOT RENEWED** — *couldn't
+  renew the sign-in at* the time — and offers **Reconnect Bouncie**; Arbo
+  tries again within the hour (never more often). Tap Reconnect if it keeps
+  failing. If Bouncie refuses it outright, Settings says **EXPIRED**.
 - Bouncie gives a new refresh token every time Arbo renews the sign-in, and
   the old one stops working. Arbo saves the new one in Supabase **before**
   using it. If Supabase won't take it, Settings says **NOT SAVED**: Arbo holds
@@ -239,24 +251,20 @@ and then i add later"), amended by his spec of 2026-10-20, with
 
 1. **Hours.** *Answered by the spec:* positions and trips follow the office
    phone's hours, 8am–8pm, Monday to Saturday.
-2. **Keeping the sign-in alive.** Should Arbo refresh the Bouncie sign-in
-   once a day — even while positions are cut, overnight, and over the
-   weekend — so it never lapses? A refresh reads no location. Built: no — so
-   turning positions on, or a Monday morning after a 36-hour weekend gap, may
-   need one Reconnect.
-3. **Migration 0021.** Apply `0021_integration_credential.sql` live — on
-   your go only.
-4. **`BOUNCIE_API_KEY`.** Which portal field is it? Until then: present,
-   not used.
+2. **Keeping the sign-in alive.** *Answered (2026-10-20: "Keep the sign-in
+   alive"):* built — a daily renewal, whatever the hour, that swaps the
+   refresh token and reads nothing else (*Good to know*, above).
+3. **Migration 0021.** *Answered ("Yes, allow the sign-in row"):* applied
+   live 2026-10-20 and checked.
+4. **`BOUNCIE_API_KEY`.** *Answered:* the portal's Users & Devices →
+   Authorize My Devices code. Not needed; you can delete it from Railway.
 5. **Trips after 8pm.** Built: Arbo reads no trips after hours, not even the
    day's earlier ones. Say if you want to review the day's trips in the
    evening.
-6. **Supabase and the cut data links.** Your spec says to keep the tokens
-   in Supabase; §3 says every Supabase link stays cut until the app is built.
-   Built: **cut, by its own switch**, until you say — `ARBO_LINK_CREDENTIALS`
-   = `live` (Part 0) is your yes, and opens the sign-in table only. Left
-   off, Arbo touches nothing in Supabase and Bouncie can't be connected (say
-   if you'd rather keep the first build's disk store until the app is built).
+6. **Supabase and the cut data links.** *Answered (2026-10-20: "Yes, allow
+   the sign-in row"):* the sealed sign-in row is the one exception to the
+   cut. `ARBO_LINK_CREDENTIALS` = `live` is set at deploy and opens the
+   sign-in table only; the business data links stay cut.
 7. **What Arbo still says about after hours.** No place, no path, and not
    the minute an after-hours update came. Two things remain: a truck whose
    newest report was after hours reads *Last report was after hours — not

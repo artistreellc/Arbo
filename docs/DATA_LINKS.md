@@ -14,6 +14,34 @@ sure its using supabase the correct way"*.
   `LinkCutError` naming the link; an unmapped table refuses too. The server
   answers 503 `link_cut` — never a vague 500 (§1B).
 
+## The credential door — outside the business links (Mike, 2026-10-20)
+
+Mike, 2026-10-20: *"Yes, allow the sign-in row"* (R31, answered). One door
+reaches Supabase while the business links stay cut, and it is not one of
+them:
+
+- **One table**, `integration_credential` (migration 0021, applied live
+  2026-10-20 and checked: RLS on, 0 policies, no anon/authenticated access).
+  One row per outside service, and the only one allowed is Bouncie: its
+  sign-in, once Mike taps Connect Bouncie (0 rows until then). No customer,
+  lead, job, call or truck position.
+- **Sealed rows.** Each value is encrypted (AES-256-GCM) before it leaves
+  the server, under a key derived from the provider's client secret, which
+  lives only on Railway — the database or the service-role key alone cannot
+  open it.
+- **Its own switch**, `ARBO_LINK_CREDENTIALS`, open only when exactly `live`
+  (same fail-closed rule as every link; set at deploy on Mike's yes). It is
+  not `ARBO_DATA_LINKS` and opens no business link or agent sweep; the
+  master switch does not open it either.
+- **One door**, `src/db/credentialStore.ts`: it addresses that table and
+  nothing else, and `getDb()` refuses the table by name (it is in no list
+  in `src/db/links.ts`), so neither door reaches the other's tables.
+
+It sits outside the business links by Mike's 2026-10-20 ruling: it holds
+Arbo's own sign-in, not company data, so the verification steps below — and
+§3's import gate — are about the business links, and opening this door
+imports nothing.
+
 ## The verification process — EVERY link, EVERY time, in order
 
 No step is skippable, and a finding at any step STOPS the link and goes to

@@ -30,15 +30,19 @@
 //     A redeploy forgets them; Bouncie fills them back in.
 //   - SECRETS stay server-side: the sign-in is kept in Supabase, sealed
 //     (src/db/credentialStore.ts — Mike's "store the tokens server-side in
-//     Supabase"), behind that door's own switch, ARBO_LINK_CREDENTIALS, cut
-//     until he rules on §3 — never in a response, never in a log. Logs carry counts
+//     Supabase"), behind that door's own switch, ARBO_LINK_CREDENTIALS
+//     (Mike, 2026-10-20: "Yes, allow the sign-in row" — set at deploy; still
+//     fail-closed) — never in a response, never in a log. Logs carry counts
 //     and the last 4 of a device id at most — never a coordinate, an
 //     address, or a full VIN.
+//   - KEPT ALIVE (Mike, 2026-10-20: "Keep the sign-in alive"): once a day,
+//     whatever the hour, the minute tick swaps the refresh token and saves the
+//     rotated pair — the token swap and nothing else (keepAlive()).
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CredentialStore, type CredentialHttp, type CredentialProblem } from '../db/credentialStore.js';
+import { CredentialStore, credentialLinkOpen, type CredentialHttp, type CredentialProblem } from '../db/credentialStore.js';
 import { withinWorkingHours } from '../ops/locationIntel.js';
 
 export const AUTHORIZE_URL = 'https://auth.bouncie.com/dialog/authorize';
@@ -89,6 +93,8 @@ const TRIP_POINTS_CAP = 2_000;
 const GPS_TEXT_CAP = 4_000_000;
 const MAX_TRIP_WINDOW_MS = 7 * 24 * 3600_000; // Bouncie's documented limit for one trips read: a week
 const EARLIEST_TRIP_DAY = '2020-05-21'; // the earliest date Bouncie's trips read supports
+const KEEP_ALIVE_AFTER_MS = 20 * 3600_000; // the keep-alive renews a sign-in last renewed 20 hours ago or more
+const KEEP_ALIVE_RETRY_MS = 3600_000; // a keep-alive that failed is tried again no more than once an hour
 
 export type BouncieHttp = (
   url: string,
@@ -570,9 +576,11 @@ export interface BouncieOptions {
   clientSecret: string | null;
   webhookKey: string | null;
   /**
-   * BOUNCIE_API_KEY is on Railway (Mike's spec) — PRESENCE ONLY. Bouncie's
-   * docs name no separate API key (the sign-in is the Client ID and Secret),
-   * so its value is never read, sent or shown until Mike says what it is.
+   * BOUNCIE_API_KEY is on Railway (Mike's spec) — PRESENCE ONLY. Mike,
+   * 2026-10-20: it is the portal's per-user Authorization Code (Users &
+   * Devices → Authorize My Devices). Arbo does not need it — Connect Bouncie
+   * gets its own code — so only whether it is set reaches here; its value is
+   * never read, sent or logged.
    */
   apiKeySet?: boolean;
   /** Where the sign-in is kept. The server passes bouncieTokenBackend(); with none given, nothing can be kept, by name. */
@@ -603,9 +611,11 @@ export type SignInState =
   | 'expired'
   | 'unsaved' // Bouncie renewed the sign-in, Supabase has not taken it yet: held, unused, retried
   | 'connected';
-export type PositionsState = 'keys_missing' | 'link_cut' | 'sign_in_store' | 'not_connected' | 'token_expired' | 'after_hours' | 'unreadable' | 'no_trucks' | 'ok';
-export type TripsState = 'keys_missing' | 'link_cut' | 'sign_in_store' | 'not_connected' | 'token_expired' | 'after_hours' | 'not_a_working_day' | 'unreadable' | 'no_trips' | 'ok';
-type Gate = 'keys_missing' | 'link_cut' | 'sign_in_store' | 'not_connected' | 'token_expired' | 'after_hours';
+// 'sign_in_cut' = the sign-in store is cut ON PURPOSE (ARBO_LINK_CREDENTIALS) — a gap by choice, never
+// worded or coloured like 'sign_in_store' (Arbo can't open a sign-in it should have).
+export type PositionsState = 'keys_missing' | 'link_cut' | 'sign_in_cut' | 'sign_in_store' | 'not_connected' | 'token_expired' | 'after_hours' | 'unreadable' | 'no_trucks' | 'ok';
+export type TripsState = 'keys_missing' | 'link_cut' | 'sign_in_cut' | 'sign_in_store' | 'not_connected' | 'token_expired' | 'after_hours' | 'not_a_working_day' | 'unreadable' | 'no_trips' | 'ok';
+type Gate = 'keys_missing' | 'link_cut' | 'sign_in_cut' | 'sign_in_store' | 'not_connected' | 'token_expired' | 'after_hours';
 
 const STORE_STATE: Record<StoreProblem, SignInState> = {
   cut: 'store_cut',
@@ -647,6 +657,9 @@ export class Bouncie {
   /** A renewed pair Bouncie handed back that the store has not taken yet. Held, never used, until it is saved. */
   private unsaved: { rec: TokenRecord; gen: number } | null = null;
   private saveChain: Promise<unknown> = Promise.resolve();
+  /** When the daily keep-alive last failed to renew the sign-in (null = it has not, since the last success). */
+  private keepAliveFailedAt: number | null = null;
+  private keepAliveBusy = false; // one keep-alive at a time, however the minute ticks overlap
   private lastRead: { at: number; outcome: ReadOutcome } | null = null;
   private reading: Promise<ReadOutcome> | null = null;
   private readonly tripCache = new Map<string, { at: number; body: Record<string, unknown> }>();
@@ -1324,19 +1337,72 @@ export class Bouncie {
   }
 
   /**
-   * The server runs this once a minute (startServer). It never reads Bouncie and never throws.
+   * The server runs this once a minute (startServer). It never reads a truck and never throws.
    *   - Outside working hours (or with the link cut) nothing about the trucks is held — dropped
    *     within a minute of 8pm even when nobody asks; a request is not what makes it true.
    *   - A renewed sign-in Supabase would not take is saved again, whatever the hour: it is Arbo's
    *     own sign-in, not a location, and if Arbo restarts before it is saved the sign-in is lost.
+   *   - The daily keep-alive (keepAlive): the one call to Bouncie the tick may make — a token swap.
    */
   async tick(): Promise<void> {
     try {
       if (!bouncieLinked() || !this.inHours()) this.dropHeld();
       if (this.unsaved) await this.oneAtATime(() => this.saveUnsaved());
+      await this.keepAlive();
     } catch {
-      /* named where it happened (saveUnsaved / the store); the next tick tries again */
+      /* named where it happened (saveUnsaved / refresh / the store); the next tick tries again */
     }
+  }
+
+  /**
+   * KEEP THE SIGN-IN ALIVE — Mike, 2026-10-20: "Keep the sign-in alive". Bouncie's
+   * refresh token lapses if it goes unused for a while, and positions use it only
+   * 8am–8pm, Monday to Saturday: 36 hours unused every weekend. So once a day,
+   * WHATEVER THE HOUR (nights and Sunday included), a sign-in last renewed 20 hours
+   * ago or more is renewed.
+   *
+   * It is the token swap and NOTHING ELSE: refresh() — the same single-flight
+   * refresh a read uses, so the rotated pair is saved before anything uses it and a
+   * store that refuses it keeps the old row (the new pair is held unused, NOT SAVED,
+   * and the tick saves it). No vehicle, trip or position is asked for or kept.
+   *
+   * It never runs while the sign-in store is cut (ARBO_LINK_CREDENTIALS, read here
+   * at every tick) or the sign-in is not connected — keys missing, not connected,
+   * expired, a store problem, or a renewal still waiting to be saved. A failed one
+   * is named in Settings (status().keepAlive) and tried again no more than hourly.
+   */
+  private async keepAlive(): Promise<void> {
+    if (this.keepAliveBusy || !credentialLinkOpen() || this.signInState() !== 'connected') return;
+    const rec = this.store.current();
+    if (!rec) return;
+    const now = this.now();
+    const renewedAt = Date.parse(rec.savedAt);
+    if (Number.isFinite(renewedAt) && now - renewedAt < KEEP_ALIVE_AFTER_MS) return; // renewed within 20 hours
+    if (this.keepAliveFailedAt !== null && now - this.keepAliveFailedAt < KEEP_ALIVE_RETRY_MS) return; // at most hourly
+    this.keepAliveBusy = true;
+    const gen = this.generation;
+    try {
+      const r = await this.oneAtATime(() => this.refresh(rec));
+      if (gen !== this.generation) return; // a Connect landed meanwhile: newer than this renewal — not a failure
+      if (r.ok) {
+        this.keepAliveFailedAt = null;
+        console.log('[bouncie] keep-alive: the sign-in is renewed');
+        return;
+      }
+      if (this.unsaved) return; // renewed at Bouncie, not saved yet: NOT SAVED names it, and the tick saves it
+      this.keepAliveFailedAt = now;
+      console.error(`[bouncie] keep-alive: the sign-in was not renewed (${r.reason}) — Arbo tries again within the hour`);
+    } finally {
+      this.keepAliveBusy = false;
+    }
+  }
+
+  /** A keep-alive failure still standing: none since, and the sign-in not renewed after it some other way. */
+  private keepAliveFailure(): string | null {
+    const f = this.keepAliveFailedAt;
+    const rec = this.store.current();
+    if (f === null || !rec || Date.parse(rec.savedAt) > f) return null;
+    return new Date(f).toISOString();
   }
 
   private view(t: Truck, now: number): TruckView {
@@ -1382,6 +1448,7 @@ export class Bouncie {
     }
     await this.ensureLoaded();
     const signIn = this.signInState();
+    if (signIn === 'store_cut') return 'sign_in_cut'; // on purpose: its own words, grey — never "can't open it"
     if (signIn.startsWith('store_')) return 'sign_in_store';
     if (signIn === 'not_connected') return 'not_connected';
     if (signIn === 'expired') return 'token_expired';
@@ -1548,6 +1615,8 @@ export class Bouncie {
     return {
       keys: { clientId: Boolean(this.opts.clientId), clientSecret: Boolean(this.opts.clientSecret), webhookKey: this.webhookWired(), apiKey: Boolean(this.opts.apiKeySet) },
       signIn: { state: this.signInState(), ...this.store.status() },
+      // Mike, 2026-10-20: "Keep the sign-in alive" — a renewal that failed, by when; null once one succeeds.
+      keepAlive: { failedAt: this.keepAliveFailure() },
       link: { envVar: BOUNCIE_LINK_ENV, open: bouncieLinked() },
       positions: { state: p.state, readAt: p.readAt },
       trucks: { known: known.length, lastReportAt: last ? new Date(last).toISOString() : null },
@@ -1568,6 +1637,7 @@ export class Bouncie {
 export const POSITIONS_SAYS: Record<PositionsState, string> = {
   keys_missing: 'Bouncie is not set up on the server — BOUNCIE_CLIENT_ID and BOUNCIE_CLIENT_SECRET are missing. This is not "no trucks".',
   link_cut: 'Truck tracking is cut on purpose (ARBO_LINK_BOUNCIE is not "live"). Nothing is read while it is cut. This is not "no trucks".',
+  sign_in_cut: 'The Bouncie sign-in store in Supabase is cut on purpose (ARBO_LINK_CREDENTIALS is not "live"), so there is no sign-in to read with. Nothing is read while it is cut. This is not "no trucks".',
   sign_in_store: 'Arbo can’t open the saved Bouncie sign-in right now — Settings → Bouncie says why. This is not "no trucks".',
   not_connected: 'Bouncie is set up but not connected — connect it in Settings. This is not "no trucks".',
   token_expired: 'The Bouncie sign-in expired or was removed — reconnect it in Settings. This is not "no trucks".',
@@ -1581,6 +1651,7 @@ export const POSITIONS_SAYS: Record<PositionsState, string> = {
 export const TRIPS_SAYS: Record<TripsState, string> = {
   keys_missing: 'Bouncie is not set up on the server — BOUNCIE_CLIENT_ID and BOUNCIE_CLIENT_SECRET are missing. This is not "no trips".',
   link_cut: 'Truck tracking is cut on purpose (ARBO_LINK_BOUNCIE is not "live"). Nothing is read while it is cut. This is not "no trips".',
+  sign_in_cut: 'The Bouncie sign-in store in Supabase is cut on purpose (ARBO_LINK_CREDENTIALS is not "live"), so there is no sign-in to read with. Nothing is read while it is cut. This is not "no trips".',
   sign_in_store: 'Arbo can’t open the saved Bouncie sign-in right now — Settings → Bouncie says why. This is not "no trips".',
   not_connected: 'Bouncie is set up but not connected — connect it in Settings. This is not "no trips".',
   token_expired: 'The Bouncie sign-in expired or was removed — reconnect it in Settings. This is not "no trips".',

@@ -20,7 +20,10 @@
  * conflicts stop and ask). So the door is CUT unless ARBO_LINK_CREDENTIALS
  * is exactly 'live' — read at call time, same opt-in shape as every other
  * link — and while cut it sends nothing at all: no read, no write. Mike
- * setting that variable is his ruling. It is not ARBO_DATA_LINKS: opening
+ * setting that variable is his ruling — and he ruled, 2026-10-20: "Yes,
+ * allow the sign-in row" (migration 0021 applied live that day; the switch
+ * is set at deploy, and still fails closed). It is the single sanctioned
+ * exception to §3's cut (CLAUDE.md §3). It is not ARBO_DATA_LINKS: opening
  * this one table must not start the agent sweeps the master switch starts.
  *
  * What keeps it narrow — each one structural, each one pinned by a test:

@@ -936,17 +936,64 @@ What this changes in R31:
    separate API key, so it is never sent or shown until Mike says which
    portal field it is.
 
-Open, for Mike: applying migration 0021 live (his go only); what
-`BOUNCIE_API_KEY` is; whether the day's trips may be reviewed after 8pm
-(built: no); whether keeping the sign-in in Supabase while the business links
-stay cut is what he meant (built: cut by its own switch until he says —
-setting `ARBO_LINK_CREDENTIALS=live` is his yes, and opens that one table only).
+Open, for Mike, at the amendment (four of these are answered below): applying
+migration 0021 live (his go only); what `BOUNCIE_API_KEY` is; whether the
+day's trips may be reviewed after 8pm (built: no); whether keeping the
+sign-in in Supabase while the business links stay cut is what he meant
+(built: cut by its own switch until he says — setting
+`ARBO_LINK_CREDENTIALS=live` is his yes, and opens that one table only).
 
 *Carried by (amendment):* `src/db/credentialStore.ts`,
 `supabase/migrations/0021_integration_credential.sql`,
 `src/integrations/bouncie.ts`, `src/server.ts`, `src/env.ts`,
 `src/app/index.html`, `docs/BOUNCIE.md`, `test/bouncie.test.ts`,
 `test/credentialStore.test.ts`.
+
+**Answered by Mike, 2026-10-20 (after the §11 audit).**
+1. **The sign-in row.** Mike, verbatim: *"Yes, allow the sign-in row"*.
+   Arbo keeps the Bouncie sign-in as one sealed row in Supabase
+   (`integration_credential`) while the business data links stay cut — the
+   single sanctioned exception to §3's cut (CLAUDE.md §3,
+   `docs/DATA_LINKS.md`). Migration 0021 was applied live by Claude on this
+   go and checked: RLS on, 0 policies, anon and authenticated have no
+   SELECT, 0 rows. `ARBO_LINK_CREDENTIALS=live` is set on Railway at deploy;
+   the switch still fails closed (anything but exactly `live` is CUT).
+2. **`BOUNCIE_API_KEY`.** Mike's answer (not verbatim): it came from the
+   portal's *Users & Devices → Authorize My Devices* — the per-user
+   Authorization Code. Arbo does not need it: Connect Bouncie gets its own
+   fresh code (and a browser Connect invalidates the portal one). It stays
+   presence-only — a yes/no in `src/env.ts`, its value never read, sent or
+   logged — and Settings says: *Not needed — Connect Bouncie gets its own
+   code. You can delete BOUNCIE_API_KEY from Railway.*
+3. **Keeping the sign-in alive.** Mike, verbatim: *"Keep the sign-in alive"*.
+   Once a day Arbo renews the Bouncie sign-in even outside working hours
+   (Sunday included), so Monday works without a Reconnect. This replaces
+   R31's default "the sign-in is not refreshed while positions are cut".
+   The keep-alive ONLY swaps the refresh token (`POST /oauth/token`,
+   `grant_type=refresh_token`) and stores the rotated pair through the
+   credential store; it reads no vehicle, trip or position, and never runs
+   while `ARBO_LINK_CREDENTIALS` is cut or the sign-in is not connected. It
+   reuses the single-flight refresh (rotation saved before use; a refused
+   save keeps the old row), runs from the minute tick when the last renewal
+   is 20 hours old or more, is named in Settings when it fails (*couldn't
+   renew the sign-in at* the time it failed *— tap Reconnect if it keeps
+   failing*), and is retried no more than hourly. Its log line carries the
+   state only.
+
+Also from the audit: a store cut on purpose is its own state
+(`sign_in_cut`), grey like every gap by choice — never the amber of
+"Arbo can't open the saved sign-in".
+
+Still open, for Mike: whether the day's trips may be reviewed after 8pm
+(built: no); whether *Last report was after hours — not shown* and the
+webhook's last-arrival time may still show (`docs/BOUNCIE.md`, *Waiting on
+Mike* #5 and #7).
+
+*Carried by (answers):* `src/integrations/bouncie.ts` (`keepAlive`,
+`sign_in_cut`), `src/env.ts`, `src/server.ts`, `src/app/index.html`,
+`supabase/migrations/0021_integration_credential.sql` (header),
+`docs/BOUNCIE.md`, `docs/DATA_LINKS.md`, `docs/GO_LIVE.md`, `CLAUDE.md` §3,
+`test/bouncie.test.ts`, `test/credentialStore.test.ts`.
 
 ## R-READONLY (number assigned at merge) — Arbo and its agents may READ the data; nothing is written (Mike, 2026-10-20)
 

@@ -190,7 +190,9 @@ describe('walled off from the business data links, in both directions', () => {
     expect(code).toContain('revoke all on table public.integration_credential from anon, authenticated;');
     expect(code).not.toMatch(/create\s+policy/i);
     expect(code).not.toMatch(/grant\s/i);
-    // Committed, not applied: the header says so until Mike says go.
-    expect(sql).toContain('NOT APPLIED LIVE');
+    // Mike, 2026-10-20: "Yes, allow the sign-in row" — applied live on his go, and checked. The header says so.
+    expect(sql).not.toContain('NOT APPLIED LIVE');
+    expect(sql).toContain('APPLIED LIVE 2026-10-20');
+    expect(sql).toContain('"Yes, allow the sign-in row"');
   });
 });

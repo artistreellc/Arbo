@@ -151,6 +151,12 @@ may READ Quo and the hourly assistant's Drive lead logs to study where each
 customer stands — in memory, keywall-only, writing nothing anywhere. Reading
 is not importing: nothing goes into Arbo's database.
 
+*The one sanctioned exception (Mike 2026-10-20: "Yes, allow the sign-in
+row"):* the sealed Bouncie sign-in row in `integration_credential`, reached
+only through `src/db/credentialStore.ts` behind its own switch
+`ARBO_LINK_CREDENTIALS` (exactly `live`), is the only thing Arbo reads or
+writes in Supabase while the data links stay cut — see `docs/DATA_LINKS.md`.
+
 **Use simulations instead.** `src/dev/seed.ts` writes obviously-fake records
 (`SIM-` names, `555-01xx` numbers, streets that do not exist) so no screen
 ever needs a real customer to have something to render. It refuses on a
