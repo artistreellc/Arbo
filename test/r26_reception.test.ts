@@ -56,6 +56,15 @@ const desk = (script: string[]) => {
 // ─────────────────────────── 1. DATE-PROMISE GUARD ───────────────────────────
 
 const PROMISES = [
+  // Review round 2 (2026-10-20): plain promises the first list missed.
+  'See you Tuesday!',
+  'Mike will see you tomorrow at 3.',
+  'We can do Tuesday at 2.',
+  "Let's do Tuesday at 3.",
+  'Tuesday at 2 works.',
+  "I'll put you down for Tuesday.",
+  "I'll book you for Tuesday.",
+  'I have you down for Tuesday.',
   "Sure — we'll be there Tuesday.",
   'Mike can come out tomorrow at 3.',
   'We can do it on the 14th.',
@@ -116,6 +125,9 @@ const PROMISES = [
 ];
 
 const HARMLESS = [
+  'See you then!',
+  "If we can do Tuesday, Mike will let you know.",
+  "I'll put you on Saturday's route — Mike confirms the exact time Friday afternoon.",
   'Mike will call you back.',
   'Mike will call you back as fast as he can.',
   DATE_LINE,

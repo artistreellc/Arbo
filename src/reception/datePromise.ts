@@ -88,6 +88,14 @@ const PROMISES: RegExp[] = [
   /\bguarantee[ds]? (?:you )?(?:a|the) (?:date|slot|time)\b/i,
   /\bI(?:'ve| have) booked you (?:in )?for\b/i,
   /\bI(?:'ve| have) (?:scheduled|put) you (?:in|on|down)\b/i,
+  // "See you Tuesday!" / "Mike will see you tomorrow at 3."
+  new RegExp(`(?<!\\b(?:if|whether)\\b[^.!?]{0,30})\\b(?:see|meet) you\\b${GAP}\\b${WHEN}`, 'i'),
+  // "We can do Tuesday at 2." / "Let's do Tuesday."
+  new RegExp(`(?<!\\b(?:if|whether)\\s)\\b(?:let'?s|we(?:'ll| will| can| could)|i(?:'ll| will| can)|mike(?:'ll| will| can))\\s+do\\s+(?:it\\s+)?${WHEN}`, 'i'),
+  // "I'll put you down for Tuesday" / "I have you down for Tuesday". Saturday's
+  // ROUTE (R14) is a route, not a time — "put you on Saturday's route" stays allowed.
+  new RegExp(`\\b(?:i'll|i will|we'll|we will|let me|i can|i'm going to)\\s+(?:put|book|pencil|schedule|get) you (?:down |in )?(?:for|on)\\s+${WHEN}(?!'s)`, 'i'),
+  new RegExp(`\\bI(?:'ve| have) (?:got )?you (?:down )?for\\s+${WHEN}(?!'s)`, 'i'),
 ];
 
 /**
@@ -96,7 +104,8 @@ const PROMISES: RegExp[] = [
  * question shields only its last clause (findDatePromise).
  */
 const AGREEMENTS: RegExp[] = [
-  new RegExp(`(?<!\\b(?:if|whether|what|which|when)\\s)\\b${DAY} (?:works|is (?:fine|good|open|available|no problem))\\b`, 'i'),
+  // "Tuesday works." / "Tuesday at 2 works."
+  new RegExp(`(?<!\\b(?:if|whether|what|which|when)\\s)\\b${DAY}(?:\\s+${TIME})? (?:works|is (?:fine|good|open|available|no problem))\\b`, 'i'),
   /(?<!\b(?:if|whether)\s)\bthat (?:day|time) works\b/i,
   // "Tomorrow, no problem." — but not a callback or a hand-off to Mike ("Mike
   // will call you back today for sure", "I'll get this to Mike today, no problem").
