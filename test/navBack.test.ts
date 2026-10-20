@@ -191,3 +191,10 @@ describe('the aerial-work warning names each person and opens their credential',
     expect(html).toContain('c.dataset.crew = f.crewMemberId;');
   });
 });
+
+describe('a refused save says the server\'s own words', () => {
+  it('api() carries body.line on the error, and the breakdown sheet shows it', () => {
+    expect(html).toContain("throw Object.assign(new Error(body.error || 'error'), { code: res.status, line: typeof body.line === 'string' ? body.line : null });");
+    expect(html).toContain("out.appendChild(state('Not filed', e.line || ('The report did not save (' + (e.message || 'error') + '). Nothing was changed.')));");
+  });
+});

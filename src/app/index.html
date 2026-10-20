@@ -682,7 +682,8 @@ async function api(path, opts) {
   });
   if (res.status === 401) throw Object.assign(new Error('unauthorized'), { code: 401 });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw Object.assign(new Error(body.error || 'error'), { code: res.status });
+  // A refusal the server words for a person (body.line) rides along, so the screen can say it.
+  if (!res.ok) throw Object.assign(new Error(body.error || 'error'), { code: res.status, line: typeof body.line === 'string' ? body.line : null });
   return body;
 }
 
@@ -3801,7 +3802,7 @@ $('bd-go').addEventListener('click', async () => {
       body: { unitId: BREAKDOWN_UNIT.id, description, immobilized: $('bd-down').checked, reportedBy: 'owner' },
     });
   } catch (e) {
-    out.appendChild(state('Not filed', 'The report did not save (' + (e.message || 'error') + '). Nothing was changed.'));
+    out.appendChild(state('Not filed', e.line || ('The report did not save (' + (e.message || 'error') + '). Nothing was changed.')));
     $('bd-go').disabled = false;
     return;
   }

@@ -31,7 +31,7 @@ shows "the crew door key isn't set up yet — ask Mike" and asks for nothing
 - [ ] **Night**: open the app after dark — it follows the phone; More → Appearance pins Day or Night.
 - [ ] **Emergency wording (R26)**: read the 911 / Dominion lines in `src/policy/guardrails.json` (`emergency.safetyLines`, `emergency.alertLine`). They are Claude's draft; change any word.
 - [ ] **Brake hold (R26)**: file a practice breakdown that mentions brakes — the unit shows HELD, NOT SCHEDULABLE; only your key signs it back on.
-- [ ] **Storm law (R26)**: open Today once after the deploy. With no open federal declaration it shows nothing; if FEMA could not be read it says so by name.
+- [ ] **Storm law (R26)**: open Today once after the deploy. On a calm day it shows nothing. While NWS has a storm alert out and FEMA has no declaration, one muted line reminds you Governor declarations are not in any feed. A FEMA declaration counts for 30 days after its incident ends. If FEMA could not be read it says so by name — if that line shows on a normal day, the FEMA query needs a look.
 
 ## 3. Phone calls to close the permit gaps (from the research)
 
