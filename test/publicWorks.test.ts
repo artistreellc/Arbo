@@ -292,7 +292,8 @@ describe('jobChecklist — fixed rules', () => {
 describe('queries', () => {
   it('factsByTopic merges city + Regional + Virginia, in that order', () => {
     const disposal = factsByTopic('Norfolk', 'disposal');
-    expect(disposal.map((f) => f.city)).toEqual(['Norfolk', 'Regional', 'Regional', 'Regional']);
+    // R26: the fourth Regional disposal fact is the imported fire ant quarantine.
+    expect(disposal.map((f) => f.city)).toEqual(['Norfolk', 'Regional', 'Regional', 'Regional', 'Regional']);
     expect(factsByTopic('Chesapeake', 'power_lines').every((f) => f.city === 'Virginia')).toBe(true);
     expect(factsByTopic('Portsmouth', 'private_tree_cbpa').every((f) => f.city === 'Portsmouth')).toBe(true);
   });

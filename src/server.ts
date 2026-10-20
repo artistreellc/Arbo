@@ -162,6 +162,7 @@ import { createElevenLabsTts } from './voice/elevenlabsTts.js';
 import type { StopInput } from './ops/morningBrief.js';
 import type { EstimateState, JobState } from './ops/followUps.js';
 import { createNwsAlertsProvider } from './ops/stormWatch.js';
+import { createStormLawCheck } from './ops/stormLaw.js';
 import { loadAllConfig } from './config/loadConfig.js';
 import { env } from './env.js';
 import { createVoiceLlm } from './voice/anthropicLlm.js';
@@ -566,6 +567,9 @@ const consoleAlerter: Alerter = {
 export function createArborRequestHandler() {
   boot(); // validates guardrails + legal or throws
   const alertsProvider = createNwsAlertsProvider((url, init) => fetch(url, init));
+  // R26: the owner-only storm-law flag — OpenFEMA, read-only, asked at most
+  // once an hour. It never prices; a failed read is named, never 'none'.
+  const stormLaw = createStormLawCheck((url, init) => fetch(url, init));
   // R25: one brain for the section desks, created once (Opus when a key is set).
   const sectionBrain = createLiveBrain();
   // R25: the Learn desk — simulations score the brain; lessons wait for Mike.
@@ -906,6 +910,11 @@ export function createArborRequestHandler() {
       }
       if (req.method === 'GET' && url.pathname === '/api/storm') {
         return send(...unpack(await api.storm()));
+      }
+      // R26: Va. Code § 59.1-526/527 awareness, for Mike only. Behind the
+      // admin key like every /api route — the crew key never opens it.
+      if (req.method === 'GET' && url.pathname === '/api/storm/law') {
+        return send(200, await stormLaw.status());
       }
       if (req.method === 'GET' && url.pathname === '/api/brief/audio' && !vendorLinked('elevenlabs')) {
         return send(503, vendorCutBody('elevenlabs'));
