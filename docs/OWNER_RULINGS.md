@@ -888,6 +888,60 @@ agents still cannot send or spend; deploys stay manual.
 *Carried by:* `src/integrations/bouncie.ts`, `src/server.ts` (the Bouncie
 blocks), `src/app/index.html` (Settings card, Fleet line), `test/bouncie.test.ts`.
 
+**Amended by Mike's spec 2026-10-20.** Mike, verbatim: *"Client ID:
+`arbo-app`"*, *"Redirect URI:
+`https://arbor-server-production.up.railway.app/api/bouncie/callback`"*,
+*"Client Secret and API Key are being added to Railway ... as
+`BOUNCIE_CLIENT_ID`, `BOUNCIE_CLIENT_SECRET`, `BOUNCIE_API_KEY`. Never
+hardcode them or put them in the repo."*, then his tasks: *"Check the repo
+first for any existing Bouncie code or routes ... This is an add-on, not a
+rewrite."*, *"Build `GET /api/bouncie/callback`: take the authorization code,
+exchange it for tokens using Bouncie's OAuth flow (check docs.bouncie.dev,
+don't guess endpoints), and"* *"store the tokens server-side in Supabase"*,
+*"Add a token refresh, and a read-only pull of vehicles and trips/locations."*,
+*"Location data is admin-only and tracked only during working hours, per the spec."*,
+and *"Run the Section 11 self-audit after these steps and report back before
+deploying"*.
+
+What this changes in R31:
+1. **The callback is `/api/bouncie/callback`** — answered before the `/api`
+   key gate (Bouncie's redirect carries no key; the single-use state minted
+   behind the owner key is its lock). The first build's `/bouncie/callback`
+   is retired: a named 410 pointing at the new address, so there is one door.
+   The Client ID is `arbo-app`, read from `BOUNCIE_CLIENT_ID` only.
+2. **Item 3's "nothing goes into Arbo's database. The sign-in is kept on the
+   storage disk" is replaced:** the sign-in is kept in Supabase, in one table
+   (`integration_credential`, migration 0021), sealed with AES-256-GCM under
+   a key derived from `BOUNCIE_CLIENT_SECRET`, reached through one narrow door
+   (`src/db/credentialStore.ts`) that touches that table and nothing else. It
+   holds Arbo's own sign-in, not company data, so it sits outside the business
+   data links (§3 stays cut). A disk sign-in from the first build is moved in
+   once, then removed from the disk. Practice mode (`ARBO_DATA_LINKS=sim`)
+   opens no database, so there the disk file stays. The rotated refresh token
+   is saved before the new access token is used; if Supabase will not take
+   it, the old row stays and the new pair is held unused until it is saved.
+3. **Trips are read too** (`GET /v1/trips`, owner-only `GET /api/fleet/trips`),
+   read only, one truck and one day at a time.
+4. **The default "positions show around the clock" is replaced:** positions
+   and trips follow `withinWorkingHours()` — 8am–8pm, Monday to Saturday, the
+   office phone's hours. Outside them Arbo reads nothing, holds nothing, and
+   answers Bouncie's webhook 200 while dropping the update unread. "After
+   hours" is its own named state, never "no trucks".
+5. **`BOUNCIE_API_KEY`** is read for presence only. Bouncie's docs name no
+   separate API key, so it is never sent or shown until Mike says which
+   portal field it is.
+
+Open, for Mike: applying migration 0021 live (his go only); what
+`BOUNCIE_API_KEY` is; whether the day's trips may be reviewed after 8pm
+(built: no); whether keeping the sign-in in Supabase while the business links
+stay cut is what he meant (built: yes, through its own door).
+
+*Carried by (amendment):* `src/db/credentialStore.ts`,
+`supabase/migrations/0021_integration_credential.sql`,
+`src/integrations/bouncie.ts`, `src/server.ts`, `src/env.ts`,
+`src/app/index.html`, `docs/BOUNCIE.md`, `test/bouncie.test.ts`,
+`test/credentialStore.test.ts`.
+
 ## R-READONLY (number assigned at merge) — Arbo and its agents may READ the data; nothing is written (Mike, 2026-10-20)
 
 *Draft, filed with the read-only build — the number is assigned when it merges.*

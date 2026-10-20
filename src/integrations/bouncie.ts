@@ -1,36 +1,57 @@
 // Bouncie truck tracking (R31 — Mike, 2026-10-20: "why dont you build
-// and then i add later"). Built complete and DORMANT: nothing happens until
-// Mike adds BOUNCIE_CLIENT_ID / BOUNCIE_CLIENT_SECRET on Railway, taps
-// Connect Bouncie, adds BOUNCIE_WEBHOOK_KEY, and sets ARBO_LINK_BOUNCIE=live.
+// and then i add later"; amended the same day by his spec: Client ID
+// arbo-app, the sign-in finishes at /api/bouncie/callback, the tokens are
+// kept server-side in Supabase, a read-only pull of vehicles and trips, and
+// location for him only, in working hours only). Built complete and DORMANT:
+// nothing happens until Mike adds BOUNCIE_CLIENT_ID / BOUNCIE_CLIENT_SECRET
+// on Railway, migration 0021 is applied, he taps Connect Bouncie, adds
+// BOUNCIE_WEBHOOK_KEY, and sets ARBO_LINK_BOUNCIE=live.
 // Steps for Mike: docs/BOUNCIE.md.
 //
 // The rules this file keeps, each one structural:
-//   - OWNER ONLY. Truck positions are read by the owner routes and nothing
-//     else; the crew door has no route to them (the policy engine already
-//     walls 'tracking'/'bouncie' off every crew surface).
+//   - OWNER ONLY. Truck positions and trips are read by the owner routes and
+//     nothing else; the crew door has no route to them (the policy engine
+//     already walls 'tracking'/'bouncie' off every crew surface).
 //   - READ ONLY. The one POST is the sign-in token swap; every other call is
-//     a GET of /v1/vehicles. `allowed()` refuses anything else before it
-//     leaves the process — no webhook setup, no geo-zones, no settings.
+//     a GET of /v1/vehicles or /v1/trips. `allowed()` refuses anything else
+//     before it leaves the process — no webhook setup, no geo-zones, no settings.
+//   - WORKING HOURS ONLY (brief §4.4; Mike 2026-09-21: 8am–8pm, every day but
+//     Sunday). withinWorkingHours() in src/ops/locationIntel.ts is the ONE
+//     clock: outside it Arbo reads nothing and holds nothing, and a report
+//     stamped outside it is never kept or shown, whenever it arrives.
+//     "After hours" is NAMED — it never reads as "no trucks".
 //   - A NAMED LINK that fails closed: positions are held and shown only when
 //     ARBO_LINK_BOUNCIE is exactly 'live' (same rule as vendorLinks.ts). A
 //     cut link is NAMED, never "no trucks" (§1B).
-//   - MEMORY ONLY. The latest position per truck, held in this process — no
-//     database, no history. A redeploy forgets it; Bouncie fills it back in.
-//   - SECRETS stay server-side: the tokens live in one file on the storage
-//     disk (mode 0600, written atomically, like the Google token), never in
-//     a response, never in a log. Logs carry counts and the last 4 of a
-//     device id at most — never a coordinate, an address, or a full VIN.
+//   - MEMORY ONLY for positions and trips: the latest position per truck and
+//     a minute's cache of a trips read, held in this process — no history.
+//     A redeploy forgets them; Bouncie fills them back in.
+//   - SECRETS stay server-side: the sign-in is kept in Supabase, sealed
+//     (src/db/credentialStore.ts — Mike's "store the tokens server-side in
+//     Supabase"), never in a response, never in a log. Logs carry counts
+//     and the last 4 of a device id at most — never a coordinate, an
+//     address, or a full VIN.
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { CredentialStore, type CredentialHttp, type CredentialProblem } from '../db/credentialStore.js';
+import { withinWorkingHours } from '../ops/locationIntel.js';
 
 export const AUTHORIZE_URL = 'https://auth.bouncie.com/dialog/authorize';
 export const TOKEN_URL = 'https://auth.bouncie.com/oauth/token';
 export const API_BASE = 'https://api.bouncie.dev/v1/';
-/** Mike registers EXACTLY this redirect in the Bouncie portal (docs/BOUNCIE.md). */
 const PUBLIC_ORIGIN = 'https://arbor-server-production.up.railway.app';
-export const BOUNCIE_REDIRECT = `${PUBLIC_ORIGIN}/bouncie/callback`;
+/**
+ * Mike registers EXACTLY this redirect in the Bouncie portal (his spec,
+ * 2026-10-20). The ONE place it is written: the authorize URL, the token
+ * swap, the server's route (BOUNCIE_CALLBACK_PATH) and the Settings card all
+ * read it from here.
+ */
+export const BOUNCIE_REDIRECT = `${PUBLIC_ORIGIN}/api/bouncie/callback`;
+export const BOUNCIE_CALLBACK_PATH = new URL(BOUNCIE_REDIRECT).pathname;
+/** The first build's callback. Retired — answered 410 with the new address, so there is one door. */
+export const RETIRED_CALLBACK_PATH = '/bouncie/callback';
 export const BOUNCIE_WEBHOOK_URL = `${PUBLIC_ORIGIN}/webhooks/bouncie`;
 export const BOUNCIE_LINK_ENV = 'ARBO_LINK_BOUNCIE';
 
@@ -48,6 +69,7 @@ const STATE_TTL_MS = 10 * 60_000; // a Connect tap is good for ten minutes
 const STATE_CAP = 5;
 const CALL_DEADLINE_MS = 8_000;
 const READ_EVERY_MS = 60_000; // one vehicles read a minute at most, however often the app asks
+const RELOAD_EVERY_MS = 60_000; // a sign-in store that could not be read is tried again at most once a minute
 const DRIVING_FRESH_MS = 15 * 60_000; // "driving" with no report for 15 min is not driving any more — it is stale
 const PARKED_FRESH_MS = 24 * 60 * 60_000; // after a day without a report Arbo stops saying "parked"
 const FUTURE_SLACK_MS = 5 * 60_000; // a device clock ahead of ours by more than this is a bad timestamp
@@ -57,6 +79,13 @@ const EVENTS_PER_BODY = 500;
 const POINTS_PER_EVENT = 1_000;
 const PAGE = 10; // the page size Bouncie's own docs use — a larger one could be refused
 const MAX_PAGES = 5;
+const TRIPS_EVERY_MS = 60_000; // one trips read a minute per truck and day, however often the app asks
+const TRIPS_CACHE_CAP = 10;
+const TRIPS_CAP = 100;
+const TRIP_POINTS_CAP = 2_000;
+const GPS_TEXT_CAP = 4_000_000;
+const MAX_TRIP_WINDOW_MS = 7 * 24 * 3600_000; // Bouncie's documented limit for one trips read: a week
+const EARLIEST_TRIP_DAY = '2020-05-21'; // the earliest date Bouncie's trips read supports
 
 export type BouncieHttp = (
   url: string,
@@ -68,12 +97,12 @@ export type BouncieHttp = (
 
 const defaultHttp: BouncieHttp = (url, init) => fetch(url, init);
 
-/** The only two calls Arbo ever makes to Bouncie. Everything else is refused before it leaves. */
+/** The only three calls Arbo ever makes to Bouncie: the token swap and two reads. Everything else is refused before it leaves. */
 function allowed(method: 'GET' | 'POST', url: string): boolean {
-  return method === 'POST' ? url === TOKEN_URL : url.startsWith(`${API_BASE}vehicles?`);
+  return method === 'POST' ? url === TOKEN_URL : url.startsWith(`${API_BASE}vehicles?`) || url.startsWith(`${API_BASE}trips?`);
 }
 
-// ---------- the token on the storage disk ----------
+// ---------- the sign-in: where it is kept ----------
 
 interface TokenRecord { accessToken: string; refreshToken: string; expiresAt: number; savedAt: string }
 
@@ -88,43 +117,255 @@ function asTokenRecord(x: unknown): TokenRecord | null {
   return { accessToken: r.accessToken, refreshToken: r.refreshToken, expiresAt: r.expiresAt, savedAt: r.savedAt };
 }
 
-/** One JSON file in ARBO_SECRET_DIR (default /data), 0600, tmp + rename. No disk = memory, and the status says so. */
+function readTokenFile(dir: string): TokenRecord | null {
+  try {
+    return asTokenRecord(JSON.parse(readFileSync(join(dir, TOKEN_FILE), 'utf8')));
+  } catch {
+    return null; // nothing stored, no disk, or a damaged file — none of them is a sign-in
+  }
+}
+
+/** Why the saved sign-in cannot be used — each its own sentence (§1B). */
+export type StoreProblem = CredentialProblem;
+export type TokenWhere = 'supabase' | 'disk' | 'memory';
+type LoadResult = { ok: true; rec: TokenRecord | null; moved?: true } | { ok: false; problem: StoreProblem };
+type SaveResult = { ok: true; where: TokenWhere } | { ok: false; problem: StoreProblem };
+
+/** Where a sign-in is kept: Supabase in production; the disk file in practice mode (ARBO_DATA_LINKS=sim) and tests. */
+export interface TokenBackend {
+  readonly kind: 'supabase' | 'disk' | 'none';
+  load(): Promise<LoadResult>;
+  save(rec: TokenRecord): Promise<SaveResult>;
+}
+
+/**
+ * PRACTICE MODE AND TESTS: the first build's store — one JSON file in
+ * ARBO_SECRET_DIR (default /data), 0600, tmp + rename. No usable disk =
+ * memory, and the status says so. Production keeps the sign-in in Supabase.
+ */
+export function diskTokenBackend(dir: string = process.env.ARBO_SECRET_DIR ?? '/data'): TokenBackend {
+  return {
+    kind: 'disk',
+    load: async () => ({ ok: true, rec: readTokenFile(dir) }),
+    save: async (rec) => {
+      try {
+        mkdirSync(dir, { recursive: true, mode: 0o700 });
+        const tmp = join(dir, `${TOKEN_FILE}.tmp`);
+        writeFileSync(tmp, JSON.stringify(rec), { mode: 0o600 });
+        renameSync(tmp, join(dir, TOKEN_FILE));
+        return { ok: true, where: 'disk' };
+      } catch {
+        return { ok: true, where: 'memory' };
+      }
+    },
+  };
+}
+
+/**
+ * PRODUCTION: one sealed row in Supabase, through the credential door.
+ * A sign-in the first build left on the storage disk is moved in once — read,
+ * saved to Supabase, and only then removed from the disk — and the disk is
+ * never written again. If the move cannot be saved, the disk copy stays and
+ * the next read tries again.
+ */
+export function supabaseTokenBackend(cred: CredentialStore, oldDir: string | null): TokenBackend {
+  return {
+    kind: 'supabase',
+    async load() {
+      const r = await cred.read();
+      if (!r.ok) return r;
+      if (r.plain !== null) {
+        let rec: TokenRecord | null = null;
+        try {
+          rec = asTokenRecord(JSON.parse(r.plain));
+        } catch {
+          rec = null;
+        }
+        return rec ? { ok: true, rec } : { ok: false, problem: 'mismatch' };
+      }
+      const old = oldDir ? readTokenFile(oldDir) : null;
+      if (!old || !oldDir) return { ok: true, rec: null };
+      const w = await cred.write(JSON.stringify(old));
+      if (!w.ok) return w;
+      try {
+        unlinkSync(join(oldDir, TOKEN_FILE));
+      } catch {
+        /* already gone, or a read-only disk: Supabase holds the copy Arbo reads from now on */
+      }
+      return { ok: true, rec: old, moved: true };
+    },
+    async save(rec) {
+      const w = await cred.write(JSON.stringify(rec));
+      return w.ok ? { ok: true, where: 'supabase' } : w;
+    },
+  };
+}
+
+/** No place to keep a sign-in (Supabase not configured): every read and write names that. */
+export function noTokenBackend(): TokenBackend {
+  return {
+    kind: 'none',
+    load: async () => ({ ok: false, problem: 'unconfigured' }),
+    save: async () => ({ ok: false, problem: 'unconfigured' }),
+  };
+}
+
+/**
+ * The server's choice, made once at boot. Practice mode (ARBO_DATA_LINKS=sim)
+ * opens no database by construction, so there the first build's disk file
+ * stays. Everywhere else the sign-in lives in Supabase — and with Supabase
+ * not configured there is NO fallback: the state is named, Connect refuses.
+ */
+export function bouncieTokenBackend(e: {
+  supabaseUrl: string | null | undefined;
+  serviceKey: string | null | undefined;
+  clientSecret: string | null | undefined;
+  practice: boolean;
+  dir?: string;
+  http?: CredentialHttp;
+}): TokenBackend {
+  const dir = e.dir ?? process.env.ARBO_SECRET_DIR ?? '/data';
+  if (e.practice) return diskTokenBackend(dir);
+  const cred = new CredentialStore({ url: e.supabaseUrl, serviceKey: e.serviceKey, provider: 'bouncie', secret: e.clientSecret, ...(e.http ? { http: e.http } : {}) });
+  return e.supabaseUrl && e.serviceKey ? supabaseTokenBackend(cred, dir) : noTokenBackend();
+}
+
+/**
+ * The sign-in in memory, kept in step with where it is stored. A read that
+ * overlaps a save never overwrites it (`seq`), and a read that fails keeps
+ * its NAMED problem — it is never taken for "not connected".
+ */
 export class BouncieTokenStore {
   private rec: TokenRecord | null = null;
-  private where: 'disk' | 'memory' | null = null;
+  private where: TokenWhere | null = null;
+  private problem: StoreProblem | null = null;
+  private loadedAt: number | null = null;
+  private loading: Promise<void> | null = null;
+  private seq = 0;
 
-  constructor(private readonly dir: string = process.env.ARBO_SECRET_DIR ?? '/data') {
-    try {
-      this.rec = asTokenRecord(JSON.parse(readFileSync(join(this.dir, TOKEN_FILE), 'utf8')));
-      if (this.rec) this.where = 'disk';
-    } catch {
-      /* nothing stored yet, or no disk — status says which */
+  constructor(private readonly backend: TokenBackend) {}
+
+  get kind(): TokenBackend['kind'] {
+    return this.backend.kind;
+  }
+
+  /** When the last read landed (null = never). */
+  lastLoad(): number | null {
+    return this.loadedAt;
+  }
+
+  /** Read what is stored — one read at a time. */
+  load(now: number): Promise<void> {
+    if (!this.loading) {
+      const at = this.seq;
+      this.loading = this.backend.load()
+        .catch((): LoadResult => ({ ok: false, problem: 'unreachable' }))
+        .then((r) => {
+          if (at !== this.seq) return; // a save landed meanwhile: it is newer than anything this read saw
+          this.loadedAt = now;
+          if (!r.ok) {
+            this.problem = r.problem;
+            return;
+          }
+          this.problem = null;
+          this.rec = r.rec;
+          this.where = r.rec ? (this.backend.kind === 'supabase' ? 'supabase' : 'disk') : null;
+          if (r.moved) console.log('[bouncie] the sign-in on the storage disk was moved into Supabase (sealed) and removed from the disk');
+        })
+        .finally(() => {
+          this.loading = null;
+        });
     }
+    return this.loading;
+  }
+
+  /** Read the stored row WITHOUT taking it — to see whether another Arbo saved a newer one. */
+  async peek(): Promise<TokenRecord | null> {
+    const r = await this.backend.load().catch((): LoadResult => ({ ok: false, problem: 'unreachable' }));
+    return r.ok ? r.rec : null;
+  }
+
+  /** Take a pair that is already stored (found by peek). */
+  adopt(rec: TokenRecord): void {
+    this.seq++;
+    this.rec = rec;
+    this.where = this.backend.kind === 'supabase' ? 'supabase' : 'disk';
+    this.problem = null;
   }
 
   current(): TokenRecord | null {
     return this.rec;
   }
 
-  /** Swap in a new pair. Memory first, then the disk; never throws for a missing disk. */
-  save(rec: TokenRecord): 'disk' | 'memory' {
-    this.rec = rec;
-    try {
-      mkdirSync(this.dir, { recursive: true, mode: 0o700 });
-      const tmp = join(this.dir, `${TOKEN_FILE}.tmp`);
-      writeFileSync(tmp, JSON.stringify(rec), { mode: 0o600 });
-      renameSync(tmp, join(this.dir, TOKEN_FILE));
-      this.where = 'disk';
-    } catch {
-      this.where = 'memory';
-    }
-    return this.where;
+  problemNow(): StoreProblem | null {
+    return this.problem;
   }
 
-  /** Where the sign-in lives and when it was saved — never the token. */
-  status(): { stored: boolean; where: 'disk' | 'memory' | null; savedAt: string | null } {
-    return { stored: this.rec !== null, where: this.where, savedAt: this.rec?.savedAt ?? null };
+  /** Save a pair. Memory changes ONLY when the store took it — a failed save keeps the old pair in place. */
+  async save(rec: TokenRecord): Promise<SaveResult> {
+    this.seq++;
+    const r = await this.backend.save(rec).catch((): SaveResult => ({ ok: false, problem: 'unreachable' }));
+    this.seq++;
+    if (r.ok) {
+      this.rec = rec;
+      this.where = r.where;
+      this.problem = null;
+    }
+    return r;
   }
+
+  /** Where the sign-in lives, when it was saved, or why it can't be read — never the token. */
+  status(): { stored: boolean; where: TokenWhere | null; savedAt: string | null; problem: StoreProblem | null } {
+    return { stored: this.rec !== null, where: this.where, savedAt: this.rec?.savedAt ?? null, problem: this.problem };
+  }
+}
+
+// ---------- working hours: the one clock, and the day's window from it ----------
+
+const ET_DATE_HOUR = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23',
+});
+
+/** The Eastern date (YYYY-MM-DD) and hour of an instant. */
+function etParts(ms: number): { day: string; hour: number } {
+  const p: Record<string, string> = {};
+  for (const x of ET_DATE_HOUR.formatToParts(new Date(ms))) p[x.type] = x.value;
+  return { day: `${p.year}-${p.month}-${p.day}`, hour: Number(p.hour) };
+}
+
+/** A real calendar date written YYYY-MM-DD. */
+function realDay(day: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return false;
+  const [y, m, d] = day.split('-').map(Number) as [number, number, number];
+  return new Date(Date.UTC(y, m - 1, d)).toISOString().slice(0, 10) === day;
+}
+
+/** The instant an Eastern wall-clock hour starts on a day, or null when that hour does not exist (spring forward). */
+function etHour(day: string, hour: number): number | null {
+  const [y, m, d] = day.split('-').map(Number) as [number, number, number];
+  for (const offset of [4, 5]) { // EDT, then EST
+    const t = Date.UTC(y, m - 1, d, hour + offset);
+    const p = etParts(t);
+    if (p.day === day && p.hour === hour) return t;
+  }
+  return null;
+}
+
+/**
+ * That day's working window, found by ASKING withinWorkingHours hour by
+ * hour — the one clock, not a copy of its numbers. Null when the day has no
+ * working hours (Sunday).
+ */
+function workingWindow(day: string): { from: number; to: number } | null {
+  let from: number | null = null;
+  for (let h = 0; h < 24; h++) {
+    const t = etHour(day, h);
+    if (t === null) continue;
+    const inside = withinWorkingHours(new Date(t));
+    if (inside && from === null) from = t;
+    else if (!inside && from !== null) return { from, to: t };
+  }
+  return from === null ? null : { from, to: from + 24 * 3600_000 };
 }
 
 // ---------- sign-in: state + PKCE ----------
@@ -193,11 +434,16 @@ interface Truck {
   lastAt: number;
   /** The newest report the webhook carried for this truck (0 = none since restart). */
   hookAt: number;
+  /** The newest report stamped OUTSIDE working hours (0 = none). Never kept — it only outdates what was held. */
+  afterHoursAt: number;
   lastTrip: { at: number; miles: number | null; minutes: number | null } | null;
 }
 
-/** 'seen' = a fresh position with no word yet on whether it is moving (a geo-zone event alone). */
-export type TruckMotion = Motion | 'seen' | 'stale' | 'no_fix';
+/**
+ * 'seen' = a fresh position with no word yet on whether it is moving (a geo-zone event alone).
+ * 'after_hours' = the truck's newest report was after hours, so where it is now is not shown.
+ */
+export type TruckMotion = Motion | 'seen' | 'stale' | 'no_fix' | 'after_hours';
 
 /** What the owner routes hand out: last 4 of the ids, never the whole VIN or device number. */
 export interface TruckView {
@@ -310,7 +556,14 @@ export interface BouncieOptions {
   clientId: string | null;
   clientSecret: string | null;
   webhookKey: string | null;
-  dir?: string;
+  /**
+   * BOUNCIE_API_KEY is on Railway (Mike's spec) — PRESENCE ONLY. Bouncie's
+   * docs name no separate API key (the sign-in is the Client ID and Secret),
+   * so its value is never read, sent or shown until Mike says what it is.
+   */
+  apiKeySet?: boolean;
+  /** Where the sign-in is kept. The server passes bouncieTokenBackend(); with none given, nothing can be kept, by name. */
+  tokens?: TokenBackend;
   http?: BouncieHttp;
   now?: () => number;
 }
@@ -320,17 +573,49 @@ type TokenAnswer =
   | { ok: false; reason: 'rejected'; status: number }
   | { ok: false; reason: 'unreachable' | 'bad_answer' };
 
-type TokenOutcome = { ok: true; token: string } | { ok: false; reason: 'not_connected' | 'expired' | 'unreadable' };
+/** 'store' = the sign-in store can't be read, or it would not take a renewed sign-in — see signInState(). */
+type TokenFail = { ok: false; reason: 'not_connected' | 'expired' | 'unreadable' | 'store' };
+type TokenOutcome = { ok: true; token: string } | TokenFail;
 
-type ReadOutcome = { ok: true; at: number } | { ok: false; reason: 'not_connected' | 'expired' | 'unreadable' };
+type ReadOutcome = { ok: true; at: number } | TokenFail;
 
-export type SignInState = 'keys_missing' | 'not_connected' | 'expired' | 'connected';
-export type PositionsState = 'keys_missing' | 'link_cut' | 'not_connected' | 'token_expired' | 'unreadable' | 'no_trucks' | 'ok';
+export type SignInState =
+  | 'keys_missing'
+  | 'store_unconfigured' // Supabase is not configured: nowhere to keep a sign-in
+  | 'store_missing' // the table is not there: migration 0021 not applied
+  | 'store_unreadable' // Supabase did not answer, refused the key, or the row is not the expected shape
+  | 'store_locked' // the row is there but does not open: BOUNCIE_CLIENT_SECRET changed
+  | 'not_connected'
+  | 'expired'
+  | 'unsaved' // Bouncie renewed the sign-in, Supabase has not taken it yet: held, unused, retried
+  | 'connected';
+export type PositionsState = 'keys_missing' | 'link_cut' | 'sign_in_store' | 'not_connected' | 'token_expired' | 'after_hours' | 'unreadable' | 'no_trucks' | 'ok';
+export type TripsState = 'keys_missing' | 'link_cut' | 'sign_in_store' | 'not_connected' | 'token_expired' | 'after_hours' | 'not_a_working_day' | 'unreadable' | 'no_trips' | 'ok';
+type Gate = 'keys_missing' | 'link_cut' | 'sign_in_store' | 'not_connected' | 'token_expired' | 'after_hours';
+
+const STORE_STATE: Record<StoreProblem, SignInState> = {
+  unconfigured: 'store_unconfigured',
+  missing_table: 'store_missing',
+  refused: 'store_unreadable',
+  mismatch: 'store_unreadable',
+  unreachable: 'store_unreadable',
+  locked: 'store_locked',
+};
+
+/** The callback page's words for a store that would not take a sign-in. */
+const STORE_WORDS: Record<StoreProblem, string> = {
+  unconfigured: 'Supabase isn’t configured on the server (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY), and the sign-in is kept only there.',
+  missing_table: 'The sign-in table isn’t in Supabase yet — migration 0021 has not been applied.',
+  refused: 'Supabase refused Arbo’s key (SUPABASE_SERVICE_ROLE_KEY).',
+  mismatch: 'Supabase’s sign-in table doesn’t match what Arbo expects (migration 0021).',
+  unreachable: 'Arbo couldn’t reach Supabase just now.',
+  locked: 'The saved sign-in can’t be opened — BOUNCIE_CLIENT_SECRET has changed since it was saved.',
+};
 
 export interface CallbackResult { status: number; ok: boolean; title: string; line: string }
 
 export class Bouncie {
-  readonly store: BouncieTokenStore;
+  private readonly store: BouncieTokenStore;
   private readonly states = new OAuthStates();
   private readonly http: BouncieHttp;
   private readonly now: () => number;
@@ -340,16 +625,23 @@ export class Bouncie {
   private refreshing: Promise<TokenOutcome> | null = null;
   private generation = 0; // bumped by every Connect, so a refresh from an older sign-in never overwrites a newer one
   private expired = false; // Bouncie refused our refresh token (or the app lost access): only Reconnect clears it
+  /** A renewed pair Bouncie handed back that the store has not taken yet. Held, never used, until it is saved. */
+  private unsaved: { rec: TokenRecord; gen: number } | null = null;
+  private saveChain: Promise<unknown> = Promise.resolve();
   private lastRead: { at: number; outcome: ReadOutcome } | null = null;
   private reading: Promise<ReadOutcome> | null = null;
+  private readonly tripCache = new Map<string, { at: number; body: Record<string, unknown> }>();
   private refusedSignIns = 0;
   private readonly hook = {
-    deliveries: 0, // authentic calls while the link is open, whatever was in them
+    deliveries: 0, // authentic calls while the link is open and inside working hours, whatever was in them
     received: 0, // events kept
     lastAt: null as string | null,
     whileCut: 0,
     lastWhileCutAt: null as string | null,
     droppedKeysMissing: 0, // authentic, link open, but no BOUNCIE_CLIENT_ID / SECRET: answered and dropped
+    afterHours: 0, // authentic, link open, arrived outside working hours: answered and dropped unread
+    lastAfterHoursAt: null as string | null,
+    afterHoursReports: 0, // events or trip points stamped after hours inside a daytime delivery: skipped unread
     lastAuthenticAt: null as string | null, // the last call that carried the key, whatever happened to it
     lastRejectedAt: null as string | null, // the last call without it — Settings tells a stranger from a wrong key by these two
     duplicates: 0,
@@ -363,9 +655,10 @@ export class Bouncie {
   };
 
   constructor(private readonly opts: BouncieOptions) {
-    this.store = new BouncieTokenStore(opts.dir);
+    this.store = new BouncieTokenStore(opts.tokens ?? noTokenBackend());
     this.http = opts.http ?? defaultHttp;
     this.now = opts.now ?? Date.now;
+    if (this.configured()) void this.store.load(this.now());
   }
 
   /** Both sign-in keys are on the server. The webhook key is separate (webhookWired). */
@@ -377,8 +670,37 @@ export class Bouncie {
     return Boolean(this.opts.webhookKey);
   }
 
+  /** The working-hours rule — withinWorkingHours, on this integration's clock. */
+  private inHoursAt(ms: number): boolean {
+    return withinWorkingHours(new Date(ms));
+  }
+
+  private inHours(): boolean {
+    return this.inHoursAt(this.now());
+  }
+
+  /**
+   * The stored sign-in, read once — and read again at most once a minute
+   * while it could not be read (a migration applied meanwhile, Supabase back).
+   * Not configured on the server is not retried: that needs a deploy.
+   */
+  private async ensureLoaded(): Promise<void> {
+    if (!this.configured()) return;
+    const at = this.store.lastLoad();
+    const p = this.store.problemNow();
+    if (at === null || (p !== null && p !== 'unconfigured' && this.now() - at >= RELOAD_EVERY_MS)) await this.store.load(this.now());
+  }
+
+  /** Resolves once the stored sign-in has been read — the boot line and the Connect route wait for it. */
+  ready(): Promise<void> {
+    return this.ensureLoaded();
+  }
+
   signInState(): SignInState {
     if (!this.configured()) return 'keys_missing';
+    if (this.unsaved) return 'unsaved';
+    const p = this.store.problemNow();
+    if (p) return STORE_STATE[p];
     if (!this.store.current()) return 'not_connected';
     return this.expired ? 'expired' : 'connected';
   }
@@ -409,16 +731,40 @@ export class Bouncie {
     };
   }
 
+  /**
+   * Saves run one at a time, in the order asked. A save from an older
+   * sign-in than the newest Connect is dropped unsaved ('superseded'), so a
+   * late refresh can never overwrite a newer sign-in — in memory or in Supabase.
+   */
+  private persist(rec: TokenRecord, gen: number): Promise<SaveResult | 'superseded'> {
+    const run = this.saveChain.then((): Promise<SaveResult | 'superseded'> => (gen !== this.generation ? Promise.resolve('superseded' as const) : this.store.save(rec)));
+    this.saveChain = run.catch(() => undefined);
+    return run;
+  }
+
+  /** What a caller gets when its own answer was overtaken by a newer sign-in. */
+  private currentOutcome(): TokenOutcome {
+    const cur = this.store.current();
+    return cur && !this.expired && !this.unsaved ? { ok: true, token: cur.accessToken } : { ok: false, reason: 'not_connected' };
+  }
+
   // ----- Connect -----
 
-  /** Mint a state + PKCE verifier and hand back where to send Mike. Owner key checked by the route. */
-  beginConnect(): { ok: true; authorizeUrl: string } | { ok: false; error: 'bouncie_keys_missing' } {
+  /**
+   * Mint a state + PKCE verifier and hand back where to send Mike. Owner key
+   * checked by the route, which awaits ready() first. A store that cannot
+   * keep a sign-in at all refuses here, before Mike is sent to Bouncie.
+   */
+  beginConnect(): { ok: true; authorizeUrl: string } | { ok: false; error: 'bouncie_keys_missing' | 'bouncie_store_unconfigured' | 'bouncie_store_missing' } {
     if (!this.opts.clientId || !this.opts.clientSecret) return { ok: false, error: 'bouncie_keys_missing' };
+    const p = this.store.problemNow();
+    if (p === 'unconfigured') return { ok: false, error: 'bouncie_store_unconfigured' };
+    if (p === 'missing_table') return { ok: false, error: 'bouncie_store_missing' };
     const { state, verifier } = this.states.mint(this.now());
     return { ok: true, authorizeUrl: authorizeUrl(this.opts.clientId, state, verifier) };
   }
 
-  /** The callback: state check → code swap → token saved. Every outcome is a sentence; none repeats the code or state. */
+  /** The callback: state check → store check → code swap → token saved. Every outcome is a sentence; none repeats the code or state. */
   async finishConnect(q: { code: string | null; state: string | null }): Promise<CallbackResult> {
     const back = 'Go back to Settings in Arbo and tap Connect Bouncie again.';
     if (!this.opts.clientId || !this.opts.clientSecret) {
@@ -434,6 +780,13 @@ export class Bouncie {
     if (!q.code) {
       console.error('[bouncie] sign-in ended without a code');
       return { status: 400, ok: false, title: 'Bouncie did not send a sign-in code', line: `The approval was cancelled or refused on Bouncie’s page. Nothing was saved. ${back}` };
+    }
+    // Nowhere to keep it: say so BEFORE the code is spent at Bouncie.
+    await this.ensureLoaded();
+    const p = this.store.problemNow();
+    if (p === 'unconfigured' || p === 'missing_table') {
+      console.error(`[bouncie] sign-in not finished — nowhere to keep it (${p})`);
+      return { status: 503, ok: false, title: 'Arbo has nowhere to keep the Bouncie sign-in yet', line: `${STORE_WORDS[p]} Bouncie was not asked anything and nothing was saved. ${back}` };
     }
     const r = await this.tokenCall({
       client_id: this.opts.clientId,
@@ -456,18 +809,40 @@ export class Bouncie {
           : { status: 400, ok: false, title: 'Bouncie refused the sign-in', line: `Bouncie did not accept that sign-in code (its answer was missing the sign-in token). Nothing was saved. ${back}` };
     }
     const now = this.now();
-    this.generation++;
+    this.generation++; // any refresh still in flight belongs to the old sign-in: its answer is dropped unsaved
+    const saved = await this.persist({ accessToken: r.accessToken, refreshToken: r.refreshToken, expiresAt: now + r.expiresInSec * 1000, savedAt: new Date(now).toISOString() }, this.generation);
+    if (saved === 'superseded') {
+      // Two approvals finished at once: the later one is kept, and this page says so rather than claim this one.
+      return { status: 200, ok: true, title: 'Bouncie is connected', line: 'A second sign-in finished at the same moment; Arbo kept the newer one.' };
+    }
+    if (!saved.ok) {
+      console.error(`[bouncie] sign-in swapped, but it could not be saved (${saved.problem}) — nothing kept`);
+      return { status: 503, ok: false, title: 'Bouncie said yes, but Arbo couldn’t save the sign-in', line: `${STORE_WORDS[saved.problem]} Nothing was kept, so Bouncie is not connected. ${back}` };
+    }
     this.expired = false;
+    this.unsaved = null;
     this.lastRead = null;
-    const where = this.store.save({ accessToken: r.accessToken, refreshToken: r.refreshToken, expiresAt: now + r.expiresInSec * 1000, savedAt: new Date(now).toISOString() });
-    console.log(`[bouncie] connected — sign-in kept on ${where}`);
+    this.tripCache.clear();
+    console.log(`[bouncie] connected — sign-in kept on ${saved.where}`);
     const cut = bouncieLinked() ? '' : ' Truck positions stay off until ARBO_LINK_BOUNCIE is set to live on Railway.';
-    return where === 'disk'
-      ? { status: 200, ok: true, title: 'Bouncie is connected', line: `The sign-in is saved on Arbo’s storage disk and survives redeploys.${cut}` }
-      : { status: 200, ok: true, title: 'Bouncie is connected — for now', line: `There is no storage disk, so the sign-in is held in memory and will need connecting again after the next restart.${cut}` };
+    return saved.where === 'supabase'
+      ? { status: 200, ok: true, title: 'Bouncie is connected', line: `The sign-in is saved in Supabase, sealed, and survives redeploys.${cut}` }
+      : saved.where === 'disk'
+        ? { status: 200, ok: true, title: 'Bouncie is connected', line: `The sign-in is saved on Arbo’s storage disk (practice mode) and survives redeploys.${cut}` }
+        : { status: 200, ok: true, title: 'Bouncie is connected — for now', line: `There is no storage disk, so the sign-in is held in memory and will need connecting again after the next restart.${cut}` };
   }
 
   // ----- the access token: refreshed early, one refresh at a time, rotation saved before use -----
+
+  /** One token job at a time (a refresh, or saving a renewed pair); every caller in between shares its answer. */
+  private oneAtATime(job: () => Promise<TokenOutcome>): Promise<TokenOutcome> {
+    if (!this.refreshing) {
+      this.refreshing = job().finally(() => {
+        this.refreshing = null;
+      });
+    }
+    return this.refreshing;
+  }
 
   /**
    * A usable access token. `rejected` is the token Bouncie just answered 401
@@ -475,17 +850,15 @@ export class Bouncie {
    * refreshed past it, hand back the newer one without a second refresh.
    */
   async accessToken(rejected?: string): Promise<TokenOutcome> {
+    await this.ensureLoaded();
+    if (this.unsaved) return this.oneAtATime(() => this.saveUnsaved());
+    if (this.store.problemNow()) return { ok: false, reason: 'store' };
     const rec = this.store.current();
     if (!rec) return { ok: false, reason: 'not_connected' };
     if (this.expired) return { ok: false, reason: 'expired' };
     const due = rejected === undefined ? rec.expiresAt - EXPIRY_MARGIN_MS <= this.now() : rec.accessToken === rejected;
     if (!due) return { ok: true, token: rec.accessToken };
-    if (!this.refreshing) {
-      this.refreshing = this.refresh(rec).finally(() => {
-        this.refreshing = null;
-      });
-    }
-    return this.refreshing;
+    return this.oneAtATime(() => this.refresh(rec));
   }
 
   private async refresh(rec: TokenRecord): Promise<TokenOutcome> {
@@ -496,13 +869,19 @@ export class Bouncie {
       grant_type: 'refresh_token',
       refresh_token: rec.refreshToken,
     });
-    if (gen !== this.generation) {
-      // Mike connected again while this was in flight: the new sign-in wins and this answer is dropped unsaved.
-      const cur = this.store.current();
-      return cur && !this.expired ? { ok: true, token: cur.accessToken } : { ok: false, reason: 'not_connected' };
-    }
+    // Mike connected again while this was in flight: the new sign-in wins and this answer is dropped unsaved.
+    if (gen !== this.generation) return this.currentOutcome();
     if (!r.ok) {
       if (r.reason === 'rejected') {
+        // Before calling it expired: another Arbo (the old one, during a deploy) may have
+        // rotated this refresh token and saved the new pair. If Supabase holds a newer one, take it.
+        const newer = this.store.kind === 'supabase' ? await this.store.peek() : null;
+        if (gen !== this.generation) return this.currentOutcome();
+        if (newer && newer.refreshToken !== rec.refreshToken) {
+          this.store.adopt(newer);
+          console.log('[bouncie] refresh refused, but a newer saved sign-in was found in Supabase — using it');
+          return { ok: true, token: newer.accessToken };
+        }
         this.expired = true;
         console.error('[bouncie] refresh refused — the sign-in expired or was removed; Mike reconnects in Settings');
         return { ok: false, reason: 'expired' };
@@ -512,16 +891,40 @@ export class Bouncie {
       return { ok: false, reason: 'unreadable' };
     }
     // Bouncie rotates the refresh token: the old one is already dead. The new
-    // pair is saved (memory, then disk) BEFORE the new access token is used.
+    // pair is SAVED before the new access token is used. If the store will not
+    // take it, the old row stays as it was, and the new pair is held — unused —
+    // and saved again before anything uses it.
     const now = this.now();
-    const where = this.store.save({
+    const next: TokenRecord = {
       accessToken: r.accessToken,
       refreshToken: r.refreshToken ?? rec.refreshToken,
       expiresAt: now + r.expiresInSec * 1000,
       savedAt: new Date(now).toISOString(),
-    });
-    if (where === 'memory') console.error('[bouncie] refreshed, but the new sign-in is in memory only (no storage disk)');
-    return { ok: true, token: r.accessToken };
+    };
+    const saved = await this.persist(next, gen);
+    if (saved === 'superseded') return this.currentOutcome();
+    if (!saved.ok) {
+      this.unsaved = { rec: next, gen };
+      console.error(`[bouncie] refreshed, but the new sign-in could not be saved (${saved.problem}) — held unused and saved again before any use`);
+      return { ok: false, reason: 'store' };
+    }
+    if (saved.where === 'memory') console.error('[bouncie] refreshed, but the new sign-in is in memory only (no storage disk)');
+    return { ok: true, token: next.accessToken };
+  }
+
+  /** Try again to save the renewed pair the store refused. Nothing uses it until this succeeds. */
+  private async saveUnsaved(): Promise<TokenOutcome> {
+    const u = this.unsaved;
+    if (!u) return this.currentOutcome();
+    const saved = await this.persist(u.rec, u.gen);
+    if (saved === 'superseded') {
+      if (this.unsaved === u) this.unsaved = null;
+      return this.currentOutcome();
+    }
+    if (!saved.ok) return { ok: false, reason: 'store' };
+    if (this.unsaved === u) this.unsaved = null;
+    console.log('[bouncie] the renewed sign-in is saved now');
+    return { ok: true, token: u.rec.accessToken };
   }
 
   private markExpired(): void {
@@ -540,28 +943,32 @@ export class Bouncie {
     }
   }
 
-  private async readVehicles(): Promise<ReadOutcome> {
-    let tok = await this.accessToken();
+  /** One read with the current token: a 401 refreshes once and retries once; a second 401 is "reconnect". */
+  private async authedGet(url: string): Promise<{ ok: true; body: unknown } | TokenFail> {
+    const tok = await this.accessToken();
     if (!tok.ok) return tok;
+    let res = await this.get(url, tok.token);
+    if (res && res.status === 401) {
+      const again = await this.accessToken(tok.token);
+      if (!again.ok) return again;
+      res = await this.get(url, again.token);
+      if (res && res.status === 401) {
+        this.markExpired();
+        return { ok: false, reason: 'expired' };
+      }
+    }
+    if (!res || !res.ok) return { ok: false, reason: 'unreadable' };
+    return { ok: true, body: await res.json().catch(() => null) };
+  }
+
+  private async readVehicles(): Promise<ReadOutcome> {
     const found: unknown[] = [];
     for (let page = 0; page < MAX_PAGES; page++) {
-      const url = `${API_BASE}vehicles?limit=${PAGE}${page ? `&skip=${page * PAGE}` : ''}`;
-      let res = await this.get(url, tok.token);
-      if (res && res.status === 401) {
-        const again = await this.accessToken(tok.token);
-        if (!again.ok) return again;
-        tok = again;
-        res = await this.get(url, tok.token);
-        if (res && res.status === 401) {
-          this.markExpired();
-          return { ok: false, reason: 'expired' };
-        }
-      }
-      if (!res || !res.ok) return { ok: false, reason: 'unreadable' };
-      const body = await res.json().catch(() => null);
-      if (!Array.isArray(body)) return { ok: false, reason: 'unreadable' };
-      found.push(...body.slice(0, TRUCK_CAP));
-      if (body.length < PAGE) break;
+      const r = await this.authedGet(`${API_BASE}vehicles?limit=${PAGE}${page ? `&skip=${page * PAGE}` : ''}`);
+      if (!r.ok) return r;
+      if (!Array.isArray(r.body)) return { ok: false, reason: 'unreadable' };
+      found.push(...r.body.slice(0, TRUCK_CAP));
+      if (r.body.length < PAGE) break;
     }
     const now = this.now();
     for (const v of found) this.applyVehicle(v, now);
@@ -589,7 +996,7 @@ export class Bouncie {
     const t = this.trucks.get(imei);
     if (t) return t;
     if (this.trucks.size >= TRUCK_CAP) return null;
-    const fresh: Truck = { imei, vin: null, name: null, pos: null, motion: null, motionAt: 0, lastAt: 0, hookAt: 0, lastTrip: null };
+    const fresh: Truck = { imei, vin: null, name: null, pos: null, motion: null, motionAt: 0, lastAt: 0, hookAt: 0, afterHoursAt: 0, lastTrip: null };
     this.trucks.set(imei, fresh);
     return fresh;
   }
@@ -605,15 +1012,19 @@ export class Bouncie {
     return false;
   }
 
-  /** The newest timestamp wins, whatever order the reports arrive in — a late burst never moves a truck backwards. */
+  /**
+   * The newest timestamp wins, whatever order the reports arrive in — a late burst never moves a truck backwards,
+   * and nothing older than the truck's last after-hours report comes back once that report has outdated it.
+   */
   private offerPos(t: Truck, lat: unknown, lon: unknown, heading: unknown, at: number): void {
     const c = coord(lat, lon);
-    if (!c || (t.pos && at <= t.pos.at)) return;
+    if (!c || at <= t.afterHoursAt || (t.pos && at <= t.pos.at)) return;
     t.pos = { ...c, heading: num(heading), at };
   }
 
   /** Same rule for driving/parked/unplugged; at the same instant an end outranks a data point. */
   private offerMotion(t: Truck, m: Motion, at: number): void {
+    if (at <= t.afterHoursAt) return;
     if (at > t.motionAt || (at === t.motionAt && (!t.motion || MOTION_RANK[m] > MOTION_RANK[t.motion]))) {
       t.motion = m;
       t.motionAt = at;
@@ -622,6 +1033,21 @@ export class Bouncie {
 
   private touch(t: Truck, at: number): void {
     if (at > t.lastAt) t.lastAt = at;
+  }
+
+  /**
+   * A report stamped after hours. Nothing in it is kept — no place, no motion.
+   * Its time alone outdates what Arbo held: where the truck was before it is
+   * not where it is now, so that is dropped too (§1B: never a stale map).
+   */
+  private afterHoursReport(t: Truck, at: number): void {
+    if (at <= t.afterHoursAt) return;
+    t.afterHoursAt = at;
+    if (t.pos && t.pos.at < at) t.pos = null;
+    if (t.motion && t.motionAt < at) {
+      t.motion = null;
+      t.motionAt = 0;
+    }
   }
 
   /** A webhook report: the truck's last report, and the last time the live stream spoke for it. */
@@ -645,6 +1071,13 @@ export class Bouncie {
     // While the webhook has spoken for this truck in the last 15 minutes it is
     // the better witness: this read only names the truck, it never moves it.
     if (now - t.hookAt < DRIVING_FRESH_MS) return;
+    // stats.location has no fix time of its own: lastUpdated is the only clock
+    // it carries. Touched after hours, it may be where the truck went after
+    // hours — not kept, and it outdates what was held.
+    if (!this.inHoursAt(at)) {
+      this.afterHoursReport(t, at);
+      return;
+    }
     const loc = obj(s.location); // its street address is never read
     if (loc) this.offerPos(t, loc.lat, loc.lon, loc.heading, at);
     if (typeof s.isRunning === 'boolean') this.offerMotion(t, s.isRunning ? 'driving' : 'parked', at);
@@ -652,7 +1085,7 @@ export class Bouncie {
   }
 
   /** One webhook event into memory. Returns what happened to it, for the counts. */
-  private applyEvent(ev: unknown, now: number): 'kept' | 'duplicate' | 'unknown' | 'bad' | 'full' {
+  private applyEvent(ev: unknown, now: number): 'kept' | 'duplicate' | 'unknown' | 'bad' | 'full' | 'after_hours' {
     const e = obj(ev);
     if (!e || typeof e.eventType !== 'string' || typeof e.imei !== 'string' || !e.imei || e.imei.length > 64) return 'bad';
     const type = e.eventType;
@@ -666,11 +1099,20 @@ export class Bouncie {
       const points = Array.isArray(e.data) ? e.data.slice(0, POINTS_PER_EVENT) : [];
       let fresh = 0;
       let bad = 0;
+      let late = 0;
       for (const p of points) {
         const q = obj(p);
         const at = tsOf(q?.timestamp, now);
         if (!q || at === null) {
           bad++;
+          continue;
+        }
+        if (!this.inHoursAt(at)) {
+          // A point stamped after hours (a burst after a signal loss can arrive the next morning): skipped unread.
+          late++;
+          this.hook.afterHoursReports++;
+          const held = this.trucks.get(imei);
+          if (held) this.afterHoursReport(held, at);
           continue;
         }
         if (this.dup(`${imei}|${at}`)) continue;
@@ -683,11 +1125,17 @@ export class Bouncie {
         this.heard(t, at);
         fresh++;
       }
-      return fresh > 0 ? 'kept' : bad === points.length ? 'bad' : 'duplicate';
+      return fresh > 0 ? 'kept' : late > 0 ? 'after_hours' : bad === points.length ? 'bad' : 'duplicate';
     }
     const d = obj(e[key]);
     const at = tsOf(d?.timestamp, now);
     if (!d || at === null) return 'bad';
+    if (!this.inHoursAt(at)) {
+      this.hook.afterHoursReports++;
+      const held = this.trucks.get(imei);
+      if (held) this.afterHoursReport(held, at);
+      return 'after_hours';
+    }
     if (this.dup(`${imei}|${type}|${at}`)) return 'duplicate';
     const t = this.truck(imei);
     if (!t) return 'full';
@@ -721,9 +1169,9 @@ export class Bouncie {
    * POST /webhooks/bouncie. Bouncie retries anything that is not a 2xx with a
    * JSON body, and switches off a webhook that keeps failing — so an
    * authentic call is ALWAYS answered 200 at once, even when its data is
-   * dropped (link cut, keys missing, a bad body). A wrong or missing key is
-   * 401. The answer never carries an Authorization header: Bouncie would
-   * take that as a new webhook key.
+   * dropped (link cut, keys missing, after hours, a bad body). A wrong or
+   * missing key is 401. The answer never carries an Authorization header:
+   * Bouncie would take that as a new webhook key.
    */
   async handleWebhook(
     h: { authorization?: unknown; xBouncie?: unknown },
@@ -752,14 +1200,22 @@ export class Bouncie {
     // Accept-and-drop: Bouncie must not switch the webhook off while Mike is still setting up.
     // Each drop is counted under its own reason, so Settings never shows a bare "0 kept" for it.
     if (!bouncieLinked()) {
-      this.trucks.clear();
+      this.dropHeld();
       this.hook.whileCut++;
       this.hook.lastWhileCutAt = nowIso;
       return { status: 200, body: { ok: true } };
     }
     if (!this.configured()) {
-      this.trucks.clear();
+      this.dropHeld();
       this.hook.droppedKeysMissing++;
+      return { status: 200, body: { ok: true } };
+    }
+    if (!this.inHours()) {
+      // Working hours only (§4.4): an update that arrives after hours is answered — so Bouncie keeps
+      // the webhook on — and dropped UNREAD. Nothing is held after hours.
+      this.dropHeld();
+      this.hook.afterHours++;
+      this.hook.lastAfterHoursAt = nowIso;
       return { status: 200, body: { ok: true } };
     }
     this.hook.deliveries++;
@@ -781,6 +1237,7 @@ export class Bouncie {
     for (const ev of events) {
       const r = this.applyEvent(ev, now);
       if (r === 'kept') this.hook.received++;
+      else if (r === 'after_hours') continue; // each after-hours report was counted where it was found
       else if (r === 'duplicate') this.hook.duplicates++;
       else if (r === 'unknown') this.hook.unknownTypes++;
       else if (r === 'full') this.hook.overCap++;
@@ -798,20 +1255,33 @@ export class Bouncie {
 
   // ----- what the owner routes read -----
 
+  /** A truck's id for the owner routes: steady while Arbo runs, never the device number. */
+  private idOf(imei: string): string {
+    return createHash('sha256').update(this.salt + imei).digest('hex').slice(0, 12);
+  }
+
+  /** Everything held about where the trucks are or went: positions, trips, the last read. */
+  private dropHeld(): void {
+    this.trucks.clear();
+    this.tripCache.clear();
+    this.lastRead = null;
+  }
+
   private view(t: Truck, now: number): TruckView {
     const age = t.lastAt ? Math.max(0, now - t.lastAt) : null;
     const posAge = t.pos ? Math.max(0, now - t.pos.at) : null;
     // "Driving" needs a fresh FIX: a trip start or a battery reading with no
     // position never makes yesterday's fix look like this minute's. A parked
     // truck's fix stays true while it sits, so there staleness is "no report at all".
+    // No fix because the newest report was after hours is its own state: not "no position yet".
     const motion: TruckMotion =
       t.motion === 'unplugged' ? 'unplugged'
-        : posAge === null || age === null ? 'no_fix'
+        : posAge === null || age === null ? (t.afterHoursAt ? 'after_hours' : 'no_fix')
           : t.motion === 'driving' ? (posAge <= DRIVING_FRESH_MS ? 'driving' : 'stale')
             : age > PARKED_FRESH_MS ? 'stale'
               : t.motion === 'parked' ? 'parked' : 'seen';
     return {
-      id: createHash('sha256').update(this.salt + t.imei).digest('hex').slice(0, 12),
+      id: this.idOf(t.imei),
       name: t.name,
       vin4: t.vin ? ids(t.vin) : null,
       device4: ids(t.imei),
@@ -827,19 +1297,40 @@ export class Bouncie {
     };
   }
 
-  /** Read Bouncie (cached) when the link is live and the sign-in is good; say which state otherwise. */
-  private async positionsState(): Promise<{ state: PositionsState; readAt: string | null }> {
-    if (!this.configured()) return { state: 'keys_missing', readAt: null };
+  /**
+   * Why Arbo will not read Bouncie right now, or null when it may — one order
+   * for positions and trips: keys → link → sign-in store → sign-in → hours.
+   * A cut link and after hours drop everything held (nothing is kept then).
+   */
+  private async readGate(): Promise<Gate | null> {
+    if (!this.configured()) return 'keys_missing';
     if (!bouncieLinked()) {
-      this.trucks.clear(); // nothing is held while the link is cut
-      return { state: 'link_cut', readAt: null };
+      this.dropHeld();
+      return 'link_cut';
     }
+    await this.ensureLoaded();
     const signIn = this.signInState();
-    if (signIn === 'not_connected') return { state: 'not_connected', readAt: null };
-    if (signIn === 'expired') return { state: 'token_expired', readAt: null };
+    if (signIn.startsWith('store_')) return 'sign_in_store';
+    if (signIn === 'not_connected') return 'not_connected';
+    if (signIn === 'expired') return 'token_expired';
+    if (!this.inHours()) {
+      this.dropHeld();
+      return 'after_hours';
+    }
+    return null; // connected, or a renewed sign-in waiting to be saved (the read saves it first, or says why not)
+  }
+
+  private static failState(r: TokenFail): 'token_expired' | 'not_connected' | 'sign_in_store' | 'unreadable' {
+    return r.reason === 'expired' ? 'token_expired' : r.reason === 'not_connected' ? 'not_connected' : r.reason === 'store' ? 'sign_in_store' : 'unreadable';
+  }
+
+  /** Read Bouncie (cached) when the link is live, the sign-in is good and it is working hours; say which state otherwise. */
+  private async positionsState(): Promise<{ state: PositionsState; readAt: string | null }> {
+    const gate = await this.readGate();
+    if (gate) return { state: gate, readAt: null };
     const r = await this.read();
     const readAt = this.lastReadOkAt();
-    if (!r.ok) return { state: r.reason === 'expired' ? 'token_expired' : r.reason === 'not_connected' ? 'not_connected' : 'unreadable', readAt };
+    if (!r.ok) return { state: Bouncie.failState(r), readAt };
     return { state: this.trucks.size ? 'ok' : 'no_trucks', readAt };
   }
 
@@ -876,13 +1367,95 @@ export class Bouncie {
     };
   }
 
+  /**
+   * GET /api/fleet/trips?truck=<id>&day=YYYY-MM-DD — one truck's trips on one
+   * day, inside working hours only. `truck` is the id /api/fleet/positions
+   * hands out, never the device number: a query string lands in request logs,
+   * and the logs carry the last 4 of a device id at most.
+   *
+   * The window asked of Bouncie is the day's working hours (never more than
+   * Bouncie's one-week limit), so it never sends an after-hours trip; any trip
+   * that still starts or ends outside them is dropped unread and counted.
+   * Outside working hours nothing is read at all, by name.
+   */
+  async trips(q: { truck: string | null; day: string | null }): Promise<{ status: number; body: Record<string, unknown> }> {
+    const now = this.now();
+    const day = q.day ?? '';
+    if (!realDay(day) || day < EARLIEST_TRIP_DAY || day > etParts(now).day) {
+      return { status: 400, body: { error: 'bad_day', message: `day must be a date written YYYY-MM-DD, from ${EARLIEST_TRIP_DAY} to today.` } };
+    }
+    if (!q.truck || !/^[0-9a-f]{12}$/.test(q.truck)) {
+      return { status: 400, body: { error: 'bad_truck', message: 'truck must be a truck id from /api/fleet/positions.' } };
+    }
+    const gate = await this.readGate();
+    if (gate) return { status: 200, body: { state: gate, message: TRIPS_SAYS[gate], day, trips: [] } };
+    const t = [...this.trucks.values()].find((x) => this.idOf(x.imei) === q.truck);
+    if (!t) {
+      return { status: 404, body: { error: 'unknown_truck', message: 'Arbo doesn’t know that truck id — ids change when Arbo restarts. Read /api/fleet/positions again for the current ones.' } };
+    }
+    const truck = { id: q.truck, name: t.name, device4: ids(t.imei) };
+    const w = workingWindow(day);
+    if (!w) return { status: 200, body: { state: 'not_a_working_day', message: TRIPS_SAYS.not_a_working_day, day, truck, trips: [] } };
+    const to = Math.min(w.to, now);
+    if (to <= w.from || to - w.from > MAX_TRIP_WINDOW_MS) {
+      return { status: 400, body: { error: 'bad_window', message: 'That day’s working hours have not started yet.' } };
+    }
+    const key = `${t.imei}|${day}`;
+    const hit = this.tripCache.get(key);
+    if (hit && now - hit.at < TRIPS_EVERY_MS) return { status: 200, body: hit.body };
+    const query = new URLSearchParams({ imei: t.imei, 'gps-format': 'geojson', 'starts-after': new Date(w.from).toISOString(), 'ends-before': new Date(to).toISOString() });
+    const r = await this.authedGet(`${API_BASE}trips?${query.toString()}`);
+    if (!r.ok) {
+      const state = Bouncie.failState(r);
+      return { status: 200, body: { state, message: TRIPS_SAYS[state], day, truck, trips: [] } };
+    }
+    if (!Array.isArray(r.body)) return { status: 200, body: { state: 'unreadable', message: TRIPS_SAYS.unreadable, day, truck, trips: [] } };
+    const skipped = { outsideHours: 0, unreadable: 0, overCap: Math.max(0, r.body.length - TRIPS_CAP) };
+    const trips: Array<Record<string, unknown>> = [];
+    for (const x of r.body.slice(0, TRIPS_CAP)) {
+      const o = obj(x);
+      const start = tsOf(o?.startTime, now);
+      const end = tsOf(o?.endTime, now);
+      if (!o || start === null || end === null || end < start) {
+        skipped.unreadable++;
+        continue;
+      }
+      if (start < w.from || end > to || !this.inHoursAt(start) || !this.inHoursAt(end)) {
+        skipped.outsideHours++; // dropped unread: not even its distance is kept
+        continue;
+      }
+      const path = tripPath(o.gps);
+      trips.push({
+        // Bouncie's transactionId carries the full device number: only a salted hash of it leaves the server.
+        id: createHash('sha256').update(this.salt + (typeof o.transactionId === 'string' ? o.transactionId : `${t.imei}|${start}`)).digest('hex').slice(0, 12),
+        startedAt: new Date(start).toISOString(),
+        endedAt: new Date(end).toISOString(),
+        minutes: Math.round((end - start) / 60_000),
+        miles: num(o.distance),
+        path: path ? path.points : null,
+        pathPoints: path ? path.points.length : 0,
+        pathThinned: path ? path.thinned : false,
+      });
+    }
+    trips.sort((a, b) => String(a.startedAt).localeCompare(String(b.startedAt)));
+    const state: TripsState = trips.length ? 'ok' : 'no_trips';
+    const body = { state, message: TRIPS_SAYS[state], day, truck, window: { from: new Date(w.from).toISOString(), to: new Date(to).toISOString() }, trips, skipped, readAt: new Date(now).toISOString() };
+    if (this.tripCache.size >= TRIPS_CACHE_CAP) {
+      const oldest = this.tripCache.keys().next().value;
+      if (oldest !== undefined) this.tripCache.delete(oldest);
+    }
+    this.tripCache.set(key, { at: now, body });
+    return { status: 200, body };
+  }
+
   /** GET /api/bouncie — the Settings card. Booleans, counts and times; never a key, a token or a position. */
   async status() {
+    await this.ensureLoaded();
     const p = await this.positionsState();
     const known = [...this.trucks.values()];
     const last = known.reduce((m, t) => Math.max(m, t.lastAt), 0);
     return {
-      keys: { clientId: Boolean(this.opts.clientId), clientSecret: Boolean(this.opts.clientSecret), webhookKey: this.webhookWired() },
+      keys: { clientId: Boolean(this.opts.clientId), clientSecret: Boolean(this.opts.clientSecret), webhookKey: this.webhookWired(), apiKey: Boolean(this.opts.apiKeySet) },
       signIn: { state: this.signInState(), ...this.store.status() },
       link: { envVar: BOUNCIE_LINK_ENV, open: bouncieLinked() },
       positions: { state: p.state, readAt: p.readAt },
@@ -894,7 +1467,9 @@ export class Bouncie {
 
   /** One boot line: states only. */
   bootLine(): string {
-    return `sign-in ${this.signInState()}${this.store.current() ? ` (kept on ${this.store.status().where})` : ''}; webhook ${this.webhookWired() ? 'wired' : 'NOT wired'}; link ${bouncieLinked() ? 'live' : `CUT (${BOUNCIE_LINK_ENV} is not "live")`}`;
+    const s = this.store.status();
+    const kept = s.problem ? ` (sign-in store: ${s.problem})` : s.stored ? ` (kept on ${s.where})` : '';
+    return `sign-in ${this.signInState()}${kept}; webhook ${this.webhookWired() ? 'wired' : 'NOT wired'}; link ${bouncieLinked() ? 'live' : `CUT (${BOUNCIE_LINK_ENV} is not "live")`}`;
   }
 }
 
@@ -902,12 +1477,66 @@ export class Bouncie {
 export const POSITIONS_SAYS: Record<PositionsState, string> = {
   keys_missing: 'Bouncie is not set up on the server — BOUNCIE_CLIENT_ID and BOUNCIE_CLIENT_SECRET are missing. This is not "no trucks".',
   link_cut: 'Truck tracking is cut on purpose (ARBO_LINK_BOUNCIE is not "live"). Nothing is read while it is cut. This is not "no trucks".',
+  sign_in_store: 'Arbo can’t open the saved Bouncie sign-in right now — Settings → Bouncie says why. This is not "no trucks".',
   not_connected: 'Bouncie is set up but not connected — connect it in Settings. This is not "no trucks".',
   token_expired: 'The Bouncie sign-in expired or was removed — reconnect it in Settings. This is not "no trucks".',
+  after_hours: 'After hours — Arbo tracks trucks only 8am–8pm, Monday to Saturday, so it reads and keeps no positions now. Tracking resumes at 8am on the next working day. This is not "no trucks".',
   unreadable: 'Arbo could not read Bouncie just now. This is not "no trucks".',
   no_trucks: 'Bouncie answered and lists no trucks on this account.',
   ok: 'Positions from Bouncie.',
 };
+
+/** The same, for one truck's trips — §1B: "couldn't read" and "after hours" are never "no trips". */
+export const TRIPS_SAYS: Record<TripsState, string> = {
+  keys_missing: 'Bouncie is not set up on the server — BOUNCIE_CLIENT_ID and BOUNCIE_CLIENT_SECRET are missing. This is not "no trips".',
+  link_cut: 'Truck tracking is cut on purpose (ARBO_LINK_BOUNCIE is not "live"). Nothing is read while it is cut. This is not "no trips".',
+  sign_in_store: 'Arbo can’t open the saved Bouncie sign-in right now — Settings → Bouncie says why. This is not "no trips".',
+  not_connected: 'Bouncie is set up but not connected — connect it in Settings. This is not "no trips".',
+  token_expired: 'The Bouncie sign-in expired or was removed — reconnect it in Settings. This is not "no trips".',
+  after_hours: 'After hours — Arbo reads no trips outside 8am–8pm, Monday to Saturday. Tracking resumes at 8am on the next working day. This is not "no trips".',
+  not_a_working_day: 'That day has no working hours (Sunday), so Arbo reads no trips for it. This is not "no trips".',
+  unreadable: 'Arbo could not read Bouncie’s trips just now. This is not "no trips".',
+  no_trips: 'Bouncie answered: this truck has no trips inside working hours that day.',
+  ok: 'Trips from Bouncie, inside working hours only.',
+};
+
+/**
+ * A trip's path from Bouncie's GeoJSON (GeoJSON order is [lon, lat]), as
+ * {lat, lon} points — a LineString, a Feature, or the first feature of a
+ * collection; it may arrive as text. Thinned evenly (the last point kept)
+ * past the cap. Null when it can't be read: never an empty path standing in for one.
+ */
+function tripPath(gps: unknown): { points: Array<{ lat: number; lon: number }>; thinned: boolean } | null {
+  let g: unknown = gps;
+  if (typeof g === 'string') {
+    if (g.length > GPS_TEXT_CAP) return null;
+    try {
+      g = JSON.parse(g);
+    } catch {
+      return null;
+    }
+  }
+  const o = obj(g);
+  const feature = o && Array.isArray(o.features) ? obj(o.features[0]) : o;
+  const geom = obj(feature?.geometry) ?? feature;
+  const coords = geom && Array.isArray(geom.coordinates) ? (geom.coordinates as unknown[]) : null;
+  if (!coords) return null;
+  const step = Math.max(1, Math.ceil(coords.length / TRIP_POINTS_CAP));
+  const points: Array<{ lat: number; lon: number }> = [];
+  for (let i = 0; i < coords.length; i += step) {
+    const p = coords[i];
+    const c = Array.isArray(p) ? coord(p[1], p[0]) : null;
+    if (c) points.push(c);
+  }
+  // Thinning can step past the last point; the trip still ends where it ended.
+  const lastIndex = coords.length - 1;
+  if (step > 1 && lastIndex % step !== 0) {
+    const p = coords[lastIndex];
+    const c = Array.isArray(p) ? coord(p[1], p[0]) : null;
+    if (c) points.push(c);
+  }
+  return { points, thinned: step > 1 };
+}
 
 const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
 

@@ -69,7 +69,7 @@ import { createSonaExtractor } from './ops/quoExtract.js';
 import { QuoStudy, createStudyReader } from './ops/quoStudy.js';
 import { createDriveFolderReader } from './integrations/driveRead.js';
 import { GoogleTokenStore, googleCreds, consentUrl, codeFrom, exchangeCode, GOOGLE_SCOPES } from './integrations/googleTokenStore.js';
-import { Bouncie, callbackPage, type UnitLite } from './integrations/bouncie.js';
+import { Bouncie, BOUNCIE_CALLBACK_PATH, BOUNCIE_REDIRECT, RETIRED_CALLBACK_PATH, bouncieTokenBackend, callbackPage, type UnitLite } from './integrations/bouncie.js';
 import { createQuoApi, ensureQuoWebhooks } from './integrations/quo.js';
 import { createQuoSender } from './integrations/quoSend.js';
 import { OutreachEngine } from './ops/outreach.js';
@@ -666,14 +666,24 @@ export function createArborRequestHandler(opts: { assistant?: Assistant } = {}) 
   });
 
   // ═══ R31 — Bouncie truck tracking (docs/BOUNCIE.md). Owner only, read
-  // only, memory only; dormant until Mike adds the keys, connects, and sets
-  // ARBO_LINK_BOUNCIE=live. The boot line names each state, never a secret. ═══
+  // only, working hours only; dormant until Mike adds the keys, applies
+  // migration 0021, connects, and sets ARBO_LINK_BOUNCIE=live. The sign-in
+  // is kept in Supabase, sealed (Mike's spec, 2026-10-20) — in practice mode
+  // (ARBO_DATA_LINKS=sim, which opens no database) on the disk as before.
+  // The boot line names each state, never a secret, once the store is read. ═══
   const bouncie = new Bouncie({
     clientId: env.bouncie.clientId ?? null,
     clientSecret: env.bouncie.clientSecret ?? null,
     webhookKey: env.bouncie.webhookKey ?? null,
+    apiKeySet: Boolean(env.bouncie.apiKey),
+    tokens: bouncieTokenBackend({
+      supabaseUrl: env.supabase.url,
+      serviceKey: env.supabase.serviceRoleKey,
+      clientSecret: env.bouncie.clientSecret,
+      practice: dataLinksSim(),
+    }),
   });
-  console.log(`[bouncie] ${bouncie.bootLine()}`);
+  void bouncie.ready().then(() => console.log(`[bouncie] ${bouncie.bootLine()}`));
 
   // Sona's calls via Quo (Mike, 2026-09-24: "auto do it"). Same R18 stores
   // as Arbo's own calls; keys and numbers arrive when startServer registers.
@@ -971,13 +981,28 @@ export function createArborRequestHandler(opts: { assistant?: Assistant } = {}) 
         return res.end('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
       }
       // ═══ R31 — Bouncie's two PUBLIC doors, each with its own lock ═══
-      // The sign-in callback: it only finishes a sign-in Arbo started behind
-      // the owner key (single-use state, ten minutes). The page never repeats
-      // the code or the state, and is never cached or sent on as a referrer.
-      if (req.method === 'GET' && url.pathname === '/bouncie/callback') {
+      // The sign-in callback, at the Redirect URI Mike registers (his spec,
+      // 2026-10-20: /api/bouncie/callback). It sits ABOVE the /api key gate on
+      // purpose: Bouncie's redirect is a plain browser visit that carries no
+      // x-arbor-key. Its lock is its own: it only finishes a sign-in Arbo
+      // started behind the owner key (single-use state, ten minutes, PKCE).
+      // The page never repeats the code or the state, and is never cached or
+      // sent on as a referrer.
+      if (req.method === 'GET' && url.pathname === BOUNCIE_CALLBACK_PATH) {
         const r = await bouncie.finishConnect({ code: url.searchParams.get('code'), state: url.searchParams.get('state') });
         res.writeHead(r.status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
         return res.end(callbackPage(r));
+      }
+      // The first build's callback address, retired so there is ONE door. It
+      // finishes nothing, spends no state, and says where the door is now.
+      if (url.pathname === RETIRED_CALLBACK_PATH) {
+        res.writeHead(410, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
+        return res.end(callbackPage({
+          status: 410,
+          ok: false,
+          title: 'This sign-in address has moved',
+          line: `Arbo now finishes the Bouncie sign-in at ${BOUNCIE_REDIRECT}. Put that address in the Bouncie portal as the Redirect URI, then tap Connect Bouncie in Settings again. Nothing was saved.`,
+        }));
       }
       // Live updates: the key Mike chose, checked in constant time before the
       // body is read. An authentic call is answered 200 even when its data is
@@ -1336,14 +1361,25 @@ export function createArborRequestHandler(opts: { assistant?: Assistant } = {}) 
       // ═══ R31 — Bouncie, OWNER ONLY. The gate above lets the crew key
       // into /api/crew/* alone, and with no APP_ACCESS_KEY these stay locked
       // even while the database is cut — truck positions are not "nothing to leak". ═══
-      if (url.pathname === '/api/bouncie' || url.pathname === '/api/bouncie/connect' || url.pathname === '/api/fleet/positions') {
+      if (url.pathname === '/api/bouncie' || url.pathname === '/api/bouncie/connect' || url.pathname === '/api/fleet/positions' || url.pathname === '/api/fleet/trips') {
         if (!env.appAccessKey) return send(401, { error: 'no_app_key', message: 'APP_ACCESS_KEY is not set — truck tracking is locked until it is.' });
         if (req.method === 'GET' && url.pathname === '/api/bouncie') return send(200, await bouncie.status());
         if (req.method === 'POST' && url.pathname === '/api/bouncie/connect') {
+          await bouncie.ready(); // a store that can't keep a sign-in refuses here, before Mike is sent to Bouncie
           const c = bouncie.beginConnect();
           return c.ok
             ? send(200, { authorizeUrl: c.authorizeUrl })
-            : send(503, { error: c.error, message: 'BOUNCIE_CLIENT_ID and BOUNCIE_CLIENT_SECRET are not on Railway yet.' });
+            : send(503, {
+              error: c.error,
+              message: c.error === 'bouncie_keys_missing' ? 'BOUNCIE_CLIENT_ID and BOUNCIE_CLIENT_SECRET are not on Railway yet.'
+                : c.error === 'bouncie_store_missing' ? 'The sign-in table is not in Supabase yet — migration 0021 must be applied before connecting.'
+                  : 'Supabase is not configured on the server, and the Bouncie sign-in is kept only there.',
+            });
+        }
+        // Read only, owner only, working hours only: one truck's trips on one day (MAP HOOK, like positions).
+        if (req.method === 'GET' && url.pathname === '/api/fleet/trips') {
+          const out = await bouncie.trips({ truck: url.searchParams.get('truck'), day: url.searchParams.get('day') });
+          return send(out.status, out.body);
         }
         // MAP HOOK: the upcoming map screen reads this same route — per-truck
         // lat/lon, age and state. The Fleet card reads it too, but never shows a coordinate.
