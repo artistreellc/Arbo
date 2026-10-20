@@ -47,11 +47,12 @@ shows "the crew door key isn't set up yet — ask Mike" and asks for nothing
 - [ ] **Reconnect Google** — Settings → Google (Gmail read, calendar holds, Drive read).
 - [ ] **Open the data links one at a time** after each passes its verification (`docs/DATA_LINKS.md`, R19). The app runs fully with them cut; opening one is never an optimisation.
 - [ ] **Quo texting registration** (A2P) before any R22 text goes out.
-- [ ] **Bouncie truck tracking** (R31 draft) — built and switched off. Steps in `docs/BOUNCIE.md`: `BOUNCIE_CLIENT_ID` / `BOUNCIE_CLIENT_SECRET` → deploy → Settings → Connect Bouncie → `BOUNCIE_WEBHOOK_KEY` → deploy → turn on the webhook in the Bouncie portal → `ARBO_LINK_BOUNCIE=live` when ready. Owner only; the crew door never shows it.
+- [ ] **Bouncie truck tracking** (R31) — built and switched off. Steps in `docs/BOUNCIE.md`: `BOUNCIE_CLIENT_ID` / `BOUNCIE_CLIENT_SECRET` → deploy → Settings → Connect Bouncie → `BOUNCIE_WEBHOOK_KEY` → deploy → turn on the webhook in the Bouncie portal → `ARBO_LINK_BOUNCIE=live` when ready. Owner only; the crew door never shows it.
 - [ ] **`ANTHROPIC_API_KEY`** on Railway turns the agents' brain from "offline — deterministic" to Opus.
 - [ ] **`CLAUDE_CODE_OAUTH_TOKEN`** repo secret (turns on the automated PR review job).
-- [ ] **The Supabase project `arbor` is PAUSED** (INACTIVE, seen 2026-10-20). Nothing reads it while the links are cut, but a paused project can only be restored for a limited time — restore it (Supabase dashboard → the project → Restore) before that window closes, or the kept rows (§3) are at risk.
-- [ ] **Migration 0020** (brake/steering hold) is committed, not applied — the database is paused. Apply it after the restore and before the equipment link opens, or a brake report fails to save instead of holding the unit. (0016–0019 are already applied, `docs/DATA_LINKS.md` step 1.)
+- [x] **The Supabase project `arbor` was paused** — restored 2026-10-20 on Mike's yes (R29); ACTIVE_HEALTHY. If Supabase pauses it again for being idle, restore it the same day (Supabase dashboard → the project → Restore) — a paused project can only be restored for a limited time.
+- [x] **Migration 0020** (brake/steering hold) applied live 2026-10-20 after the restore, and checked. (0016–0019 were already applied, `docs/DATA_LINKS.md` step 1.)
+- [ ] **Delete the 11 mistaken job rows** (R29, Mike: "Delete the 11"). The backup `archive.job_mistaken_import_20260802` is made and verified. Supabase → project arbor → SQL Editor → New query → `delete from public.job where id in (select id from archive.job_mistaken_import_20260802);` → Run. Afterwards `public.job` holds 0 rows; leads stay 37.
 
 ## 5. Held for Mike (not decided by a build)
 

@@ -1,4 +1,4 @@
-// Bouncie truck tracking (R31 draft — Mike, 2026-10-20: "why dont you build
+// Bouncie truck tracking (R31 — Mike, 2026-10-20: "why dont you build
 // and then i add later"). Built complete and DORMANT: nothing happens until
 // Mike adds BOUNCIE_CLIENT_ID / BOUNCIE_CLIENT_SECRET on Railway, taps
 // Connect Bouncie, adds BOUNCIE_WEBHOOK_KEY, and sets ARBO_LINK_BOUNCIE=live.

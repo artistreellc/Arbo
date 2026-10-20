@@ -28,12 +28,14 @@
 -- a unit back on through the database either.
 --
 -- ───────────────────────────────────────────────────────────────────────
--- NOT APPLIED LIVE. §3.
+-- APPLIED LIVE 2026-10-20 (R29: Mike said yes to restoring the paused
+-- project, "It also lets me apply the brake-hold database change").
 -- ───────────────────────────────────────────────────────────────────────
--- Committed, not applied — same as 0016, 0017 and 0018. The data links are
--- cut and schema changes on Mike's live database are his call. It MUST be
--- applied before the equipment link opens: without it the live CHECK refuses
--- 'held', and a brake report would fail to save instead of holding the unit.
+-- Applied through the Supabase tool as 0020_brake_steering_hold after the
+-- restore, and checked: the status CHECK now allows 'held', and both new
+-- columns exist and are nullable. No row changed. It had to be in place
+-- before the equipment link opens: without it the live CHECK refuses 'held',
+-- and a brake report would fail to save instead of holding the unit.
 
 alter table equipment_unit drop constraint if exists equipment_unit_status_check;
 alter table equipment_unit add constraint equipment_unit_status_check

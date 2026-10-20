@@ -908,16 +908,18 @@ describe('the routes, end to end with a fake Bouncie', () => {
 });
 
 // ---------- the binding rulings file holds rulings only ----------
-describe('the R31 draft waits in docs/BOUNCIE.md, not in the binding rulings file', () => {
-  it('OWNER_RULINGS.md carries no draft entry; BOUNCIE.md holds the draft under "Waiting on Mike"', () => {
+describe('R31 is filed in the binding rulings file, in Mike\'s words, with no draft left behind', () => {
+  // Filed at integration (D93): Mike's "why dont you build and then i add later"
+  // is the go; the two open choices are named as defaults in R31 and BOUNCIE.md.
+  it('OWNER_RULINGS.md carries R31 with Mike\'s words and no DRAFT heading; BOUNCIE.md points to it', () => {
     const rulings = readFileSync(new URL('../docs/OWNER_RULINGS.md', import.meta.url), 'utf8');
-    expect(rulings).not.toMatch(/^## R31\b/m);
+    expect(rulings).toMatch(/^## R31 — Bouncie truck tracking, built dormant \(Mike, 2026-10-20\)$/m);
+    expect(rulings).toContain('*"why dont you build and then i add later"*');
     expect(rulings).not.toMatch(/^## .*DRAFT/m);
     const doc = readFileSync(new URL('../docs/BOUNCIE.md', import.meta.url), 'utf8');
     const waiting = doc.slice(doc.indexOf('## Waiting on Mike'));
-    expect(waiting).toContain('### Draft R31');
-    expect(waiting).toContain('*"why dont you build and then i add later"*');
-    expect(doc).not.toContain('Draft in `docs/OWNER_RULINGS.md`');
+    expect(waiting).toContain('filed as **R31**');
+    expect(doc).not.toContain('### Draft R31');
   });
 });
 

@@ -153,7 +153,7 @@ export const env = {
   ownerAlertPhone: get('OWNER_ALERT_PHONE'),
   // R15: home ZIP only — never the address, never in config, never in a prompt.
   ownerHomeZip: get('OWNER_HOME_ZIP'),
-  // R31 draft (Mike, 2026-10-20: "why dont you build and then i add later"):
+  // R31 (Mike, 2026-10-20: "why dont you build and then i add later"):
   // Bouncie truck tracking. The client pair signs Arbo in (Bouncie developer
   // portal → the app); the webhook key is one Mike makes up and types into
   // both the portal and Railway. Positions stay off until ARBO_LINK_BOUNCIE

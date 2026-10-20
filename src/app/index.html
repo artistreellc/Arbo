@@ -3611,7 +3611,7 @@ function paidButton(invoiceId, slot) {
   return btn;
 }
 
-// ---------- Bouncie truck tracking (R31 draft) — owner only ----------
+// ---------- Bouncie truck tracking (R31) — owner only ----------
 // MAP HOOK: GET /api/fleet/positions is the one route for truck positions —
 // the upcoming map screen reads it for lat/lon; the Fleet card reads it for
 // one line per unit and never shows a coordinate. Every state has its own
@@ -4476,7 +4476,7 @@ async function buildSettings(v, gen) {
     }
   }
 
-  // R31 draft: Bouncie truck tracking, in its own slot and NOT awaited: its read can wait on
+  // R31: Bouncie truck tracking, in its own slot and NOT awaited: its read can wait on
   // Bouncie (an 8 s deadline per call), and the data links below never wait with it.
   // A card that breaks names itself in its slot (§1B), never a blank.
   const bouncieSlot = v.appendChild(el('div'));

@@ -643,7 +643,7 @@ export function createArborRequestHandler() {
     fetchEmail: env.resend.apiKey ? createResendEmailFetcher(env.resend.apiKey) : null,
   });
 
-  // ═══ R31 draft — Bouncie truck tracking (docs/BOUNCIE.md). Owner only, read
+  // ═══ R31 — Bouncie truck tracking (docs/BOUNCIE.md). Owner only, read
   // only, memory only; dormant until Mike adds the keys, connects, and sets
   // ARBO_LINK_BOUNCIE=live. The boot line names each state, never a secret. ═══
   const bouncie = new Bouncie({
@@ -939,7 +939,7 @@ export function createArborRequestHandler() {
         res.writeHead(200, { 'content-type': 'text/xml', 'cache-control': 'no-store' });
         return res.end('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
       }
-      // ═══ R31 draft — Bouncie's two PUBLIC doors, each with its own lock ═══
+      // ═══ R31 — Bouncie's two PUBLIC doors, each with its own lock ═══
       // The sign-in callback: it only finishes a sign-in Arbo started behind
       // the owner key (single-use state, ten minutes). The page never repeats
       // the code or the state, and is never cached or sent on as a referrer.
@@ -1278,7 +1278,7 @@ export function createArborRequestHandler() {
       if (req.method === 'GET' && url.pathname === '/api/fleet/units') {
         return send(...unpack(await api.fleetUnits()));
       }
-      // ═══ R31 draft — Bouncie, OWNER ONLY. The gate above lets the crew key
+      // ═══ R31 — Bouncie, OWNER ONLY. The gate above lets the crew key
       // into /api/crew/* alone, and with no APP_ACCESS_KEY these stay locked
       // even while the database is cut — truck positions are not "nothing to leak". ═══
       if (url.pathname === '/api/bouncie' || url.pathname === '/api/bouncie/connect' || url.pathname === '/api/fleet/positions') {
