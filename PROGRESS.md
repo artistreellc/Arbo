@@ -260,8 +260,8 @@ Analyzed 250 real events (Apr–Jul 2026) from the Art-is-Tree Google Calendar:
 | default | Booked **jobs** / admin | job-titled + address-only events |
 | 2 Sage | **Job WON** (O5 resolved — Mike confirmed) | cross-city + REPEAT-heavy fits: winners come from every city |
 
-Also learned: the real title format is **space-separated** (`Peter Simmons TT
-7578193493`), not the brief's hyphenated draft — code updated to match (D34).
+Also learned: the real title format is **space-separated** (`Sim Birch TT
+7575550102`), not the brief's hyphenated draft — code updated to match (D34).
 Two historical Suffolk-location events exist on the calendar (pre-drop, Mike's
 own entries — informational only; ARBOR can never create one).
 
