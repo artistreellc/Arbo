@@ -117,7 +117,7 @@ describe('Leads: the file-it pair, Undo and the chip rows (run, not just read)',
     };
     const permitBadge = pageFn<(l: Lead) => Node | null>('permitBadge', { permitChip });
     const renderLeads = pageFn<() => Promise<void>>('renderLeads', {
-      $: () => v, el, api, chip, fmtWhen, permitBadge, leadsTabBadge: () => {},
+      $: () => v, el, api, chip, fmtWhen, plural, permitBadge, leadsTabBadge: () => {},
       icon: (id: string) => el('svg', 'ico ' + id),
       showKeywall: () => {}, LINKS_READY: Promise.resolve('simulation'),
       state: (t: string) => el('div', 'state', t), feedState: (_e: unknown, w: string) => el('div', 'state', w),
@@ -131,6 +131,36 @@ describe('Leads: the file-it pair, Undo and the chip rows (run, not just read)',
     const undo = () => buttons().find((b) => b.textContent === 'Undo')!;
     return { v, renderLeads, posts, saveFails, ctl, card, good, spam, undo };
   }
+
+  // R-READONLY: an older lead (the server's `older`, > 14 days) is never new work.
+  it('an older lead sits under its own heading with its age: no alarm, no call-back label, no Call back button', async () => {
+    const s = mount([
+      lead({ id: 'OLD', createdAt: '2026-07-12T14:00:00Z', older: true, ageDays: 100, filedAsEmergency: true, isEmergency: false, needsCallback: false, quality: { priority: 'hot' } }),
+      lead({ id: 'NEW', needsCallback: true }),
+    ]);
+    await s.renderLeads();
+    const kids = s.v.children;
+    // The recent lead first, then the heading, then the older one.
+    expect(kids[0]!.text()).toContain('SIM-Elm');
+    const head = kids.findIndex((n) => n.textContent === 'Older leads — more than 14 days old');
+    expect(head).toBeGreaterThan(0);
+    const old = kids.slice(head).find((n) => n.has('card'))!;
+    expect(old.text()).toContain('Older lead — came in 100 days ago. Filed as an emergency then — not a live alarm.');
+    expect(old.text()).toContain('WHEN(2026-07-12T14:00:00Z)'); // its date, in the card's one time format
+    expect(chipsIn(old)).toContain('OLDER LEAD=info');
+    expect(chipsIn(old).join(' ')).not.toMatch(/EMERGENCY|HOT/);
+    expect(old.has('emergency') || old.has('callback')).toBe(false);
+    expect(old.all().some((n) => n.textContent === 'Call back' || n.textContent === 'Call back needed')).toBe(false);
+    // The recent lead keeps everything it had.
+    expect(kids[0]!.all().some((n) => n.textContent === 'Call back')).toBe(true);
+  });
+
+  it('only older leads: the screen says nothing new is waiting, then shows them for the record', async () => {
+    const s = mount([lead({ id: 'OLD', older: true, ageDays: 30 })]);
+    await s.renderLeads();
+    expect(s.v.children[0]!.textContent).toBe('No new leads');
+    expect(s.v.children.some((n) => n.textContent === 'Older leads — more than 14 days old')).toBe(true);
+  });
 
   it('Undo on an emergency lead puts back "emergency", not "new"', async () => {
     const s = mount([lead({ id: 'E1', status: 'emergency', isEmergency: true, quality: { priority: 'hot' } })]);

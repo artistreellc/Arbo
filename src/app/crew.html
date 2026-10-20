@@ -319,8 +319,10 @@ const LINKS_READY = api('/health').then((h) => { LINKS = h.dataLinks || 'unknown
 function crewWhy(e) {
   const m = e && e.code === 503 ? e.message : '';
   if (m === 'not_simulated') return 'not part of the practice data';
+  // R-READONLY: Arbo is reading but not saving — nothing from this phone was written.
+  if (m === 'read_only') return 'Arbo is read-only right now — it can look but not save, so nothing was written';
   // A named link held cut (link_cut) is a cut on purpose too, the same as feedKind.
-  if (m === 'link_cut' || (m === 'db_not_configured' && LINKS !== 'live')) return 'the office data link is cut on purpose';
+  if (m === 'link_cut' || (m === 'db_not_configured' && LINKS !== 'live' && LINKS !== 'readonly')) return 'the office data link is cut on purpose';
   if (m === 'db_not_configured' || m === 'not_built') return 'not set up on the server yet';
   return 'the office didn’t answer';
 }
@@ -1101,11 +1103,16 @@ $('dateline').textContent = new Date().toLocaleDateString([], { weekday: 'long',
 // practice data, so nobody files a real near miss into it unawares. A /health
 // that did not answer leaves LINKS null, and the plain date stands.
 LINKS_READY.then(() => { if (LINKS === 'simulation') $('dateline').textContent = 'SIMULATION · ' + $('dateline').textContent; });
+// R-READONLY: while Arbo is read-only the page says so on every screen — the
+// owner's preview included — so nobody taps expecting a save.
+LINKS_READY.then(() => { if (LINKS === 'readonly') $('dateline').textContent = 'READ-ONLY · ' + $('dateline').textContent; });
 // R26: the preview says what it is on every screen, with the way back.
 if (PREVIEW) {
   document.body.classList.add('preview');
   const bar = el('div', 'preview-bar');
-  bar.appendChild(el('div', '', PREVIEW_BANNER));
+  const bannerLine = bar.appendChild(el('div', '', PREVIEW_BANNER));
+  // R-READONLY: the preview names the mode in its own banner too.
+  LINKS_READY.then(() => { if (LINKS === 'readonly') bannerLine.textContent = PREVIEW_BANNER + ' Arbo is read-only: it reads real records and saves nothing.'; });
   const back = el('a', '', '← Back to the office app');
   back.href = '/app#more';
   // Step back to the office app as it was left; a fresh visit replaces this

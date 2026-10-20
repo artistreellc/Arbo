@@ -105,7 +105,7 @@ export const TALK_TOOLS: Anthropic.Tool[] = [
 ];
 
 // ─── The reads (server-side, the same doors the app uses) ────────────────────
-export type TalkMode = 'live' | 'cut' | 'sim';
+export type TalkMode = 'live' | 'cut' | 'sim' | 'readonly';
 type QuoRead = { status: ReturnType<QuoIntake['status']>; calls: ReturnType<QuoIntake['list']> };
 
 /** Everything Talk may look at. Each one is a READ the app's own screens already make. */
@@ -157,7 +157,8 @@ function feedOf(r: ApiResult, mode: TalkMode): Feed {
   const code = String((r.body as { error?: unknown } | null)?.error ?? '');
   if (r.status === 503) {
     if (code === 'not_simulated') return 'sim';
-    if (code === 'db_not_configured') return mode === 'live' ? 'unset' : 'cut';
+    // Read-only reads like live: no database here means not set up, never cut.
+    if (code === 'db_not_configured') return mode === 'live' || mode === 'readonly' ? 'unset' : 'cut';
     if (code === 'link_cut') return 'cut';
     if (code === 'not_built' || /_(not_configured|not_wired|not_started|missing)$/.test(code)) return 'unset';
   }
@@ -296,6 +297,8 @@ function gap(name: string, feed: Gap, notWhat: string): Section {
 function modeLine(mode: TalkMode): string | null {
   if (mode === 'sim') return 'PRACTICE DATA: Arbo is running on simulated records (the names start with SIM). Tell Mike once that this is practice data, not his real business.';
   if (mode === 'cut') return "DATA LINKS CUT: Arbo's link to the business records is cut on purpose while the app is being built. Every feed that needs it is named below as cut — none of them is zero.";
+  // R-READONLY: real records, nothing saved. Some links stay cut on purpose and are named as cut below.
+  if (mode === 'readonly') return "READ-ONLY: Arbo is reading Mike's real records and saving nothing. Some feeds stay cut on purpose and are named below as cut — none of them is zero. Arbo cannot change anything, so never say it did.";
   return null;
 }
 

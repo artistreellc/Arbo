@@ -92,6 +92,9 @@ import type { ScreenStatus } from '../permitting/screening.js';
 import type { ServiceCity } from '../lib/address.js';
 import type { PacketSourceRow as PacketSource } from '../db/repositories.js';
 import { crewMayStart, type PermitLifecycle } from '../permitting/permitRecord.js';
+import { READ_ONLY_LINE } from '../db/links.js';
+import { noteNotSaved } from '../db/notSaved.js';
+import { isOlderLead, leadAgeDays } from '../ops/leadAge.js';
 
 /** Postgres uuid shape. Non-UUID ids must be rejected BEFORE any write. */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -129,13 +132,33 @@ export interface ApiLead {
   history: string | null;
   /** The past-work read FAILED: a missing history line here is not "no history" (§1B). */
   historyUnreadable: boolean;
+  /** R-READONLY: the permit / past-work read was refused because that link is cut on purpose — said as "cut", never "couldn't read it". */
+  permitCut?: true;
+  historyCut?: true;
   /** R26: 'es' when the receptionist heard a Spanish speaker (detect and flag only). */
   language?: 'es';
+  /**
+   * Older than OLDER_LEAD_DAYS (src/ops/leadAge.ts). An older lead never
+   * lights an alarm or a call-back count: isEmergency and needsCallback are
+   * false on it, and it shows with its date as an older lead (§1B, §3).
+   */
+  older: boolean;
+  /** Whole days since it came in. */
+  ageDays: number;
+  /** An older lead that was filed as an emergency back then — history, not a live alarm. */
+  filedAsEmergency?: true;
 }
 
 /** What the API needs from storage — live impl wraps the repositories. */
 export interface DataSource {
   ready(): boolean;
+  /**
+   * R-READONLY: false when Arbo may READ but not WRITE (ARBO_DATA_LINKS=readonly).
+   * Writers that run without a person's tap (the forecast write-through, the
+   * visit stamp, the phone's location ping) skip by name instead of meeting
+   * the door. Absent = writable (the practice data writes to memory).
+   */
+  canWrite?(): boolean;
   stopsBetween(fromIso: string, toIso: string): Promise<StopInput[]>;
   newLeads(limit: number): Promise<ApiLeadInput[]>;
   /** §16–20 queue inputs. Optional until the live source wires it. */
@@ -342,6 +365,8 @@ export interface ApiExtras {
   dataLinksLive?: boolean;
   /** True when the app is running on in-memory simulated records. */
   dataLinksSim?: boolean;
+  /** R-READONLY: true when ARBO_DATA_LINKS is exactly 'readonly' — reading real data, writing nothing. */
+  dataLinksReadOnly?: boolean;
 }
 
 export interface ApiLeadInput {
@@ -366,6 +391,10 @@ export interface ApiLeadInput {
   history: { kind: 'job' | 'estimate'; when: string | null; scope: string | null; status: string | null } | null;
   /** True when the past-work read failed for this lead's property — history is then unknown, not absent. */
   historyUnreadable?: boolean;
+  /** The permit read failed because its link is CUT on purpose (R-READONLY keeps permits cut) — not a failed read. */
+  permitCut?: boolean;
+  /** The past-work read failed because its link is CUT on purpose (jobs) — not a failed read. */
+  historyCut?: boolean;
 }
 
 export interface ApiResult {
@@ -399,6 +428,14 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
     !source.ready() ? 'db_not_configured' : has ? null : extras.dataLinksSim ? 'not_simulated' : 'not_built';
   // A blind spot in words: the practice data simply lacks it, or no source is connected yet (§1B — never snake_case, never "wired").
   const unwired = (what: string, tail: string): string => `${what} — ${extras.dataLinksSim ? 'not in the practice data' : 'not connected yet'}. ${tail}`;
+  // R-READONLY: true only when the source says it may read but not write.
+  // Asked after source.ready(), so a cut database still answers db_not_configured.
+  const readOnly = (): boolean => (source.canWrite ? !source.canWrite() : false);
+  // A refused write, by name, with the plain line the screens show; counted (kind only, §4.3).
+  const readOnlyRefusal = (kind: string): ApiResult => {
+    noteNotSaved(kind);
+    return { status: 503, body: { error: 'read_only', line: READ_ONLY_LINE } };
+  };
   return {
     /** GET /health — config versions + which integrations are wired. Never leaks values. */
     async health(): Promise<ApiResult> {
@@ -416,9 +453,12 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
           // SIMULATION is its own state and must never read as live. Anyone
           // looking at this endpoint to decide whether a number is real needs
           // that answer in one word.
+          // READ-ONLY is its own word too: real rows on screen, nothing saved.
           dataLinks: extras.dataLinksSim
             ? 'simulation'
-            : extras.dataLinksLive === undefined ? 'unknown' : extras.dataLinksLive ? 'live' : 'cut',
+            : extras.dataLinksReadOnly
+              ? 'readonly'
+              : extras.dataLinksLive === undefined ? 'unknown' : extras.dataLinksLive ? 'live' : 'cut',
           integrations: integrationStatus(),
         },
       };
@@ -436,29 +476,38 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
     },
 
     /** GET /api/leads — inbox with the quiet hot/warm/cool read (§3.14). */
-    async leads(limit = 25): Promise<ApiResult> {
+    async leads(limit = 25, now = new Date()): Promise<ApiResult> {
       if (!source.ready()) return { status: 503, body: { error: 'db_not_configured' } };
       const rows = await source.newLeads(limit);
+      const nowMs = now.getTime();
       const leads: ApiLead[] = rows.map((r) => {
         const q = r.qualification ?? {};
-        const needsCallback = ['missed', 'abandoned', 'voicemail'].includes(String(q['kind'] ?? ''));
+        // Old rows never pose as new work (§1B, §3): an older lead keeps its
+        // date and its history, but lights no alarm and owes no call back.
+        // Neutralised HERE, once, so Today, the tab badge and Talk all agree.
+        const older = isOlderLead(r.createdAt, nowMs);
+        const isEmergency = r.isEmergency && !older;
+        const needsCallback = !older && ['missed', 'abandoned', 'voicemail'].includes(String(q['kind'] ?? ''));
         return {
           id: r.id,
           source: r.source,
           details: r.details,
-          isEmergency: r.isEmergency,
+          isEmergency,
           status: r.status,
           createdAt: r.createdAt,
           name: r.name,
           phone: r.phone,
           needsCallback,
+          older,
+          ageDays: leadAgeDays(r.createdAt, nowMs),
+          ...(older && r.isEmergency ? { filedAsEmergency: true as const } : {}),
           city: r.city,
           zip: r.zip,
           isFirstTimer: r.isFirstTimer,
           ...(q['language'] === 'es' ? { language: 'es' as const } : {}),
           quality: scoreLead({
             inServiceArea: r.city != null ? IN_AREA.has(r.city) : undefined,
-            urgency: r.isEmergency ? 'emergency' : (q['urgency'] as never) ?? 'unknown',
+            urgency: isEmergency ? 'emergency' : (q['urgency'] as never) ?? 'unknown',
             scopeClarity: r.details && r.details.length > 20 ? 'specific' : r.details ? 'vague' : 'unknown',
             gaveAddress: r.city != null,
           }),
@@ -470,6 +519,8 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
           permitUnreadable: r.permitUnreadable === true,
           history: formatHistory(r.history),
           historyUnreadable: r.historyUnreadable === true,
+          ...(r.permitUnreadable === true && r.permitCut === true ? { permitCut: true as const } : {}),
+          ...(r.historyUnreadable === true && r.historyCut === true ? { historyCut: true as const } : {}),
         };
       });
       return { status: 200, body: { leads } };
@@ -530,7 +581,10 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
     async forecast(now = new Date()): Promise<ApiResult> {
       if (!source.ready() || !source.growthTargets) return { status: 503, body: { error: gap(source.growthTargets) } };
       const due = buildDueProperties(await source.growthTargets(), now);
-      if (source.saveTreeForecast) {
+      // R-READONLY: the answer stands; the write-through is skipped BY NAME
+      // (counted, and said in the body) — a GET never meets the write door.
+      const skipWrites = readOnly();
+      if (source.saveTreeForecast && !skipWrites) {
         for (const p of due) {
           for (const f of p.forecasts) {
             try {
@@ -541,7 +595,15 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
           }
         }
       }
-      return { status: 200, body: { due, basis: 'general growth cycles — recommend a look, never a diagnosis' } };
+      const unsaved = skipWrites ? due.reduce((n, p) => n + p.forecasts.length, 0) : 0;
+      if (unsaved > 0) noteNotSaved('tree.next_due_forecast', unsaved);
+      return {
+        status: 200,
+        body: {
+          due, basis: 'general growth cycles — recommend a look, never a diagnosis',
+          ...(skipWrites ? { saved: false, line: READ_ONLY_LINE } : {}),
+        },
+      };
     },
 
     /** GET /api/brief/audio — the §3.17 SPOKEN brief (MP3). 503 until the TTS key lands. */
@@ -630,6 +692,9 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       }
       if (!(await source.getTracking())) return { status: 403, body: { error: 'tracking_off' } };
       if (!withinWorkingHours(now)) return { status: 403, body: { error: 'after_hours' } };
+      // R-READONLY: the phone's timer pings on its own — refused by name and
+      // counted, before the write door. A 503 the phone ignores until its next tick.
+      if (readOnly()) return readOnlyRefusal('location_ping');
       const accuracyM = Number(body.accuracyM);
       await source.recordPing({ lat, lng, ...(Number.isFinite(accuracyM) ? { accuracyM } : {}) });
       return { status: 200, body: { ok: true } };
@@ -690,16 +755,28 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
         windowPings,
         located.map((s) => ({ id: s.id, kind: s.kind, lat: s.lat, lng: s.lng, timeIso: s.timeIso })),
       );
+      // R-READONLY: a GET must never fail on the write door. In read-only the
+      // visits are still READ and shown; the stamp is skipped, counted and said.
+      const skipWrites = readOnly();
+      let unsavedVisits = 0;
       if (source.markVisited) {
         for (const c of checks) {
           const stop = located.find((s) => s.id === c.stopId);
           if (c.visited === true && c.firstSeenIso && stop?.kind === 'estimate') {
+            if (skipWrites) { unsavedVisits++; continue; }
             await source.markVisited(c.stopId, c.firstSeenIso);
           }
         }
       }
+      if (unsavedVisits > 0) noteNotSaved('estimate.visited_at', unsavedVisits);
       const unlocatable = stops.filter((s) => s.lat == null || s.lng == null).map((s) => ({ stopId: s.id, visited: 'no_data' as const }));
-      return { status: 200, body: { checks: [...checks, ...unlocatable], pingCount: windowPings.length } };
+      return {
+        status: 200,
+        body: {
+          checks: [...checks, ...unlocatable], pingCount: windowPings.length,
+          ...(skipWrites ? { saved: false, line: READ_ONLY_LINE } : {}),
+        },
+      };
     },
 
     /** GET /api/review/backlog — §29: the logged conversations awaiting review. */
@@ -1539,6 +1616,9 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
         try {
           const [crew, certs] = await Promise.all([source.activeCrew(), source.certifications()]);
           certProblems = findCertProblems(crew, certs, todayEt);
+          // R-READONLY made the real (empty) roster readable: nobody to check is
+          // not "everyone is current". Named, so the board never reads all-clear.
+          if (crew.length === 0) blindSpots.push('Crew roster — nobody is on it yet, so there is no one to check. This is not an all-clear.');
         } catch {
           blindSpots.push('Certifications — could not read the crew or certification records just now. Arbo cannot check who is current.');
         }
@@ -2336,6 +2416,14 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
     /** GET /api/agents/runs — §8A.6g audit visibility: what the agents did. */
     async agentRuns(limit = 20): Promise<ApiResult> {
       if (!source.ready() || !source.agentRuns) return { status: 503, body: { error: gap(source.agentRuns) } };
+      // R-READONLY: the runs shown are this process's own, kept in memory and
+      // NOT saved — the body says so, so the tile never reads as a saved log.
+      if (readOnly()) {
+        return {
+          status: 200,
+          body: { runs: await source.agentRuns(limit), runLog: 'not_saved_read_only', line: 'Read-only: the agents ran and reported, but their run log was not saved. These runs are kept in memory until the next deploy.' },
+        };
+      }
       return { status: 200, body: { runs: await source.agentRuns(limit) } };
     },
   };

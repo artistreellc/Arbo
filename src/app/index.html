@@ -780,6 +780,26 @@ const el = (tag, cls, text) => {
 
 let KEY = localStorage.getItem('arborKey') || '';
 
+// R-READONLY: the one plain line for a tap that would have saved while Arbo is read-only.
+const READ_ONLY_LINE = 'Read-only: Arbo can look but not save. Nothing was written.';
+// Said once, wherever the tap was — some cards word their own failures, and
+// none of them may leave Mike guessing why nothing saved.
+let readOnlyToastTimer = null;
+function readOnlyToast(text) {
+  let t = document.getElementById('toast');
+  if (!t) {
+    t = el('div');
+    t.id = 'toast';
+    t.setAttribute('role', 'status');
+    t.setAttribute('aria-live', 'polite');
+    document.body.appendChild(t);
+  }
+  t.textContent = text;
+  t.classList.add('show');
+  clearTimeout(readOnlyToastTimer);
+  readOnlyToastTimer = setTimeout(() => t.classList.remove('show'), 5000);
+}
+
 async function api(path, opts) {
   const res = await fetch(path, {
     method: (opts && opts.method) || 'GET',
@@ -788,6 +808,7 @@ async function api(path, opts) {
   });
   if (res.status === 401) throw Object.assign(new Error('unauthorized'), { code: 401 });
   const body = await res.json().catch(() => ({}));
+  if (!res.ok && body.error === 'read_only') readOnlyToast(typeof body.line === 'string' ? body.line : READ_ONLY_LINE);
   // A refusal the server words for a person (body.line) rides along, so the screen can say it.
   if (!res.ok) throw Object.assign(new Error(body.error || 'error'), { code: res.status, line: typeof body.line === 'string' ? body.line : null });
   return body;
@@ -802,13 +823,14 @@ function state(title, msg) {
 
 // ---------- Feed state: ONE wording for a read that failed (§1B) ----------
 // "We couldn't read it" is never "there's nothing there". Never word a failed read as 'empty', 'none' or 'no X yet'.
-let LINKS = null; // GET /health dataLinks: 'live' | 'cut' | 'simulation' | 'unknown'; null until it answers
+let LINKS = null; // GET /health dataLinks: 'live' | 'readonly' | 'cut' | 'simulation' | 'unknown'; null until it answers
 const LINKS_READY = api('/health').then((h) => { LINKS = h.dataLinks || 'unknown'; document.documentElement.dataset.links = LINKS; return LINKS; }).catch(() => null);
 function feedKind(e) { // 'cut' | 'sim' | 'unset' | 'unread'
   if (!e || !e.code) return 'unread'; // no signal / fetch failed
   if (e.code === 503) {
     if (e.message === 'not_simulated') return 'sim';
-    if (e.message === 'db_not_configured') return LINKS === 'live' ? 'unset' : 'cut';
+    // Live and read-only both read the database: no database there is "not set up", never a cut.
+    if (e.message === 'db_not_configured') return LINKS === 'live' || LINKS === 'readonly' ? 'unset' : 'cut';
     if (e.message === 'link_cut') return 'cut';
     if (e.message === 'not_built' || /_(not_configured|not_wired|not_started|missing)$/.test(e.message)) return 'unset';
   }
@@ -825,6 +847,8 @@ function feedLine(e, what, tail) { const k = feedKind(e); return el('div', 'feed
 function feedState(e, what, notWhat, retry) { const k = feedKind(e); return state(what + ' — ' + FEED_WORD[k], FEED_SAYS[k] + (k === 'unread' ? ' ' + (retry || RETRY) : '') + ' This is not ' + (notWhat || 'an empty list') + '.'); }
 function saveFailText(e) {
   if (e && e.code === 401) { showKeywall(); return 'Not saved — Arbo needs the key again.'; }
+  // Refused because Arbo is read-only: said in the server's own words, never "the server did not accept it".
+  if (e && e.message === 'read_only') return e.line || READ_ONLY_LINE;
   const k = feedKind(e);
   const why = !e || !e.code ? 'Arbo couldn’t reach the server' : { cut: 'this data link is cut on purpose', sim: 'this is not part of the practice data', unset: 'this is not set up on the server yet', unread: 'the server did not accept it' }[k];
   return 'Not saved — ' + why + '. Nothing was written.';
@@ -843,10 +867,11 @@ function showSaveFail(box, e) { const n = box.querySelector(':scope > .save-err'
 //     N OPEN TASKS, SIZE UNKNOWN, CARDS UNKNOWN, BELOW AVERAGE, WAITING ON YOU, IN RPA, FOLLOW-UP, NO-SHOW SAVE,
 //     a non-power CALL FIRST, an unknown crew role, NOT CONNECTED, REFUSED (after Bouncie’s last update), DROPPED,
 //     the assistant's EMAIL and TEXT asks, ASKED YOU, an unknown kind of ask
-//   good = READ, OK, GOOD, SOURCED, QUALIFIED, WIRED, OPEN, UP, ABOVE AVERAGE, WEEK DONE, REVIEWED, CONNECTED, ON (the assistant), APPROVED
+//   good = READ, OK, GOOD, SOURCED, QUALIFIED, WIRED, OPEN, UP, ABOVE AVERAGE, WEEK DONE, REVIEWED, CONNECTED, ON (the assistant), APPROVED,
+//     READ-ONLY (a data link Arbo may read)
 //   info = CUT / LINK CUT, NOT SIMULATED, NOT RUN, NOT BUILT, NO OVERLAY — VERIFY W/ CITY, JOB, ESTIMATE, FIRST-TIMER,
 //     REPEAT, SPANISH SPEAKER, SPAM, COOL, OFF ROSTER, AT AVERAGE, NOT ENOUGH DATA, RENEWAL DUE, SEASONAL, REVIEW ASK,
-//     COMING DUE (growth nudge), + PROOF OF INSURANCE, REFUSED (someone else knocking), and every identity tag
+//     COMING DUE (growth nudge), + PROOF OF INSURANCE, REFUSED (someone else knocking), OLDER LEAD, and every identity tag
 //     (city, channel, line, job type, role, source, money amount, counts, study stages other than WAITING ON YOU),
 //     the assistant's DRIVE, CALENDAR and
 //     OTHER asks, OFF (the assistant), DENIED, DECIDED
@@ -1072,9 +1097,11 @@ async function inboxIntentPanel() {
         conv.disabled = true;
         try { await api('/api/inbox/convert', { method: 'POST', body: { threadId: it.threadId } }); }
         catch (e) {
-          c.appendChild(el('div', 'storm-muted', e.message === 'links_cut'
-            ? 'Data links are cut — nothing to convert into yet. Nothing was changed.'
-            : 'Conversion lands with the links-live build. Nothing was changed.'));
+          c.appendChild(el('div', 'storm-muted', e.message === 'read_only'
+            ? (e.line || READ_ONLY_LINE)
+            : e.message === 'links_cut'
+              ? 'Data links are cut — nothing to convert into yet. Nothing was changed.'
+              : 'Conversion lands with the links-live build. Nothing was changed.'));
         }
         conv.disabled = false;
       };
@@ -1951,6 +1978,10 @@ async function renderToday() {
   v.replaceChildren();
   v.appendChild(buildHero());
   v.appendChild(buildSystems());
+  // R-READONLY: one plain line while Arbo reads real records and saves nothing.
+  const roSlot = el('div', 'slot plain');
+  v.appendChild(roSlot);
+  LINKS_READY.then(() => { if (LINKS === 'readonly') roSlot.appendChild(el('div', 'storm-muted', 'Read-only: Arbo is reading your real records and saving nothing. Anything that would save says so.')); });
   heroLoops();
   const stormSlot = el('div', 'slot plain');
   v.appendChild(stormSlot);
@@ -2041,6 +2072,8 @@ async function renderToday() {
   }).catch((e) => { if (e.code !== 401) tileWhy(dueTile, FEED_TAG[feedKind(e)]); });
   api('/api/agents/runs?limit=5').then((r) => {
     setTile(agentTile, r.runs.length, r.runs.some(x => x.status === 'error') ? 'warn' : 'ok-t');
+    // R-READONLY: these runs live in memory and were not saved — the tile says so.
+    if (r.runLog === 'not_saved_read_only') tileWhy(agentTile, 'not saved — read-only');
   }).catch((e) => { if (e.code !== 401) tileWhy(agentTile, FEED_TAG[feedKind(e)]); });
   api('/api/money').then((m) => {
     // Overdue is past-due invoices, the legal gate's held ones included —
@@ -2312,12 +2345,24 @@ async function renderLeads() {
     v.appendChild(state('No new leads', 'Nothing waiting right now.'));
     return;
   }
+  // R-READONLY: a lead older than 14 days (the server marks it `older`) is
+  // never new work: it sits below the rest under its own heading, with its
+  // date, and carries no alarm, no call-back label and no Call back button.
+  // Whether anyone is contacted is Mike's call, never Arbo's.
+  if (!data.leads.some((l) => !l.older)) v.appendChild(state('No new leads', 'Nothing new waiting right now. Older leads are below, for the record.'));
   const rank = { hot: 0, warm: 1, cool: 2 };
   const leads = [...data.leads].sort((a, b) =>
+    (!!a.older - !!b.older) ||
     (b.isEmergency - a.isEmergency) || (b.needsCallback - a.needsCallback) ||
     (rank[a.quality.priority] - rank[b.quality.priority]) ||
     (new Date(b.createdAt) - new Date(a.createdAt)));
+  let olderTitled = false;
   for (const lead of leads) {
+    if (lead.older && !olderTitled) {
+      olderTitled = true;
+      v.appendChild(el('div', 'panel-title', 'Older leads — more than 14 days old'));
+      v.appendChild(el('div', 'storm-muted', 'Shown for the record with the day each came in. Not new work, and nothing here asks you to call anyone.'));
+    }
     const c = el('div', 'card' + (lead.isEmergency ? ' emergency' : '') + (lead.needsCallback ? ' callback' : ''));
     c.id = 'lead-' + lead.id; // where Today's emergency card lands (openLead)
     if (lead.needsCallback) c.appendChild(el('div', 'cb-label', 'Call back needed'));
@@ -2325,15 +2370,22 @@ async function renderLeads() {
     top.appendChild(el('div', 'who', lead.name || 'Unknown caller'));
     top.appendChild(el('div', 'when', fmtWhen(lead.createdAt)));
     c.appendChild(top);
+    if (lead.older) {
+      // The day it came in is the card's own time, top right (fmtWhen); this says how old that is.
+      c.appendChild(el('div', 'scope', 'Older lead — came in ' + plural(lead.ageDays || 0, 'day') + ' ago.'
+        + (lead.filedAsEmergency ? ' Filed as an emergency then — not a live alarm.' : '')));
+    }
     if (lead.city) c.appendChild(el('div', 'addr', lead.city + (lead.zip ? ' · ' + lead.zip : '')));
     if (lead.history) c.appendChild(el('div', 'scope', '' + lead.history));
     // §1B: a past-work read that failed is named — a missing line is not "no history".
-    else if (lead.historyUnreadable) c.appendChild(feedLine(null, 'Past work'));
+    // R-READONLY: a link cut on purpose is said as "cut", never "couldn't read it — try again".
+    else if (lead.historyUnreadable) c.appendChild(feedLine(lead.historyCut ? { code: 503, message: 'link_cut' } : null, 'Past work'));
     if (lead.details) c.appendChild(el('div', 'scope', lead.details));
     // Line 1 is triage + who they are; EMERGENCY already outranks HOT, so an
     // emergency lead carries no second red-ish chip beside it.
     const b = el('div', 'badges');
     if (lead.isEmergency) b.appendChild(chip('EMERGENCY', 'alarm'));
+    else if (lead.older) b.appendChild(chip('OLDER LEAD', 'info')); // its age, not a HOT/WARM/COOL read of today
     else b.appendChild(chip(lead.quality.priority.toUpperCase(), { hot: 'stop', warm: 'watch', cool: 'info' }[lead.quality.priority]));
     if (lead.isFirstTimer === true) b.appendChild(chip('FIRST-TIMER', 'info'));
     if (lead.isFirstTimer === false) b.appendChild(chip('REPEAT', 'info'));
@@ -2348,11 +2400,12 @@ async function renderLeads() {
     if (pb) { const pr = el('div', 'badges'); pr.style.marginTop = '6px'; pr.appendChild(pb); c.appendChild(pr); }
     // §1B: a permit read that FAILED is not "screen pending". It is named in the
     // feed-state words under the badges — never as a permit badge (wording is Mike's, X6).
-    if (lead.permitUnreadable) c.appendChild(feedLine(null, 'Permit screen'));
+    if (lead.permitUnreadable) c.appendChild(feedLine(lead.permitCut ? { code: 503, message: 'link_cut' } : null, 'Permit screen'));
     // §9 one-tap actions: call the human back, or file the lead. ARBOR never
     // calls anyone itself — the phone app does, with Mike's thumb on it.
     const row = el('div', 'actions');
-    if (lead.phone) {
+    // An older lead carries no Call back button: contacting anyone is Mike's call (R-READONLY).
+    if (lead.phone && !lead.older) {
       const call = el('a', 'callbtn', 'Call back');
       call.href = 'tel:' + lead.phone;
       // Its own line: beside two worded buttons it squeezed to "Call / back" at 390px.
@@ -4832,19 +4885,25 @@ async function buildSettings(v, gen) {
     if (gen !== settingsGen) return;
     // Three states, three sentences: simulation is never worded as cut or live.
     // Live is plain help text; simulation and a cut master are gaps, so they wear the feed-state look.
-    const masterLook = dl.master === 'sim' ? 'feed-state sim' : dl.master === 'live' ? 'storm-muted' : 'feed-state cut';
+    // R-READONLY is its own sentence too: real records on screen, nothing saved, never worded as live or cut.
+    const masterLook = dl.master === 'sim' ? 'feed-state sim' : dl.master === 'live' || dl.master === 'readonly' ? 'storm-muted' : 'feed-state cut';
     v.appendChild(el('div', masterLook, dl.master === 'sim'
       ? 'SIMULATION \u2014 every screen is showing fake SIM- records, except the Calendar, which is always your live Google Calendar. No real database is connected; the real links below stay CUT.'
-      : dl.master === 'live'
-        ? 'Master switch LIVE. A CUT link is a closed door, not empty data \u2014 each opens after its verification.'
-        : 'Master switch CUT \u2014 every link is closed whatever its own setting. A closed door is not empty data.'));
+      : dl.master === 'readonly'
+        ? 'Read-only: Arbo is reading your real records and saving nothing. A link marked CUT stays shut on purpose and says why.'
+        : dl.master === 'live'
+          ? 'Master switch LIVE. A CUT link is a closed door, not empty data \u2014 each opens after its verification.'
+          : 'Master switch CUT \u2014 every link is closed whatever its own setting. A closed door is not empty data.'));
     for (const l of dl.links) {
       const row = el('div', 'loc-strip');
-      row.appendChild(chip(l.state === 'open' ? 'OPEN' : 'CUT', l.state === 'open' ? 'good' : 'info')); // a status, not a switch
+      const readable = l.state === 'open' || l.state === 'read-only';
+      row.appendChild(chip(l.state === 'open' ? 'OPEN' : l.state === 'read-only' ? 'READ-ONLY' : 'CUT', readable ? 'good' : 'info')); // a status, not a switch
       const counts = l.rowCounts
         ? ' \u2014 ' + Object.entries(l.rowCounts).map(([t, n]) => t + ': ' + n).join(', ')
         : '';
-      row.appendChild(el('span', '', (LINK_LABEL[l.link] || l.link) + counts));
+      // A link kept cut in read-only says why, in the server's words.
+      const why = typeof l.reason === 'string' && l.reason ? ' \u2014 ' + l.reason : '';
+      row.appendChild(el('span', '', (LINK_LABEL[l.link] || l.link) + counts + why));
       v.appendChild(row);
     }
   } catch (e) {
@@ -5067,7 +5126,8 @@ function buildSystems() {
     const d = hl.dataLinks;
     // Cut and simulation are switches Mike set on purpose: grey, like every other
     // cut on the screen. Anything else Arbo does not know stays amber.
-    SYS('links', d === 'live' ? 'ok' : d === 'cut' || d === 'simulation' ? 'cut' : 'warn', d === 'live' ? 'live' : d === 'cut' ? 'cut on purpose' : d);
+    // Read-only is a switch Mike set on purpose too: grey, and worded, never 'live'.
+    SYS('links', d === 'live' ? 'ok' : d === 'cut' || d === 'simulation' || d === 'readonly' ? 'cut' : 'warn', d === 'live' ? 'live' : d === 'cut' ? 'cut on purpose' : d === 'readonly' ? 'read-only' : d);
   }).catch(() => SYS('links', 'warn', 'unreadable')); // unknown is amber, never red
   return row;
 }

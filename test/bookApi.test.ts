@@ -124,7 +124,9 @@ describe('lead actions: status taps + call-back surfacing', () => {
       propertyId: null, city: null, zip: null, isFirstTimer: null, permit: null, history: null,
     });
     const api = createApi({ ...base, newLeads: async () => [lead('a', 'voicemail'), lead('b')] });
-    const body = (await api.leads()).body as { leads: Array<{ id: string; needsCallback: boolean; phone: string | null }> };
+    // Read on the day they came in: a lead older than 14 days owes no call
+    // back (R-READONLY, src/ops/leadAge.ts) — that rule has its own test.
+    const body = (await api.leads(25, new Date('2026-08-01T14:00:00Z'))).body as { leads: Array<{ id: string; needsCallback: boolean; phone: string | null }> };
     expect(body.leads.find((l) => l.id === 'a')!.needsCallback).toBe(true);
     expect(body.leads.find((l) => l.id === 'b')!.needsCallback).toBe(false);
     expect(body.leads[0]!.phone).toBe('+17575550100');

@@ -127,9 +127,10 @@ describe('Leads screen (source pins)', () => {
 
   it('an unreadable permit or history read gets a feed line, and no new permit badge word', () => {
     expect(leads).toContain('lead.permitUnreadable');
-    expect(leads).toContain("feedLine(null, 'Permit screen')");
+    // R-READONLY: a link kept cut on purpose is said as cut — a failed read keeps the null (unread) form.
+    expect(leads).toContain("feedLine(lead.permitCut ? { code: 503, message: 'link_cut' } : null, 'Permit screen')");
     expect(leads).toContain('lead.historyUnreadable');
-    expect(leads).toContain("feedLine(null, 'Past work')");
+    expect(leads).toContain("feedLine(lead.historyCut ? { code: 503, message: 'link_cut' } : null, 'Past work')");
     // Permit wording is Mike's (X6) — the read failure is a feed state, not a badge.
     expect(html).not.toContain('PERMIT CHECK UNREADABLE');
   });

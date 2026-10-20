@@ -887,3 +887,53 @@ agents still cannot send or spend; deploys stay manual.
 
 *Carried by:* `src/integrations/bouncie.ts`, `src/server.ts` (the Bouncie
 blocks), `src/app/index.html` (Settings card, Fleet line), `test/bouncie.test.ts`.
+
+## R-READONLY (number assigned at merge) — Arbo and its agents may READ the data; nothing is written (Mike, 2026-10-20)
+
+*Draft, filed with the read-only build — the number is assigned when it merges.*
+
+Mike, verbatim: *"give arbo and its agents read only data access and run
+systems checks every couple hours while you contuin to build"*.
+
+What this changes:
+1. **A third exact value for the master switch: `ARBO_DATA_LINKS=readonly`.**
+   Arbo and its agents READ Mike's records through the one door with no
+   `ARBO_LINK_*` variable. Exactly `readonly` — any other spelling stays CUT,
+   and it can never be taken for `live`. Turning it on or off is one Railway
+   variable and a manual deploy (`docs/DATA_LINKS.md`).
+2. **Nothing is written, anywhere — enforced at the door, not by remembering.**
+   The read-only client hands out `from` → `select` and nothing else; every
+   write verb and every other client surface (rpc, schema, storage, functions,
+   realtime, auth) is refused by name, and its fetch lets only GET/HEAD leave.
+   A refused tap says: *"Read-only: Arbo can look but not save. Nothing was
+   written."*
+3. **The agents still run their sweeps** (R4: sweeps are read-only by rule)
+   and say on every tick that their run log and events were not saved; their
+   runs show in the app from memory, marked not saved.
+
+Defaults Claude used where Mike did not say (Mike may change any):
+- **Four links stay CUT even in read-only**, because reading them would put a
+  false or misleading state on a screen: *calls* (Sona's calls live in Quo —
+  empty tables would read "no calls yet", R21); *photos* (nothing files a photo
+  yet); *jobs* (the 11 mistaken rows, R29 — until a count check shows the
+  delete ran); *permits* (`permit_correspondence` holds rows no Arbo code
+  writes — unexplained, so shut per DATA_LINKS step 3). Opening one is a
+  one-line change after Mike rules.
+- **A lead older than 14 days is an "older lead"**: no EMERGENCY alarm, no
+  tab badge, no "Call back needed", no open loop, no Call back button, and
+  Talk does not list it. It shows on Leads under its own heading with its date.
+  Whether anyone is contacted is Mike's call, never Arbo's.
+- The hourly sweep keeps its hourly clock; "every couple hours" is read as the
+  cadence of the systems checks run while building, not a change to the app.
+
+What did NOT move: §3 — nothing is imported; sweeps stay read-only (R4); email
+never; calendar edits never (R18 holds only — the R18 hold path is Google, not
+this database, and is not switched by this mode); texting only via R22 behind
+`inspectMessage` and Mike's tap; logs stay counts-and-ids (§4.3); the `/api`
+door still needs `APP_ACCESS_KEY` (read-only real rows are never keyless);
+the crew door stays shut without `CREW_ACCESS_KEY`; deploys stay manual.
+
+*Carried by:* `src/db/client.ts` (`dataLinksReadOnly`, `canWrite`,
+`readOnlyDb`), `src/db/links.ts` (`READ_ONLY_KEPT_CUT`, `ReadOnlyError`),
+`src/db/notSaved.ts`, `src/ops/leadAge.ts`, `test/readOnlyMode.test.ts`,
+`test/dataLinks.test.ts`.

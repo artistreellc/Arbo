@@ -201,6 +201,22 @@ describe('Settings in the shared vocabulary (ST0, ST4)', () => {
     expect(liveLine.textContent).toBe('Master switch LIVE. A CUT link is a closed door, not empty data — each opens after its verification.');
   });
 
+  // R-READONLY: its own sentence — never "Master switch CUT" over real records, never "LIVE" over a door that cannot save.
+  it('the master line in read-only is one plain sentence; READ-ONLY rows are good, kept-cut rows say why', async () => {
+    const { v } = await build({ '/api/links': { master: 'readonly', links: [
+      { link: 'leads', state: 'read-only', rowCounts: { lead: 37, campaign: 0 } },
+      { link: 'calls', state: 'cut', reason: 'Sona’s calls live in Quo.' },
+    ] } });
+    const line = withText(v, 'Read-only:')!;
+    expect(line.className).toBe('storm-muted');
+    expect(line.textContent).toBe('Read-only: Arbo is reading your real records and saving nothing. A link marked CUT stays shut on purpose and says why.');
+    expect(texts(v)).not.toContain('Master switch CUT');
+    const chips = all(v).filter((n) => n.tone).map((n) => n.textContent + ':' + n.tone);
+    expect(chips.slice(0, 2)).toEqual(['READ-ONLY:good', 'CUT:info']);
+    expect(texts(v)).toContain('Leads — lead: 37, campaign: 0');
+    expect(texts(v)).toContain('Call & text logs — Sona’s calls live in Quo.');
+  });
+
   it('Google not set up names the two variables Mike sets, with a watch chip', async () => {
     const { v } = await build({ '/api/google/connect': { fail: { code: 503, message: 'not_built' } } });
     expect(all(v).find((n) => n.textContent === 'NOT SET UP')!.tone).toBe('watch');

@@ -49,7 +49,8 @@
 // the business write it rides on (§1B graceful degradation) — callers use
 // emitSafe() on hot paths and get an honest boolean back.
 
-import { getDb, hasDb } from '../db/client.js';
+import { canWrite, getDb, hasDb } from '../db/client.js';
+import { noteNotSaved } from '../db/notSaved.js';
 
 /** The core event names (§8A.6b). Emit others freely; these are the spine. */
 export const CoreEvents = {
@@ -103,6 +104,12 @@ export async function emitSafe(
   source: string,
 ): Promise<boolean> {
   if (!hasDb()) return false;
+  // R-READONLY: not written, and COUNTED by name (event type only — never the
+  // payload), so "nothing raised" is never a silent zero (§1B).
+  if (!canWrite()) {
+    noteNotSaved('event');
+    return false;
+  }
   try {
     await emitEvent(type, payload, source);
     return true;
@@ -144,19 +151,25 @@ async function setCursor(consumer: string, seq: number): Promise<void> {
  * Consume new events for a named consumer. The handler runs once per event in
  * order; the cursor advances only past events the handler completed, so a
  * crash mid-batch re-delivers (at-least-once — consumers must be idempotent).
+ *
+ * R-READONLY: the events are still READ and handled, but the cursor is not
+ * written — `cursorSaved: false` says so, and the next run reads the same
+ * batch again (once per sweep, never a retry loop).
  */
 export async function consumeNew(
   consumer: string,
   handler: (e: BusEvent) => Promise<void>,
   batch = 50,
-): Promise<{ processed: number }> {
+): Promise<{ processed: number; cursorSaved: boolean }> {
+  const save = canWrite();
   const start = await getCursor(consumer);
   const events = await eventsAfter(start, batch);
   let processed = 0;
   for (const e of events) {
     await handler(e);
-    await setCursor(consumer, e.seq);
+    if (save) await setCursor(consumer, e.seq);
     processed++;
   }
-  return { processed };
+  if (!save && processed > 0) noteNotSaved('event_cursor');
+  return { processed, cursorSaved: save };
 }

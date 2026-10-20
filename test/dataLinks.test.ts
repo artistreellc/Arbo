@@ -111,6 +111,50 @@ describe('the data-link switch', () => {
     expect(() => c.getDb()).toThrow(/Nothing was deleted/);
   });
 
+  // ── R-READONLY (Mike, 2026-10-20: "give arbo and its agents read only data
+  // access"): a third exact value. It reads, it never writes, and it can
+  // never be mistaken for live. Every near miss of the spelling stays CUT.
+  it('opens READS only on the exact string "readonly" — and is never live, never writable', async () => {
+    const c = await loadWithCreds('readonly');
+    expect(c.dataLinksReadOnly()).toBe(true);
+    expect(c.dataLinksLive()).toBe(false); // never mistaken for live
+    expect(c.dataLinksSim()).toBe(false);
+    expect(c.hasDb()).toBe(true); // it can READ
+    expect(c.canWrite()).toBe(false); // and it can never write
+    expect(() => c.getDb()).not.toThrow(); // the read-only door, not a refusal
+  });
+
+  it.each(['READONLY', 'ReadOnly', ' readonly', 'readonly ', 'read-only', 'read_only', 'read only', 'ro', ''])(
+    'stays CUT for %o — only the exact string "readonly" opens reads',
+    async (value) => {
+      const c = await loadWithCreds(value);
+      expect(c.dataLinksReadOnly()).toBe(false);
+      expect(c.dataLinksLive()).toBe(false);
+      expect(c.hasDb()).toBe(false);
+      expect(c.canWrite()).toBe(false);
+      expect(() => c.getDb()).toThrow(/links are CUT/i);
+      const links = await import('../src/db/links.js');
+      expect(links.linkOpen('leads')).toBe(false);
+    },
+  );
+
+  it('"live" is unchanged: it reads AND writes, and is not read-only', async () => {
+    const c = await loadWithCreds('live');
+    expect(c.dataLinksLive()).toBe(true);
+    expect(c.dataLinksReadOnly()).toBe(false);
+    expect(c.hasDb()).toBe(true);
+    expect(c.canWrite()).toBe(true);
+  });
+
+  it('"sim" is unchanged: no database at all, nothing to read or write', async () => {
+    const c = await loadWithCreds('sim');
+    expect(c.dataLinksSim()).toBe(true);
+    expect(c.dataLinksReadOnly()).toBe(false);
+    expect(c.hasDb()).toBe(false);
+    expect(c.canWrite()).toBe(false);
+    expect(() => c.getDb()).toThrow(/links are CUT/i);
+  });
+
   it('never reports the database as unconfigured just because the link is cut', async () => {
     // The boot line and /health both read this. Collapsing "configured but
     // cut" into "not configured" would be the §1B lie in the one place an

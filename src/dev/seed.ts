@@ -58,7 +58,7 @@
 // file is meant to prevent (§1B: a made-up number that reads as real is
 // worse than no number).
 
-import { getDb, hasDb } from '../db/client.js';
+import { canWrite, getDb, hasDb } from '../db/client.js';
 
 /** The reserved fictional phone block. Never a real subscriber. */
 const simPhone = (n: number) => `757-555-01${String(n).padStart(2, '0')}`;
@@ -107,6 +107,8 @@ async function isEmpty(): Promise<{ empty: boolean; found: Record<string, number
 
 export async function seedSimulation(): Promise<SeedResult> {
   if (!hasDb()) return { wrote: false, reason: 'db_not_configured', counts: {} };
+  // R-READONLY: a read-only database is never seeded — refused by name before a count is read.
+  if (!canWrite()) return { wrote: false, reason: 'read_only', counts: {} };
 
   const { empty, found } = await isEmpty();
   if (!empty) {

@@ -42,7 +42,7 @@
 */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { env } from '../env.js';
-import { linkForTable, linkOpen, LinkCutError } from './links.js';
+import { linkForTable, linkOpen, LinkCutError, ReadOnlyError } from './links.js';
 
 // The ARBOR backend talks to Supabase with the SERVICE ROLE key only (§4.3).
 // The service role bypasses RLS; no other key can read customer PII. This key
@@ -50,6 +50,10 @@ import { linkForTable, linkOpen, LinkCutError } from './links.js';
 
 let _client: SupabaseClient | null = null;
 let _guarded: SupabaseClient | null = null;
+// Read-only mode never shares the live client: its own client, its own fetch
+// (GET/HEAD only), its own door. See readOnlyDb() below.
+let _roClient: SupabaseClient | null = null;
+let _roGuarded: SupabaseClient | null = null;
 
 /**
  * THE DATA LINK SWITCH — owner instruction, 2026-08-03. Mike: "cut all data
@@ -89,11 +93,46 @@ export function dataLinksSim(): boolean {
 }
 
 /**
- * True when the DB is configured AND the data link is open. Every repository
- * and every API handler gates on this, so one switch stops the whole app from
- * reaching real data.
+ * READ-ONLY mode (R-READONLY). Mike, 2026-10-20, verbatim: "give arbo and its
+ * agents read only data access and run systems checks every couple hours
+ * while you contuin to build".
+ *
+ * Exactly 'readonly' and nothing else — 'READONLY', ' readonly', 'read-only'
+ * leave the link CUT, the same fail-closed rule as 'live'. 'live', 'sim' and
+ * 'readonly' are three different strings, so a value is only ever one of
+ * them: read-only can never be taken for live, and never sits beside fake rows.
+ *
+ * In read-only Arbo READS the named links (every one except READ_ONLY_KEPT_CUT
+ * in links.ts) through the same one door, and every WRITE is refused at that
+ * door by name (ReadOnlyError) — see getDb() and readOnlyDb().
+ */
+export function dataLinksReadOnly(): boolean {
+  return process.env.ARBO_DATA_LINKS === 'readonly';
+}
+
+/**
+ * True when the DB is configured AND the master lets Arbo READ it — exactly
+ * 'live' or exactly 'readonly'. Every repository and every API handler gates
+ * on this, so one switch stops the whole app from reaching real data.
+ *
+ * This is "can read", not "can write". A WRITER checks canWrite(): in
+ * read-only mode hasDb() is true and canWrite() is false. (hasDb() must stay
+ * true in read-only: the /api gate opens without a key only while it is
+ * false — server.ts apiAuthorized — and real rows must never be keyless.)
  */
 export function hasDb(): boolean {
+  if (!dataLinksLive() && !dataLinksReadOnly()) return false;
+  return Boolean(env.supabase.url && env.supabase.serviceRoleKey);
+}
+
+/**
+ * True only when Arbo may WRITE: the master exactly 'live' and the DB
+ * configured. Read-only, simulation and cut are never writable. A background
+ * writer checks this and degrades to a named "not saved — read-only" state
+ * (src/db/notSaved.ts) instead of meeting the door; a writer that forgets is
+ * refused at the door anyway.
+ */
+export function canWrite(): boolean {
   if (!dataLinksLive()) return false;
   return Boolean(env.supabase.url && env.supabase.serviceRoleKey);
 }
@@ -109,9 +148,9 @@ export function getDb(): SupabaseClient {
   // only door to a real table. A caller that forgets to check hasDb() must
   // still be unable to reach live data by accident — and the message says
   // which of the two reasons it was, never a vague failure.
-  if (!dataLinksLive()) {
+  if (!dataLinksLive() && !dataLinksReadOnly()) {
     throw new Error(
-      'Data links are CUT (ARBO_DATA_LINKS is not "live"). The app is not reading or '
+      'Data links are CUT (ARBO_DATA_LINKS is not "live" or "readonly"). The app is not reading or '
       + 'writing real data until the rough build is finished. Nothing was deleted.',
     );
   }
@@ -120,6 +159,10 @@ export function getDb(): SupabaseClient {
       'Supabase not configured: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env',
     );
   }
+  // R-READONLY: read-only takes its own door and never the live client below.
+  // Checked BEFORE the live client is even built, so in read-only mode a
+  // writable client does not exist in this process to be reached by accident.
+  if (dataLinksReadOnly()) return readOnlyDb();
   if (!_client) {
     _client = createClient(env.supabase.url as string, env.supabase.serviceRoleKey as string, {
       auth: { persistSession: false, autoRefreshToken: false },
@@ -148,4 +191,90 @@ export function getDb(): SupabaseClient {
     }) as SupabaseClient;
   }
   return _guarded;
+}
+
+/**
+ * THE READ-ONLY DOOR (R-READONLY). Three layers, so a caller that forgets to
+ * check canWrite() still cannot write — the guard lives here, like the link
+ * guard, not in each caller:
+ *
+ *  1. The client hands out `from` and nothing else. rpc, schema, storage,
+ *     functions, channel/realtime, auth, rest — every other property is
+ *     refused by name (ReadOnlyError).
+ *  2. A table passes the SAME per-link check as live (linkOpen — in read-only
+ *     that is every link except READ_ONLY_KEPT_CUT), then hands out `select`
+ *     and nothing else: insert / upsert / update / delete are refused by
+ *     name. Every table a select EMBEDS passes the link check too, so a link
+ *     kept cut stays cut inside another link's read (jobs:job(count)).
+ *  3. The wire: this client's fetch lets only GET and HEAD leave. A write
+ *     path nobody thought of is refused before any request goes out.
+ */
+function readOnlyDb(): SupabaseClient {
+  if (!_roClient) {
+    _roClient = createClient(env.supabase.url as string, env.supabase.serviceRoleKey as string, {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: readOnlyFetch },
+    });
+  }
+  if (!_roGuarded) {
+    const raw = _roClient;
+    _roGuarded = new Proxy(raw, {
+      get(target, prop) {
+        if (prop === 'from') return (table: string) => readOnlyTable(target, table);
+        // Not doors: await asks for `then`, inspection asks for symbols.
+        // Answering undefined keeps the client from posing as a promise and opens nothing.
+        if (prop === 'then' || typeof prop === 'symbol') return undefined;
+        throw new ReadOnlyError(String(prop));
+      },
+    }) as SupabaseClient;
+  }
+  return _roGuarded;
+}
+
+/** One table, read-only: the link check, then `select` only. */
+function readOnlyTable(client: SupabaseClient, table: string) {
+  const link = linkForTable(table);
+  if (!link || !linkOpen(link)) throw new LinkCutError(table, link);
+  const builder = client.from(table);
+  return new Proxy(builder, {
+    get(target, prop) {
+      if (prop === 'select') {
+        return (...args: unknown[]) => {
+          assertEmbedsReadable(args[0]);
+          return Reflect.apply(target.select, target, args) as unknown;
+        };
+      }
+      if (prop === 'then' || typeof prop === 'symbol') return undefined;
+      throw new ReadOnlyError(String(prop), table, link);
+    },
+  });
+}
+
+// An embedded resource in a select: `name(`, `alias:name(`, `name!hint(`.
+// PostgREST names it by its table (jobs:job(count)) or by the foreign-key
+// column that points at it (property:property_id(zip) → property).
+const EMBED = /([A-Za-z_][A-Za-z0-9_]*)\s*(?:![A-Za-z0-9_]+)?\s*\(/g;
+
+/**
+ * Every embedded table must be readable too. A name this cannot map to a
+ * linked table is refused — fails closed, exactly like an unmapped root table.
+ */
+function assertEmbedsReadable(columns: unknown): void {
+  if (typeof columns !== 'string') return;
+  for (const m of columns.matchAll(EMBED)) {
+    const relation = m[1] as string;
+    // A known table stays itself; a foreign-key column (`property_id`) names the table it points at.
+    const table = (linkForTable(relation) !== null || !relation.endsWith('_id')) ? relation : relation.slice(0, -3);
+    const link = linkForTable(table);
+    if (!link || !linkOpen(link)) throw new LinkCutError(table, link);
+  }
+}
+
+/** The wire, read-only: GET and HEAD go out; every other method is refused before it leaves. */
+function readOnlyFetch(input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]): Promise<Response> {
+  // The method from init, else from a Request object, else GET (a bare URL or string is a GET).
+  const fromRequest = typeof input === 'object' && input !== null && 'method' in input ? input.method : undefined;
+  const method = String(init?.method ?? fromRequest ?? 'GET').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') return Promise.reject(new ReadOnlyError(`HTTP ${method}`));
+  return fetch(input, init);
 }

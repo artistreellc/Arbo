@@ -166,6 +166,13 @@ for code that never checked. Opening a link is still Mike's process, never an
 optimisation to make quietly — and connecting a link is NOT an import ruling:
 nothing new flows in without its own go.
 
+*Read-only mode (R-READONLY draft, Mike 2026-10-20: "give arbo and its agents
+read only data access"):* `ARBO_DATA_LINKS=readonly` — exactly — lets Arbo READ
+every link except the four kept cut (calls, photos, jobs, permits — reasons in
+`src/db/links.ts`), and refuses EVERY write at the door (`ReadOnlyError`, 503
+`read_only`). Writers check `canWrite()`, never `hasDb()` (which means "can
+read"). See `docs/DATA_LINKS.md`.
+
 ## Guardrails that live in code, not prose
 
 Never price · never diagnose · never promise a date · never claim a credential
@@ -234,7 +241,8 @@ instead of a false "crash". Keep it that way.
 
 **Then verify all three:**
 1. build log `git_ref` matches your SHA,
-2. `db connected` in the deploy log,
+2. `db connected` in the deploy log (or, in read-only mode, `db READ-ONLY
+   (ARBO_DATA_LINKS=readonly)` — see docs/DATA_LINKS.md),
 3. the live deployment has **`snapshotId: null`**.
 
 A provenance-less *snapshot* deployment has raced and won twice. A green

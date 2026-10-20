@@ -92,9 +92,11 @@ export async function runPermittingAgent(now = new Date()): Promise<PermittingSw
   const llm = env.anthropic.apiKey ? 'available' as const : 'not_configured' as const;
   try {
     let processed = 0;
-    await consumeNew('permitting-agent', async (_e: BusEvent) => {
+    const consumed = await consumeNew('permitting-agent', async (_e: BusEvent) => {
       processed++;
     });
+    // R-READONLY: the same batch is read again next run — said, not hidden.
+    const cursorNote = consumed.cursorSaved ? '' : ' cursor=not_saved_read_only';
 
     const since = new Date(now.getTime() - 14 * 86400_000).toISOString();
     const missing = await propertiesMissingScreens(since);
@@ -121,7 +123,7 @@ export async function runPermittingAgent(now = new Date()): Promise<PermittingSw
 
     await run.finish({
       status: 'ok',
-      outputSummary: `events=${processed} screens_missing=${missing.length} newly_flagged=${fresh.length} llm=${llm}`,
+      outputSummary: `events=${processed}${cursorNote} screens_missing=${missing.length} newly_flagged=${fresh.length} llm=${llm}`,
     });
     return {
       agent: 'permitting', eventsProcessed: processed, screensMissing: missing.length,

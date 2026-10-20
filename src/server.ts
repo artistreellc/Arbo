@@ -58,8 +58,10 @@ import { createLiveBrain } from './agents/brain.js';
 import { LearnDesk, catalog as simCatalog, type Decision } from './sim/learnDesk.js';
 import { boot } from './index.js';
 import { createApi, type DataSource, type ApiLeadInput } from './server/api.js';
-import { hasDb, dataLinksLive, dataLinksSim, dbConfigured, getDb } from './db/client.js';
-import { DATA_LINKS, LINK_NAMES, linkOpen, linkEnvVar, openLinks, LinkCutError } from './db/links.js';
+import { hasDb, canWrite, dataLinksLive, dataLinksSim, dataLinksReadOnly, dbConfigured, getDb } from './db/client.js';
+import { DATA_LINKS, LINK_NAMES, linkOpen, linkEnvVar, openLinks, readOnlyKeptCut, LinkCutError, ReadOnlyError, READ_ONLY_LINE } from './db/links.js';
+import { noteNotSaved, notSavedReport } from './db/notSaved.js';
+import { unsavedAgentRuns } from './binder/agentRun.js';
 import { WebhookIntake, createResendEmailFetcher } from './ops/webhooks.js';
 import { QuoIntake } from './ops/quoIntake.js';
 import { vendorLinked, vendorCutBody, cutVendorLinks } from './integrations/vendorLinks.js';
@@ -211,6 +213,8 @@ export function createServerSource(): DataSource {
 export function createLiveSource(): DataSource {
   return {
     ready: () => hasDb(),
+    // R-READONLY: read-only reads (ready) but never writes (canWrite).
+    canWrite: () => canWrite(),
     async stopsBetween(fromIso, toIso): Promise<StopInput[]> {
       const rows = await listStopsBetween(fromIso, toIso);
       return rows.map((r) => ({
@@ -237,10 +241,15 @@ export function createLiveSource(): DataSource {
       const propertyIds = [...new Set(rows.map((r) => r.property?.id).filter((id): id is string => Boolean(id)))];
       let permits: Awaited<ReturnType<typeof latestPermitsForProperties>>;
       let permitFailed = false;
+      // R-READONLY: leads can be open while permits is kept cut — that is a
+      // cut on purpose, said as one (not "couldn't read it, try again"), and
+      // not logged on every poll.
+      let permitCut = false;
       try {
         permits = await latestPermitsForProperties(propertyIds);
       } catch (err) {
-        console.error('[server] permit flag fetch failed:', err instanceof Error ? err.message : 'error');
+        permitCut = err instanceof LinkCutError;
+        if (!permitCut) console.error('[server] permit flag fetch failed:', err instanceof Error ? err.message : 'error');
         permits = new Map();
         permitFailed = true;
       }
@@ -248,10 +257,12 @@ export function createLiveSource(): DataSource {
       // and it is named the same way (historyUnreadable), never a silent blank.
       let history: Awaited<ReturnType<typeof latestHistoryForProperties>>;
       let historyFailed = false;
+      let historyCut = false;
       try {
         history = await latestHistoryForProperties(propertyIds);
       } catch (err) {
-        console.error('[server] history fetch failed:', err instanceof Error ? err.message : 'error');
+        historyCut = err instanceof LinkCutError;
+        if (!historyCut) console.error('[server] history fetch failed:', err instanceof Error ? err.message : 'error');
         history = new Map();
         historyFailed = true;
       }
@@ -277,8 +288,10 @@ export function createLiveSource(): DataSource {
             : null,
           // Only a lead WITH a property had a read that could fail.
           permitUnreadable: permitFailed && r.property != null,
+          ...(permitCut && r.property != null ? { permitCut: true } : {}),
           history: h ? { kind: h.kind, when: h.when, scope: h.scope, status: h.status } : null,
           historyUnreadable: historyFailed && r.property != null,
+          ...(historyCut && r.property != null ? { historyCut: true } : {}),
         };
       });
     },
@@ -424,7 +437,10 @@ export function createLiveSource(): DataSource {
     leakageWindow: () => leakageWindow(),
     logLeakage: (input) => createLeakageEvent(input),
     // §8A.6g audit surface + §8A.6b bus.
-    agentRuns: (limit) => listAgentRuns(limit),
+    // R-READONLY: no run is saved, so the saved log would freeze on old rows
+    // and pose as current. Read-only shows this process's own runs from
+    // memory instead (each marked saved: false), and the API says so.
+    agentRuns: async (limit) => (canWrite() ? listAgentRuns(limit) : unsavedAgentRuns(limit)),
     emit: (type, payload) => emitSafe(type, payload, 'server'),
     calendarEvents: (from, to) => listCalendarEvents(from, to),
     crewJobs: (from, to) => listCrewJobs(from, to),
@@ -605,6 +621,7 @@ export function createArborRequestHandler(opts: { assistant?: Assistant } = {}) 
   const api = createApi(createServerSource(), {
     dataLinksLive: dataLinksLive(),
     dataLinksSim: dataLinksSim(),
+    dataLinksReadOnly: dataLinksReadOnly(),
     alerts: alertsProvider,
     ...(env.elevenlabs.apiKey ? { tts: createElevenLabsTts(env.elevenlabs.apiKey) } : {}),
   });
@@ -702,7 +719,7 @@ export function createArborRequestHandler(opts: { assistant?: Assistant } = {}) 
       api,
       quo: () => ({ status: quoIntake.status(), calls: quoIntake.list() }),
       stormLaw: () => stormLaw.status(),
-      mode: () => (dataLinksSim() ? 'sim' : dataLinksLive() ? 'live' : 'cut'),
+      mode: () => (dataLinksSim() ? 'sim' : dataLinksReadOnly() ? 'readonly' : dataLinksLive() ? 'live' : 'cut'),
     }),
   });
   if (quoApi && env.quoApiKey) {
@@ -1296,6 +1313,10 @@ export function createArborRequestHandler(opts: { assistant?: Assistant } = {}) 
       // no job table to write into, and pretending otherwise is the lie §1B
       // exists to stop.
       if (req.method === 'POST' && url.pathname === '/api/inbox/convert') {
+        // R-READONLY: a conversion is a write — refused in read-only's own words, not "links cut".
+        if (dataLinksReadOnly()) {
+          return send(503, { error: 'read_only', line: READ_ONLY_LINE, message: 'Read-only: nothing was converted. Open the thread in Gmail and handle it there for now.' });
+        }
         if (!dataLinksLive()) {
           return send(409, {
             error: 'links_cut',
@@ -1728,13 +1749,15 @@ export function createArborRequestHandler(opts: { assistant?: Assistant } = {}) 
       // R19: the data links, one by one. States are named (§1B): master cut,
       // link cut, or open — an open link is probed read-only with counts.
       if (req.method === 'GET' && url.pathname === '/api/links') {
-        const master = dataLinksSim() ? 'sim' : dataLinksLive() ? 'live' : 'cut';
+        const readOnlyMode = dataLinksReadOnly();
+        const master = dataLinksSim() ? 'sim' : readOnlyMode ? 'readonly' : dataLinksLive() ? 'live' : 'cut';
         const links = await Promise.all(LINK_NAMES.map(async (link) => {
           const open = linkOpen(link);
           const counts: Record<string, number | 'unreadable'> = {};
           if (open && hasDb()) {
             for (const t of DATA_LINKS[link]) {
               try {
+                // A HEAD count — the read-only door lets it through; no row is read.
                 const r = await getDb().from(t).select('*', { count: 'exact', head: true });
                 counts[t] = r.error ? 'unreadable' : (r.count ?? 0);
               } catch {
@@ -1742,18 +1765,30 @@ export function createArborRequestHandler(opts: { assistant?: Assistant } = {}) 
               }
             }
           }
+          // R-READONLY: a readable link is 'read-only' (never 'open' — nothing it
+          // holds can be saved); a link kept cut says why in words.
+          const keptCut = readOnlyMode ? readOnlyKeptCut(link) : null;
           return {
             link,
             envVar: linkEnvVar(link),
-            state: open ? 'open' : 'cut',
+            state: open ? (readOnlyMode ? 'read-only' : 'open') : 'cut',
             tables: DATA_LINKS[link],
+            ...(keptCut ? { reason: keptCut } : {}),
             ...(open ? { rowCounts: counts } : {}),
           };
         }));
         return send(200, {
           master,
+          ...(readOnlyMode ? {
+            mode: 'READ-ONLY (ARBO_DATA_LINKS=readonly) — reading real data, writing nothing',
+            line: READ_ONLY_LINE,
+            // What was skipped since this process started — kinds and counts only. Resets on a redeploy.
+            notSaved: notSavedReport(),
+          } : {}),
           links,
-          note: 'A CUT link is a closed door, not empty data. Each link opens one by one after its verification passes (docs/DATA_LINKS.md) — R19.',
+          note: readOnlyMode
+            ? 'READ-ONLY: every link below marked read-only can be looked at and none can be saved to. A CUT link is a closed door, not empty data — each says why it stays shut.'
+            : 'A CUT link is a closed door, not empty data. Each link opens one by one after its verification passes (docs/DATA_LINKS.md) — R19.',
         });
       }
       // ElevenLabs custom-LLM endpoint (the agent's Server URL points at
@@ -1776,6 +1811,14 @@ export function createArborRequestHandler(opts: { assistant?: Assistant } = {}) 
       // A bad request is the CALLER's fault and says so — 400, with which of
       // the two problems it was. Everything else is genuinely ours.
       if (err instanceof BadRequestError) return send(400, { error: err.code });
+      // R-READONLY: a write refused at the read-only door. FIRST, because a
+      // ReadOnlyError is also a LinkCutError and must not be called "link cut".
+      // The plain line rides as `line`, which the app shows as it is. The op
+      // and table are names only — no customer data (§4.3).
+      if (err instanceof ReadOnlyError) {
+        noteNotSaved(`refused:${err.table || err.op}`);
+        return send(503, { error: 'read_only', op: err.op, ...(err.table ? { table: err.table } : {}), line: READ_ONLY_LINE });
+      }
       // R19: a cut data link refuses BY NAME — "the door is closed" must
       // never render as a vague server error (§1B). No PII in the message.
       if (err instanceof LinkCutError) {
@@ -1960,17 +2003,7 @@ export function startServer(port: number) {
     createNwsAlertsProvider((u, i) => fetch(u, i)),
   );
   server.listen(port, () => {
-    // Three states, never two: configured-and-live, configured-but-CUT, and
-    // not configured at all. Collapsing the middle one into either of the
-    // others is the §1B lie in the one line an operator actually reads.
-    const dbState = dataLinksSim()
-      ? 'SIMULATION — every record is fake, no database connection is opened'
-      : !dbConfigured()
-        ? 'not configured'
-        : dataLinksLive()
-          ? `connected — links open: ${openLinks().join(', ') || `NONE of ${LINK_NAMES.length} (master live, every ARBO_LINK_* still cut)`}`
-          : 'CONFIGURED BUT LINKS CUT (ARBO_DATA_LINKS is not "live") — no real data is being read or written';
-    console.log(`✅ ARBO backend on :${port} — guardrails v${summary.guardrailsVersion}, legal v${summary.legalVersion}, db ${dbState}`);
+    console.log(`✅ ARBO backend on :${port} — guardrails v${summary.guardrailsVersion}, legal v${summary.legalVersion}, db ${dbStateLine()}`);
   });
   // Railway stops the old copy with SIGTERM on every deploy. Without a handler
   // Node dies on the signal, npm prints "command failed … signal SIGTERM", and
@@ -1987,6 +2020,26 @@ export function startServer(port: number) {
   process.once('SIGTERM', () => stop('SIGTERM'));
   process.once('SIGINT', () => stop('SIGINT'));
   return server;
+}
+
+/**
+ * The boot line's database state. Five states, never fewer: simulation,
+ * not configured, configured-and-live, READ-ONLY, and configured-but-CUT.
+ * Collapsing any one into another is the §1B lie in the one line an operator
+ * actually reads. Deploy verification reads this: "db connected" (live) or
+ * "db READ-ONLY" (read-only) — CLAUDE.md.
+ */
+export function dbStateLine(): string {
+  if (dataLinksSim()) return 'SIMULATION — every record is fake, no database connection is opened';
+  if (!dbConfigured()) return 'not configured';
+  if (dataLinksReadOnly()) {
+    const kept = LINK_NAMES.filter((l) => readOnlyKeptCut(l) !== null);
+    return `READ-ONLY (ARBO_DATA_LINKS=readonly) — reading real data, writing nothing. Readable: ${openLinks().join(', ') || 'none'}. Kept cut: ${kept.join(', ') || 'none'}`;
+  }
+  if (dataLinksLive()) {
+    return `connected — links open: ${openLinks().join(', ') || `NONE of ${LINK_NAMES.length} (master live, every ARBO_LINK_* still cut)`}`;
+  }
+  return 'CONFIGURED BUT LINKS CUT (ARBO_DATA_LINKS is not "live" or "readonly") — no real data is being read or written';
 }
 
 function unpack(r: { status: number; body: unknown }): [number, unknown] {

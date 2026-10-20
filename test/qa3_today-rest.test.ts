@@ -86,6 +86,13 @@ describe('#4: a links chip cut on purpose is grey, like every other cut on Today
     expect(dead.textContent).toBe('Data links · unreadable');
   });
 
+  // R-READONLY: a switch Mike set on purpose — grey like cut, and worded, never "live".
+  it('read-only takes the grey cut look and says "read-only"', async () => {
+    const ro = await linksChip(async () => ({ dataLinks: 'readonly' }));
+    expect(ro.className).toBe('sys cut');
+    expect(ro.textContent).toBe('Data links · read-only');
+  });
+
   it('cut has no rule of its own: the plain grey dot, and it is not pulled to the front', () => {
     expect(html).not.toMatch(/\.sys\.cut\b/);
     expect(html).toContain('.sys i{width:8px;height:8px;border-radius:50%;background:var(--ink-4);');

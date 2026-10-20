@@ -56,7 +56,8 @@ import { runCollectionsAgent } from './collectionsAgent.js';
 import { runSafetyAgent } from './safetyAgent.js';
 import type { NeedsDecision } from '../ops/loopCloser.js';
 import { emitSafe } from '../binder/eventBus.js';
-import { getDb, hasDb } from '../db/client.js';
+import { canWrite, getDb, hasDb } from '../db/client.js';
+import { notSavedReport, type NotSavedReport } from '../db/notSaved.js';
 
 type Api = ReturnType<typeof createApi>;
 
@@ -109,6 +110,14 @@ export interface SweepSummary {
   collections: Awaited<ReturnType<typeof runCollectionsAgent>> | { status: 'error' };
   safety: Awaited<ReturnType<typeof runSafetyAgent>> | { status: 'error' };
   urgentLoopsRaised: number | 'unavailable';
+  /**
+   * R-READONLY: whether this sweep's run log and raised events were written.
+   * 'not_saved_read_only' = the agents READ and reported, nothing was saved;
+   * `notSaved` then counts what was skipped since boot (kinds and counts only).
+   * 'no_database' = there was nothing to write to (cut or not configured).
+   */
+  writes: 'saved' | 'not_saved_read_only' | 'no_database';
+  notSaved?: NotSavedReport;
 }
 
 export async function runAgentSweep(api: Api, alerts: AlertsProvider, now = new Date()): Promise<SweepSummary> {
@@ -124,7 +133,11 @@ export async function runAgentSweep(api: Api, alerts: AlertsProvider, now = new 
     settle(runSafetyAgent(alerts, now)),
     raiseUrgentLoops(api, now),
   ]);
-  return { ranAtIso: now.toISOString(), permitting, briefing, weather, booking, collections, safety, urgentLoopsRaised };
+  const writes = canWrite() ? 'saved' as const : hasDb() ? 'not_saved_read_only' as const : 'no_database' as const;
+  return {
+    ranAtIso: now.toISOString(), permitting, briefing, weather, booking, collections, safety, urgentLoopsRaised,
+    writes, ...(writes === 'not_saved_read_only' ? { notSaved: notSavedReport() } : {}),
+  };
 }
 
 /**
@@ -149,12 +162,17 @@ export function startAgentScheduler(api: Api, alerts: AlertsProvider): NodeJS.Ti
       // A safety agent that RAN but could not read a feed is not "ok": a
       // safety brief with a silent hole reads as "nothing to worry about".
       const safetyBlind = 'blindSpots' in s.safety ? s.safety.blindSpots : ['safety agent did not run'];
+      // R-READONLY: the run log and raised events were not written — said on
+      // every tick, with the running count, never left for someone to infer.
+      const ro = s.writes === 'not_saved_read_only'
+        ? ` READ-ONLY — run log and events NOT saved (${s.notSaved?.total ?? 0} writes skipped since boot)`
+        : '';
       if (degraded.length > 0 || loops === 'unavailable' || safetyBlind.length > 0) {
         console.error(
           `[agents] sweep DEGRADED — failed=[${degraded.join(',')}] urgent_loops=${loops}` +
-          (safetyBlind.length ? ` safety_blind=[${safetyBlind.join('|')}]` : ''));
+          (safetyBlind.length ? ` safety_blind=[${safetyBlind.join('|')}]` : '') + ro);
       } else {
-        console.log(`[agents] sweep ok — urgent_loops_raised=${loops}`);
+        console.log(`[agents] sweep ok — urgent_loops_raised=${loops}${ro}`);
       }
     } catch (err) {
       console.error('[agents] sweep failed:', err instanceof Error ? err.message : 'error');
