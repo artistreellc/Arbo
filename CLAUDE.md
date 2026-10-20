@@ -56,6 +56,9 @@ the prompts and makes the calls; your job is to build.
 4. `docs/OPS_SWEEP.md` — the ops runbook. Its Law section is binding.
 5. `docs/PHONE_SETUP.md` — how calls and texts actually flow right now (numbers,
    forwarding, Quo/Sona, relays). Change it in the same PR as any phone change.
+6. `docs/OPS_CONVENTIONS.md` — how Art-is-Tree actually runs day to day (from
+   Mike's memory export, rules only), what Arbo carries, and the conflicts
+   waiting on Mike.
 
 ## Source of Truth
 
