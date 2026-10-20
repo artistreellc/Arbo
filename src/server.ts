@@ -191,6 +191,7 @@ import { IntentRegistry } from './ops/intentRegistry.js';
 import { InboxSurfaceStore } from './ops/inboxSurface.js';
 import { createOpusIntentModel } from './ops/inboxIntent.js';
 import { createSimSource } from './dev/simSource.js';
+import { Assistant } from './assistant/assistant.js';
 
 /**
  * The source the server actually runs on. In SIM mode this is in-memory fake
@@ -566,8 +567,12 @@ const consoleAlerter: Alerter = {
  * and the five-minute inbox watch, and a serverless function has no process
  * that lives between requests to run them in. A host for this app has to stay
  * up.
+ *
+ * `opts.assistant` is the R28 business assistant; tests hand in one built on
+ * a fake Anthropic client. Unset, the real one is built — and it starts
+ * nothing unless ARBO_AGENT is exactly 'live' and every id is set.
  */
-export function createArborRequestHandler() {
+export function createArborRequestHandler(opts: { assistant?: Assistant } = {}) {
   boot(); // validates guardrails + legal or throws
   const alertsProvider = createNwsAlertsProvider((url, init) => fetch(url, init));
   // R26: the owner-only storm-law flag — OpenFEMA, read-only, asked at most
@@ -679,6 +684,11 @@ export function createArborRequestHandler() {
     });
   }
   currentOutreach = outreach;
+  // R28 (Mike, 2026-10-20: "put it in the arbo app"): the business assistant.
+  // Its approvals and activity live behind the owner key below; startServer
+  // starts its clock and re-attaches to the sessions it was watching.
+  const assistant = opts.assistant ?? new Assistant();
+  currentAssistant = assistant;
 
   const bridge = createElevenLabsBridge({
     guardrails,
@@ -883,6 +893,10 @@ export function createArborRequestHandler() {
           },
           raw,
         );
+        // R28: only a VERIFIED delivery may start an assistant session — a
+        // text, a missed call, a finished call. It never changes Quo's
+        // answer, and it is a no-op unless the assistant is on.
+        if (out.status === 200) assistant.noteQuoEvent(raw);
         return send(out.status, out.body);
       }
       // Incoming texts to the Arbo number. Accepted texts get an EMPTY TwiML
@@ -908,6 +922,26 @@ export function createArborRequestHandler() {
       // refused here, whatever key came with it — the page refuses it first.
       if (url.pathname.startsWith('/api/crew/') && req.headers['x-arbo-preview'] === '1' && req.method !== 'GET') {
         return send(403, { error: 'preview_read_only' });
+      }
+      // R28: the business assistant — Mike's approvals and what it did. Owner
+      // key only: the gate above opens the crew key to /api/crew/ alone, so
+      // the crew key never reaches this. Like /api/outreach, no APP_ACCESS_KEY
+      // means LOCKED (never the "open while the DB is cut" door) — these cards
+      // carry customer contact, and an allow here sends an email, a text or a
+      // payment. The office's look-only preview is refused outright.
+      if (url.pathname === '/api/assistant' || url.pathname.startsWith('/api/assistant/')) {
+        if (!env.appAccessKey) return send(401, { error: 'no_app_key', message: 'APP_ACCESS_KEY is not set — the assistant is locked until it is.' });
+        if (req.headers['x-arbo-preview'] === '1') return send(403, { error: 'preview_read_only' });
+        if (req.method === 'GET' && url.pathname === '/api/assistant/status') return send(200, assistant.status());
+        if (req.method === 'GET' && url.pathname === '/api/assistant/approvals') return send(...unpack(assistant.approvals()));
+        if (req.method === 'GET' && url.pathname === '/api/assistant/activity') return send(...unpack(assistant.activity()));
+        const m = url.pathname.match(/^\/api\/assistant\/approvals\/([^/]+)$/);
+        if (req.method === 'POST' && m) {
+          const body = ((await readJson(req)) ?? {}) as { decision?: unknown; note?: unknown };
+          if (body.decision !== 'allow' && body.decision !== 'deny') return send(400, { error: 'decision_must_be_allow_or_deny' });
+          return send(...unpack(await assistant.decide(m[1]!, body.decision, typeof body.note === 'string' ? body.note : undefined)));
+        }
+        return send(404, { error: 'not_found' });
       }
       if (req.method === 'GET' && url.pathname === '/api/brief') {
         return send(...unpack(await api.brief(url.searchParams.get('from') ?? '', url.searchParams.get('to') ?? '')));
@@ -1693,6 +1727,8 @@ function googleCredsNow() {
 }
 /** The R24 read-only study — startServer runs it on a timer once Quo is wired. */
 let currentQuoStudy: QuoStudy | null = null;
+/** The R28 business assistant the running handler uses — startServer starts its clock. */
+let currentAssistant: Assistant | null = null;
 
 /**
  * Register Arbo's webhooks with Quo and hand the intake its signing keys.
@@ -1816,6 +1852,10 @@ export function startServer(port: number) {
     ? `[links] CUT while Sona handles calls (R21): ${cutNow.join(', ')} — set ARBO_LINK_<NAME>=live to reconnect`
     : '[links] ElevenLabs and Twilio links live');
   if (!env.quoApiKey) console.error('[quo] DISABLED — no QUO_API_KEY. Sona calls are not reaching Arbo (this is not zero calls).');
+  // R28: the business assistant's clock (30-minute sweeps 7am–9pm ET, crew
+  // routes at 6:30am ET) and its re-attach to sessions still open. It names
+  // its own state in the boot log — OFF, NOT SET UP, or ready.
+  currentAssistant?.start();
   // §8A.6f: the agents run on their own clock, not only when Mike taps.
   startAgentScheduler(
     createApi(createServerSource(), { alerts: createNwsAlertsProvider((u, i) => fetch(u, i)) }),
