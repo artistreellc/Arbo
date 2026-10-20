@@ -68,7 +68,8 @@ and the code on 2026-10-20.
 - **Arrival windows, never exact times.** Estimates get about a 30-minute
   window. Crew jobs get a one-hour window (job length and drive time vary).
   **Later:** `agent.yaml` (Mike's word). Today Arbo gives no time at all
-  until Mike confirms (R14, `src/reception/datePromise.ts`).
+  until Mike confirms (R14, `src/reception/datePromise.ts`), and its words
+  promise an "exact time" — see Conflict 22.
 - **Rental properties:** when Mike says it is a rental and no notice is
   needed, it goes on the route with no text to the customer. **Later:** route
   planner and `agent.yaml`.
@@ -113,8 +114,11 @@ and the code on 2026-10-20.
   declined, no more follow-up (an older note said brown; Google has no brown,
   and the later rule says Graphite); a declined lead's event is recoloured,
   never deleted; completed jobs may go purple (Mike has not said when).
-  **Carries:** `src/scheduling/config.ts` (city colours, Sage). Arbo itself
-  never recolours or edits an event (CLAUDE.md hard boundary). See Conflict 3.
+  **Carries:** `src/scheduling/config.ts` (city colours, Sage). D36 records
+  Arbo recolouring a won estimate Sage through `markEstimateWonOnCalendar()`
+  (`src/scheduling/scheduler.ts`), but nothing calls it today, so Arbo
+  recolours nothing; CLAUDE.md says never modify a calendar event. See
+  Conflict 3.
 - **Contracts:** Mike scans signed contracts and files them himself, named
   street first, then the job amount, then the city code. Unsigned ones wait
   in an unsigned folder until signed. Finished jobs' contracts sometimes move
@@ -138,23 +142,25 @@ and the code on 2026-10-20.
   (to commit customers before they demand a date); the deposit counts toward
   the cancellation fee; late terms are set to stay inside Virginia usury
   limits. **Carries:** R3, `agents/arbo/agent.yaml` (never mention the
-  minimum, reminders never restate an amount). Arbo states none of them.
+  minimum, reminders never restate an amount). But `src/ops/invoicing.ts`
+  carries its own default payment terms — see Conflict 19.
 - **Invoices:** the proposal doubles as the invoice; a separate invoice goes
   only to a customer paying electronically. **Carries (partly):**
   `src/ops/invoicing.ts` (amount only from `agreed_amount`, R3), R28 Square
-  on Mike's OK. **Later:** draft a separate invoice only for electronic pay
-  (Mike's word).
+  on Mike's OK. The code drafts an invoice for every finished job — see
+  Conflict 19.
 - **Payment methods:** as in `guardrails.json` `businessFacts`. The export
   holds Mike's per-method fees; `businessFacts` still says "Mike confirms
   whether any fee applies". **Later:** update `businessFacts` on Mike's word.
 - **Keeping wood or mulch on site** lowers the price, but how much depends on
   the site — never a flat amount. **Carries:** the no-price guard (R3).
 - **Discounts:** see Conflict 9.
-- **Financing has two paths.** A third-party lender linked on the website
-  (Arbo's apply link stays null until Mike supplies it, R8), and in-house
-  financing that belongs to a membership concept that has not launched.
-  **Carries:** `guardrails.json` `financing`. The membership concept is
-  **Out** until Mike launches it; Arbo never offers it.
+- **Financing.** The export names two paths: a third-party lender linked on
+  the website (Arbo's apply link stays null until Mike supplies it, R8), and
+  in-house financing tied to a membership concept that has not launched.
+  **Carries:** `guardrails.json` `financing` (financing and payment plans
+  are offered now, R8). Whether R8's payment plans are the membership
+  financing is Conflict 21.
 - **Master client list in Drive:** Mike expects new customers added.
   **Out** for Arbo's database (§3). **Later:** the R28 assistant could draft
   the addition for Mike's OK.
@@ -236,13 +242,17 @@ and the code on 2026-10-20.
   `agent.yaml`.
 - **Follow up every 2 days after an estimate until it is won, lost or closed;
   the first one carries proof of insurance.** **Carries:**
-  `src/ops/followUps.ts` — as a recommendation for Mike, never auto-sent.
+  `src/ops/followUps.ts` — as a recommendation for Mike. The export says
+  Arbo auto-sends the proof — see Conflict 20.
 - **No win-back nudges to old, cold estimates.** **Carries:** R22 (past week
   only), R32 (`src/ops/leadAge.ts`, older than 14 days is an "older lead").
 - **Tell Mike when an estimate was missed or never confirmed.** He says Arbo
   either says too little or buries him; give him what he needs to act on.
-  **Carries:** `src/ops/loopCloser.ts`, `src/ops/followUps.ts`
-  (`no_show_saver`), `agent.yaml` (voice-memo updates).
+  **Carries (partly):** `agent.yaml` (voice-memo updates). **Later:** a check
+  for an estimate missed or never confirmed on our side. Today
+  `no_show_saver` (`src/ops/followUps.ts`) covers only a customer who missed
+  the window, and `src/ops/loopCloser.ts` only an estimate that went quiet
+  after the visit.
 - **Quote or drop.** Read the actual source and quote the line relied on; if
   it can't be quoted, say "I can't verify that." Never answer from
   assumption. **Carries:** §1B. **Later:** the quote-the-line habit in
@@ -323,7 +333,8 @@ and the code on 2026-10-20.
 
 ## 8. Permitting practice
 
-- **Virginia Beach runs two ordinances, split by watershed.**
+- **Virginia Beach runs two ordinances, split by watershed** (per the
+  export, read against city code on 2026-09-13).
   - North (Chesapeake Bay side, Appendix F): the buffer is a VARIABLE width,
     not less than 100 feet, and runs past erodible soils; if a protected area
     touches any part of a lot of 3 acres or less, the whole lot is regulated;
@@ -335,10 +346,14 @@ and the code on 2026-10-20.
     Appendix G): within 50 feet of a wetland or shoreline, vegetation "shall
     not be cleared, cut or mown". A lot lawfully created for single-family or
     duplex use before 1992-03-24 is exempt — the lot's creation date decides.
-  - **Carries:** the Appendix F variance (`src/permitting/publicWorks/facts.ts`,
-    `src/permitting/cities.ts`). **Later:** the Appendix G facts, marked
-    UNCONFIRMED until checked (the R26 pattern) — they are among add-on -01's
-    held facts (`docs/BUILD_R25.md`).
+  - **Not carried as written.** `src/permitting/publicWorks/facts.ts` and
+    `src/permitting/cities.ts` hold a fixed 100-ft buffer, a PPR filing for
+    RPA tree work, and a variance only for a denied or edge-case PPR — see
+    Conflict 18. **Later:** the Appendix G facts, marked UNCONFIRMED until
+    checked (the R26 pattern). `docs/BUILD_R25.md` says add-on -01's
+    Appendix F/G facts feed the permits database; `facts.ts` has no
+    Appendix G fact yet. HRGEO coverage of south Virginia Beach is held for
+    Mike (`docs/GO_LIVE.md` §5).
 - **Waterfront, creek or wetland job in Virginia Beach:** confirm which
   watershed the parcel is in before quoting — the two ordinances give
   opposite answers, and south-side shoreline work inside 50 feet may not be
@@ -346,8 +361,9 @@ and the code on 2026-10-20.
 - **Norfolk, Chesapeake, Portsmouth** run standard Bay Act rules.
   **Carries:** `src/permitting/cities.ts`.
 - **Not verified:** whether Virginia Beach needs a general tree-removal permit
-  on private land outside these areas. Never say either way. **Later:** a
-  "not verified" fact in the Permit Desk.
+  on private land outside these areas. Never say either way. **Carries:**
+  `vb-outside-overlay` in `src/permitting/publicWorks/facts.ts`
+  (UNCONFIRMED, "Verify with the city").
 - **Screen every overlay, not just the Bay Act:** CBPA/RPA, FEMA flood, local
   floodplain and land-disturbance, each city's resilience overlay (Norfolk's
   coastal resilience overlay is the real case). **Carries:**
@@ -362,8 +378,9 @@ and the code on 2026-10-20.
 
 ## 9. Insurance and credentials
 
-- **What the company holds (per the export):** licensed and insured, with a
-  general liability certificate of insurance; BBB A+.
+- **Approved credentials (per the export):** licensed and insured; BBB A+.
+  The company carries a general liability certificate of insurance. Arbo's
+  own words allow less — see Conflict 23.
 - **What it does NOT hold:** TCIA membership (lapsed mid-2026) — never claim
   it.
 - **Not confirmed:** separate commercial auto and inland marine coverage were
@@ -377,7 +394,7 @@ and the code on 2026-10-20.
   "licensed and insured"), `agent.yaml` (never claims TCIA, ISA or any other
   membership or certification; "Never tell anyone the company is covered for
   something"). The permit packet still prints BBB A+ (R13, open
-  for Mike).
+  for Mike; Conflict 23).
 - **Insurance questions:** Art-is-Tree works with insurance companies; Mike
   answers every insurance question himself. **Carries:** `businessFacts`.
 - **Proof of insurance** rides the first estimate follow-up, and Mike can
@@ -394,8 +411,10 @@ and the code on 2026-10-20.
 - **Open reminders:** when Mike sets one, repeat it every time until he says
   it is done. (The export's list is empty today.) **Later:** a Today card, on
   Mike's word.
-- Mike runs a second AI assistant alongside; its notes are reference only for
-  Arbo (R26 #2).
+- Mike runs a second AI assistant alongside his chat assistant; they share a
+  log folder in Drive and Mike relays between them. R26 #2 made only that
+  assistant's "Arbo for Claude" package reference only; no ruling covers its
+  ongoing notes or the shared log.
 - Mike wants voice. **Carries:** Talk (R30).
 
 ## 11. Out of scope
@@ -552,3 +571,64 @@ Mike answers. (Export paths are inside the memory export, not this repo.)
     Repo: R3 — "The number always originates with a human";
     `guardrails.json` `callRouting.incident.neverQuoteRepairCost`. Question:
     is an internal parts-cost lookup allowed when no customer sees it?
+
+18. **Virginia Beach buffer width and the tree-removal path.**
+    Export (`topics/permitting.md`, 2026-09-13): the RPA has "a VARIABLE
+    WIDTH buffer 'not less than one hundred (100) feet.' Not a fixed 100 ft",
+    which also reaches past highly erodible soils; for tree work, "existing
+    vegetation may be removed only pursuant to an administrative variance."
+    Repo: `src/permitting/publicWorks/facts.ts` — `vb-rpa-buffer` "a 100-ft
+    vegetated buffer"; `vb-ppr-tree-removal-form` "RPA tree work is filed as
+    a Preliminary Project Request (PPR)"; `vb-cbpa-admin-variance` "A denied
+    or edge-case PPR can proceed through a CBPA administrative variance"
+    (also `vb-single-tree-by-email`, `src/permitting/cities.ts`).
+    `docs/GO_LIVE.md` §5 already holds "the 125-ft rule vs the erodible-soil
+    extension … and the VB PPR vs administrative-variance path."
+
+19. **Payment terms and who gets an invoice.**
+    Export (`topics/pricing.md`, 2026-09-14): "the proposal doubles as the
+    invoice; a separate invoice is sent only when the customer pays
+    electronically"; payment is due within a net period counted in business
+    days, then a surcharge repeats on a fixed cycle until paid (figures
+    omitted).
+    Repo: `src/ops/invoicing.ts` — `DEFAULT_NET_DAYS` counts calendar days;
+    `lateFeeOwed()` charges the late fee once; `buildInvoiceDrafts()` drafts
+    an invoice for every completed job with an agreed amount.
+    `src/ops/loopCloser.ts` `work_done_never_billed` flags every completed
+    job with no invoice as urgent. Question: do the net periods match,
+    should the surcharge repeat, and should Arbo draft invoices only for
+    electronic payers?
+
+20. **Proof of insurance: auto-sent or recommended.**
+    Export (`areas/ai-receptionist.md`): "Follow-up every 2 days after an
+    estimate; auto-sends proof of insurance after every estimate".
+    Repo: `src/ops/followUps.ts` — "it never sends anything. Every action is a
+    recommendation for Mike"; the proof rides the FIRST follow-up only.
+    `CLAUDE.md`: "agents cannot spend money or send anything" (R22 and R28
+    are the gated exceptions); Arbo's own code never sends email.
+
+21. **Payment plans now, member financing later.**
+    Export (`areas/roots-club.md`): in-house financing is a perk of a
+    membership program that has not launched, separate from the third-party
+    lender — "Two distinct financing paths Arbo must distinguish between."
+    Repo: R8, Mike: "we can set them up on a payment plan";
+    `guardrails.json` `financing.offerLine`: "We do offer financing and
+    payment plans". Question: are R8's payment plans the membership
+    financing? If so, may Arbo offer them before the program launches?
+
+22. **Arrival window or exact time.**
+    Export (`preferences.md`): give "a ~30-minute arrival WINDOW … not an
+    exact time, so the route has flexibility"; (`operations-workflow.md`,
+    2026-09-28) crew jobs get a one-hour window.
+    Repo: R14 "exact time only Friday afternoon"; R29 #4's replacement line
+    "Mike will confirm the exact time." (`guardrails.json`); `agent.yaml`:
+    "The customer is told Mike confirms the exact time Friday afternoon".
+
+23. **Which credentials Arbo may name.**
+    Export (`profile.md`): "Approved business credentials: licensed and
+    insured, BBB A+".
+    Repo: `agent.yaml`: "only 'licensed and insured, Google Verified, 5 star
+    rated'. Never claim TCIA, ISA or any other membership, certification or
+    award."; R13: "BBB A+ left the phone script"; the permit packet still
+    prints "Licensed & insured · BBB A+" (R13, open). Question: may written
+    words (emails, the permit packet) say BBB A+?
