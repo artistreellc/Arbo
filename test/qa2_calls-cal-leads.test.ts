@@ -88,6 +88,9 @@ const el = (tag: string, cls?: string, text?: string): Node => {
 };
 // The shared package's contract: chip(text, tone) is a .badge span in that tone.
 const chip = (text: string, tone: string): Node => { const n = el('span', 'badge', text); n.dataset.tone = String(tone); return n; };
+// R26 (qa-x6): the permit words live in one page map, PERMIT_STATE, read through permitChip.
+const PERMIT_STATE = new Function(`return ${/^const PERMIT_STATE = (\{.*\});$/m.exec(html)![1]}`)() as Record<string, [string, string]>;
+const permitChip = pageFn<(s: string) => Node>('permitChip', { chip, PERMIT_STATE });
 const plural = (n: number, one: string, many?: string) => n + ' ' + (n === 1 ? one : (many || one + 's'));
 const fmtWhen = (v: unknown) => (v ? 'WHEN(' + String(v) + ')' : '');
 const chipsIn = (n: Node) => n.all().filter((x) => x.has('badge')).map((x) => x.textContent + '=' + x.dataset.tone);
@@ -112,9 +115,9 @@ describe('Leads: the file-it pair, Undo and the chip rows (run, not just read)',
       if (ctl.fail) { ctl.fail = false; throw Object.assign(new Error('link_cut'), { code: 503 }); }
       return { ok: true };
     };
-    const permitBadge = pageFn<(l: Lead) => Node | null>('permitBadge', { chip });
+    const permitBadge = pageFn<(l: Lead) => Node | null>('permitBadge', { permitChip });
     const renderLeads = pageFn<() => Promise<void>>('renderLeads', {
-      $: () => v, el, api, chip, fmtWhen, permitBadge,
+      $: () => v, el, api, chip, fmtWhen, permitBadge, leadsTabBadge: () => {},
       icon: (id: string) => el('svg', 'ico ' + id),
       showKeywall: () => {}, LINKS_READY: Promise.resolve('simulation'),
       state: (t: string) => el('div', 'state', t), feedState: (_e: unknown, w: string) => el('div', 'state', w),
@@ -217,7 +220,7 @@ describe('Leads: the file-it pair, Undo and the chip rows (run, not just read)',
 });
 
 describe('the permit chip keeps Mike’s words and takes a tone', () => {
-  const permitBadge = pageFn<(l: unknown) => Node | null>('permitBadge', { chip });
+  const permitBadge = pageFn<(l: unknown) => Node | null>('permitBadge', { permitChip });
   const tone = (l: unknown) => { const n = permitBadge(l); return n && n.textContent + '=' + n.dataset.tone; };
 
   it('PERMIT LIKELY / REVIEW NEEDED / PENDING need a look; NO OVERLAY — VERIFY is context', () => {

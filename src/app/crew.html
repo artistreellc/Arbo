@@ -239,6 +239,17 @@ main.door-locked #gate-slot,main.door-locked #quiz,main.door-locked #work,main.d
 #nm-out{margin-top:12px;font-size:15px;line-height:1.5}
 #nm-out.ok{color:var(--ok)}
 #nm-out.err{color:var(--emergency)}
+
+/* R26: the office preview (/crew?preview=1). A fixed bar says what this is;
+   every control that would write stays on screen, switched off, with the
+   reason beside it — it is still the crew's page, it just cannot act. */
+body.preview{padding-bottom:calc(132px + env(safe-area-inset-bottom))}
+.preview-bar{position:fixed;left:0;right:0;bottom:0;z-index:20;background:#2A1D06;border-top:1.5px solid var(--warning);
+  color:#FFD9A0;font-size:14px;font-weight:700;line-height:1.4;text-align:center;
+  padding:10px 16px calc(2px + env(safe-area-inset-bottom))}
+.preview-bar a{display:inline-flex;align-items:center;min-height:44px;color:var(--canopy);text-decoration:none}
+.preview-why,body.preview .gate-status{font-size:14px;font-weight:700;color:var(--warning);line-height:1.4;margin-top:8px}
+.jobbtn:disabled,#lib-q:disabled,#nm-desc:disabled{opacity:.55;cursor:not-allowed}
 </style>
 </head>
 <body>
@@ -274,12 +285,25 @@ const el = (tag, cls, text) => {
 // failed save must be SAID, never followed by a reload into the same screen.
 const load = (k) => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
 const STORAGE_BLOCKED = 'This phone’s browser is blocking saved data (private browsing or site data off). Turn that off, then try again.';
-let KEY = load('arboCrewKey');
-let CREW_ID = load('arboCrewId');
+// R26 (Mike, 2026-10-20): the office app's Crew tile opens this page as a
+// LOOK-ONLY preview (/crew?preview=1 — same phone, same site). It runs on the
+// office app's own key and never asks for a crew code or the crew door key.
+// Nothing in it can sign, file or clock in: api() refuses every write, each
+// control that would write is switched off with the reason beside it, and the
+// server refuses a crew write that carries the preview header (403).
+const PREVIEW = new URLSearchParams(location.search).get('preview') === '1';
+const PREVIEW_BANNER = 'Preview — this is what the crew sees. Nothing here signs, files or clocks in.';
+const PREVIEW_WHY = 'Off in the preview — nothing here signs, files or clocks in.';
+let KEY = PREVIEW ? load('arborKey') : load('arboCrewKey');
+let CREW_ID = PREVIEW ? '' : load('arboCrewId');
 async function api(path, opts) {
+  const method = (opts && opts.method) || 'GET';
+  // R26: the preview reads and never writes — refused here, before anything
+  // leaves the phone. Its header lets the server refuse a write a second time.
+  if (PREVIEW && method !== 'GET') throw Object.assign(new Error('preview_read_only'), { code: 403 });
   const res = await fetch(path, {
-    method: (opts && opts.method) || 'GET',
-    headers: Object.assign({ 'content-type': 'application/json' }, KEY ? { 'x-arbor-key': KEY } : {}),
+    method,
+    headers: Object.assign({ 'content-type': 'application/json' }, KEY ? { 'x-arbor-key': KEY } : {}, PREVIEW ? { 'x-arbo-preview': '1' } : {}),
     body: opts && opts.body ? JSON.stringify(opts.body) : undefined,
   });
   const body = await res.json().catch(() => ({}));
@@ -322,6 +346,9 @@ const GATE = {
   // True when pressing again cannot help (400 wrong crew code; 503 cut, practice
   // data, not set up): GO stays tappable but is never green under that line.
   serverHold: false,
+  // R26: why GO never arms in the office preview ('' on a crew phone). On
+  // GATE, so the gate's own functions read it with the rest of its state.
+  preview: PREVIEW ? PREVIEW_WHY : '',
 };
 // The server names what is missing in codes; the crew reads them in words.
 const GATE_NEED = { scroll: 'scroll to the bottom', checkbox: 'tick the box', read_time: 'read for longer' };
@@ -396,9 +423,16 @@ function refreshGate() {
     go.disabled = !ready;
     go.className = ready && !GATE.serverHold ? 'ready' : '';
   }
+  // R26: in the preview GO never arms, whatever the briefing state, and the
+  // line says why instead of "Ready".
+  if (GATE.preview) {
+    if (status) status.textContent = GATE.preview;
+    if (go) { go.disabled = true; go.className = ''; }
+  }
 }
 
 async function submitGate() {
+  if (GATE.preview) return; // R26: the preview never signs (api() and the server refuse it too)
   const go = $('gobtn');
   go.disabled = true;
   GATE.serverMsg = '';
@@ -582,7 +616,9 @@ async function submitQuiz() {
 async function renderWork() {
   const v = $('work');
   v.replaceChildren();
-  if (!GATE.unlocked) {
+  // R26: the office preview reads the day without a sign-off. It can act on
+  // none of it — every button on the card below is switched off.
+  if (!GATE.unlocked && !PREVIEW) {
     v.appendChild(el('div', 'locked-note', 'Your work orders unlock after the safety briefing.'));
     return;
   }
@@ -642,6 +678,8 @@ async function renderWork() {
     // the crew is standing when both things need doing.
     c.appendChild(arrivalButton(wo.jobId));
     c.appendChild(changeOrderButton(wo.jobId));
+    // R26: in the preview both stay on the card, switched off, with why.
+    if (PREVIEW) c.appendChild(el('div', 'preview-why', PREVIEW_WHY));
     v.appendChild(c);
   }
 }
@@ -652,6 +690,7 @@ function arrivalButton(jobId) {
   const wrap = el('div', 'jobaction');
   const btn = el('button', 'jobbtn', '\ud83d\udcf7 Log arrival condition');
   const out = el('div', 'jobout');
+  if (PREVIEW) btn.disabled = true; // R26: off in the preview (the card says why)
   btn.addEventListener('click', async () => {
     const notes = prompt('What did the site look like on arrival? Anything already damaged?');
     if (notes === null) return;
@@ -691,6 +730,7 @@ function changeOrderButton(jobId) {
   const wrap = el('div', 'jobaction');
   const btn = el('button', 'jobbtn', '+ Extra work agreed');
   const out = el('div', 'jobout');
+  if (PREVIEW) btn.disabled = true; // R26: off in the preview (the card says why)
   btn.addEventListener('click', async () => {
     const description = prompt('What extra work did the customer agree to?');
     if (description === null || !description.trim()) return;
@@ -943,6 +983,8 @@ function renderNearMiss() {
 function renderWhoAmI() {
   const box = $('whoami');
   box.replaceChildren();
+  // R26: the preview runs on the office key — no crew code is asked or used.
+  if (PREVIEW) { box.hidden = true; return true; }
   if (CREW_ID) {
     const row = el('div', 'signed');
     // Nothing has checked this code yet, so the line claims nothing more than
@@ -988,6 +1030,14 @@ function renderDoorKey(notSet) {
   document.querySelector('main').classList.add('door-locked');
   const box = $('whoami');
   box.replaceChildren();
+  if (PREVIEW) {
+    // R26: the preview never asks for the crew door key. It opens with the
+    // office app's key, and the server would not take the one on this phone.
+    box.hidden = false;
+    box.appendChild(el('h2', '', 'Office key needed'));
+    box.appendChild(el('p', '', 'The preview opens with the office app’s key, and this phone has none that works. Open it from the office app — More, then Crew — on a phone signed in to it.'));
+    return;
+  }
   box.appendChild(el('h2', '', 'Crew door key'));
   if (notSet) {
     // D89: the server says no CREW_ACCESS_KEY exists, so there is nothing for
@@ -1021,6 +1071,27 @@ function renderDoorKey(notSet) {
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') go.click(); });
   box.appendChild(input); box.appendChild(show); box.appendChild(go); box.appendChild(err);
 }
+
+// R26: the preview's other switched-off controls — the library lookup and
+// near-miss filing (both drawn on boot, outside the gate), and the clock-in
+// question, which a preview has no crew member to draw one for.
+function previewLock() {
+  for (const [field, btn, out] of [['lib-q', 'lib-go', 'lib-out'], ['nm-desc', 'nm-go', 'nm-out']]) {
+    $(field).disabled = true;
+    $(btn).disabled = true;
+    $(out).appendChild(el('div', 'preview-why', PREVIEW_WHY));
+  }
+  const q = $('quiz');
+  q.replaceChildren();
+  q.appendChild(el('div', 'panel-title', QUIZ_TITLE[isFridayEt() ? 'friday_questionnaire' : 'clock_in_gate']));
+  // §1B: no question here is the preview's gap, never "no questions".
+  q.appendChild(el('div', 'state', 'After the briefing each crew member is asked here, from the topics they are weakest on. '
+    + 'The preview has no crew member, so nothing is drawn — that is not “no questions”.'));
+  const go = el('button', 'gate-go', 'Submit');
+  go.disabled = true;
+  q.appendChild(go);
+  q.appendChild(el('div', 'preview-why', PREVIEW_WHY));
+}
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => { /* works online without it */ }); });
 }
@@ -1030,6 +1101,23 @@ $('dateline').textContent = new Date().toLocaleDateString([], { weekday: 'long',
 // practice data, so nobody files a real near miss into it unawares. A /health
 // that did not answer leaves LINKS null, and the plain date stands.
 LINKS_READY.then(() => { if (LINKS === 'simulation') $('dateline').textContent = 'SIMULATION · ' + $('dateline').textContent; });
+// R26: the preview says what it is on every screen, with the way back.
+if (PREVIEW) {
+  document.body.classList.add('preview');
+  const bar = el('div', 'preview-bar');
+  bar.appendChild(el('div', '', PREVIEW_BANNER));
+  const back = el('a', '', '← Back to the office app');
+  back.href = '/app#more';
+  // Step back to the office app as it was left; a fresh visit replaces this
+  // page instead of stacking one, so Back never loops app → preview → app.
+  back.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    if (history.length > 1 && document.referrer.indexOf('/app') !== -1) history.back();
+    else location.replace('/app#more');
+  });
+  bar.appendChild(back);
+  document.body.appendChild(bar);
+}
 if (renderWhoAmI()) {
   // No door key on this phone: the crew routes will almost surely answer 401, so
   // the panels stay hidden until the briefing answers, instead of painting and
@@ -1056,6 +1144,8 @@ if (renderWhoAmI()) {
     s.appendChild(el('b', 'order', 'Do not start work \u2014 call the office.'));
     $('gate-slot').appendChild(s);
   });
+  // R26: the preview's other switched-off controls, now that their panels are drawn.
+  if (PREVIEW) previewLock();
 }
 </script>
 </body>

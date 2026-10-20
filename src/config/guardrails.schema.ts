@@ -113,6 +113,24 @@ export const GuardrailsSchema = z
     emergency: z.object({
       triggers: z.array(z.string()).min(1),
       handling: z.string().min(1),
+      /**
+       * R26 (Mike, 2026-10-20): the safety lines the receptionist says BY
+       * CODE on an emergency — reception/emergency.ts picks which. Mike
+       * approved 911 when someone is hurt and Dominion Energy when a line is
+       * down; the wording is Claude's default for him to change, so the
+       * check is the substance, not the words.
+       */
+      safetyLines: z.object({
+        personHurt: z.string().refine((s) => /\b911\b/.test(s), 'emergency.safetyLines.personHurt must tell the caller to call 911'),
+        powerLine: z.string().refine((s) => /\bDominion\b/.test(s), 'emergency.safetyLines.powerLine must tell the caller to call Dominion Energy'),
+      }),
+      /**
+       * R26: said instead when the guard blocks the model's reply on an
+       * emergency — a schedule or estimate pivot is the wrong thing to hear
+       * with a tree through the roof, and "Mike is being alerted right away"
+       * must survive the block. Words lifted from `handling`.
+       */
+      alertLine: z.string().min(1),
       neverQuoteEmergencyPricing: z.literal(true),
     }),
     afterHoursAndOverflow: z.object({

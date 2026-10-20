@@ -11,6 +11,10 @@ Nothing on this list is flipped by a build; each is Mike's call (§3, R19).
 | Mike | Android | Chrome → `/app` → ⋮ → **Install app**. |
 | Crew | any | Open `/crew` → add to home screen the same way → enter their crew code, then the **crew door key**. |
 
+Mike's own look at the crew page is the **Crew** tile in More, or the
+**Crew preview** shortcut on the installed app's icon (press and hold). It is
+look-only: nothing there signs, files or clocks in (R26).
+
 The crew door key is the Railway variable **`CREW_ACCESS_KEY`** — pick any
 long phrase, set it on Railway, give it to the crew. It opens the crew
 routes only; it can never open Mike's side. Until it is set, a crew phone
@@ -25,6 +29,9 @@ shows "the crew door key isn't set up yet — ask Mike" and asks for nothing
 - [ ] **Agents**: More → Agents → Run all eight. Every desk should say LINK CUT for its database inputs — that is correct while the links are cut.
 - [ ] **Crew door**: one crew phone, the door key, the gated briefing (scroll + tick + timer).
 - [ ] **Night**: open the app after dark — it follows the phone; More → Appearance pins Day or Night.
+- [ ] **Emergency wording (R26)**: read the 911 / Dominion lines in `src/policy/guardrails.json` (`emergency.safetyLines`, `emergency.alertLine`). They are Claude's draft; change any word.
+- [ ] **Brake hold (R26)**: file a practice breakdown that mentions brakes — the unit shows HELD, NOT SCHEDULABLE; only your key signs it back on.
+- [ ] **Storm law (R26)**: open Today once after the deploy. On a calm day it shows nothing. While NWS has a storm alert out and FEMA has no declaration, one muted line reminds you Governor declarations are not in any feed. A FEMA declaration counts for 30 days after its incident ends. If FEMA could not be read it says so by name — if that line shows on a normal day, the FEMA query needs a look.
 
 ## 3. Phone calls to close the permit gaps (from the research)
 
@@ -42,8 +49,12 @@ shows "the crew door key isn't set up yet — ask Mike" and asks for nothing
 - [ ] **Quo texting registration** (A2P) before any R22 text goes out.
 - [ ] **`ANTHROPIC_API_KEY`** on Railway turns the agents' brain from "offline — deterministic" to Opus.
 - [ ] **`CLAUDE_CODE_OAUTH_TOKEN`** repo secret (turns on the automated PR review job).
+- [ ] **The Supabase project `arbor` is PAUSED** (INACTIVE, seen 2026-10-20). Nothing reads it while the links are cut, but a paused project can only be restored for a limited time — restore it (Supabase dashboard → the project → Restore) before that window closes, or the kept rows (§3) are at risk.
+- [ ] **Migration 0020** (brake/steering hold) is committed, not applied — the database is paused. Apply it after the restore and before the equipment link opens, or a brake report fails to save instead of holding the unit. (0016–0019 are already applied, `docs/DATA_LINKS.md` step 1.)
 
 ## 5. Held for Mike (not decided by a build)
 
-- Add-on -01 wants CLEAR / EXEMPT / PERMIT REQUIRED as outputs; the brief and the code say never "you're clear". The code keeps PERMIT LIKELY / REVIEW NEEDED / NO OVERLAY–VERIFY until Mike rules.
-- Also from -01: the 125-ft rule vs the erodible-soil extension, HRGEO coverage of south VB, and the VB PPR vs administrative-variance path.
+- Settled by R26: the three permit words stay (not add-on -01's CLEAR / EXEMPT / PERMIT REQUIRED).
+- Still from -01: the 125-ft rule vs the erodible-soil extension, HRGEO coverage of south VB, and the VB PPR vs administrative-variance path.
+- R26 follow-ups (each a one-line change if Mike wants it): a downed line with nobody hurt — also say the 911 line? · the blocked-date replacement line (the date rule's line today, or the wants-human line) · a "Brakes or steering" checkbox on the breakdown sheet so the hold does not depend on wording · Crew Chief's desk subtitle · open-burning steps reading "PERMIT: REVIEW NEEDED".
+- Storm law: the flag only knows federal (FEMA) declarations; a Governor-only declaration is not in any feed. Counsel question: when "time of disaster" ends for Va. Code 59.1-526.

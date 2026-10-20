@@ -33,7 +33,7 @@ describe('the board buckets a property honestly', () => {
   it('a clean screen is still not a clearance', () => {
     const r = toBoardRow(row(), TODAY);
     expect(r.bucket).toBe('no_overlay_verify');
-    expect(r.headline).toMatch(/still VERIFY WITH CITY/i);
+    expect(r.headline).toMatch(/NO OVERLAY — VERIFY W\/ CITY/);
     expect(r.nextStep).toMatch(/Confirm with/i);
   });
 

@@ -279,7 +279,9 @@ describe('More: the disabled Talk tile and the hard hat (ST5)', () => {
     expect(sym).not.toContain('M10.5 9.5V6.75h3v2.75'); // the old bell's knob
   });
 
-  it('the Crew tile keeps its label and target (held for Mike, X1)', () => {
-    expect(html).toContain("tile('i-crew', 'Crew', 'What the crew sees', () => window.open('/crew', '_blank', 'noopener'));");
+  it('the Crew tile keeps its label; its target is the look-only preview (X1, decided by Mike in R26)', () => {
+    // Deliberately updated (R26, 2026-10-20): Mike's answer to X1 — the tile
+    // opens the crew page as a preview that cannot sign (test/r26_crew-preview.test.ts).
+    expect(html).toContain("tile('i-crew', 'Crew', 'What the crew sees', () => { location.href = '/crew?preview=1'; });");
   });
 });

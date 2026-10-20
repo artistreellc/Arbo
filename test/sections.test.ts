@@ -195,7 +195,7 @@ describe('with the links open (all fakes)', () => {
 
     const permit = byId(reports, 'permit-desk');
     expect(permit.findings[0]!.ref).toBe('p-1,p-2'); // ids only
-    expect(permit.findings.map((f) => f.text).join(' ')).toMatch(/REVIEW NEEDED/);
+    expect(permit.findings.map((f) => f.text).join(' ')).toMatch(/PERMIT SCREEN PENDING/); // R26 qa-x6: the badge's word for no screen on file
 
     // Only the photo reader is unbuilt — named, not hidden, and its own state.
     const arborist = byId(reports, 'arborist');

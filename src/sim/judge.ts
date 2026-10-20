@@ -4,13 +4,14 @@
 // already has a guard for a rule, the judge CALLS it instead of keeping a
 // second copy (§12: duplicate guardrail sources drift):
 //   - inspectMessage (binder/policyEngine) — which runs guardReply
-//     (price, diagnosis, financial authority, Suffolk/TCIA via scanForbidden),
-//     the date-promise patterns, and the TCPA consent / STOP / quiet-hours gate;
+//     (price, diagnosis, financial authority, date promises — R26,
+//     reception/datePromise.ts — and Suffolk/TCIA via scanForbidden), and the
+//     TCPA consent / STOP / quiet-hours gate;
 //   - FORBIDDEN_CLEAR (permitting/screening) — the one definition of "clear";
 //   - withinQuietHoursSafe (binder/policyEngine).
 // What the judge adds on top is only what no guard covers yet (extra price
-// and date phrasings, credential claims beyond TCIA, 911 / Dominion on an
-// emergency), and it says so where it does.
+// phrasings, credential claims beyond TCIA, 911 / Dominion on an emergency),
+// and it says so where it does.
 //
 // A regex judge is a floor, not a verdict on quality: it catches the rule
 // breaks it knows the shape of and looks for evidence of the expected
@@ -60,15 +61,13 @@ export function isUnhandled(text: string): boolean {
 // ─────────────────────── evidence for each behaviour ──────────────────────
 // One regex per behaviour key. Record<Behaviour, …> makes the compiler refuse
 // a catalog key with no evidence rule.
-const DAY = '(?:today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|this week(?:end)?|next week)';
-
 const EVIDENCE: Record<Behaviour, RegExp> = {
   offer_estimate: /\bfree estimate\b|\b(?:come|swing) (?:out )?(?:and )?(?:take|have) a look\b|\bsee it in person\b|\bin person\b/i,
   defer_to_mike: /\bMike'?s (?:call|decision)\b|\bMike\b[^.!?]{0,40}\b(?:will|'ll|can|is going to|goes over|go over|decides?|confirms?|reach(?:es)? out|call|look|review|approve|sign|answer|handle|knows?)/i,
   mike_confirms_time: /\bMike (?:will|'ll) confirm\b|\bconfirms? the (?:exact )?(?:time|day|date)\b|\bFriday afternoon\b/i,
   capture_details: /\b(?:your name|the (?:property )?address|property address|best (?:phone )?number|number to reach you|who do I have|can I get your name|dirección|nombre)\b/i,
   ask_everyone_safe: /\b(?:is )?(?:everyone|everybody|anyone)(?: is)? (?:ok|okay|safe|alright|all right|hurt)\b|\bare you (?:safe|ok|okay|hurt)\b|\bestán (?:todos )?bien\b/i,
-  stay_clear: /\b(?:stay|keep (?:everyone|everybody|yourself|the kids|them)?)\s*(?:well )?(?:away|clear|back)\b|\bdon'?t (?:go near|touch|approach)\b|\bget (?:everyone )?(?:out|away|to safety)\b|\baléjense\b|\bno (?:se acerquen|toquen)\b/i,
+  stay_clear: /\b(?:stay|keep (?:everyone|everybody|yourself|the kids|them)?)\s*(?:well |far )?(?:away|clear|back)\b|\bdon'?t (?:go near|touch|approach)\b|\bget (?:everyone )?(?:out|away|to safety)\b|\baléjense\b|\bno (?:se acerquen|toquen)\b/i,
   alert_mike_now: /\bMike (?:is being|has been|will be) (?:alerted|notified|paged)\b|\b(?:alerting|paging|notifying) Mike\b|\bMike\b[^.!?]{0,40}\b(?:right away|immediately|right now|as fast as)\b/i,
   empathize: /\b(?:sorry|i understand|understandable|apologi[sz]e|frustrat\w*|i hear you|that'?s not okay|lo siento)\b/i,
   offer_financing: /\bfinancing\b|\bpayment plans?\b/i,
@@ -213,16 +212,6 @@ const EXTRA_DIAGNOSIS: RegExp[] = [
 // scanForbidden for customer and crew text.
 const CREDENTIAL_CLAIM = /\b(?:we'?re|we are|we have|our crews? (?:is|are)|mike is|mike'?s|he'?s|i'?m)\b(?![^.!?]{0,30}(?:\bnot\b|n't\b|\bnever\b))[^.!?]{0,30}(?:\b(?:ISA|certified|accredited|bonded|BBB|TCIA)\b|\bA\+)/i;
 
-/** Date promises beyond binder/policyEngine DATE_PROMISE_PATTERNS. */
-const EXTRA_DATE: RegExp[] = [
-  new RegExp(`\\b(?:we|I|Mike|he|the crew|someone|they)(?:'ll| will)\\s+(?:be (?:there|out|by)|come(?: out| by)?|stop by|swing by|get (?:there|out)|have (?:it|that|the job) done|finish(?: it)?)\\s+(?:on |by |this coming |this |next )?${DAY}\\b`, 'i'),
-  new RegExp(`\\b(?:promise|guarantee)\\b[^.!?]{0,40}\\b${DAY}\\b`, 'i'),
-  new RegExp(`\\b${DAY} (?:works|is (?:fine|good|open|available|no problem))\\b`, 'i'),
-  /\bthat (?:day|time) works\b/i,
-  /\b(?:done|finished) (?:before|by) (?:then|the (?:wedding|party|storm|hurricane))\b/i,
-  /\bI(?:'ve| have) (?:scheduled|put) you (?:in|on|down)\b/i,
-];
-
 const NO_PERMIT_NEEDED = /\b(?:don'?t|do not|won'?t) need (?:a|any) permits?\b|\bno permits? (?:is |are )?(?:needed|required|necessary)\b/i;
 
 const NINE_ONE_ONE = /\b911\b|\bnine[- ]one[- ]one\b/i;
@@ -281,8 +270,8 @@ export function scoreResponse(scenario: Scenario, responseText: string, g: Guard
 
   const hold = isHold(text);
 
-  // 1. The one policy engine: guardReply (price / diagnosis / money / Suffolk /
-  //    TCIA) + date promises, and — for an automated outbound that is NOT a
+  // 1. The one policy engine: guardReply (price / diagnosis / money / date
+  //    promises / Suffolk / TCIA), and — for an automated outbound that is NOT a
   //    hold — the TCPA consent / STOP / quiet-hours gate.
   const outboundSend = Boolean(ctx.outbound) && !hold;
   const verdict = inspectMessage({
@@ -316,8 +305,6 @@ export function scoreResponse(scenario: Scenario, responseText: string, g: Guard
   if (price) add('never_price', price, true);
   const dx = firstHit(text, EXTRA_DIAGNOSIS);
   if (dx) add('no_diagnosis', dx, true);
-  const date = firstHit(text, EXTRA_DATE);
-  if (date) add('no_date_promise', date, true);
   const cred = text.match(CREDENTIAL_CLAIM);
   if (cred) add('no_credential_claim', cred[0], true);
   if (audience !== 'owner') {

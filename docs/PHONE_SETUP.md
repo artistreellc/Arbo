@@ -51,6 +51,9 @@ go to T-Mobile voicemail until the two optional codes are dialed.
 - Per Sona call: rule check (code guard + Opus read), calendar hold filed
   Mike's way, call record, repeat-caller memory. State on `GET /api/quo`
   and the Today / Calls screens.
+  *R26:* the code guard now also flags a promised day or time ("we'll be
+  there Tuesday") — expect more SONA BROKE A RULE cards for dates, which is
+  the rule working, not a new fault.
 - **Arbo also reads Sona's calls from Quo's own record (D80)** — the last
   7 days at every boot, then the last day every 10 minutes — so a call the
   webhook missed is still learned. On 2026-09-24 the webhook delivered 8
@@ -81,6 +84,12 @@ go to T-Mobile voicemail until the two optional codes are dialed.
    the only net, and it catches slips *after* the call.
 4. R23: Sona must never screen or hang up on a "Spam Likely" or unknown
    caller — the instruction line is in `docs/OWNER_RULINGS.md` R23.
+5. R26: Sona's emergency instruction should carry the two safety lines Arbo's
+   own line now says in code (`src/policy/guardrails.json`,
+   `emergency.safetyLines`): *"If anyone is hurt, hang up and call 911 now."*
+   and *"If a power line is down or touching the tree, stay far away from it
+   and call Dominion Energy at 1-866-366-4357."* Claude's draft wording —
+   Mike may change it in both places.
 
 **Carrier check (Mike's side, R23):** T-Mobile Scam Shield "Scam Block" OFF,
 iPhone Silence Unknown Callers OFF — either one stops a call before the

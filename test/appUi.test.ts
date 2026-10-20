@@ -143,9 +143,11 @@ describe('ARBOR app shell', () => {
   });
 
   it('the money surface never threatens a customer (§4.8)', () => {
-    for (const forbidden of ['legal action', 'collections agency', 'lien', 'small claims', 'we will sue']) {
+    for (const forbidden of ['legal action', 'collections agency', 'small claims', 'we will sue']) {
       expect(html.toLowerCase(), `app copy threatened: "${forbidden}"`).not.toContain(forbidden);
     }
+    // "lien" as a word — the letters also sit inside clientX / client, which threaten nobody.
+    expect(html, 'app copy threatened: "lien"').not.toMatch(/\blien\b/i);
   });
 
   it('the fleet surface names a dead feed instead of drawing all-units-up (§1B)', () => {

@@ -99,6 +99,13 @@ const SIM_UNITS = [
     id: 'sim-unit-2', name: 'SIM Chipper', kind: 'chipper', status: 'down',
     vinOrSerial: 'SIM-VIN-0002', heightInches: null, weightLbsLoaded: null, openTasks: 2,
   },
+  {
+    // R26: a brake/steering report holds a unit until Mike signs it back on.
+    // Practice data has no writer, so signing it back on here answers
+    // "not in the practice data" — the hold itself is what this exercises.
+    id: 'sim-unit-3', name: 'SIM Bucket truck', kind: 'bucket truck', status: 'held',
+    vinOrSerial: 'SIM-VIN-0003', heightInches: 132, weightLbsLoaded: 24000, openTasks: 1,
+  },
 ];
 
 const SIM_JOBS = [

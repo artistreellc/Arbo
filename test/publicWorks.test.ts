@@ -86,8 +86,8 @@ describe('publicWorks facts — sourcing', () => {
       for (const u of f.sourceUrls) expect(u, f.id).toMatch(/^(https?:\/\/\S+|arbo:src\/permitting\/cities\.ts)$/);
   });
 
-  it('verifiedOn is the R25 date or the cities.ts date', () => {
-    for (const f of FACTS) expect(['2026-09-28', '2026-08-01'], f.id).toContain(f.verifiedOn);
+  it('verifiedOn is the R25 date, the cities.ts date, or the R26 Code read', () => {
+    for (const f of FACTS) expect(['2026-09-28', '2026-08-01', '2026-10-20'], f.id).toContain(f.verifiedOn);
   });
 
   it('each of the four cities has at least 8 facts', () => {
@@ -292,7 +292,8 @@ describe('jobChecklist — fixed rules', () => {
 describe('queries', () => {
   it('factsByTopic merges city + Regional + Virginia, in that order', () => {
     const disposal = factsByTopic('Norfolk', 'disposal');
-    expect(disposal.map((f) => f.city)).toEqual(['Norfolk', 'Regional', 'Regional', 'Regional']);
+    // R26: the fourth Regional disposal fact is the imported fire ant quarantine.
+    expect(disposal.map((f) => f.city)).toEqual(['Norfolk', 'Regional', 'Regional', 'Regional', 'Regional']);
     expect(factsByTopic('Chesapeake', 'power_lines').every((f) => f.city === 'Virginia')).toBe(true);
     expect(factsByTopic('Portsmouth', 'private_tree_cbpa').every((f) => f.city === 'Portsmouth')).toBe(true);
   });
@@ -307,7 +308,7 @@ describe('queries', () => {
     const nov = stale(FACTS, new Date('2026-11-15T12:00:00Z'));
     expect(nov.length).toBeGreaterThan(0);
     expect(nov.every((f) => f.verifiedOn === '2026-08-01')).toBe(true);
-    expect(stale(FACTS, '2027-01-01')).toHaveLength(FACTS.length);
+    expect(stale(FACTS, '2027-03-01')).toHaveLength(FACTS.length);
   });
 
   it('summary counts add up', () => {

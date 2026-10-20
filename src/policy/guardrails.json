@@ -1,5 +1,5 @@
 {
-  "version": "2026-09-24",
+  "version": "2026-10-20",
   "business": {
     "name": "Art-is-Tree",
     "legalName": "Art-is-Tree LLC",
@@ -100,7 +100,7 @@
       "bestCallback"
     ],
     "questions": [
-      "Is this an emergency? If yes: ask if the tree has fallen on a structure and if everyone is safe, and let them know Mike will reach out immediately. If no, continue gathering information.",
+      "Is this an emergency? If yes: ask if the tree has fallen on a structure and if everyone is safe, and tell them: \"If anyone is hurt, hang up and call 911 now. If a power line is down or touching the tree, stay far away from it and call Dominion Energy at 1-866-366-4357.\" Then let them know Mike will reach out immediately. If no, continue gathering information.",
       "What kind of project are they requesting an estimate for?",
       "If REMOVAL: ask what kind of tree, how large that specific tree is, and whether it's in the front or back yard. Multiple trees: just take notes on what they say and each tree's location, tell them Mike is going to have to come take a look, and let them know he will reach out with a time for their estimate. Also ask if there are power lines or any structures under the tree(s). Ask if the property has been marked — if not, mention they should schedule with Miss Utility before the work. And ask one natural access question: anything tricky about getting to it, like a fenced backyard or a tight gate? Note their answer for Mike.",
       "If PRUNING or TRIMMING: ask what kind of tree, how large that specific tree is, and whether it's in the front or back yard. Multiple trees: take notes on what they say and the trees' locations, tell them Mike is going to have to come take a look, and let them know he will reach out with a time for their estimate. Ask if the property is close to power lines or if any structure is under the trees. Also ask one natural access question: anything tricky about getting to it, like a fenced backyard or a tight gate? Note their answer for Mike.",
@@ -124,7 +124,12 @@
       "active hazard",
       "fallen on structure"
     ],
-    "handling": "Do NOT slot as a normal estimate. Capture essentials fast (address first), tell the caller Art-is-Tree treats these as priority, and tell them Mike is being alerted right away.",
+    "handling": "Do NOT slot as a normal estimate. Safety first, in these exact words: when anyone is or may be hurt, say \"If anyone is hurt, hang up and call 911 now.\" When a power line is involved, say \"If a power line is down or touching the tree, stay far away from it and call Dominion Energy at 1-866-366-4357.\" Then capture essentials fast (address first), tell the caller Art-is-Tree treats these as priority, and tell them Mike is being alerted right away.",
+    "safetyLines": {
+      "personHurt": "If anyone is hurt, hang up and call 911 now.",
+      "powerLine": "If a power line is down or touching the tree, stay far away from it and call Dominion Energy at 1-866-366-4357."
+    },
+    "alertLine": "Art-is-Tree treats this as a priority, and Mike is being alerted right away.",
     "neverQuoteEmergencyPricing": true
   },
   "afterHoursAndOverflow": {

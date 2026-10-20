@@ -154,6 +154,7 @@ import {
   recordGateCompletion,
   recordBreakdown,
   closeMaintenanceTask,
+  signBackOnUnit,
 } from './db/repositories.js';
 import { createCensusGeocoder } from './permitting/gis/geocode.js';
 import { createDefaultGisProvider } from './permitting/gis/liveGisProvider.js';
@@ -162,6 +163,7 @@ import { createElevenLabsTts } from './voice/elevenlabsTts.js';
 import type { StopInput } from './ops/morningBrief.js';
 import type { EstimateState, JobState } from './ops/followUps.js';
 import { createNwsAlertsProvider } from './ops/stormWatch.js';
+import { createStormLawCheck } from './ops/stormLaw.js';
 import { loadAllConfig } from './config/loadConfig.js';
 import { env } from './env.js';
 import { createVoiceLlm } from './voice/anthropicLlm.js';
@@ -490,6 +492,8 @@ export function createLiveSource(): DataSource {
     recordGate: (input) => recordGateCompletion(input),
     recordBreakdown: (input) => recordBreakdown(input),
     closeMaintenanceTask: (input) => closeMaintenanceTask(input),
+    // R26: the one way out of a brake/steering hold — Mike, owner key.
+    signBackOn: (input) => signBackOnUnit(input),
   };
 }
 
@@ -566,6 +570,9 @@ const consoleAlerter: Alerter = {
 export function createArborRequestHandler() {
   boot(); // validates guardrails + legal or throws
   const alertsProvider = createNwsAlertsProvider((url, init) => fetch(url, init));
+  // R26: the owner-only storm-law flag — OpenFEMA, read-only, asked at most
+  // once an hour. It never prices; a failed read is named, never 'none'.
+  const stormLaw = createStormLawCheck((url, init) => fetch(url, init));
   // R25: one brain for the section desks, created once (Opus when a key is set).
   const sectionBrain = createLiveBrain();
   // R25: the Learn desk — simulations score the brain; lessons wait for Mike.
@@ -781,7 +788,8 @@ export function createArborRequestHandler() {
             shortcuts: [
               { name: 'Calls', url: '/app#calls' },
               { name: 'Calendar', url: '/app#cal' },
-              { name: 'Crew door', url: '/crew' },
+              // R26 qa-x1: from Mike's phone it is the look-only preview, never the real door.
+              { name: 'Crew preview', url: '/crew?preview=1' },
             ],
           }),
         }));
@@ -895,6 +903,12 @@ export function createArborRequestHandler() {
         // (and a crew phone does not end up holding Mike's key instead).
         return send(401, { error: url.pathname.startsWith('/api/crew/') && env.appAccessKey && !env.crewAccessKey ? 'crew_key_not_set' : 'unauthorized' });
       }
+      // R26 (defence in depth): the office's look-only crew preview sends
+      // x-arbo-preview: 1 on every request. A crew route that is not a read is
+      // refused here, whatever key came with it — the page refuses it first.
+      if (url.pathname.startsWith('/api/crew/') && req.headers['x-arbo-preview'] === '1' && req.method !== 'GET') {
+        return send(403, { error: 'preview_read_only' });
+      }
       if (req.method === 'GET' && url.pathname === '/api/brief') {
         return send(...unpack(await api.brief(url.searchParams.get('from') ?? '', url.searchParams.get('to') ?? '')));
       }
@@ -906,6 +920,11 @@ export function createArborRequestHandler() {
       }
       if (req.method === 'GET' && url.pathname === '/api/storm') {
         return send(...unpack(await api.storm()));
+      }
+      // R26: Va. Code § 59.1-526/527 awareness, for Mike only. Behind the
+      // admin key like every /api route — the crew key never opens it.
+      if (req.method === 'GET' && url.pathname === '/api/storm/law') {
+        return send(200, await stormLaw.status());
       }
       if (req.method === 'GET' && url.pathname === '/api/brief/audio' && !vendorLinked('elevenlabs')) {
         return send(503, vendorCutBody('elevenlabs'));
@@ -1290,6 +1309,15 @@ export function createArborRequestHandler() {
         const m = url.pathname.match(/^\/api\/fleet\/units\/([^/]+)\/part$/);
         if (req.method === 'POST' && m) {
           return send(...unpack(await api.addEquipmentPart(m[1]!, (await readJson(req)) as Record<string, unknown>)));
+        }
+      }
+      // R26: Mike signs a brake/steering hold back on. Behind the /api key gate
+      // above, which opens the crew key to /api/crew/ only — so a crew phone
+      // can never reach this, and there is no /api/crew/ twin of it.
+      {
+        const m = url.pathname.match(/^\/api\/fleet\/units\/([^/]+)\/sign-back$/);
+        if (req.method === 'POST' && m) {
+          return send(...unpack(await api.signBackOn(m[1]!)));
         }
       }
       if (req.method === 'POST' && url.pathname === '/api/campaigns') {

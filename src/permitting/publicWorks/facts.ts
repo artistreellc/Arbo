@@ -13,6 +13,12 @@
 //   fact that lists both. Never pick one silently.
 // - Dollar figures go in `fee` only. No price, no "clear", ever.
 // - `notes` is internal. The SPSA landfill's city is named there and nowhere else.
+//
+// R26 (Mike, 2026-10-20) adds facts taken on purpose from a third-party
+// research package (the Grok handoff — docs/research/GROK_HANDOFF_REVIEW.md):
+// VA811 dig-site duties, the imported fire ant quarantine, the power-line law
+// section by section, and pest regulatory status. Arbo has not checked any of
+// them against its source, so every one is UNCONFIRMED and its notes say so.
 
 import type { Fact } from './types.js';
 
@@ -21,6 +27,15 @@ const R25 = '2026-09-28';
 // cities.ts does not re-verify these copies.
 const CITIES_TS = '2026-08-01';
 const CITIES_TS_REF = 'arbo:src/permitting/cities.ts';
+// The package's own research date — the last time anyone read these sources.
+// It is NOT an Arbo check; GROK_NOTE and confidence 'UNCONFIRMED' say so.
+// A separate name from R25 on purpose, though the day is the same.
+const GROK_PKG = '2026-09-28';
+// R26 integration: the day Arbo read the Code of Virginia text itself
+// (Underground Utility Damage Prevention Act, as amended 2023, cc. 299, 300).
+const CODE_READ_R26 = '2026-10-20';
+const GROK_NOTE =
+  'UNCONFIRMED: From a third-party research package (2026-09-28); not yet checked by Arbo — verify with the source before relying on it.';
 
 // ── Virginia Beach ──────────────────────────────────────────────────────────
 
@@ -788,6 +803,50 @@ const REGIONAL: Fact[] = [
     confidence: 'SOURCED',
     verifiedOn: R25,
   },
+  // ── R26: from the third-party research package (UNCONFIRMED) ──
+  {
+    id: 'reg-fire-ant-quarantine',
+    city: 'Regional',
+    topic: 'disposal',
+    title: 'Imported fire ant quarantine: soil on logs and equipment',
+    rule:
+      'Virginia Beach, Norfolk, Chesapeake and Portsmouth are all inside the VDACS imported fire ant regulated area (current map effective May 27, 2025). Logs and pulpwood with soil attached, and used soil-moving equipment such as a stump grinder unless it is free of non-compacted soil, need a VDACS certificate or a compliance agreement before they move out of the regulated area.',
+    whoToCall: { office: 'VDACS, Plant Industry Services' },
+    sourceUrls: [
+      'https://www.vdacs.virginia.gov/plant-industry-services-imported-fire-ant.shtml',
+      'https://www.vdacs.virginia.gov/pdf/fire-ant-quar-map.pdf',
+    ],
+    confidence: 'UNCONFIRMED',
+    verifiedOn: GROK_PKG,
+    notes: `${GROK_NOTE} The quarantine map lists more Hampton Roads cities than the four named here.`,
+  },
+  {
+    id: 'reg-spongy-moth-area',
+    city: 'Regional',
+    topic: 'pests_quarantine',
+    title: 'Spongy moth regulated area (2VAC5-330-30)',
+    rule:
+      'Hampton Roads is inside Virginia\'s spongy moth regulated area under 2VAC5-330-30 (the regulation still says "gypsy moth"). Check the quarantine before moving regulated articles out of the area.',
+    whoToCall: { office: 'VDACS, Plant Industry Services' },
+    sourceUrls: ['https://law.lis.virginia.gov/admincode/title02/agency5/chapter330/section30/'],
+    confidence: 'UNCONFIRMED',
+    verifiedOn: GROK_PKG,
+    notes: GROK_NOTE,
+  },
+  {
+    id: 'reg-crapemyrtle-bark-scale',
+    city: 'Regional',
+    topic: 'pests_quarantine',
+    title: 'Crapemyrtle bark scale: first Virginia find',
+    rule: 'Crapemyrtle bark scale was first found in Virginia in Chesapeake, in 2014.',
+    sourceUrls: [
+      'https://ext.vt.edu/content/dam/pubs_ext_vt_edu/ENTO/ento-465/ENTO-465%20(1).pdf',
+      'https://henrico.ext.vt.edu/programs/anr/crape-myrtle_bark_scale.html',
+    ],
+    confidence: 'UNCONFIRMED',
+    verifiedOn: GROK_PKG,
+    notes: GROK_NOTE,
+  },
 ];
 
 // ── Virginia (state law, utilities, licensing) ──────────────────────────────
@@ -799,12 +858,16 @@ const VIRGINIA: Fact[] = [
     topic: 'utility_811',
     title: 'VA811 notice before digging',
     rule:
-      'No excavation without notifying VA811 first — at least 2 working days ahead. Operators have 48 hours from 7:00 a.m. the next working day to mark. A ticket is valid 15 working days; request re-marks 3 working days before it expires.',
+      'No excavation without a VA811 locate request first. Utilities have until 7:00 a.m. on the third working day after the request to mark (or 7:00 a.m. on a scheduled dig date given with the request, 48 hours to 12 working days out). Dig only after every utility on the ticket has posted its response. A ticket is valid 15 working days; request re-marks 3 working days before it expires, or any time the marks become hard to read.',
     whoToCall: { office: 'VA811 (Miss Utility)', phone: '811' },
-    leadTime: '2 working days minimum; ticket valid 15 working days',
-    sourceUrls: ['https://law.lis.virginia.gov/vacode/title56/chapter10.3/section56-265.17/'],
+    leadTime: '3 working days (marks due 7:00 a.m. on the third working day); ticket valid 15 working days',
+    sourceUrls: [
+      'https://law.lis.virginia.gov/vacode/title56/chapter10.3/section56-265.17/',
+      'https://law.lis.virginia.gov/vacode/title56/chapter10.3/section56-265.19/',
+    ],
     confidence: 'SOURCED',
-    verifiedOn: R25,
+    verifiedOn: CODE_READ_R26,
+    notes: 'Corrected 2026-10-20 from the Code text: the 2023 amendments set the marking deadline at 7:00 a.m. on the third working day and require every utility\'s response before digging (the old wording said 2 working days / 48 hours).',
   },
   {
     id: 'va-811-stump',
@@ -813,10 +876,27 @@ const VIRGINIA: Fact[] = [
     title: 'Stump grinding needs a VA811 ticket',
     rule: 'VA811 counts removing a stump as digging, and "stump grinding or removal" is a ticket work type. Treat every stump grind as needing a ticket.',
     whoToCall: { office: 'VA811 (Miss Utility)', phone: '811' },
-    leadTime: '2 working days minimum',
+    leadTime: '3 working days (see the VA811 notice rule)',
     sourceUrls: ['https://va811.com/excavators/damage-prevention-act-2/', 'https://va811.com/wp-content/uploads/2019/08/work-type-list.pdf'],
     confidence: 'SOURCED',
     verifiedOn: R25,
+  },
+  {
+    id: 'va-811-dig-site-duties',
+    city: 'Virginia',
+    topic: 'utility_811',
+    title: 'At the dig site: hand dig near the marks (Va. Code § 56-265.24)',
+    rule:
+      'Before digging, check that every utility on the ticket has responded. Within 2 ft of either side of a utility mark, expose the line by hand digging, and keep machines (the stump grinder included) 2 ft from any exposed line. If the marks become hard to read, call VA811 for a re-mark. If you see evidence of an unmarked line, call VA811 again and do not dig there until 3 hours after that call. If a line is damaged, stop, notify the line\'s operator immediately, and do not backfill until the operator repairs it or says you may.',
+    whoToCall: { office: 'VA811 (Miss Utility)', phone: '811' },
+    fee: 'Civil penalties under Va. Code § 56-265.32: up to $10,000 per violation of digging without a locate request (§ 56-265.17 A), and up to $5,000 for other violations of the Act, these site duties included',
+    sourceUrls: [
+      'https://law.lis.virginia.gov/vacode/title56/chapter10.3/section56-265.24/',
+      'https://law.lis.virginia.gov/vacode/title56/chapter10.3/section56-265.32/',
+    ],
+    confidence: 'SOURCED',
+    verifiedOn: CODE_READ_R26,
+    notes: 'First brought in from a third-party research package (2026-09-28); checked by Arbo against the Code of Virginia text on 2026-10-20 (as amended 2023).',
   },
   {
     id: 'va-dominion-10ft',
@@ -843,6 +923,72 @@ const VIRGINIA: Fact[] = [
     sourceUrls: ['https://law.lis.virginia.gov/vacodefull/title59.1/chapter30/', 'https://doli.virginia.gov/wp-content/uploads/2023/12/Program-Directive-12246A.pdf'],
     confidence: 'SOURCED',
     verifiedOn: R25,
+    notes:
+      'A research package (2026-09-28, not yet checked) quotes the statute as "in excess of 600 volts". Arbo says "600 V or more" on purpose — the stricter reading, never the looser one.',
+  },
+  // R26 — the same Act section by section, from the research package.
+  {
+    id: 'va-hvl-408-10ft',
+    city: 'Virginia',
+    topic: 'power_lines',
+    title: 'Va. Code § 59.1-408: the 10-ft rule',
+    rule:
+      'No work where a person, or any part of a tool, equipment or material, could come within 10 ft of an overhead high-voltage line (600 V or more), unless the § 59.1-410 safety arrangements are in place first.',
+    whoToCall: { office: 'Dominion Energy', phone: '1-866-366-4357' },
+    sourceUrls: ['https://law.lis.virginia.gov/vacode/title59.1/chapter30/section59.1-408/'],
+    confidence: 'UNCONFIRMED',
+    verifiedOn: GROK_PKG,
+    notes: `${GROK_NOTE} The package quotes the statute as "in excess of 600 volts"; Arbo keeps "600 V or more" on purpose — the stricter reading.`,
+  },
+  {
+    id: 'va-hvl-409-sign',
+    city: 'Virginia',
+    topic: 'power_lines',
+    title: 'Va. Code § 59.1-409: warning sign on equipment',
+    rule:
+      'Equipment the statute covers must carry its posted warning sign about the 10-ft rule. Read the section for which machines are covered before a crane or lift goes near a line.',
+    sourceUrls: ['https://law.lis.virginia.gov/vacode/title59.1/chapter30/section59.1-409/'],
+    confidence: 'UNCONFIRMED',
+    verifiedOn: GROK_PKG,
+    notes: GROK_NOTE,
+  },
+  {
+    id: 'va-hvl-410-arrangements',
+    city: 'Virginia',
+    topic: 'power_lines',
+    title: 'Va. Code § 59.1-410: arrangements before the work',
+    rule:
+      'Before work that could come within 10 ft of a high-voltage line, notify the line\'s owner or operator; the temporary safety arrangements must be complete before the work starts.',
+    whoToCall: { office: 'Dominion Energy', phone: '1-866-366-4357' },
+    sourceUrls: ['https://law.lis.virginia.gov/vacode/title59.1/chapter30/section59.1-410/'],
+    confidence: 'UNCONFIRMED',
+    verifiedOn: GROK_PKG,
+    notes: GROK_NOTE,
+  },
+  {
+    id: 'va-hvl-411-notice',
+    city: 'Virginia',
+    topic: 'power_lines',
+    title: 'Va. Code § 59.1-411: what the notice must say',
+    rule:
+      'The notice to the line\'s owner or operator must give the details § 59.1-411 lists — read the section for the full list. If the work does not start on the date in the notice, a new notice is needed.',
+    whoToCall: { office: 'Dominion Energy', phone: '1-866-366-4357' },
+    sourceUrls: ['https://law.lis.virginia.gov/vacode/title59.1/chapter30/section59.1-411/'],
+    confidence: 'UNCONFIRMED',
+    verifiedOn: GROK_PKG,
+    notes: GROK_NOTE,
+  },
+  {
+    id: 'va-hvl-413-utility-crews',
+    city: 'Virginia',
+    topic: 'power_lines',
+    title: 'Va. Code § 59.1-413: the utility\'s own crews',
+    rule:
+      'These high-voltage rules do not cover the line owner\'s or operator\'s own employees, or contractors working for it on its lines. Every other crew follows them in full.',
+    sourceUrls: ['https://law.lis.virginia.gov/vacode/title59.1/chapter30/section59.1-413/'],
+    confidence: 'UNCONFIRMED',
+    verifiedOn: GROK_PKG,
+    notes: GROK_NOTE,
   },
   {
     id: 'va-approach-distances',
@@ -856,6 +1002,18 @@ const VIRGINIA: Fact[] = [
     ],
     confidence: 'SOURCED',
     verifiedOn: R25,
+  },
+  {
+    id: 'va-osha-1910-333',
+    city: 'Virginia',
+    topic: 'power_lines',
+    title: 'OSHA 29 CFR 1910.333(c)(3): approach distances',
+    rule:
+      'An unqualified worker, and the longest conductive object they may contact, keeps at least 10 ft from an energized overhead line of 50 kV or less, plus 4 in. for every 10 kV over 50 kV. Qualified persons work from a separate OSHA table (S-5); it does not loosen Arbo\'s rule — within 10 ft of a line, call the utility first.',
+    sourceUrls: ['https://www.osha.gov/laws-regs/regulations/standardnumber/1910/1910.333'],
+    confidence: 'UNCONFIRMED',
+    verifiedOn: GROK_PKG,
+    notes: GROK_NOTE,
   },
   {
     id: 'va-z133-2026',
@@ -906,6 +1064,56 @@ const VIRGINIA: Fact[] = [
     sourceUrls: ['https://www.dof.virginia.gov/wildland-prescribed-fire/fire-laws/4-pm-burning-law/'],
     confidence: 'SOURCED',
     verifiedOn: R25,
+  },
+  // R26 — pest regulatory status, from the research package. A status and
+  // who takes a report; never what a tree has, how bad it is, or what to cut.
+  {
+    id: 'va-slf-quarantine-repealed',
+    city: 'Virginia',
+    topic: 'pests_quarantine',
+    title: 'Spotted lanternfly: state quarantine repealed',
+    rule: 'Virginia\'s spotted lanternfly quarantine was repealed effective Mar 27, 2025. Sightings should still be reported to VDACS.',
+    whoToCall: { office: 'VDACS, Plant Industry Services' },
+    sourceUrls: [
+      'https://www.vdacs.virginia.gov/press-releases-250327-spotted-lanternfly-quarantine-repeal.shtml',
+      'https://register.dls.virginia.gov/details.aspx?id=11496',
+      'https://www.vdacs.virginia.gov/plant-industry-services-spotted-lanternfly.shtml',
+    ],
+    confidence: 'UNCONFIRMED',
+    verifiedOn: GROK_PKG,
+    notes: GROK_NOTE,
+  },
+  {
+    id: 'va-eab-quarantines-ended',
+    city: 'Virginia',
+    topic: 'pests_quarantine',
+    title: 'Emerald ash borer: quarantines ended',
+    rule: 'The federal emerald ash borer quarantine ended Jan 14, 2021. Virginia\'s state quarantine was repealed effective Dec 28, 2012.',
+    sourceUrls: [
+      'https://www.govinfo.gov/content/pkg/FR-2020-12-15/html/2020-26734.htm',
+      'https://register.dls.virginia.gov/vol29/iss10/v29i10.htm',
+      'https://law.lis.virginia.gov/admincode/title2/agency5/chapter335/',
+    ],
+    confidence: 'UNCONFIRMED',
+    verifiedOn: GROK_PKG,
+    notes: GROK_NOTE,
+  },
+  {
+    id: 'va-forest-health-reports',
+    city: 'Virginia',
+    topic: 'pests_quarantine',
+    title: 'Laurel wilt and beech leaf disease: report to VDOF',
+    rule:
+      'Possible laurel wilt (laurel-family trees such as sassafras) or beech leaf disease is reported to the Virginia Department of Forestry, Forest Health. Arbo never names what a tree has — the report goes to the state.',
+    whoToCall: { office: 'Virginia Department of Forestry, Forest Health' },
+    sourceUrls: [
+      'https://www.dof.virginia.gov/forest-management-health/forest-health/insects-and-diseases/laurel-wilt/',
+      'https://www.dof.virginia.gov/wp-content/uploads/FT0073-Beech-Leaf-Disease.pdf',
+      'https://dof.virginia.gov/forest-management-health/forest-health/',
+    ],
+    confidence: 'UNCONFIRMED',
+    verifiedOn: GROK_PKG,
+    notes: GROK_NOTE,
   },
 ];
 

@@ -77,7 +77,10 @@ import {
   assessArrival, draftChangeOrder, splitChangeOrders, ChangeOrderRejected,
   type SiteConditionRecord, type ChangeOrderRow,
 } from '../ops/changeOrders.js';
-import { buildActionPlan, isSchedulable, type BreakdownReport, type KnownPart, type UnitStatus } from '../fleet/breakdown.js';
+import {
+  buildActionPlan, isSchedulable, afterSignBack, HOLD_REASON, OWNER_SIGNER,
+  type BreakdownReport, type KnownPart, type UnitStatus,
+} from '../fleet/breakdown.js';
 import type { TtsClient } from '../voice/elevenlabsTts.js';
 import { scoreLead, type LeadQualityResult } from '../reception/leadQuality.js';
 import { integrationStatus } from '../env.js';
@@ -126,6 +129,8 @@ export interface ApiLead {
   history: string | null;
   /** The past-work read FAILED: a missing history line here is not "no history" (§1B). */
   historyUnreadable: boolean;
+  /** R26: 'es' when the receptionist heard a Spanish speaker (detect and flag only). */
+  language?: 'es';
 }
 
 /** What the API needs from storage — live impl wraps the repositories. */
@@ -211,8 +216,23 @@ export interface DataSource {
   unitOpenTaskCount?(unitId: string): Promise<number>;
   /** Current status, or null when no such unit exists. */
   unitStatus?(unitId: string): Promise<UnitStatus | null>;
-  recordBreakdown?(input: { unitId: string; newStatus: string; description: string; reportedBy: string; mediaRefs: string[] }): Promise<{ taskId: string }>;
+  /**
+   * Move the unit to `newStatus` and open its task. The status write is a
+   * compare-and-set against `expectedStatus` (the status the plan was built
+   * from; null = none was read): a unit that moved in between answers
+   * { conflict: true } and NO task is opened — a report never lowers a hold.
+   */
+  recordBreakdown?(input: {
+    unitId: string; newStatus: string; expectedStatus: UnitStatus | null;
+    description: string; reportedBy: string; mediaRefs: string[];
+  }): Promise<{ taskId: string } | { conflict: true }>;
   closeMaintenanceTask?(input: { taskId: string; proofPhotoFile: string; completedBy: string }): Promise<void>;
+  /**
+   * R26: move a HELD unit to `status` (afterSignBack decides it) and record
+   * who signed it and when. Returns false when the unit was not held at the
+   * moment of the write — a write that touched nothing is never a sign-back.
+   */
+  signBackOn?(input: { unitId: string; status: UnitStatus; signedBackBy: string; atIso: string }): Promise<boolean>;
   /** §4.8 money loop: completed work and whether it has been billed. */
   billableJobs?(): Promise<InvoiceableJob[]>;
   openInvoices?(): Promise<OpenInvoice[]>;
@@ -296,6 +316,8 @@ export interface CrewJobSource {
   hazardStructures: boolean;
   permitStatus: string | null;
   permitScreenPending?: boolean;
+  /** The permit lookup FAILED — named apart from screen pending, as on /api/leads (§1B). */
+  permitUnreadable?: boolean;
   propertyId: string;
 }
 
@@ -433,6 +455,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
           city: r.city,
           zip: r.zip,
           isFirstTimer: r.isFirstTimer,
+          ...(q['language'] === 'es' ? { language: 'es' as const } : {}),
           quality: scoreLead({
             inServiceArea: r.city != null ? IN_AREA.has(r.city) : undefined,
             urgency: r.isEmergency ? 'emergency' : (q['urgency'] as never) ?? 'unknown',
@@ -882,6 +905,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
         permitStatus: (['PERMIT_LIKELY', 'REVIEW_NEEDED', 'NO_OVERLAY_VERIFY'] as const)
           .find((s) => s === r.permitStatus) ?? null,
         permitScreenPending: r.permitScreenPending === true,
+        permitUnreadable: r.permitUnreadable === true,
         photoRefs: [],
         briefingId,
       }));
@@ -1138,16 +1162,23 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       return {
         status: 200,
         body: {
-          units: units.map((u) => ({ ...u, schedulable: isSchedulable(u.status as never) })),
+          units: units.map((u) => ({
+            ...u,
+            schedulable: isSchedulable(u.status as never),
+            // R26: a held unit carries its reason by name, never a bare status.
+            holdReason: u.status === 'held' ? HOLD_REASON : null,
+          })),
           down: units.filter((u) => u.status === 'down').length,
+          held: units.filter((u) => u.status === 'held').length,
         },
       };
     },
 
     /**
      * POST /api/fleet/breakdown — the §6E field report. Marks the unit DOWN
-     * (scheduling stops assigning it) and returns an action plan. Arbo NEVER
-     * orders and holds no card (§6E2.3): the plan deep-links, a human buys.
+     * (scheduling stops assigning it) — or HELD for a brake or steering
+     * defect, until Mike signs it back on (R26) — and returns an action plan.
+     * Arbo NEVER orders and holds no card (§6E2.3): the plan deep-links, a human buys.
      */
     async reportBreakdown(body: Record<string, unknown>): Promise<ApiResult> {
       if (!source.ready() || !source.recordBreakdown || !source.unitParts) {
@@ -1187,9 +1218,19 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       const plan = buildActionPlan(report, parts, {
         openTasks, assignment: 'unknown', currentStatus: current ?? 'up',
       });
+      // The write only lands on a unit still at the status this plan was built
+      // from. One that moved in between — another report's HOLD, Mike's
+      // sign-back, a retirement — is refused by name with nothing saved, never
+      // written over: only Mike lifts a hold (R26), so a report must not lower one.
       const saved = await source.recordBreakdown({
-        unitId, newStatus: plan.newStatus, description, reportedBy, mediaRefs: report.mediaRefs,
+        unitId, newStatus: plan.newStatus, expectedStatus: current, description, reportedBy, mediaRefs: report.mediaRefs,
       });
+      if ('conflict' in saved) {
+        return {
+          status: 409,
+          body: { error: 'unit_changed', line: 'This unit changed while the report was being filed. Nothing was saved. File it again.' },
+        };
+      }
       if (source.emit) await source.emit('equipment.failed', { unitId, taskId: saved.taskId, status: plan.newStatus });
       return { status: 200, body: { ...plan, taskId: saved.taskId } };
     },
@@ -1208,6 +1249,43 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       });
       if (source.emit) await source.emit('maintenance.closed', { taskId });
       return { status: 200, body: { ok: true } };
+    },
+
+    /**
+     * POST /api/fleet/units/:id/sign-back — R26 (Mike, 2026-10-20). A brake or
+     * steering defect holds a unit off the schedule until a person signs it
+     * back on, and that person is Mike: the route sits behind the owner key,
+     * and the crew key cannot reach it (server.ts apiAuthorized opens the crew
+     * key to /api/crew/ only). It is the ONLY way out of a hold.
+     *
+     * Who signed is NOT read from the body — the owner key is the one
+     * credential that reaches here, so that is what the record says. The
+     * state is read from the database, never from the caller's screen, so a
+     * stale tab cannot sign back on a unit that is no longer held.
+     */
+    async signBackOn(unitId: string): Promise<ApiResult> {
+      if (!source.ready() || !source.signBackOn || !source.unitStatus) {
+        return { status: 503, body: { error: gap(source.signBackOn && source.unitStatus) } };
+      }
+      if (!UUID_RE.test(unitId)) return { status: 400, body: { error: 'bad_id' } };
+      const notHeld = { status: 409, body: { error: 'not_held', line: 'This unit is not on a brake/steering hold — there is nothing to sign back on.' } };
+      const current = await source.unitStatus(unitId);
+      if (!current) return { status: 404, body: { error: 'unknown_unit' } };
+      const to = afterSignBack(current);
+      if (to === null) return notHeld;
+      const atIso = new Date().toISOString();
+      // The write itself only moves a unit that is STILL held, so one that left
+      // the hold between the read above and here is refused, never reported signed.
+      const ok = await source.signBackOn({ unitId, status: to, signedBackBy: OWNER_SIGNER, atIso });
+      if (!ok) return notHeld;
+      if (source.emit) await source.emit('equipment.unit.signed_back_on', { unitId, signedBackBy: OWNER_SIGNER, atIso });
+      return {
+        status: 200,
+        body: {
+          ok: true, unitId, status: to, signedBackBy: OWNER_SIGNER, signedBackAt: atIso,
+          line: 'Signed back on by ' + OWNER_SIGNER + '. It is back on the schedule.',
+        },
+      };
     },
 
     /**

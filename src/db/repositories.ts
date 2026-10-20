@@ -1310,8 +1310,10 @@ export interface CrewJobRow {
   hazardPowerLines: boolean;
   hazardStructures: boolean;
   permitStatus: string | null;
-  /** True when the permit lookup could not answer — UNKNOWN, not "fine". */
+  /** True when the lookup ANSWERED and no screen row is on file — UNKNOWN, not "fine". */
   permitScreenPending: boolean;
+  /** True when the permit lookup FAILED — UNKNOWN, and never "no screen on file" (§1B). */
+  permitUnreadable: boolean;
   propertyId: string;
 }
 
@@ -1351,9 +1353,12 @@ export async function listCrewJobs(fromIso: string, toIso: string): Promise<Crew
     hazardPowerLines: r.property?.hazard_power_lines ?? false,
     hazardStructures: r.property?.hazard_structures ?? false,
     permitStatus: permits.get(r.property_id)?.screen_status ?? null,
-    // No screen on file is UNKNOWN — the three screen_status values are all
-    // warnings; there is no "screened and fine" value to fall back on.
-    permitScreenPending: permitLookupFailed || !permits.has(r.property_id),
+    // A FAILED lookup is unreadable, never "no screen on file": Arbo did not
+    // look, so it cannot say no screen exists (§1B). Both are UNKNOWN on the
+    // crew note — the three screen_status values are all warnings; there is
+    // no "screened and fine" value to fall back on.
+    permitUnreadable: permitLookupFailed,
+    permitScreenPending: !permitLookupFailed && !permits.has(r.property_id),
     propertyId: r.property_id,
   }));
 }
@@ -1482,23 +1487,36 @@ export async function unitOpenTaskCount(unitId: string): Promise<number> {
 }
 
 /** This unit's current status, or null when there is no such unit. */
-export async function unitStatus(unitId: string): Promise<'up' | 'down' | 'maintenance' | 'retired' | null> {
+export async function unitStatus(unitId: string): Promise<'up' | 'down' | 'maintenance' | 'held' | 'retired' | null> {
   const db = getDb();
   const res = await db.from('equipment_unit').select('status').eq('id', unitId).maybeSingle();
   if (res.error) throw res.error;
-  return (res.data?.status as 'up' | 'down' | 'maintenance' | 'retired' | undefined) ?? null;
+  return (res.data?.status as 'up' | 'down' | 'maintenance' | 'held' | 'retired' | undefined) ?? null;
 }
 
-/** Record the breakdown: set the unit's status and open a maintenance task. */
+/**
+ * Record the breakdown: set the unit's status and open a maintenance task.
+ *
+ * The status write is a compare-and-set against `expectedStatus` — the status
+ * the action plan was built from — the same shape signBackOnUnit and
+ * retireEquipmentUnit use. A unit that moved between that read and this write
+ * (a second report's HOLD, Mike's sign-back, a retirement) touches zero rows
+ * and answers { conflict: true } BEFORE any task row is written. Without it a
+ * minor report could lower a hold that only Mike may lift (R26). null means
+ * the caller read no status to compare against.
+ */
 export async function recordBreakdown(input: {
-  unitId: string; newStatus: string; description: string;
+  unitId: string; newStatus: string; expectedStatus: string | null; description: string;
   reportedBy: string; mediaRefs: string[];
-}): Promise<{ taskId: string }> {
+}): Promise<{ taskId: string } | { conflict: true }> {
   const db = getDb();
-  const upd = await db.from('equipment_unit')
+  let write = db.from('equipment_unit')
     .update({ status: input.newStatus, updated_at: new Date().toISOString() })
     .eq('id', input.unitId);
+  if (input.expectedStatus !== null) write = write.eq('status', input.expectedStatus);
+  const upd = await write.select('id');
   if (upd.error) throw upd.error;
+  if ((upd.data ?? []).length === 0) return { conflict: true };
   const task = await db.from('maintenance_task').insert({
     unit_id: input.unitId,
     description: `FIELD REPORT: ${input.description}`,
@@ -1525,6 +1543,30 @@ export async function closeMaintenanceTask(input: {
     completed_at: new Date().toISOString(),
   }).eq('id', input.taskId);
   if (res.error) throw res.error;
+}
+
+/**
+ * R26: Mike signs a HELD unit (brake/steering defect) back on. The write only
+ * touches a unit that is still held — the same compare-and-set retire uses —
+ * so it returns false, never a quiet success, when there was nothing to sign.
+ * Who and when stay on the unit (migration 0020).
+ */
+export async function signBackOnUnit(input: {
+  unitId: string; status: string; signedBackBy: string; atIso: string;
+}): Promise<boolean> {
+  const db = getDb();
+  const res = await db.from('equipment_unit')
+    .update({
+      status: input.status,
+      signed_back_by: input.signedBackBy,
+      signed_back_at: input.atIso,
+      updated_at: input.atIso,
+    })
+    .eq('id', input.unitId)
+    .eq('status', 'held')
+    .select('id');
+  if (res.error) throw res.error;
+  return (res.data ?? []).length > 0;
 }
 
 // ---------------------------------------------------------------------------

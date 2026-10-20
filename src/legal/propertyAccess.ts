@@ -187,6 +187,7 @@ function refusalMessage(violations: GuardViolation[]): string {
     'no-financial-authority':
       'reword to describe the ACCESS rather than the cut — "the limb overhangs your side" instead of "cut the limb off" (the money screen reads "cut … off" as an offer of a discount)',
     'forbidden-term': 'that term cannot appear in anything we hand out',
+    'no-date-promise': 'take the day or time out — Mike confirms dates himself, so a letter never names one',
   };
   const seen = [...new Set(violations.map((v) => v.rule))];
   return (

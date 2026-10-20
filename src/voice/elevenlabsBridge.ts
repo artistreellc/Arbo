@@ -61,7 +61,7 @@
 
 import type { Guardrails } from '../config/guardrails.schema.js';
 import type { LegalConfig } from '../config/legal.schema.js';
-import { Receptionist, type Alerter, type Escalator, type LlmClient } from '../reception/receptionist.js';
+import { Receptionist, END_CALL_MARKER, type Alerter, type Escalator, type LlmClient } from '../reception/receptionist.js';
 import { extractVaZip, hintContextLine, proximityHint, type RouteAnchors } from '../reception/routingHint.js';
 import { CallMemory, CallRecordStore, normalizeCallerId, repeatCallerNote } from '../reception/callMemory.js';
 import { parseRequestedWindow, type RequestedWindow } from '../ops/requestedWindow.js';
@@ -92,8 +92,10 @@ export interface BridgeRequestBody {
  * end_call tool" was an instruction the wire could not carry: the bridge
  * streams text only, so the agent said "have a good one!" and then sat in
  * dead air until the caller gave up (Mike's test call, 2026-09-24).
+ * Defined in the receptionist (which keeps it across a guard block) and
+ * re-exported here, so there is one copy and no import cycle.
  */
-export const END_CALL_MARKER = '[[END_CALL]]';
+export { END_CALL_MARKER };
 
 /** True when the platform offered an end_call tool this request. */
 function endCallToolOffered(body: BridgeRequestBody): boolean {
