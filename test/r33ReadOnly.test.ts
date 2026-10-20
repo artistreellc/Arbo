@@ -477,8 +477,6 @@ describe('the app says it', () => {
     plural: (n: number, one: string, many?: string) => n + ' ' + (n === 1 ? one : many || one + 's'), fmtTime: () => '',
     renderCalls: () => {}, renderToday: () => {}, slipRuleLabel: (r: string) => r, openSonaCall: () => {},
     document: { createElement: (t: string) => el(t) },
-    // M15 merge: the Sona panel words a registration through the page's own quoRegLine — the real one, lifted from the page.
-    quoRegLine: (reg: unknown) => pageFn<(r: unknown) => string>('quoRegLine', { fmtTime: () => '' })(reg),
   };
   const outreachStatus = {
     wired: true, fromNumber: LINE, autoFollowUps: false, readOnly: true, template: { ok: true, text: 'Art-is-Tree. Reply STOP to opt out.', problems: [] },

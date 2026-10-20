@@ -80,8 +80,6 @@ const deps = {
   el, chip, plural, fmtTime: () => '', feedLine: () => el('div', 'feed-state unread', 'x'),
   renderCalls: () => {}, renderToday: () => {}, slipRuleLabel: (r: string) => r, openSonaCall: () => {},
   document: { createElement: (t: string) => el(t) },
-  // M15 merge: the Sona panel words a registration through the page's own quoRegLine — the real one, lifted from the page.
-  quoRegLine: (reg: unknown) => pageFn<(r: unknown) => string>('quoRegLine', { fmtTime: () => '' })(reg),
 };
 
 // ═══ 1–2: the outreach panel while Quo is read-only ═══════════════════════

@@ -223,8 +223,6 @@ const deps = {
   el, plural, chip: (t: string, tone: string) => el('span', 'badge ' + tone, t), fmtTime: () => '', feedLine: () => el('div', 'feed-state unread', 'x'),
   renderCalls: () => {}, renderToday: () => {}, slipRuleLabel: (r: string) => r, openSonaCall: () => {},
   document: { createElement: (t: string) => el(t) },
-  // M15: the Sona panel words a registration through the page's own quoRegLine — the real one, lifted from the page.
-  quoRegLine: (reg: unknown) => pageFn<(r: unknown) => string>('quoRegLine', { fmtTime: () => '' })(reg),
 };
 
 /** The status the intake really returns (H1 + R33 fields). */
