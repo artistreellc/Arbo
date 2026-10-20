@@ -286,8 +286,9 @@ describe('Crew door — no flash of the full page on a keyless phone', () => {
 
   it('a phone with no key hides the panels until the briefing answers; any answer shows them again', () => {
     expect(boot).toMatch(/^if \(renderWhoAmI\(\)\) \{\n(?:\s*\/\/[^\n]*\n)*\s*if \(!KEY\) document\.querySelector\('main'\)\.classList\.add\('door-locked'\);\n\s*renderWork\(\);/);
-    // Audit 2026-10-20 (M2): the gate's 429 reaches the door card too, with the server's reason.
-    expect(boot).toMatch(/if \(e\.code === 401 \|\| e\.code === 429\) return renderDoorKey\(e\.message === 'crew_key_not_set', e\.message\);\n\s*document\.querySelector\('main'\)\.classList\.remove\('door-locked'\);/);
+    // M11: the read lives in loadBriefing() (retried on resume); a 401 still asks for the key, any other answer shows the panels.
+    // Audit 2026-10-20 (M2): the gate's 429 reaches the door card too, with the server's reason — and, like a 401, is never re-read on its own.
+    expect(crew).toMatch(/if \(e\.code === 401 \|\| e\.code === 429\) \{ DOOR_KEY_ASKED = true; return renderDoorKey\(e\.message === 'crew_key_not_set', e\.message\); \}\n\s*document\.querySelector\('main'\)\.classList\.remove\('door-locked'\);/);
     const gate = /^function renderGate\(brief\) \{\n([^\n]*)\n/m.exec(crew)?.[1];
     expect(gate).toBe("  document.querySelector('main').classList.remove('door-locked'); // the door answered: show the panels");
     // The key card itself is unchanged: it still locks the door.

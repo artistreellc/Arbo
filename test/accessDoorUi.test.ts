@@ -174,7 +174,8 @@ describe('the crew page — the door card names the two server states', () => {
   };
 
   it('the briefing’s 401 and the gate’s 429 both reach the door card, with the server’s reason', () => {
-    expect(crew).toContain("if (e.code === 401 || e.code === 429) return renderDoorKey(e.message === 'crew_key_not_set', e.message);");
+    // M11 merge: the read lives in loadBriefing(), which marks the door as asked so neither answer is re-read on its own.
+    expect(crew).toContain("if (e.code === 401 || e.code === 429) { DOOR_KEY_ASKED = true; return renderDoorKey(e.message === 'crew_key_not_set', e.message); }");
   });
 
   it('no app key on the server: locked on the server, no field to type into', () => {

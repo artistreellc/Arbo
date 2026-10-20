@@ -82,7 +82,7 @@ describe('R26 crew preview — how the page knows it is a preview, and whose key
 
   it('the switched-off controls are drawn after their panels, inside the boot block', () => {
     const boot = crew.slice(crew.indexOf('if (renderWhoAmI()) {'));
-    expect(boot.indexOf('  if (PREVIEW) previewLock();')).toBeGreaterThan(boot.indexOf("api('/api/crew/briefing').then(renderGate)"));
+    expect(boot.indexOf('  if (PREVIEW) previewLock();')).toBeGreaterThan(boot.indexOf('  loadBriefing();'));
     expect(boot.indexOf('  if (PREVIEW) previewLock();')).toBeGreaterThan(boot.indexOf('renderNearMiss();'));
   });
 });

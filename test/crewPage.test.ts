@@ -139,7 +139,8 @@ describe('crew near-miss filing (§6V) — blameless and always reachable', () =
     // renderNearMiss() runs on boot, not from renderWork(), which is the
     // gate-guarded path. A near miss that has to wait for a briefing is a
     // near miss that never gets filed.
-    expect(html).toMatch(/renderNearMiss\(\);\s*\n\s*api\('\/api\/crew\/briefing'\)/);
+    // M11: the briefing read is loadBriefing() (retried on resume), still called right after.
+    expect(html).toMatch(/renderNearMiss\(\);\s*\n\s*loadBriefing\(\);/);
   });
 
   it('promises no blame in the copy, and asks for no name', () => {

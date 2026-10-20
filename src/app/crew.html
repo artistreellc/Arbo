@@ -175,6 +175,9 @@ main{padding:16px;max-width:640px;margin:0 auto}
    and it usually carries a do-not-start order, so it looks like one. */
 .state.err{border:1.5px solid var(--warning);background:#2A1D06;color:#FFD9A0;font-weight:600}
 .errline{color:#FF9B95;font-weight:600;margin-top:10px}
+/* M11: a briefing that did not come through can be asked for again, without force-quitting the app. */
+button.retry{display:block;width:100%;min-height:52px;margin-top:14px;border:1.5px solid var(--border);border-radius:var(--r-md);
+  background:var(--surface-alt);color:var(--ink);font-size:17px;font-weight:800;cursor:pointer}
 .errline:empty{display:none}
 main.door-locked #gate-slot,main.door-locked #quiz,main.door-locked #work,main.door-locked #library,main.door-locked #nearmiss{display:none}
 #whoami{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
@@ -351,6 +354,8 @@ const GATE = {
   // True when pressing again cannot help (400 wrong crew code; 503 cut, practice
   // data, not set up): GO stays tappable but is never green under that line.
   serverHold: false,
+  // M11: the one 1-second refresh timer, so a second renderGate never starts another.
+  ticking: null,
   // R26: why GO never arms in the office preview ('' on a crew phone). On
   // GATE, so the gate's own functions read it with the rest of its state.
   preview: PREVIEW ? PREVIEW_WHY : '',
@@ -404,7 +409,7 @@ function renderGate(brief) {
   // no scrolling counts as scrolled the moment it is on screen.
   if (body.scrollHeight <= body.clientHeight + 4) GATE.scrolled = true;
   refreshGate();
-  setInterval(refreshGate, 1000);
+  if (!GATE.ticking) GATE.ticking = setInterval(refreshGate, 1000);
 }
 
 function secondsOnScreen() { return Math.floor((Date.now() - GATE.openedMs) / 1000); }
@@ -1142,20 +1147,36 @@ if (PREVIEW) {
   bar.appendChild(back);
   document.body.appendChild(bar);
 }
-if (renderWhoAmI()) {
-  // No door key on this phone: the crew routes will almost surely answer 401, so
-  // the panels stay hidden until the briefing answers, instead of painting and
-  // then vanishing under the key card. renderGate and the catch show them again.
-  if (!KEY) document.querySelector('main').classList.add('door-locked');
-  renderWork();
-  renderLibrary();
-  renderNearMiss();
+// M11 (audit 2026-10-20): the briefing used to be read ONCE. One dead spot
+// at 6:30am locked the crew out until someone force-quit the app, and a phone
+// resumed the next day kept "DAY UNLOCKED" with yesterday's work. Now it is
+// read again on Try again, when the phone comes back online, and when the
+// app comes back to the screen while the day is still locked — and a phone
+// that wakes on a new Hampton Roads day reloads, so every day starts locked.
+let BRIEF_LOADING = false;
+let DOOR_KEY_ASKED = false;
+function etDayNow() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+}
+const BRIEF_DAY = etDayNow();
+function briefRetryBtn() {
+  const b = el('button', 'retry', 'Try again');
+  b.addEventListener('click', () => loadBriefing());
+  return b;
+}
+function loadBriefing() {
+  // A gate on screen keeps its countdown; an unlocked day needs nothing; a locked door waits for its key.
+  if (BRIEF_LOADING || GATE.unlocked || GATE.content || DOOR_KEY_ASKED) return;
+  BRIEF_LOADING = true;
   api('/api/crew/briefing').then(renderGate).catch(async (e) => {
     // The gate's 429 (too many wrong keys from this connection) is the door card's too, with the server's reason.
-    if (e.code === 401 || e.code === 429) return renderDoorKey(e.message === 'crew_key_not_set', e.message);
+    // M11: a door waiting for its key (or throttled) is never re-read on its own — the card's button reloads.
+    if (e.code === 401 || e.code === 429) { DOOR_KEY_ASKED = true; return renderDoorKey(e.message === 'crew_key_not_set', e.message); }
     document.querySelector('main').classList.remove('door-locked'); // the door answered: show the panels
+    $('gate-slot').replaceChildren(); // a second try replaces the first answer, never stacks under it
     if (e.code === 404) {
       $('gate-slot').appendChild(el('div', 'state', 'No briefing published for today yet — check with the office.'));
+      $('gate-slot').appendChild(briefRetryBtn());
       return;
     }
     // §1B: a briefing Arbo could not read is not "no briefing", and the order
@@ -1167,8 +1188,28 @@ if (renderWhoAmI()) {
     s.appendChild(document.createTextNode(why.charAt(0).toUpperCase() + why.slice(1) + '.'));
     // The order is its own line, so "Do not start work" never splits after "Do".
     s.appendChild(el('b', 'order', 'Do not start work \u2014 call the office.'));
+    s.appendChild(briefRetryBtn());
     $('gate-slot').appendChild(s);
-  });
+  }).finally(() => { BRIEF_LOADING = false; });
+}
+function resumeDay() {
+  if (etDayNow() !== BRIEF_DAY) { location.reload(); return; }
+  loadBriefing();
+}
+if (renderWhoAmI()) {
+  // No door key on this phone: the crew routes will almost surely answer 401, so
+  // the panels stay hidden until the briefing answers, instead of painting and
+  // then vanishing under the key card. renderGate and the catch show them again.
+  if (!KEY) document.querySelector('main').classList.add('door-locked');
+  renderWork();
+  renderLibrary();
+  renderNearMiss();
+  loadBriefing();
+  // M11: back online, back on screen, or back from the phone's page cache —
+  // a locked day asks for its briefing again; a new ET day starts over.
+  window.addEventListener('online', resumeDay);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') resumeDay(); });
+  window.addEventListener('pageshow', (ev) => { if (ev.persisted) resumeDay(); });
   // R26: the preview's other switched-off controls, now that their panels are drawn.
   if (PREVIEW) previewLock();
 }
