@@ -6538,8 +6538,10 @@ async function talkAsk() {
 }
 function talkFailLine(e) {
   if (e && e.line) return e.line; // the server's own words: no AI key, or the brain did not answer
-  // A 401 is this phone's key, or a server with no app key at all (no_app_key) — the body is not read here, so both are named.
-  if (e && e.code === 401) return 'Talk is locked. Either this phone’s key was not accepted — check it in Settings — or the server has no app key set yet.';
+  // The door's refusals arrive as code 401 with the server's reason as `why` (api()): a throttled
+  // connection (too_many_attempts, really a 429) or no app key on the server is said in the key
+  // screen's own words. Only a refusal with no named reason is this phone's key — or no key on the server.
+  if (e && e.code === 401) return 'Talk is locked. ' + (KEY_REFUSED[e.why] || 'Either this phone’s key was not accepted — check it in Settings — or the server has no app key set yet.');
   if (e && e.slow) return 'Arbo took too long to answer — say it again, or tap End.';
   if (e && e.code) return 'Arbo’s brain didn’t answer (' + e.code + ') — try again.';
   return 'Arbo couldn’t reach the server — check your signal, then say it again.';

@@ -750,6 +750,13 @@ const block = (() => {
   if (a < 0 || b < 0) throw new Error('Talk block markers missing from the page');
   return html.slice(a, b);
 })();
+/** The key screen's words for a refusal the server named (Lane A) — Talk says the same ones. */
+const keyRefused = (() => {
+  const a = html.indexOf('const KEY_REFUSED = {');
+  const b = html.indexOf('};', a);
+  if (a < 0 || b < 0) throw new Error('KEY_REFUSED missing from the page');
+  return new Function(`${html.slice(a, b + 2)}\nreturn KEY_REFUSED;`)() as Record<string, string>;
+})();
 
 interface FakeNode { id: string; textContent: string; hidden: boolean; value: string; attrs: Record<string, string>; cls: Set<string>; classList: { add(c: string): void; remove(c: string): void; contains(c: string): boolean; toggle(c: string, on?: boolean): boolean }; setAttribute(k: string, v: string): void }
 function fakeDom() {
@@ -837,7 +844,7 @@ function rig(opts: { replies: Array<{ reply: string } | Error>; listen?: boolean
     return next;
   });
   const names = ['talkStart', 'talkEnd', 'talkHeard', 'TALK'];
-  const t = new Function('$', 'api', 'window', 'navigator', `${block}\nreturn { ${names.join(', ')} };`)($, api, win, nav) as Rig['t'];
+  const t = new Function('$', 'api', 'window', 'navigator', 'KEY_REFUSED', `${block}\nreturn { ${names.join(', ')} };`)($, api, win, nav, keyRefused) as Rig['t'];
   return { t, $, spoken, utts, sessionAtSpeak, cancels: () => cancels, recs: FakeRec.all, posts, lock, nav, synth };
 }
 
@@ -1062,6 +1069,31 @@ describe('the page: one tap, then hands-free (the iPhone\'s own speech)', () => 
     expect(r.$('talk-status').textContent).toMatch(/Talk is locked/);
     expect(r.$('talk-status').textContent).toMatch(/Settings/);
     expect(r.$('talk-status').textContent).toMatch(/server has no app key/);
+    expect(r.t.TALK.on).toBe(false);
+  });
+
+  // Wave-1 verify: api() turns the door's 429 too_many_attempts into code 401 + why. Talk read
+  // only the code, so a throttled phone with the RIGHT key was told to check its key.
+  it('a throttled connection (the door\'s 429, passed on as 401 + why) is told to wait — never "check your key" — and Talk stops', async () => {
+    vi.useFakeTimers();
+    const r = rig({ replies: [Object.assign(new Error('unauthorized'), { code: 401, why: 'too_many_attempts' })] });
+    r.t.talkStart();
+    await vi.advanceTimersByTimeAsync(300);
+    const said = r.$('talk-status').textContent;
+    expect(said).toContain(keyRefused.too_many_attempts!);
+    expect(said).not.toMatch(/not accepted|Settings|no app key/);
+    expect(r.spoken.join(' ')).toMatch(/Wait a minute/);
+    expect(r.t.TALK.on).toBe(false);
+  });
+
+  it('no app key on the server (401 no_app_key) is said as that — never "this phone\'s key"', async () => {
+    vi.useFakeTimers();
+    const r = rig({ replies: [Object.assign(new Error('unauthorized'), { code: 401, why: 'no_app_key' })] });
+    r.t.talkStart();
+    await vi.advanceTimersByTimeAsync(300);
+    const said = r.$('talk-status').textContent;
+    expect(said).toContain(keyRefused.no_app_key!);
+    expect(said).not.toMatch(/not accepted/);
     expect(r.t.TALK.on).toBe(false);
   });
 
