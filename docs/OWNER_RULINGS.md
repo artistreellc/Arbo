@@ -740,3 +740,58 @@ where he did not say (Mike may change any):
    second, independent translation pass, and safety text is back-translated.
    Before crews rely on it, a Spanish-speaking crew member reads the safety
    briefing and the quiz on a phone and says it reads right.
+
+## R30 — Talk: tap a button in Arbo and talk to it, no third party (Mike, 2026-10-20)
+
+*(Draft, filed with the build. R28 and R29 are being filed on parallel branches.)*
+
+Mike, verbatim: *"i need their to be a voice feature for when im driving and
+it can update me"* — offered three ways, he picked *"Talk back and forth"* —
+then: *"no i want to tap a button in arbo and i can talk to it no third
+party"*.
+
+What this changes:
+1. **A Talk button inside Arbo**, in the header of every screen. One tap opens
+   Talk and starts it: Arbo speaks a short update, then answers questions out
+   loud, hands-free, until Mike says "that's all" / "stop" / "goodbye", taps
+   End, leaves Talk, or locks the phone.
+2. **No third party for the voice.** The iPhone's own speech listens and
+   speaks (the browser's built-in recognition and voice). No ElevenLabs, no
+   Twilio, no Claude app, no connector, no new vendor or account, no new
+   dependency. The thinking is Arbo's existing brain (`BRAIN_MODEL`, R5) on
+   the `ANTHROPIC_API_KEY` already set — the same brain the desks use.
+3. **Read-only, structurally.** `POST /api/talk` has four tools — the update,
+   Sona's calls, today's stops and work orders, the trucks — each built on
+   the reads the app's screens already make. None can send, book, edit, file,
+   approve, sign a truck back on, or write anything; there is no tool that
+   could. A feed that is cut or unreadable is named, never a zero (§1B).
+
+Defaults Claude used where Mike did not say (he may change any):
+- Arbo says customer **names** (the app already shows them, R17) but never a
+  phone number, email or street address — "call back from the Arbo app".
+- Every answer passes the brain's guard (no price, no promised day, permit
+  words only, never "clear"); a blocked answer becomes "I can't say that one
+  out loud". The guard was written for callers, so a few harmless owner
+  questions are held back too (anything about Suffolk, "TCIA", a dollar
+  figure).
+- After three quiet listens in a row it stops listening ("Tap Start when you
+  need me") rather than leave the mic open in the truck.
+- Not in Talk yet (each one more tool, on Mike's word): who is waiting on
+  Mike from the R24 customer study, and R28 approvals.
+
+Open — Mike's call, not a build's: whether the **installed home-screen app**
+can listen on his iPhone is not something Apple has promised. If it cannot,
+Talk falls back to a typing box (the keyboard's own mic still works). The
+choices then are (a) use Talk from a Safari tab, or (b) one tap per question
+with the keyboard mic. Field test first (docs/GO_LIVE.md §6).
+
+What did NOT move: R21 — the ElevenLabs/Twilio links and the old `/talk`
+receptionist page stay cut; Talk does not use the receptionist or its prompt.
+Data links stay cut (§3, R19). Logs stay counts-and-ids (§4.3) — the log line
+for a turn is counts and milliseconds, never a word said. The route sits
+behind the owner key; the crew key never opens it, and with no
+`APP_ACCESS_KEY` it is locked.
+
+*Carried by:* `src/voice/ownerTalk.ts`, `src/server.ts` (`POST /api/talk`),
+`src/app/index.html` (the Talk block and sheet), `src/app/sprite.svg`
+(`i-mic`), `test/ownerTalk.test.ts`.
