@@ -524,6 +524,8 @@ function fleetPage(payload: () => unknown, signBack: (path: string) => Promise<u
     chip: (text: string, tone: string) => node('span', `badge ${tone}`, text),
     state: (title: string, msg: string) => node('div', 'state', `${title} ${msg}`),
     partAdder: () => node('details', 'agent-law', 'part adder'),
+    // R31: the Bouncie line is its own function (test/bouncie.test.ts); here it is an empty stand-in.
+    fleetTrackLine: () => node('div', 'storm-muted fleet-track', ''),
     openBreakdown: () => {},
     saveFailText: (e: { code?: number }) => `Not saved — refused (${e.code}). Nothing was written.`,
     UNIT_STATUS: pageTable('UNIT_STATUS'),
