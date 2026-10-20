@@ -245,10 +245,12 @@ describe('T3: the tile grid stands on its own feeds', () => {
 
   it('a safety flag takes the first slot, in a real plural that counts stops', () => {
     expect(today).toContain("hud.prepend(tile(s.redFlagCount, s.redFlagCount === 1 ? 'flagged stop' : 'flagged stops', 'hot wide'))");
-    expect(today).toContain("hud.prepend(tile(s.emergencies, s.emergencies === 1 ? 'emergency' : 'emergencies', 'hot wide'))");
+    // R26: the emergencies tile counts emergency stops AND emergency leads (setEmergencies), in a real plural.
+    expect(today).toContain("emgTile.querySelector('span').textContent = n === 1 ? 'emergency' : 'emergencies';");
     expect(today).not.toContain("'red flags'");
     // Emergencies are prepended last, so they lead.
-    expect(today.indexOf('hud.prepend(tile(s.redFlagCount')).toBeLessThan(today.indexOf('hud.prepend(tile(s.emergencies'));
+    expect(today.indexOf('hud.prepend(tile(s.redFlagCount')).toBeLessThan(today.indexOf("setEmergencies('stops', s.emergencies || 0)"));
+    expect(today).toContain('hud.prepend(emgTile);');
     // and they fill the first row exactly, so the six tiles below stay one even row on the office screen.
     expect(today).toContain("flags.forEach((t) => { t.style.gridColumn = flags.length === 1 ? '1 / -1' : 'span 3'; });");
   });

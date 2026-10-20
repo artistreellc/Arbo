@@ -296,7 +296,15 @@ nav button .navpill span:last-child{white-space:nowrap;overflow:hidden;text-over
 nav button .ico{width:23px;height:23px}
 nav button.active{color:var(--forest);background:var(--f-100)}
 nav button.dock-hidden{display:none}
-nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;height:8px;border-radius:50%;background:var(--emergency);border:2px solid var(--card)}
+/* The Leads tab's badge (R26): a red count of EMERGENCY leads. A leads feed Arbo could not read keeps a dot in the
+   feed-state colours (grey = cut or not simulated, amber = not set up, hollow amber = couldn't read it) — never a
+   quiet no-badge (§1B). The button's aria-label says which in words. */
+nav button{position:relative}
+nav button .dot{position:absolute;top:5px;left:calc(50% + 5px);min-width:18px;height:18px;padding:0 5px;border-radius:var(--r-pill);background:var(--emergency);color:var(--on-emergency);border:2px solid var(--card);font-size:10.5px;font-weight:700;line-height:14px;text-align:center;font-variant-numeric:tabular-nums}
+nav button .dot.gap{min-width:0;width:12px;height:12px;padding:0;top:7px;left:calc(50% + 7px)}
+nav button .dot.cut,nav button .dot.sim{background:var(--ink-4)}
+nav button .dot.unset{background:var(--warning)}
+nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--warning)}
 
 /* ── More sheet: every surface within two taps (§9) ──────────────────── */
 .grid-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:6px}
@@ -479,8 +487,8 @@ nav button .dot{position:absolute;margin-left:18px;margin-top:-4px;width:8px;hei
   #loops-panel{grid-column:1 / -1;display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
   #loops-panel .panel-title,#loops-panel .hudbtn{grid-column:1 / -1}
   #loops-panel .card,.card{margin-bottom:0}
-  #view-followups > div:first-child{grid-column:1 / -1;display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
-  #view-followups > div:first-child .panel-title{grid-column:1 / -1}
+  #queue-loops{grid-column:1 / -1;display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  #queue-loops .panel-title{grid-column:1 / -1}
   .slot{margin-bottom:0;align-self:stretch}
   .view .slot.plain,#talk-btn{grid-column:1 / -1}
   nav{left:50%;right:auto;transform:translateX(-50%);width:560px}
@@ -719,7 +727,7 @@ function showSaveFail(box, e) { const n = box.querySelector(':scope > .save-err'
 //     a non-power CALL FIRST, an unknown crew role
 //   good = READ, OK, GOOD, SOURCED, QUALIFIED, WIRED, OPEN, UP, ABOVE AVERAGE, WEEK DONE, REVIEWED
 //   info = CUT / LINK CUT, NOT SIMULATED, NOT RUN, NOT BUILT, NO OVERLAY — VERIFY W/ CITY, JOB, ESTIMATE, FIRST-TIMER,
-//     REPEAT, SPAM, COOL, OFF ROSTER, AT AVERAGE, NOT ENOUGH DATA, RENEWAL DUE, SEASONAL, REVIEW ASK,
+//     REPEAT, SPANISH SPEAKER, SPAM, COOL, OFF ROSTER, AT AVERAGE, NOT ENOUGH DATA, RENEWAL DUE, SEASONAL, REVIEW ASK,
 //     COMING DUE (growth nudge), + PROOF OF INSURANCE, and every identity tag (city, channel, line, job type, role,
 //     source, money amount, counts, study stages other than WAITING ON YOU)
 const TONE = { alarm: 't-alarm', stop: 't-stop', watch: 't-watch', good: 't-good', info: 't-info' };
@@ -774,16 +782,20 @@ function mapsLink(address, city) {
 
 function badge(text, cls) { return el('span', 'badge ' + cls, text); }
 
-// The permit screen as a tone: anything that needs a look is amber; a
-// no-overlay result is context (the city still has the last word).
+// ONE label per permit state, on every screen (R26, qa-x6): the Leads badge
+// wording is the source. Keyed by the screen status the server sends, plus a
+// screen that has not run yet. The Permit Desk's checklist words point at the
+// same entries (PERMIT_STATUS). [label, tone]: anything that needs a look is
+// amber; a no-overlay result is context (the city still has the last word).
+const PERMIT_STATE = { PERMIT_LIKELY: ['PERMIT LIKELY', 'watch'], REVIEW_NEEDED: ['PERMIT: REVIEW NEEDED', 'watch'], NO_OVERLAY_VERIFY: ['NO OVERLAY — VERIFY W/ CITY', 'info'], SCREEN_PENDING: ['PERMIT SCREEN PENDING', 'watch'] };
+// One permit state as its chip. A status it does not know keeps the old reading: verify with the city.
+function permitChip(status) {
+  const s = PERMIT_STATE[status] || PERMIT_STATE.NO_OVERLAY_VERIFY;
+  return chip(s[0], s[1]);
+}
 function permitBadge(lead) {
-  if (lead.permit) {
-    const s = lead.permit.screenStatus;
-    if (s === 'PERMIT_LIKELY') return chip('PERMIT LIKELY', 'watch');
-    if (s === 'REVIEW_NEEDED') return chip('PERMIT: REVIEW NEEDED', 'watch');
-    return chip('NO OVERLAY — VERIFY W/ CITY', 'info');
-  }
-  if (lead.screenPending) return chip('PERMIT SCREEN PENDING', 'watch');
+  if (lead.permit) return permitChip(lead.permit.screenStatus);
+  if (lead.screenPending) return permitChip('SCREEN_PENDING');
   return null;
 }
 
@@ -1371,6 +1383,109 @@ async function receptionStrip() {
   return wrap;
 }
 
+// ---------- Emergency leads and the storm price law (R26) ----------
+// An EMERGENCY lead is an alarm on Today's first screen, not a card three taps
+// away, and the Leads tab carries its count. A leads feed Arbo could not read
+// is named on Today and on the tab — never a quiet no-badge (§1B).
+// The badge on the dock's Leads button: err = the failed read, or null with n = how many emergency leads.
+function leadsTabBadge(err, n) {
+  const btn = $('tab-leads');
+  let dot = btn.querySelector('.dot');
+  const k = err ? feedKind(err) : null;
+  if (!k && !n) {
+    if (dot) dot.remove();
+    btn.removeAttribute('aria-label');
+    btn.removeAttribute('title');
+    return;
+  }
+  if (!dot) {
+    dot = el('span');
+    dot.setAttribute('aria-hidden', 'true'); // the button's own label says it in words
+    btn.appendChild(dot);
+  }
+  dot.className = 'dot' + (k ? ' gap ' + k : '');
+  dot.textContent = k ? '' : String(n);
+  const say = k ? 'Leads: ' + FEED_WORD[k] + '. Emergency leads unknown — not zero.' : 'Leads: ' + plural(n, 'emergency lead');
+  btn.setAttribute('aria-label', say);
+  btn.title = say;
+}
+
+// Leads, scrolled to one lead. Leads redraws first, so the card is the current one;
+// a lead filed since stays at the top of the list instead.
+async function openLead(id) {
+  switchTab('leads');
+  await renderLeads();
+  const c = document.getElementById('lead-' + id);
+  if (c) c.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// Today's read of the leads feed: { list } of emergency leads, { gap: err } when
+// it could not be read, or null on the key wall. The Leads tab badge follows it.
+async function emergencyLeads() {
+  let list;
+  // The filter sits inside the try: a body with no leads list is a read that failed, never "no emergencies".
+  try { list = (await api('/api/leads?limit=50')).leads.filter((l) => l.isEmergency); }
+  catch (e) {
+    if (e.code === 401) return null;
+    await LINKS_READY; // whether db_not_configured means "cut" depends on the links
+    leadsTabBadge(e);
+    return { gap: e };
+  }
+  leadsTabBadge(null, list.length);
+  return { list: list };
+}
+
+// One emergency lead as Today's red alarm card: who, where, what they said, and
+// the two taps that matter — call back, or open it in Leads.
+function emergencyLeadCard(l) {
+  const c = el('div', 'card emergency');
+  const top = el('div', 'toprow');
+  top.appendChild(el('div', 'who', l.name || 'Unknown caller'));
+  top.appendChild(el('div', 'when', fmtWhen(l.createdAt)));
+  c.appendChild(top);
+  if (l.city) c.appendChild(el('div', 'addr', l.city + (l.zip ? ' · ' + l.zip : '')));
+  if (l.details) c.appendChild(el('div', 'scope', l.details));
+  const b = el('div', 'badges');
+  b.appendChild(chip('EMERGENCY', 'alarm'));
+  if (l.language === 'es' || l.lang === 'es') b.appendChild(chip('SPANISH SPEAKER', 'info'));
+  c.appendChild(b);
+  const row = el('div', 'actions');
+  if (l.phone) {
+    const call = el('a', 'callbtn', 'Call back');
+    call.href = 'tel:' + l.phone;
+    row.appendChild(call);
+  }
+  const open = el('button', 'minibtn', 'Open the lead →');
+  open.addEventListener('click', () => openLead(l.id));
+  row.appendChild(open);
+  c.appendChild(row);
+  return c;
+}
+
+// Owner only: while a declared disaster is in effect, Virginia's post-disaster
+// price law (Va. Code 59.1-526/527) applies. Arbo never prices, so this is an
+// awareness flag for Mike — amber, never an alarm. Nothing shows when no
+// declaration is in effect, or when this server has no such read yet (404 / not built).
+async function stormLawFlag() {
+  let d;
+  try { d = await api('/api/storm/law'); }
+  catch (e) {
+    if (e.code === 401 || e.code === 404) return null;
+    await LINKS_READY; // whether db_not_configured means "cut" depends on the links
+    return feedKind(e) === 'unset' ? null : feedLine(e, 'Storm price law');
+  }
+  if (d.state === 'none') return null;
+  // 'unreadable', or a state this page does not know: named, never read as "no declaration" (§1B).
+  if (d.state !== 'active') return feedLine(null, 'Storm price law');
+  const box = el('div', 'late');
+  box.appendChild(document.createTextNode('Virginia post-disaster price law in effect — check with counsel'));
+  for (const x of Array.isArray(d.declarations) ? d.declarations : []) {
+    const title = typeof x === 'string' ? x : x && x.title;
+    if (title) box.appendChild(el('small', '', title));
+  }
+  return box;
+}
+
 // ---------- Today (Morning Brief) ----------
 async function renderToday() {
   const v = $('view-today');
@@ -1381,6 +1496,16 @@ async function renderToday() {
   const stormSlot = el('div', 'slot plain');
   v.appendChild(stormSlot);
   stormBanner().then((b) => { if (b) stormSlot.appendChild(b); });
+  // R26: an EMERGENCY lead sits right under the storm alert and above the run,
+  // then the owner's storm price-law flag. Their places are set before any read;
+  // the leads read starts below, once the tiles it counts into exist. The alarm
+  // cards are full cards like the run's (display:contents, never a flattened .slot card).
+  const emgSlot = el('div');
+  emgSlot.style.display = 'contents';
+  v.appendChild(emgSlot);
+  const lawSlot = el('div', 'slot plain');
+  v.appendChild(lawSlot);
+  stormLawFlag().then((b) => { if (b) lawSlot.appendChild(b); });
   // The day's run, then the instruments, sit right under a storm alert — their
   // place on screen is chosen here, before any fetch, not left to whichever
   // fetch returns early. display:contents keeps every child in the desktop grid.
@@ -1469,6 +1594,43 @@ async function renderToday() {
     tileWhy(owedTile, FEED_TAG[feedKind(e)]);
     tileWhy(billTile, FEED_TAG[feedKind(e)]);
   });
+  // Safety flags fill the first row exactly (one: all of it, two: half each), so the six tiles stay one even row on a wide screen.
+  const layoutFlags = () => {
+    const flags = hud.querySelectorAll('.wide');
+    flags.forEach((t) => { t.style.gridColumn = flags.length === 1 ? '1 / -1' : 'span 3'; });
+  };
+  // R26: the emergencies tile counts both halves — emergency stops on today's
+  // run and EMERGENCY leads. Each half lands on its own read; a half Arbo could
+  // not read is named on the tile, never counted as 0 (§1B). It leads the grid.
+  const emg = {}; // stops / leads: a count once read, or the feed word when it could not be
+  let emgTile = null;
+  const setEmergencies = (half, val) => {
+    emg[half] = val;
+    const n = (typeof emg.stops === 'number' ? emg.stops : 0) + (typeof emg.leads === 'number' ? emg.leads : 0);
+    if (!n) return;
+    if (!emgTile) emgTile = tile(n, '', 'hot wide');
+    emgTile.querySelector('b').textContent = String(n);
+    emgTile.querySelector('span').textContent = n === 1 ? 'emergency' : 'emergencies';
+    const gap = typeof emg.stops === 'string' ? 'schedule ' + emg.stops : typeof emg.leads === 'string' ? 'leads ' + emg.leads : '';
+    if (gap) tileWhy(emgTile, gap);
+    hud.prepend(emgTile); // first in the grid, whichever half landed first
+    layoutFlags();
+  };
+  emergencyLeads().then((r) => {
+    if (!r) return;
+    if (r.gap) {
+      emgSlot.appendChild(feedLine(r.gap, 'Emergency leads', 'That doesn’t mean there are none.'));
+      setEmergencies('leads', FEED_TAG[feedKind(r.gap)]);
+      return;
+    }
+    setEmergencies('leads', r.list.length);
+    for (const l of r.list.slice(0, 3)) emgSlot.appendChild(emergencyLeadCard(l));
+    if (r.list.length > 3) {
+      const more = el('button', 'hudbtn', 'All ' + r.list.length + ' emergency leads →');
+      more.addEventListener('click', () => { switchTab('leads'); renderLeads(); });
+      emgSlot.appendChild(more);
+    }
+  });
   const locSlot = el('div', 'slot plain');
   v.appendChild(locSlot);
   // A failed read gets a titled card (data-feed); the live ON/OFF strip stays plain.
@@ -1520,6 +1682,7 @@ async function renderToday() {
     if (HERO) { HERO.ring('stops', null); HERO.legend('stops', '–'); HERO.stat('stops', '–', '', 'schedule ' + why); }
     sysSet('schedule', k === 'unread' ? 'down' : 'warn', why);
     tileWhy(jobsTile, why); tileWhy(estTile, why);
+    setEmergencies('stops', why);
     // An unreadable schedule is never an empty day (§1B). Mike's real
     // calendar is one tap away — inside the same card, not a second bar under it.
     const sc = feedState(e, 'Schedule', 'an empty day');
@@ -1533,12 +1696,10 @@ async function renderToday() {
   }
   const s = brief.summary;
   setTile(jobsTile, s.jobs || 0); setTile(estTile, s.estimates || 0);
-  // A safety flag takes the first slot of the grid: emergencies, then flagged stops.
+  // A safety flag takes the first slot of the grid: emergencies (stops and leads, setEmergencies), then flagged stops.
   if (s.redFlagCount) hud.prepend(tile(s.redFlagCount, s.redFlagCount === 1 ? 'flagged stop' : 'flagged stops', 'hot wide'));
-  if (s.emergencies) hud.prepend(tile(s.emergencies, s.emergencies === 1 ? 'emergency' : 'emergencies', 'hot wide'));
-  // They fill the first row exactly (one: all of it, two: half each), so the six tiles stay one even row on a wide screen.
-  const flags = hud.querySelectorAll('.wide');
-  flags.forEach((t) => { t.style.gridColumn = flags.length === 1 ? '1 / -1' : 'span 3'; });
+  setEmergencies('stops', s.emergencies || 0);
+  layoutFlags();
   {
     const nowMs = Date.now();
     const timed = brief.stops.filter((st) => st.timeIso && !Number.isNaN(Date.parse(st.timeIso)));
@@ -1674,9 +1835,11 @@ async function renderLeads() {
     // §1B: a lead feed Arbo could not read is NAMED, never headed "no leads".
     // The boot /health read decides whether db_not_configured means cut.
     await LINKS_READY;
+    leadsTabBadge(e); // the tab says it too (R26)
     v.appendChild(feedState(e, 'Leads', 'an empty inbox'));
     return;
   }
+  leadsTabBadge(null, data.leads.filter((l) => l.isEmergency).length);
   if (!data.leads.length) {
     // R4: Mike handles the leads — this screen promises no ingestion.
     v.appendChild(state('No new leads', 'Nothing waiting right now.'));
@@ -1689,6 +1852,7 @@ async function renderLeads() {
     (new Date(b.createdAt) - new Date(a.createdAt)));
   for (const lead of leads) {
     const c = el('div', 'card' + (lead.isEmergency ? ' emergency' : '') + (lead.needsCallback ? ' callback' : ''));
+    c.id = 'lead-' + lead.id; // where Today's emergency card lands (openLead)
     if (lead.needsCallback) c.appendChild(el('div', 'cb-label', 'Call back needed'));
     const top = el('div', 'toprow');
     top.appendChild(el('div', 'who', lead.name || 'Unknown caller'));
@@ -1706,6 +1870,8 @@ async function renderLeads() {
     else b.appendChild(chip(lead.quality.priority.toUpperCase(), { hot: 'stop', warm: 'watch', cool: 'info' }[lead.quality.priority]));
     if (lead.isFirstTimer === true) b.appendChild(chip('FIRST-TIMER', 'info'));
     if (lead.isFirstTimer === false) b.appendChild(chip('REPEAT', 'info'));
+    // R26: a Spanish-speaking caller is recognised and flagged — what they hear is still Mike's call.
+    if (lead.language === 'es' || lead.lang === 'es') b.appendChild(chip('SPANISH SPEAKER', 'info'));
     // A good lead says so; filing it as spam swaps this tag for SPAM until Undo.
     let qTag = null;
     if (lead.status === 'qualified') { qTag = chip('QUALIFIED', 'good'); b.appendChild(qTag); }
@@ -1992,7 +2158,9 @@ function estimatePrepPanel() {
     // warning, and NO OVERLAY — VERIFY is neutral — green would read as a pass.
     const pc = !s.permit.ran ? 'v-below' : s.permit.status === 'PERMIT_LIKELY' ? 'v-lose' : s.permit.status === 'REVIEW_NEEDED' ? 'v-below' : 'v-verify';
     const sheet = el('div', 'verdict ' + pc);
-    sheet.appendChild(el('div', 'vhead', s.permit.ran ? s.permit.status.replace(/_/g, ' ').replace('NO OVERLAY VERIFY', 'NO OVERLAY — VERIFY') : 'SCREEN NOT RUN'));
+    // The head is the permit state's one label (PERMIT_STATE); a screen that never ran is PERMIT SCREEN PENDING, as on Leads.
+    const ps = PERMIT_STATE[s.permit.ran ? s.permit.status : 'SCREEN_PENDING'];
+    sheet.appendChild(el('div', 'vhead', ps ? ps[0] : s.permit.status.replace(/_/g, ' ')));
     sheet.appendChild(el('div', 'drv', s.permit.ran ? s.permit.headline : s.permit.reason));
     if (s.permit.ran) {
       for (const o of s.permit.overlays) sheet.appendChild(el('div', 'drv', '⚠ ' + o.meaning));
@@ -2016,6 +2184,12 @@ function estimatePrepPanel() {
 async function renderBook() {
   const v = $('view-book');
   v.replaceChildren();
+  // R26: the R25 desks' heading — the desk that owns this screen, then what it is for.
+  const head = el('div', 'viewhead');
+  head.appendChild(el('div', 'eyebrow', 'Arborist'));
+  head.appendChild(el('h1', '', 'Properties & estimate prep'));
+  head.appendChild(el('p', '', 'Every property Arbo has on file, and one sheet to read before you drive out to an estimate.'));
+  v.appendChild(head);
   // Prep panel renders ABOVE the properties fetch on purpose — with the
   // links cut that fetch 503s and returns early, and anything below it
   // never renders in production (the talk-button lesson, again).
@@ -2104,9 +2278,7 @@ async function openTwin(id, title) {
     for (const pr of t.permits) {
       const c = el('div', 'card');
       const b = el('div', 'badges');
-      if (pr.screen_status === 'PERMIT_LIKELY') b.appendChild(chip('PERMIT LIKELY', 'watch'));
-      else if (pr.screen_status === 'REVIEW_NEEDED') b.appendChild(chip('REVIEW NEEDED', 'watch'));
-      else b.appendChild(chip('NO OVERLAY — VERIFY W/ CITY', 'info'));
+      b.appendChild(permitChip(pr.screen_status)); // the one label per permit state (PERMIT_STATE)
       if (pr.in_rpa) b.appendChild(chip('IN RPA', 'watch'));
       b.appendChild(chip(pr.status.replace(/_/g, ' ').toUpperCase(), 'info'));
       c.appendChild(b);
@@ -2723,6 +2895,12 @@ function mixLine(mix) {
 async function renderPerformance() {
   const v = $('view-perf');
   v.replaceChildren();
+  // R26: the R25 desks' heading, above the read so a dead feed keeps it.
+  const head = el('div', 'viewhead');
+  head.appendChild(el('div', 'eyebrow', 'Analyst'));
+  head.appendChild(el('h1', '', 'Which areas & campaigns pay'));
+  head.appendChild(el('p', '', 'Each area rated by revenue per crew-hour, and what each campaign cost per booked job.'));
+  v.appendChild(head);
   let p;
   try {
     p = await api('/api/performance');
@@ -3544,11 +3722,18 @@ async function renderFollowUps() {
   const gen = ++FU_GEN;
   const v = $('view-followups');
   v.replaceChildren();
+  // R26: the R25 desks' heading. The Yard Boss desk is this screen's fleet & money part.
+  const head = el('div', 'viewhead');
+  head.appendChild(el('div', 'eyebrow', 'Chief of Staff'));
+  head.appendChild(el('h1', '', 'What’s still open'));
+  head.appendChild(el('p', '', 'Open loops, safety, recommended sends, the crew, money and the fleet. Arbo recommends — you decide.'));
+  v.appendChild(head);
   // Every panel reads its own feed and names its own failure, so they are all
   // built BEFORE the follow-ups read. One missing feed must never blank the
   // whole Queue — the safety board still leads it (§1B).
   // §1E open loops lead the Queue: the things the day silently dropped.
   const loopsSlot = el('div');
+  loopsSlot.id = 'queue-loops'; // two columns on a wide screen (CSS)
   v.appendChild(loopsSlot);
   api('/api/queue').then((qq) => {
     if (!qq.open.length) {
@@ -3741,6 +3926,12 @@ async function buildSettings(v, gen) {
     }
     v.appendChild(seg);
   };
+  // R26: the R25 desks' heading. It reads no feed, so it draws whatever fails below.
+  const head = el('div', 'viewhead');
+  head.appendChild(el('div', 'eyebrow', 'Settings'));
+  head.appendChild(el('h1', '', 'Switches & connections'));
+  head.appendChild(el('p', '', 'Lead channels, today’s work ZIP, Google, the data links and webhooks — each one named, on or off.'));
+  v.appendChild(head);
   v.appendChild(el('div', 'panel-title', 'Lead channel switches'));
   let s;
   try { s = await api('/api/settings/channels'); }
@@ -4320,10 +4511,11 @@ window.addEventListener('scroll', () => { $('appbar').classList.toggle('scrolled
 // plus CALL FIRST and TICKET REQUIRED. Never "clear". An unanswered question
 // goes in as 'unknown' and comes back REVIEW NEEDED, naming what is unknown.
 // [label, tone] — the tones are the one shared table (chip / TONE).
+// The three permit words wear the one label per permit state (PERMIT_STATE, R26) — the badge wording on Leads.
 const PERMIT_STATUS = {
-  'PERMIT LIKELY': ['PERMIT LIKELY', 'watch'],
-  'REVIEW NEEDED': ['REVIEW NEEDED', 'watch'],
-  'NO OVERLAY–VERIFY': ['NO OVERLAY — VERIFY W/ CITY', 'info'],
+  'PERMIT LIKELY': PERMIT_STATE.PERMIT_LIKELY,
+  'REVIEW NEEDED': PERMIT_STATE.REVIEW_NEEDED,
+  'NO OVERLAY–VERIFY': PERMIT_STATE.NO_OVERLAY_VERIFY,
   'CALL FIRST': ['CALL FIRST', 'alarm'], // the strongest chip, as EMERGENCY — but only the power-line step (it.safety) wears it; checkCard turns hauling's call-ahead amber
   'TICKET REQUIRED': ['TICKET REQUIRED', 'stop'],
 };
@@ -4331,7 +4523,7 @@ const TOPIC_NAMES = {
   private_tree_cbpa: 'Bay buffer (CBPA / RPA)', street_tree_row: 'Street & city trees', row_work_mot: 'Working in the street',
   historic: 'Historic districts', wetlands: 'Wetlands', disposal: 'Debris & disposal', burning: 'Burning',
   utility_811: 'VA811 — digging & stumps', power_lines: 'Power lines', licensing: 'Contractor licensing',
-  hazard_order: 'Hazard-tree orders', eagle_wildlife: 'Eagles & wildlife',
+  hazard_order: 'Hazard-tree orders', eagle_wildlife: 'Eagles & wildlife', pests_quarantine: 'Pests & quarantines',
 };
 let PERMIT_CITY = 'Virginia Beach';
 const PERMIT_ANS = { inRpa: 'unknown', nearPowerLines: 'unknown', inRightOfWay: 'unknown', historicDistrict: 'unknown', stumpGrinding: false, haulingDebris: false, burning: false };

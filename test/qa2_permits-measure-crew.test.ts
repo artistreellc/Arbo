@@ -32,11 +32,11 @@ function pageFn<T>(src: string, name: string, deps: Record<string, unknown> = {}
   return new Function(...Object.keys(deps), `${m[0]}\nreturn ${name};`)(...Object.values(deps)) as T;
 }
 
-/** A page constant, evaluated: `const NAME = <value>;` (the value may span lines). */
-function pageConst<T>(src: string, name: string): T {
+/** A page constant, evaluated: `const NAME = <value>;` (the value may span lines), with any page names it reads. */
+function pageConst<T>(src: string, name: string, deps: Record<string, unknown> = {}): T {
   const m = new RegExp(`^const ${name} = ([\\s\\S]*?);$`, 'm').exec(src);
   if (!m) throw new Error(`no const ${name} in the page`);
-  return new Function(`return ${m[1]}`)() as T;
+  return new Function(...Object.keys(deps), `return ${m[1]}`)(...Object.values(deps)) as T;
 }
 
 /** Just enough DOM for the card builders. */
@@ -77,7 +77,9 @@ const fmtWhen = (v: string): string => { const [, m, d] = v.split('-').map(Numbe
 
 const nb = new Function(`return ${/const nb = (\(s\) => [^\n]+);/.exec(html)?.[1]}`)() as (s: string) => string;
 const KNOWN_HOSTS = pageConst<Record<string, string>>(html, 'KNOWN_HOSTS');
-const PERMIT_STATUS = pageConst<Record<string, [string, string]>>(html, 'PERMIT_STATUS');
+// R26 (qa-x6): the three permit words point at the one label per permit state.
+const PERMIT_STATE = pageConst<Record<string, [string, string]>>(html, 'PERMIT_STATE');
+const PERMIT_STATUS = pageConst<Record<string, [string, string]>>(html, 'PERMIT_STATUS', { PERMIT_STATE });
 const CONF_BADGE = pageConst<Record<string, [string, string]>>(html, 'CONF_BADGE');
 
 function buildDeps(byId: Record<string, FakeNode> = {}, win: { scrollTo: unknown[] } = { scrollTo: [] }) {
@@ -96,7 +98,7 @@ describe('Permits — one chip table; the power-line CALL FIRST is the only alar
   it('statuses are [label, tone] on the shared tones', () => {
     expect(PERMIT_STATUS).toEqual({
       'PERMIT LIKELY': ['PERMIT LIKELY', 'watch'],
-      'REVIEW NEEDED': ['REVIEW NEEDED', 'watch'],
+      'REVIEW NEEDED': ['PERMIT: REVIEW NEEDED', 'watch'],
       'NO OVERLAY–VERIFY': ['NO OVERLAY — VERIFY W/ CITY', 'info'],
       'CALL FIRST': ['CALL FIRST', 'alarm'],
       'TICKET REQUIRED': ['TICKET REQUIRED', 'stop'],
