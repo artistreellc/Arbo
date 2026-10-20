@@ -73,7 +73,9 @@ Start it while parked — Virginia law is about holding the phone, and nothing
 after the first tap needs a touch.
 
 - [ ] **Home-screen app**: tap Talk. You should hear "Pulling your update",
-      then the update. When the line under the big button says
+      then the update. The first time, the iPhone asks to allow the
+      microphone and speech recognition — tap **Allow**; Arbo waits up to 20
+      seconds for it. When the line under the big button says
       **Listening…**, ask "what's at stop two?". It should answer out loud and
       listen again. Then say "that's all".
 - [ ] **Same test in a Safari tab** (the Arbo address `/app`). Apple has never
@@ -91,11 +93,13 @@ after the first tap needs a touch.
 | The line says | What to do |
 |---|---|
 | "The microphone is off for Arbo…" | Allow the microphone: Safari → the **aA** button → Website Settings → Microphone → Allow (and Settings → Safari → Microphone → Ask or Allow). |
-| "Speech recognition is off on this iPhone…" | Settings → General → Keyboard → **Enable Dictation** on. |
-| "I can't hear you in this mode…" | The home-screen app started the mic and heard nothing. Try the Safari tab. The typing box works either way — tap it, then the mic on the keyboard. |
+| "Speech recognition isn't available right now…" | If Settings → General → Keyboard → **Enable Dictation** is off, turn it on. Then tap End, then Start — it tries the mic again. |
+| "I lost the microphone — a call or Siri may have it…" | Finish the call (or Siri), then tap End, then Start — it tries the mic again. |
+| "I can't hear you in this mode…" | The mic never opened, twice. Tap End, then Start to try again; if it keeps saying this, try the Safari tab. The typing box works either way — tap it, then the mic on the keyboard. |
+| "Talk is locked…" | Check the key in Settings. If the key is right, `APP_ACCESS_KEY` is not set on Railway. |
 | "Arbo's brain is off — there's no AI key…" | `ANTHROPIC_API_KEY` is not set on Railway. |
-| "Arbo's brain didn't answer — try again." | Arbo's brain failed or took too long that turn. Say it again. |
-| "I can't say that one out loud…" | The answer broke one of your rules (a price, a promised day, a permit "clear", a phone number…) and was held back. Ask another way, or look in the app. |
+| "Arbo's brain didn't answer — try again." (or "…didn't answer (503)…") | Arbo's brain failed or took too long that turn. Say it again — Talk keeps listening. |
+| "I can't say that one out loud…" | The answer broke one of your rules (a price, a promised day, a permit "clear", a phone number, a claim that Arbo did something…) twice — Arbo gets one second try first — and was held back. Ask another way, or look in the app. |
 
 Also tell Claude: your iPhone model and iOS version, home-screen app or
 Safari, and whether you heard the voice at all.

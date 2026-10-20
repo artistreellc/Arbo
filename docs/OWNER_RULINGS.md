@@ -770,14 +770,28 @@ Defaults Claude used where Mike did not say (he may change any):
 - Arbo says customer **names** (the app already shows them, R17) but never a
   phone number, email or street address — "call back from the Arbo app".
 - Every answer passes the brain's guard (no price, no promised day, permit
-  words only, never "clear"); a blocked answer becomes "I can't say that one
-  out loud". The guard was written for callers, so a few harmless owner
-  questions are held back too (anything about Suffolk, "TCIA", a dollar
-  figure).
+  words only, never "clear", no phone number, and never a claim that Arbo
+  sent, booked or changed something — it cannot). A blocked answer is sent
+  back to the brain once with the rule named; blocked again, it becomes "I
+  can't say that one out loud". The guard was written for callers, so a few
+  harmless owner questions are held back too (anything about Suffolk,
+  "TCIA", a dollar figure).
+- A customer's name or city reaches the brain short and plain (letters only,
+  40 characters at most), so a caller's own words cannot steer what Arbo says.
 - After three quiet listens in a row it stops listening ("Tap Start when you
   need me") rather than leave the mic open in the truck.
+- The first listen of a launch waits up to 20 seconds for the iPhone's
+  "Allow" prompt. Only a REFUSED mic switches Talk to typing for the rest of
+  the launch; a mic taken by a call or Siri, or one that never opened, types
+  for now and is tried again on the next Start.
 - Not in Talk yet (each one more tool, on Mike's word): who is waiting on
   Mike from the R24 customer study, and R28 approvals.
+
+Open — Mike's call, not a build's: **two things are called "Talk"**. The new
+header button is this ruling. The More tile "Talk / Voice with Arbo" and
+Today's "Talk to Arbo" button still open the old receptionist page (R21: off
+while Sona answers calls). Renaming those (e.g. "Phone line / Arbo's
+receptionist") is an R21 surface, so it waits for Mike's word.
 
 Open — Mike's call, not a build's: whether the **installed home-screen app**
 can listen on his iPhone is not something Apple has promised. If it cannot,

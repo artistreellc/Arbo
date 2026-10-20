@@ -558,6 +558,7 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
    ends in "…") instead of pushing the whole page sideways. */
 #appbar .hrow > div:first-child{min-width:0}
 #appbar .brand > span{min-width:0}
+#apptitle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hbtns{flex:none}
 .talk-body{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
 .talk-body [hidden]{display:none}
@@ -876,6 +877,8 @@ async function stormBanner() {
     if (worst.headline) box.appendChild(el('small', '', worst.headline));
     const nr = s.atRisk.length;
     if (nr) box.appendChild(el('small', '', plural(nr, 'booked stop') + (nr === 1 ? ' falls' : ' fall') + ' inside the alert window — consider moving ' + (nr === 1 ? 'it' : 'them') + ' early.'));
+    // The schedule could not be read (R30 review): the alert shows, and no stops at risk is never implied (§1B).
+    if (s.atRiskUnread) box.appendChild(el('small', '', 'Arbo couldn’t check which booked stops fall inside the alert window.'));
     return box;
   } catch (e) {
     // A dead weather feed is reported, never treated as clear skies. The hero
@@ -5391,8 +5394,10 @@ function switchTab(which) {
 //  · watchdogs — an installed app can start() the mic and then never hear a word;
 //  · the screen stays on while it runs; leaving Talk or locking the phone stops it all.
 const TALK_AUDIO_SESSION = 'play-and-record'; // field-test switch: '' leaves the iPhone's audio routing alone
-// `deaf` lasts for this launch: once the mic is refused or proved dead, the next Start goes straight to typing.
-const TALK = { on: false, busy: false, typing: false, deaf: false, seq: 0, turns: [], rec: null, lock: null, timers: [], dead: 0, quiet: 0 };
+// `deaf` lasts for this launch: once the mic is REFUSED, the next Start goes straight to typing.
+// A mic that is only busy or silent (a call, Siri, a slow Allow) types for now and is tried again on the next Start.
+// `micOk`: the mic has opened at least once this launch — until then the iPhone may be showing its Allow prompt.
+const TALK = { on: false, busy: false, typing: false, deaf: false, micOk: false, seq: 0, turns: [], rec: null, lock: null, timers: [], dead: 0, quiet: 0 };
 const TALK_END_LINE = {
   done: 'Ended. Tap Start to talk again.',
   left: 'Ended.',
@@ -5406,10 +5411,13 @@ function talkSupport() {
   };
 }
 // Ends the talk only when the WHOLE thing said is an end phrase: "stop" alone
-// ends it, "what's at stop two" is a question.
+// ends it, "what's at stop two" is a question. Fillers either side ("Arbo,
+// stop", "no, that's all", "that's it, thanks Arbo", "stop. stop.") come off first.
 function talkEndPhrase(said) {
-  const s = String(said || '').toLowerCase().replace(/[’‘]/g, "'").replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim();
-  return /^(?:(?:ok|okay|thanks|thank you|alright|all right) )?(?:stop|end|done|bye|goodbye|good bye|that'?s all|that is all|that'?s it|that is it|i'?m done|i am done|we'?re done|stop talking|end talk)(?: thanks| thank you| arbo)?$/.test(s);
+  const s = String(said || '').toLowerCase().replace(/[’‘]/g, "'").replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim()
+    .replace(/^(?:(?:hey|ok|okay|no|nope|thanks|thank you|alright|all right|arbo) )+/, '')
+    .replace(/(?: (?:thanks|thank you|arbo|for now|please))+$/, '');
+  return /^(?:stop|end|done|bye|goodbye|good bye|that'?s (?:all|it)|that is (?:all|it)|(?:i'?m|i am|we'?re|all) done|stop (?:talking|listening)|end talk)(?: (?:stop|bye))*$/.test(s);
 }
 // What the voice reads: no markdown, and the permit word's "W/" said as "with".
 function talkSpeech(text) {
@@ -5419,14 +5427,12 @@ function talkSpeech(text) {
 function talkSentences(text) {
   return (talkSpeech(text).match(/[^.!?]+(?:[.!?]+["')\]]*|$)/g) || []).map((p) => p.trim()).filter(Boolean);
 }
+// The language only: iOS then speaks in the voice set on the phone. Picking one
+// from the list would not — iOS marks every voice local and lists them late, so
+// the voice could change mid-talk.
 function talkUtterance(text) {
   const u = new window.SpeechSynthesisUtterance(text);
   u.lang = 'en-US';
-  try {
-    // Voices load late on iOS; when one is ready, the phone's own US voice. Never wait for it.
-    const v = window.speechSynthesis.getVoices().find((x) => x.lang === 'en-US' && x.localService);
-    if (v) u.voice = v;
-  } catch (e) { /* the default voice speaks */ }
   return u;
 }
 function talkStatus(line) {
@@ -5446,6 +5452,8 @@ function talkStart() {
   const can = talkSupport();
   TALK.on = true; TALK.busy = false; TALK.typing = !can.listen || TALK.deaf; TALK.seq++;
   TALK.turns = []; TALK.dead = 0; TALK.quiet = 0;
+  // The audio route is set before the first word, so the voice does not switch mid-sentence.
+  try { if (TALK_AUDIO_SESSION && navigator.audioSession) navigator.audioSession.type = TALK_AUDIO_SESSION; } catch (e) { /* the phone's default audio */ }
   // Inside the tap: this speak() unlocks every later one for the page (iOS).
   if (can.speak) {
     try { window.speechSynthesis.speak(talkUtterance('Pulling your update.')); } catch (e) { /* no voice: answers still show as text */ }
@@ -5453,7 +5461,6 @@ function talkStart() {
   try {
     if (navigator.wakeLock) navigator.wakeLock.request('screen').then((l) => { if (TALK.on) TALK.lock = l; else l.release(); }, () => { /* the screen may dim */ });
   } catch (e) { /* no screen lock on this phone */ }
-  try { if (TALK_AUDIO_SESSION && navigator.audioSession) navigator.audioSession.type = TALK_AUDIO_SESSION; } catch (e) { /* the phone's default audio */ }
   $('talk-heard').hidden = true;
   $('talk-reply').hidden = true;
   $('talk-form').hidden = !TALK.typing;
@@ -5477,7 +5484,7 @@ async function talkAsk() {
     reply = r.reply;
   } catch (e) {
     line = talkFailLine(e);
-    stop = !!e && (e.code === 401 || e.code === 503); // a missing key does not fix itself by asking again
+    stop = !!e && (e.code === 401 || e.message === 'no_model_key'); // a missing key does not fix itself by asking again
   }
   if (seq !== TALK.seq) return; // ended while Arbo was thinking
   if (reply) { TALK.turns.push({ role: 'assistant', text: reply.slice(0, 2000) }); talkTrim(); }
@@ -5491,7 +5498,8 @@ async function talkAsk() {
 }
 function talkFailLine(e) {
   if (e && e.line) return e.line; // the server's own words: no AI key, or the brain did not answer
-  if (e && e.code === 401) return 'Arbo did not accept this phone’s key — open Settings and enter it again. Talk is off until then.';
+  // A 401 is this phone's key, or a server with no app key at all (no_app_key) — the body is not read here, so both are named.
+  if (e && e.code === 401) return 'Talk is locked. Either this phone’s key was not accepted — check it in Settings — or the server has no app key set yet.';
   if (e && e.slow) return 'Arbo took too long to answer — say it again, or tap End.';
   if (e && e.code) return 'Arbo’s brain didn’t answer (' + e.code + ') — try again.';
   return 'Arbo couldn’t reach the server — check your signal, then say it again.';
@@ -5555,10 +5563,21 @@ function talkListen(waited) {
     if (TALK.rec === rec) TALK.rec = null;
     if (seq === TALK.seq && TALK.on) talkAfterListen(st);
   };
-  rec.onstart = () => { st.started = true; };
-  rec.onaudiostart = () => { st.started = true; };
-  rec.onresult = (ev) => {
+  // The mic opened. From here, nothing final within 15 s is closed (WebKit never ends a silent listen itself).
+  const began = () => {
+    if (st.started) return;
     st.started = true;
+    TALK.micOk = true;
+    talkLater(() => {
+      if (st.done) return;
+      try { rec.stop(); } catch (e) { /* ignore */ }
+      talkLater(() => { if (!st.done) { try { rec.abort(); } catch (e) { /* ignore */ } finish(); } }, 1500);
+    }, 15000);
+  };
+  rec.onstart = began;
+  rec.onaudiostart = began;
+  rec.onresult = (ev) => {
+    began();
     let said = '';
     let final = false;
     for (let i = 0; i < ev.results.length; i++) {
@@ -5576,21 +5595,19 @@ function talkListen(waited) {
   TALK.rec = rec;
   talkStatus('Listening…');
   try { rec.start(); } catch (e) { st.err = 'start-failed'; finish(); return; }
-  // Watchdogs: nothing started within 3 s is a dead mic; nothing final within 15 s is closed.
-  talkLater(() => { if (!st.started && !st.done) { st.err = 'dead'; try { rec.abort(); } catch (e) { /* ignore */ } finish(); } }, 3000);
-  talkLater(() => {
-    if (st.done) return;
-    try { rec.stop(); } catch (e) { /* ignore */ }
-    talkLater(() => { if (!st.done) { try { rec.abort(); } catch (e) { /* ignore */ } finish(); } }, 1500);
-  }, 15000);
+  // Watchdog: a mic that never opens is dead — after 3 s once it has worked this launch, but the first
+  // time 20 s, because the iPhone's "Allow" prompt holds it shut until Mike answers (WebKit fires start after).
+  talkLater(() => { if (!st.started && !st.done) { st.err = 'dead'; try { rec.abort(); } catch (e) { /* ignore */ } finish(); } }, TALK.micOk || TALK.dead ? 3000 : 20000);
 }
 function talkAfterListen(st) {
   if (st.said) { TALK.dead = 0; TALK.quiet = 0; talkHeard(st.said); return; }
-  if (st.err === 'not-allowed' || st.err === 'audio-capture') { TALK.deaf = true; talkCantListen('The microphone is off for Arbo. You can type below, or tap the mic on the keyboard.'); return; }
-  if (st.err === 'service-not-allowed') { TALK.deaf = true; talkCantListen('Speech recognition is off on this iPhone. Turn on Dictation in Settings, General, Keyboard — or type below.'); return; }
+  if (st.err === 'not-allowed') { TALK.deaf = true; talkCantListen('The microphone is off for Arbo. You can type below, or tap the mic on the keyboard.'); return; }
+  // Busy or unavailable, not refused: typing for now, and the next Start tries the mic again.
+  if (st.err === 'audio-capture') { talkCantListen('I lost the microphone — a call or Siri may have it. Type below, or tap End, then Start to try again.'); return; }
+  if (st.err === 'service-not-allowed') { talkCantListen('Speech recognition isn’t available right now. If Dictation is off, turn it on in Settings, General, Keyboard. Type below, or tap End, then Start to try again.'); return; }
   if (!st.started) {
-    // Two dead listens in a row: this mode cannot hear (an installed app can start and never listen).
-    if (++TALK.dead >= 2) { TALK.deaf = true; talkCantListen('I can’t hear you in this mode. Type below, or tap the mic on the keyboard.'); return; }
+    // Two dead listens in a row: this mode may not hear (an installed app can start and never listen).
+    if (++TALK.dead >= 2) { talkCantListen('I can’t hear you in this mode. Type below, or tap the mic on the keyboard.'); return; }
     talkLater(talkListen, 400);
     return;
   }
