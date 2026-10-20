@@ -67,7 +67,7 @@ const EVIDENCE: Record<Behaviour, RegExp> = {
   mike_confirms_time: /\bMike (?:will|'ll) confirm\b|\bconfirms? the (?:exact )?(?:time|day|date)\b|\bFriday afternoon\b/i,
   capture_details: /\b(?:your name|the (?:property )?address|property address|best (?:phone )?number|number to reach you|who do I have|can I get your name|dirección|nombre)\b/i,
   ask_everyone_safe: /\b(?:is )?(?:everyone|everybody|anyone)(?: is)? (?:ok|okay|safe|alright|all right|hurt)\b|\bare you (?:safe|ok|okay|hurt)\b|\bestán (?:todos )?bien\b/i,
-  stay_clear: /\b(?:stay|keep (?:everyone|everybody|yourself|the kids|them)?)\s*(?:well )?(?:away|clear|back)\b|\bdon'?t (?:go near|touch|approach)\b|\bget (?:everyone )?(?:out|away|to safety)\b|\baléjense\b|\bno (?:se acerquen|toquen)\b/i,
+  stay_clear: /\b(?:stay|keep (?:everyone|everybody|yourself|the kids|them)?)\s*(?:well |far )?(?:away|clear|back)\b|\bdon'?t (?:go near|touch|approach)\b|\bget (?:everyone )?(?:out|away|to safety)\b|\baléjense\b|\bno (?:se acerquen|toquen)\b/i,
   alert_mike_now: /\bMike (?:is being|has been|will be) (?:alerted|notified|paged)\b|\b(?:alerting|paging|notifying) Mike\b|\bMike\b[^.!?]{0,40}\b(?:right away|immediately|right now|as fast as)\b/i,
   empathize: /\b(?:sorry|i understand|understandable|apologi[sz]e|frustrat\w*|i hear you|that'?s not okay|lo siento)\b/i,
   offer_financing: /\bfinancing\b|\bpayment plans?\b/i,

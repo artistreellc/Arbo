@@ -147,8 +147,11 @@ describe('server wiring', () => {
   it('the installed cockpit opens /app with separate any + maskable icons', async () => {
     const { base, srv } = await serve({});
     try {
-      const m = await (await fetch(base + '/manifest.webmanifest')).json() as { start_url: string; icons: Array<{ purpose: string; src: string }> };
+      const m = await (await fetch(base + '/manifest.webmanifest')).json() as { start_url: string; icons: Array<{ purpose: string; src: string }>; shortcuts: Array<{ url: string }> };
       expect(m.start_url).toBe('/app');
+      // R26 qa-x1: Mike's shortcut to the crew page is the look-only preview, never the real door.
+      expect(m.shortcuts.map((s) => s.url)).toContain('/crew?preview=1');
+      expect(m.shortcuts.map((s) => s.url)).not.toContain('/crew');
       expect(m.icons.map((i) => i.purpose)).toEqual(['any', 'any', 'maskable']);
       for (const i of m.icons) expect((await fetch(base + i.src)).status).toBe(200);
     } finally { srv.close(); }

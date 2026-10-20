@@ -31,6 +31,9 @@ const CITIES_TS_REF = 'arbo:src/permitting/cities.ts';
 // It is NOT an Arbo check; GROK_NOTE and confidence 'UNCONFIRMED' say so.
 // A separate name from R25 on purpose, though the day is the same.
 const GROK_PKG = '2026-09-28';
+// R26 integration: the day Arbo read the Code of Virginia text itself
+// (Underground Utility Damage Prevention Act, as amended 2023, cc. 299, 300).
+const CODE_READ_R26 = '2026-10-20';
 const GROK_NOTE =
   'UNCONFIRMED: From a third-party research package (2026-09-28); not yet checked by Arbo — verify with the source before relying on it.';
 
@@ -855,12 +858,16 @@ const VIRGINIA: Fact[] = [
     topic: 'utility_811',
     title: 'VA811 notice before digging',
     rule:
-      'No excavation without notifying VA811 first — at least 2 working days ahead. Operators have 48 hours from 7:00 a.m. the next working day to mark. A ticket is valid 15 working days; request re-marks 3 working days before it expires.',
+      'No excavation without a VA811 locate request first. Utilities have until 7:00 a.m. on the third working day after the request to mark (or 7:00 a.m. on a scheduled dig date given with the request, 48 hours to 12 working days out). Dig only after every utility on the ticket has posted its response. A ticket is valid 15 working days; request re-marks 3 working days before it expires, or any time the marks become hard to read.',
     whoToCall: { office: 'VA811 (Miss Utility)', phone: '811' },
-    leadTime: '2 working days minimum; ticket valid 15 working days',
-    sourceUrls: ['https://law.lis.virginia.gov/vacode/title56/chapter10.3/section56-265.17/'],
+    leadTime: '3 working days (marks due 7:00 a.m. on the third working day); ticket valid 15 working days',
+    sourceUrls: [
+      'https://law.lis.virginia.gov/vacode/title56/chapter10.3/section56-265.17/',
+      'https://law.lis.virginia.gov/vacode/title56/chapter10.3/section56-265.19/',
+    ],
     confidence: 'SOURCED',
-    verifiedOn: R25,
+    verifiedOn: CODE_READ_R26,
+    notes: 'Corrected 2026-10-20 from the Code text: the 2023 amendments set the marking deadline at 7:00 a.m. on the third working day and require every utility\'s response before digging (the old wording said 2 working days / 48 hours).',
   },
   {
     id: 'va-811-stump',
@@ -869,7 +876,7 @@ const VIRGINIA: Fact[] = [
     title: 'Stump grinding needs a VA811 ticket',
     rule: 'VA811 counts removing a stump as digging, and "stump grinding or removal" is a ticket work type. Treat every stump grind as needing a ticket.',
     whoToCall: { office: 'VA811 (Miss Utility)', phone: '811' },
-    leadTime: '2 working days minimum',
+    leadTime: '3 working days (see the VA811 notice rule)',
     sourceUrls: ['https://va811.com/excavators/damage-prevention-act-2/', 'https://va811.com/wp-content/uploads/2019/08/work-type-list.pdf'],
     confidence: 'SOURCED',
     verifiedOn: R25,
@@ -880,16 +887,16 @@ const VIRGINIA: Fact[] = [
     topic: 'utility_811',
     title: 'At the dig site: hand dig near the marks (Va. Code § 56-265.24)',
     rule:
-      'Within 2 ft of either side of a utility mark (the tolerance zone), dig by hand. If you see evidence of an unmarked utility line, call VA811 again and wait 3 hours before digging there. If a line is damaged, stop, notify the line\'s operator immediately, and do not backfill.',
+      'Before digging, check that every utility on the ticket has responded. Within 2 ft of either side of a utility mark, expose the line by hand digging, and keep machines (the stump grinder included) 2 ft from any exposed line. If the marks become hard to read, call VA811 for a re-mark. If you see evidence of an unmarked line, call VA811 again and do not dig there until 3 hours after that call. If a line is damaged, stop, notify the line\'s operator immediately, and do not backfill until the operator repairs it or says you may.',
     whoToCall: { office: 'VA811 (Miss Utility)', phone: '811' },
-    fee: 'Civil penalties under Va. Code § 56-265.32 (up to $10,000 per violation of the notice-before-digging duty, § 56-265.17 A); amounts for these site duties not stated',
+    fee: 'Civil penalties under Va. Code § 56-265.32: up to $10,000 per violation of digging without a locate request (§ 56-265.17 A), and up to $5,000 for other violations of the Act, these site duties included',
     sourceUrls: [
       'https://law.lis.virginia.gov/vacode/title56/chapter10.3/section56-265.24/',
       'https://law.lis.virginia.gov/vacode/title56/chapter10.3/section56-265.32/',
     ],
-    confidence: 'UNCONFIRMED',
-    verifiedOn: GROK_PKG,
-    notes: GROK_NOTE,
+    confidence: 'SOURCED',
+    verifiedOn: CODE_READ_R26,
+    notes: 'First brought in from a third-party research package (2026-09-28); checked by Arbo against the Code of Virginia text on 2026-10-20 (as amended 2023).',
   },
   {
     id: 'va-dominion-10ft',

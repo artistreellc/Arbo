@@ -198,13 +198,13 @@ function headlineFor(bucket: PermitBucket, row: PermitTrackRow): string {
       // §1B in one sentence. This is the row that must never read as quiet.
       return 'No CBPA/RPA screen has ever run on this address. That is not "nothing applies" — it means nobody has looked.';
     case 'permit_likely':
-      return `PERMIT LIKELY REQUIRED — verify with the City of ${row.city} before quoting or cutting.`;
+      return `PERMIT LIKELY — verify with the City of ${row.city} before quoting or cutting.`;
     case 'review_needed':
-      return `REVIEW NEEDED — an overlay may apply; verify with the City of ${row.city} before the job.`;
+      return `PERMIT: REVIEW NEEDED — an overlay may apply; verify with the City of ${row.city} before the job.`;
     case 'applied_waiting':
       return `Filed with the City of ${row.city}${row.formRef ? ` as ${row.formRef}` : ''} — waiting on them.`;
     case 'no_overlay_verify':
-      return `NO OVERLAY FOUND — still VERIFY WITH CITY (${row.city}); GIS can miss parcel edges.`;
+      return `NO OVERLAY — VERIFY W/ CITY (${row.city}); GIS can miss parcel edges.`;
     case 'resolved':
       return row.status === 'approved'
         ? `Approved by the City of ${row.city}.`

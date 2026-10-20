@@ -31,8 +31,9 @@ import {
 const GROK_NOTE =
   'UNCONFIRMED: From a third-party research package (2026-09-28); not yet checked by Arbo — verify with the source before relying on it.';
 
+// The dig-site duties came from the package but were then read against the
+// Code text by Arbo (2026-10-20), so they are SOURCED, not in this list.
 const NEW_IDS = [
-  'va-811-dig-site-duties',
   'reg-fire-ant-quarantine',
   'va-hvl-408-10ft',
   'va-hvl-409-sign',
@@ -73,7 +74,7 @@ const base: JobInput = {
 };
 
 describe('R26 facts — every one UNCONFIRMED and says why', () => {
-  it('all thirteen are present, UNCONFIRMED, carry the package note, and cite public URLs', () => {
+  it('all twelve are present, UNCONFIRMED, carry the package note, and cite public URLs', () => {
     expect(new Set(NEW_IDS).size).toBe(NEW_IDS.length);
     for (const f of NEW) {
       expect(f.confidence, f.id).toBe('UNCONFIRMED');
@@ -99,17 +100,22 @@ describe('R26 facts — every one UNCONFIRMED and says why', () => {
 });
 
 describe('R26 facts — what each one says', () => {
-  it('VA811 dig-site duties (§ 56-265.24): 2-ft hand dig, call again + 3 hours, stop / notify / no backfill; dollars only in fee', () => {
+  it('VA811 dig-site duties (§ 56-265.24): read against the Code text, SOURCED; 2-ft hand dig, call again + 3 hours, stop / notify / no backfill; dollars only in fee', () => {
     const f = fact('va-811-dig-site-duties');
     expect(f.topic).toBe('utility_811');
     expect(f.city).toBe('Virginia');
+    expect(f.confidence).toBe('SOURCED');
+    expect(f.verifiedOn).toBe('2026-10-20');
     expect(f.title).toContain('§ 56-265.24');
-    expect(f.rule).toMatch(/2 ft of either side of a utility mark/);
-    expect(f.rule).toMatch(/dig by hand/);
-    expect(f.rule).toMatch(/call VA811 again and wait 3 hours/);
+    expect(f.rule).toMatch(/every utility on the ticket has responded/);
+    expect(f.rule).toMatch(/2 ft of either side of a utility mark, expose the line by hand digging/);
+    expect(f.rule).toMatch(/machines \(the stump grinder included\) 2 ft from any exposed line/);
+    expect(f.rule).toMatch(/call VA811 again and do not dig there until 3 hours after that call/);
     expect(f.rule).toMatch(/stop, notify the line's operator immediately, and do not backfill/);
     expect(f.fee).toMatch(/§ 56-265\.32/);
     expect(f.fee).toMatch(/\$10,000/);
+    expect(f.fee).toMatch(/\$5,000/);
+    for (const re of NEVER_SAY) expect(JSON.stringify(f), `${re}`).not.toMatch(re);
     expect(words(f)).not.toMatch(/\$/);
     expect(f.sourceUrls).toContain('https://law.lis.virginia.gov/vacode/title56/chapter10.3/section56-265.24/');
   });
@@ -464,5 +470,19 @@ describe('GET /api/storm/law', () => {
       srv.close();
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe('VA811 notice — corrected from the Code text (2026-10-20)', () => {
+  it('marks are due 7:00 a.m. on the third working day, and nobody digs before every utility responds', () => {
+    const f = fact('va-811-notice');
+    expect(f.confidence).toBe('SOURCED');
+    expect(f.verifiedOn).toBe('2026-10-20');
+    expect(f.rule).toMatch(/7:00 a\.m\. on the third working day/);
+    expect(f.rule).toMatch(/Dig only after every utility on the ticket has posted its response/);
+    expect(f.rule).not.toMatch(/\b2 working days|48 hours from 7:00/);
+    expect(f.sourceUrls).toContain('https://law.lis.virginia.gov/vacode/title56/chapter10.3/section56-265.19/');
+    const step = jobChecklist({ ...base, stumpGrinding: true }).find((i) => i.status === 'TICKET REQUIRED');
+    expect(step?.step).toMatch(/at least 3 working days before grinding the stump, and grind only after every utility on the ticket has responded/);
   });
 });

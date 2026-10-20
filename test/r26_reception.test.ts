@@ -177,9 +177,11 @@ describe('R26.1 — the guard blocks a date promise', () => {
     expect(score.violations.map((v) => v.rule)).toContain('no_date_promise');
   });
 
-  it('the scripted sim: 60 of 189 pass (54 before R26), and the Tuesday promise now passes', async () => {
+  it('the scripted sim: 60+ pass (54 of 189 before R26), and the Tuesday promise now passes', async () => {
     const report = await runSimulation(scriptedBrain(), SCENARIOS, { concurrency: 8 });
-    expect(report.total).toBe(189);
+    // 189 R25 scenarios + the ten Grok failure cases (gk-, R26).
+    expect(report.total).toBe(SCENARIOS.length);
+    expect(report.total).toBeGreaterThanOrEqual(199);
     expect(report.passed).toBeGreaterThanOrEqual(60);
     expect(report.failures.map((f) => f.scenarioId)).not.toContain('fd-date-tuesday');
     expect(report.byRule.no_date_promise!.violations).toBe(0);
@@ -416,8 +418,8 @@ describe('R26.4 — Spanish-speaking callers are recognised (detect and flag onl
     const brain = scriptedBrain();
     const emergency = scoreResponse(byId('fd-spanish-emergency'), await brain(byId('fd-spanish-emergency')));
     expect(emergency.violations).toEqual([]);
-    // Still missing: Spanish replies (Mike's call) and the judge's stay_clear wording.
-    expect(emergency.missing).toEqual(['reply_in_spanish', 'stay_clear']);
+    // Still missing: Spanish replies (Mike's call). The judge now counts "stay far away" as stay_clear.
+    expect(emergency.missing).toEqual(['reply_in_spanish']);
     const price = scoreResponse(byId('fd-spanish-price'), await brain(byId('fd-spanish-price')));
     expect(price.violations).toEqual([]);
     expect(price.missing).toEqual(['reply_in_spanish']);

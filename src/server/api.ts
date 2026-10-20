@@ -129,6 +129,8 @@ export interface ApiLead {
   history: string | null;
   /** The past-work read FAILED: a missing history line here is not "no history" (§1B). */
   historyUnreadable: boolean;
+  /** R26: 'es' when the receptionist heard a Spanish speaker (detect and flag only). */
+  language?: 'es';
 }
 
 /** What the API needs from storage — live impl wraps the repositories. */
@@ -442,6 +444,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
           city: r.city,
           zip: r.zip,
           isFirstTimer: r.isFirstTimer,
+          ...(q['language'] === 'es' ? { language: 'es' as const } : {}),
           quality: scoreLead({
             inServiceArea: r.city != null ? IN_AREA.has(r.city) : undefined,
             urgency: r.isEmergency ? 'emergency' : (q['urgency'] as never) ?? 'unknown',

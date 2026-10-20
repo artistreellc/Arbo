@@ -183,11 +183,11 @@ export async function screenProperty(input: ScreenInput, gis: GisProvider): Prom
 function headlineFor(status: ScreenStatus, city: ServiceCity): string {
   switch (status) {
     case 'PERMIT_LIKELY':
-      return `PERMIT LIKELY REQUIRED — verify with the City of ${city} before quoting or cutting.`;
+      return `PERMIT LIKELY — verify with the City of ${city} before quoting or cutting.`;
     case 'REVIEW_NEEDED':
-      return `REVIEW NEEDED — an overlay may apply; verify with the City of ${city} before the job.`;
+      return `PERMIT: REVIEW NEEDED — an overlay may apply; verify with the City of ${city} before the job.`;
     case 'NO_OVERLAY_VERIFY':
-      return `NO OVERLAY FOUND — still VERIFY WITH CITY (${city}); GIS can miss parcel edges.`;
+      return `NO OVERLAY — VERIFY W/ CITY (${city}); GIS can miss parcel edges.`;
   }
 }
 

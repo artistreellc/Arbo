@@ -86,8 +86,8 @@ describe('publicWorks facts — sourcing', () => {
       for (const u of f.sourceUrls) expect(u, f.id).toMatch(/^(https?:\/\/\S+|arbo:src\/permitting\/cities\.ts)$/);
   });
 
-  it('verifiedOn is the R25 date or the cities.ts date', () => {
-    for (const f of FACTS) expect(['2026-09-28', '2026-08-01'], f.id).toContain(f.verifiedOn);
+  it('verifiedOn is the R25 date, the cities.ts date, or the R26 Code read', () => {
+    for (const f of FACTS) expect(['2026-09-28', '2026-08-01', '2026-10-20'], f.id).toContain(f.verifiedOn);
   });
 
   it('each of the four cities has at least 8 facts', () => {
@@ -308,7 +308,7 @@ describe('queries', () => {
     const nov = stale(FACTS, new Date('2026-11-15T12:00:00Z'));
     expect(nov.length).toBeGreaterThan(0);
     expect(nov.every((f) => f.verifiedOn === '2026-08-01')).toBe(true);
-    expect(stale(FACTS, '2027-01-01')).toHaveLength(FACTS.length);
+    expect(stale(FACTS, '2027-03-01')).toHaveLength(FACTS.length);
   });
 
   it('summary counts add up', () => {

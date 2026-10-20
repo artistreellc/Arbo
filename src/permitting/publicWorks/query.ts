@@ -185,7 +185,7 @@ export function jobChecklist(input: JobInput): ChecklistItem[] {
   // 2. Stump grinding — always a VA811 ticket.
   if (input.stumpGrinding) {
     items.push({
-      step: 'Call VA811 (dial 811) for a locate ticket at least 2 working days before grinding the stump.',
+      step: 'Call VA811 (dial 811) for a locate ticket at least 3 working days before grinding the stump, and grind only after every utility on the ticket has responded.',
       why: explain(['va-811-stump', 'va-811-notice']),
       factIds: idsFor(city, ['va-811-stump', 'va-811-notice'], ['utility_811']),
       status: 'TICKET REQUIRED',

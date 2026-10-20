@@ -788,7 +788,8 @@ export function createArborRequestHandler() {
             shortcuts: [
               { name: 'Calls', url: '/app#calls' },
               { name: 'Calendar', url: '/app#cal' },
-              { name: 'Crew door', url: '/crew' },
+              // R26 qa-x1: from Mike's phone it is the look-only preview, never the real door.
+              { name: 'Crew preview', url: '/crew?preview=1' },
             ],
           }),
         }));
