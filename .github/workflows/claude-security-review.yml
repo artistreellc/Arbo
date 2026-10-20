@@ -1,9 +1,12 @@
 name: Claude Security Review
 
 # Reviews every pull request for security issues (and ARBOR's guardrail
-# invariants) and posts findings as a PR review. Runs on Mike's Claude subscription via the
-# CLAUDE_CODE_OAUTH_TOKEN repo secret (mint with `claude setup-token`); needs
-# the Claude GitHub App installed on this repo.
+# invariants) and posts findings as a PR review. Runs on either repo secret:
+# ANTHROPIC_API_KEY (an Anthropic Console key) or CLAUDE_CODE_OAUTH_TOKEN
+# (mint with `claude setup-token`); needs the Claude GitHub App installed.
+# With neither set, the review is NOT run and the job says so by name (a
+# warning and a summary line), instead of failing red on every PR — a
+# missing reviewer is named, never passed off as a clean review (§1B).
 
 on:
   pull_request:
@@ -18,14 +21,30 @@ jobs:
   review:
     runs-on: ubuntu-latest
     steps:
+      - name: Check for a review key
+        id: key
+        env:
+          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' || secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+        run: |
+          if [ "$HAS_KEY" = "true" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=Security review NOT run::No ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN repo secret is set, so Claude did not review this PR. This is not a clean review."
+            echo "**Security review NOT run** — no ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN repo secret. This is not a clean review." >> "$GITHUB_STEP_SUMMARY"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout repository
-        uses: actions/checkout@v4
+        if: steps.key.outputs.ok == 'true'
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Claude security review
+        if: steps.key.outputs.ok == 'true'
         uses: anthropics/claude-code-action@v1
         with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             Review this pull request. Focus on, in priority order:
