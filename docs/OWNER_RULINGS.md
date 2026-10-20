@@ -1124,3 +1124,47 @@ real rows are never keyless); the crew door stays shut without
 `readOnlyDb`), `src/db/links.ts` (`READ_ONLY_KEPT_CUT`, `ReadOnlyError`),
 `src/db/notSaved.ts`, `src/ops/leadAge.ts`, `test/readOnlyMode.test.ts`,
 `test/dataLinks.test.ts`.
+
+## R34 — See the photos customers text to Quo, view-only (Mike, 2026-10-20)
+
+Mike, verbatim: *"Needs to be able to view photos on quo"*.
+
+Wherever Arbo shows a customer's texts, their photos now show too: a thumbnail
+per photo in Calls › Texts and on each card of "Where each customer stands"
+(Today and Calls); a tap opens it full screen (a sheet — X, ‹ Back, the phone's
+back and the edge swipe close it; the phone's own pinch zooms). A video, a
+contact card or a PDF is named with its type ("open Quo to see it"). It is
+**view-only under R24**: Arbo reads the photo from Quo when Mike looks and hands
+the bytes to his screen — nothing is stored (not on disk, not in the database,
+not in Drive, not in the phone's cache) and nothing is sent anywhere. **The
+phone never gets a Quo address or key**: the server keeps, in memory, an opaque
+random id per photo it read itself (Quo's API or a signature-checked Quo
+webhook) and serves `GET /api/quo/media/<id>` to the owner key only (crew key
+and crew preview refused; locked with no `APP_ACCESS_KEY`), fetching only https
+on Quo's media host with no Quo key attached, no redirect off that host, 10 MB
+at most, photo types only (never SVG), within 8 seconds. An id Arbo did not
+mint is a 404. A photo Arbo could not load says so (§1B): *"Photo from Quo —
+couldn't load it, open Quo to see it."*
+
+Defaults Claude used (Mike may change any): customer photos only, not ones our
+side sent; at most 12 per card, newest first, the rest counted; the phone is
+told not to cache (`no-store`) and the open page holds each photo in memory
+instead; practice mode shows one SIM text with a SIM placeholder photo from the
+repo; the cut Arbo line's (Twilio, R21) attachments are named, no longer linked.
+
+Open — a live check, not a build decision: Quo's docs name only `share.quo.com`
+and do not say how long a photo address stays valid; the build sandbox could not
+reach it. A photo on any other host reads "couldn't load" and its HOST (never
+the address) is logged once — adding it is a one-line change. The study refreshes
+addresses every 30 minutes. Open — Mike's call: the lead card shows no texts
+(R4: leads are not fed from Quo), so no photos there yet; photos texted to the
+business cell still cannot reach Arbo (iOS, `docs/PHONE_SETUP.md`).
+
+What did NOT move: R24 read-only, §3 nothing imported, §4.3 logs carry reasons
+and counts (and a refused host name) — never an address, an id or a number; no
+sends; data links stay cut.
+
+*Carried by:* `src/integrations/quoMedia.ts`, `src/integrations/quo.ts`,
+`src/ops/quoStudy.ts`, `src/ops/webhooks.ts`, `src/server.ts`
+(`GET /api/quo/media/<id>`), `src/dev/simQuoTexts.ts`, `src/app/sim-quo-photo.png`,
+`src/app/index.html` (thumbnails, the `#photo` sheet), `test/quoPhotos.test.ts`.

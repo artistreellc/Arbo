@@ -20,6 +20,7 @@
 //   never server logs (§4.3 — logs get counts and ids).
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { unviewable, type MediaRef } from '../integrations/quoMedia.js';
 
 export type WebhookSource = 'resend' | 'elevenlabs' | 'railway' | 'twilio';
 
@@ -68,7 +69,14 @@ export interface TextEntry {
   messageSid: string | null;
   from: string | null;
   body: string;
-  media: Array<{ url: string; contentType: string | null }>;
+  /**
+   * What the app may know about each attachment: an opaque id for a Quo photo
+   * it can show, never an address (Mike, 2026-10-20: "Needs to be able to
+   * view photos on quo"). The cut Twilio line's attachments carry no id.
+   */
+  media: MediaRef[];
+  /** Practice data (sim mode only): a SIM text, never a customer's. */
+  practice?: true;
 }
 
 /**
@@ -374,7 +382,9 @@ export class WebhookIntake {
     const media: TextEntry['media'] = [];
     for (let i = 0; i < numMedia; i += 1) {
       const url = f.get(`MediaUrl${i}`);
-      if (url && /^https:\/\//.test(url)) media.push({ url, contentType: f.get(`MediaContentType${i}`) });
+      // Counted and typed, never kept: the address would only ever have gone
+      // to the browser as a raw link, and this line is cut (R21).
+      if (url && /^https:\/\//.test(url)) media.push(unviewable(f.get(`MediaContentType${i}`)));
     }
     this.pushText({
       at: new Date(this.now()).toISOString(),
@@ -442,7 +452,7 @@ export class WebhookIntake {
     return { ok: true };
   }
 
-  /** A text to the Quo number, already signature-verified by the Quo intake. */
+  /** A text to the Quo number, already signature-verified by the Quo intake; its photos already swapped for opaque ids. */
   addQuoText(t: { at: string; messageSid: string | null; from: string | null; body: string; media: TextEntry['media'] }): void {
     this.pushText({ ...t, line: 'quo', body: t.body.slice(0, 2000), media: t.media.slice(0, MEDIA_MAX) });
   }

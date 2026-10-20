@@ -49,8 +49,13 @@ describe('Twilio incoming texts', () => {
     for (let i = 2; i < 50; i += 1) f[`MediaUrl${i}`] = `https://api.twilio.com/m/${i}`;
     intake.handleTwilioSms('k', form(f));
     const [t] = intake.texts();
-    expect(t!.media.every((m) => m.url.startsWith('https://'))).toBe(true);
-    expect(t!.media.length).toBeLessThanOrEqual(10);
+    // The first 10 slots: two refused (not https), eight counted.
+    expect(t!.media).toHaveLength(8);
+    // Quo photos (Mike, 2026-10-20): the address is never kept or handed on —
+    // the cut Twilio line's attachments are named, with no id to fetch.
+    expect(t!.media.every((m) => m.mediaId === null && m.kind === 'photo')).toBe(true);
+    expect(JSON.stringify(t)).not.toContain('twilio.com');
+    expect(JSON.stringify(t)).not.toContain('"url"');
   });
 
   it('refuses by name when not wired', () => {
