@@ -197,6 +197,37 @@ describe('each desk draws its head before any read, then the Queue\'s panels, un
     expect(d.v.textContent.match(/money drawn/g)).toHaveLength(1);
   });
 
+  // UI review (b-wave-2, medium 2): the minute redraw emptied a desk without holding its height,
+  // so the page collapsed to the heading and the scroll went to the top (Crew & safety 2678 → 0) —
+  // undoing a Before you roll jump within 60 s. renderCalls' hold: keep the height until every
+  // panel has landed, then let it go. A newer draw keeps its own hold.
+  it('a redraw holds the screen\'s height until every panel has landed, so the scroll stays put', async () => {
+    const d = desk('safety');
+    Object.defineProperty(d.v, 'offsetHeight', { get: () => 2678 });
+    const p = d.run();
+    expect(d.v.style.minHeight).toBe('2678px');
+    d.settle(0);
+    await flush();
+    expect(d.v.style.minHeight, 'four panels still out').toBe('2678px');
+    d.settle();
+    await p;
+    expect(d.v.style.minHeight).toBe('');
+  });
+
+  it('an older draw that lands late never lets go of a newer draw\'s hold', async () => {
+    const gen = {};
+    const d = desk('fleet', gen);
+    Object.defineProperty(d.v, 'offsetHeight', { get: () => 827 });
+    const p1 = d.run();
+    const p2 = d.run();
+    d.settle(0); // the older draw's panel lands first
+    await p1;
+    expect(d.v.style.minHeight, 'the newer draw is still reading').toBe('827px');
+    d.settle();
+    await p2;
+    expect(d.v.style.minHeight).toBe('');
+  });
+
   it('a panel that throws never takes the others on its desk down', async () => {
     const v = el('div');
     const drawn: string[] = [];
@@ -209,6 +240,43 @@ describe('each desk draws its head before any read, then the Queue\'s panels, un
     await run();
     expect(drawn).toEqual(['roster', 'training', 'vetting', 'library']);
     expect(v.all().some((n) => n.has('reading'))).toBe(false);
+  });
+
+  it('Follow-ups holds its height the same way until both its reads (loops, sends) have landed — a newer draw keeps its own', async () => {
+    const v = el('div');
+    Object.defineProperty(v, 'offsetHeight', { get: () => 1400 });
+    const waits: Record<string, Array<(x: unknown) => void>> = {};
+    const api = (p: string) => new Promise((res) => { (waits[p] ??= []).push(res); });
+    const land = (p: string, i: number, x: unknown) => waits[p]![i]!(x);
+    const stub = () => {};
+    const deps: Record<string, unknown> = {
+      $: () => v, el, readingLine, api, fmtTime: () => '', loopCard: () => el('div'), LINKS_READY: Promise.resolve('readonly'),
+      feedLine: () => el('div'), showKeywall: stub, feedState: () => el('div'), state: () => el('div'), chip: () => el('span'),
+      FU_LABEL: {}, showSaveFail: stub, document: { createTextNode: (t: string) => el('span', '', t) },
+      DESK_LINE: constVal('DESK_LINE'), VIEW_TITLES,
+    };
+    const run = new Function(...Object.keys(deps), `let FU_GEN = 0;\n${fnSrc('renderFollowUps')}\nreturn renderFollowUps;`)(...Object.values(deps)) as () => Promise<void>;
+    const p1 = run();
+    expect(v.style.minHeight).toBe('1400px');
+    land('/api/followups', 0, { due: [], suppressed: [] });
+    await p1;
+    expect(v.style.minHeight, 'the loops read is still out').toBe('1400px');
+    land('/api/queue', 0, { open: [] });
+    await flush();
+    expect(v.style.minHeight).toBe('');
+    // A newer draw starts; the older one's reads land late and must not let go of the newer hold.
+    const p2 = run();
+    const p3 = run();
+    land('/api/queue', 1, { open: [] });
+    land('/api/followups', 1, { due: [], suppressed: [] });
+    await p2;
+    await flush();
+    expect(v.style.minHeight, 'the newest draw is still reading').toBe('1400px');
+    land('/api/queue', 2, { open: [] });
+    land('/api/followups', 2, { due: [], suppressed: [] });
+    await p3;
+    await flush();
+    expect(v.style.minHeight).toBe('');
   });
 
   it('Follow-ups keeps the loops and the recommended sends — and only them', () => {

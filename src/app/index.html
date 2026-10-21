@@ -5529,6 +5529,8 @@ const DESK_GEN = {};
 async function deskView(view, sub, panels) {
   const gen = DESK_GEN[view] = (DESK_GEN[view] || 0) + 1;
   const v = $('view-' + view);
+  // P13 review: the minute redraw must not collapse the screen and throw its scroll to the top (renderCalls' hold).
+  v.style.minHeight = v.offsetHeight + 'px';
   const first = !v.hasChildNodes();
   v.replaceChildren();
   const head = el('div', 'viewhead');
@@ -5544,7 +5546,9 @@ async function deskView(view, sub, panels) {
   });
   const reading = first ? v.appendChild(readingLine()) : null;
   await Promise.allSettled(runs);
-  if (gen === DESK_GEN[view] && reading) reading.remove();
+  if (gen !== DESK_GEN[view]) return; // a newer draw owns the screen, and its hold
+  if (reading) reading.remove();
+  v.style.minHeight = '';
 }
 // §4.8 money: unbilled work and unpaid invoices.
 function renderMoneyView() {
@@ -5577,6 +5581,9 @@ let FU_GEN = 0;
 async function renderFollowUps() {
   const gen = ++FU_GEN;
   const v = $('view-followups');
+  // P13 review: the minute redraw must not collapse the screen and throw its scroll to the top (renderCalls' hold);
+  // the height goes once both reads below have landed (release), and only by the newest draw.
+  v.style.minHeight = v.offsetHeight + 'px';
   const first = !v.hasChildNodes(); // Direction B P3: readingLine() where the read lands, on a first draw only
   v.replaceChildren();
   // R26: the R25 desks' heading. Direction B P13: the Queue is split by the job it holds (R29 #1) —
@@ -5593,7 +5600,7 @@ async function renderFollowUps() {
   const loopsSlot = el('div');
   loopsSlot.id = 'queue-loops'; // two columns on a wide screen (CSS)
   v.appendChild(loopsSlot);
-  api('/api/queue').then((qq) => {
+  const loopsP = api('/api/queue').then((qq) => {
     if (!qq.open.length) {
       loopsSlot.appendChild(el('div', 'storm-muted', 'No open loops' + (qq.checkedAtIso ? ' as of ' + fmtTime(qq.checkedAtIso) : '') + '.'));
       return;
@@ -5616,15 +5623,17 @@ async function renderFollowUps() {
   note.appendChild(document.createTextNode('Arbo recommends — nothing sends without you.'));
   fuSlot.appendChild(note);
   const reading = first ? fuSlot.appendChild(readingLine()) : null;
+  const release = () => loopsP.then(() => { if (gen === FU_GEN) v.style.minHeight = ''; });
   // Only the recommended sends wait on this read; a failure darkens only them.
   let q;
   try {
     q = await api('/api/followups').finally(() => { if (reading) reading.remove(); });
   } catch (e) {
     if (gen !== FU_GEN) return;
-    if (e.code === 401) return showKeywall();
+    if (e.code === 401) return showKeywall(); // the key wall owns the screen; the next draw takes the hold over
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
     fuSlot.appendChild(feedState(e, 'Follow-ups', 'an empty queue'));
+    release();
     return;
   }
   if (gen !== FU_GEN) return;
@@ -5676,6 +5685,7 @@ async function renderFollowUps() {
     s.appendChild(document.createTextNode('No consent on file or STOP on record — these never send.'));
     fuSlot.appendChild(s);
   }
+  release();
 }
 
 // ---------- Shell ----------
