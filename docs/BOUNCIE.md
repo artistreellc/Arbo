@@ -15,7 +15,7 @@ says where things stand.
 ## What it does, and what it never does
 
 - Shows **you** where each truck is: one line per unit on the Fleet card
-  (Queue screen), e.g. *Last seen 12 min ago · parked*. The map screen will
+  (Fleet screen), e.g. *Last seen 12 min ago · parked*. The map screen will
   read the same feed later, and a truck's trips for a day
   (`/api/fleet/trips`).
 - **Owner only.** The crew door never shows it, and the crew key cannot open it.
@@ -154,7 +154,7 @@ refusals.
 
     **What you should see:** Settings says **OPEN — Positions on — 3 trucks,
     last report …** (or **AFTER HOURS** outside 8am–8pm, Monday to
-    Saturday). On the Queue screen each Fleet unit gets one line.
+    Saturday). On the Fleet screen each unit gets one line.
 
 For a line to land on the right unit, give the truck the **same name in
 Bouncie** as the unit has in Arbo, or make sure the unit's **VIN** in Arbo

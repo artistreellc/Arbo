@@ -204,6 +204,7 @@ describe('R26 qa-x7 / qa-x13 — Book, Queue, Numbers and Settings carry the des
     const perf = pageFn<() => Promise<void>>('renderPerformance', {
       $: () => v, el, readingLine: () => el('div', 'reading', 'Reading…'), api: async () => { throw fail(503, 'link_cut'); }, showKeywall: () => {}, LINKS_READY: Promise.resolve('cut'),
       state: (t: string) => el('div', 'state', t), FEED_WORD, feedKind, feedSays: () => '',
+      DESK_LINE: pageConst<Record<string, string>>('DESK_LINE'), // Direction B P13: the desk names, one table
     });
     await perf();
     expect(head(v)[0]).toBe('div:eyebrow:Analyst');
@@ -211,18 +212,18 @@ describe('R26 qa-x7 / qa-x13 — Book, Queue, Numbers and Settings carry the des
     expect(v.children[1]!.textContent).toBe('Numbers — cut on purpose');
   });
 
-  it('Queue — eyebrow Chief of Staff; the loops slot keeps its two wide-screen columns by id, not by "first child"', async () => {
+  it('Follow-ups (the Queue, split by Direction B P13) — eyebrow Chief of Staff; the loops slot keeps its two wide-screen columns by id, not by "first child"', async () => {
     const v = el('div');
     const stub = () => {};
     const queue = pageFn<() => Promise<void>>('renderFollowUps', {
       FU_GEN: 0, $: () => v, el, readingLine: () => el('div', 'reading', 'Reading…'), api: async () => { throw fail(503, 'link_cut'); }, fmtTime: () => '', loopCard: () => el('div'),
-      LINKS_READY: Promise.resolve('cut'), feedLine, renderSafety: stub, renderRoster: stub, renderTrainingBoard: stub,
-      renderVetting: stub, renderLibraryDesk: stub, renderMoney: stub, renderFleet: stub, showKeywall: stub,
+      LINKS_READY: Promise.resolve('cut'), feedLine, showKeywall: stub,
       feedState: (_e: unknown, w: string) => el('div', 'state', w), state: () => el('div'), chip, FU_LABEL: {}, showSaveFail: stub, document,
+      DESK_LINE: pageConst<Record<string, string>>('DESK_LINE'), VIEW_TITLES: pageConst<Record<string, string>>('VIEW_TITLES'),
     });
     await queue();
     expect(head(v)[0]).toBe('div:eyebrow:Chief of Staff');
-    expect(head(v)[1]).toBe('h1::What’s still open');
+    expect(head(v)[1]).toBe('h1::Follow-ups'); // P13: the desk's title (VIEW_TITLES), its desk name above it
     expect(v.children[1]!.id).toBe('queue-loops');
     expect(css).toContain('#queue-loops{grid-column:1 / -1;display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}');
     expect(css).toContain('#queue-loops .panel-title{grid-column:1 / -1}');
@@ -248,10 +249,11 @@ describe('R26 qa-x7 / qa-x13 — Book, Queue, Numbers and Settings carry the des
   it('the Agents desk cards name the screen each desk works on', () => {
     const section = (id: string) => SECTION_AGENTS.find((a) => a.id === id)!.section;
     expect(section('arborist')).toContain('Book');
-    expect(section('chief-of-staff')).toContain('Queue');
+    // Direction B P13 split the Queue: each desk names the screens it works on now.
+    expect(section('chief-of-staff')).toContain('Follow-ups');
     expect(section('analyst')).toBe('Numbers');
-    // The Yard Boss desk is the fleet & money part of the Queue.
-    expect(section('yard-boss')).toBe('Queue — fleet & money');
+    // The Yard Boss desk is the Money and Fleet screens.
+    expect(section('yard-boss')).toBe('Money & Fleet');
     // The card subtitle is the section, as one unbreakable part.
     expect(fnSrc('renderAgents')).toContain('[a.section].concat(a.roles.map(noRefs))');
   });

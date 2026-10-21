@@ -751,6 +751,9 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
   <div id="view-cal" class="view"></div>
   <div id="view-book" class="view"></div>
   <div id="view-followups" class="view"></div>
+  <div id="view-money" class="view"></div>
+  <div id="view-fleet" class="view"></div>
+  <div id="view-safety" class="view"></div>
   <div id="view-calls" class="view"></div>
   <div id="view-perf" class="view"></div>
   <div id="view-settings" class="view"></div>
@@ -2660,9 +2663,9 @@ function beforeYouRoll(emgP, stormP) {
   Promise.all(Object.keys(ROLL_ROWS).map((k) => got[k].then((r) => { res[k] = r; }))).then(() => LINKS_READY).then(draw);
   return box;
 }
-// Direction B P10: where Today's taps land. The four back-office desks still live on
-// the Queue; P13 splits it and re-points them here, in one place.
-const DESK_VIEW = { loops: 'followups', money: 'followups', fleet: 'followups', safety: 'followups' };
+// Direction B P10: where Today's taps land. P13 split the Queue into four desks and
+// re-pointed them here, in one place: the open loops live on Follow-ups.
+const DESK_VIEW = { loops: 'followups', money: 'money', fleet: 'fleet', safety: 'safety' };
 // Open a screen and land on one panel of it — openSonaCall's way: switch, look
 // (again while the screen draws), scroll, flash. A desk never drawn is drawn first
 // (the step-back draw). A miss still lands on the right screen. `target` is an
@@ -4445,7 +4448,7 @@ async function renderPerformance() {
   v.replaceChildren();
   // R26: the R25 desks' heading, above the read so a dead feed keeps it.
   const head = el('div', 'viewhead');
-  head.appendChild(el('div', 'eyebrow', 'Analyst'));
+  head.appendChild(el('div', 'eyebrow', DESK_LINE.perf));
   head.appendChild(el('h1', '', 'Which areas & campaigns pay'));
   head.appendChild(el('p', '', 'Each area rated by revenue per crew-hour, and what each campaign cost per booked job.'));
   v.appendChild(head);
@@ -5509,8 +5512,56 @@ $('bd-go').addEventListener('click', async () => {
   }
   out.appendChild(el('div', 'internal-tag',
     'Arbo never places the order and holds no card — you click, you buy.'));
-  renderFollowUps();
+  // Direction B P13: the unit lives on Fleet now, and Today's Before you roll names a unit DOWN or HELD.
+  renderFleetView();
+  renderToday();
 });
+
+// ---------- Money, Fleet, Crew & safety (Direction B P13; R29 #1: the Queue split by the job it holds) ----------
+// Each is a screen of its own, with its R26 desk name as the small line above its title (DESK_LINE),
+// drawn before any read. Then it calls the panels the Queue held, unchanged, each in a slot of its
+// own — every panel still names its own dead feed in its own words (§1B), and one that throws takes
+// none of the others down. "Reading…" sits under the panels on a first draw until all have read. A
+// newer draw owns the screen (DESK_GEN); an older one's panels fill slots no longer on it.
+// The slot ids are where Today's taps, Before you roll and the agents' proposals land (DESK_VIEW).
+const DESK_LINE = { followups: 'Chief of Staff', money: 'Yard Boss', fleet: 'Yard Boss', safety: 'Crew Chief', perf: 'Analyst' };
+const DESK_GEN = {};
+async function deskView(view, sub, panels) {
+  const gen = DESK_GEN[view] = (DESK_GEN[view] || 0) + 1;
+  const v = $('view-' + view);
+  const first = !v.hasChildNodes();
+  v.replaceChildren();
+  const head = el('div', 'viewhead');
+  head.appendChild(el('div', 'eyebrow', DESK_LINE[view]));
+  head.appendChild(el('h1', '', VIEW_TITLES[view]));
+  head.appendChild(el('p', '', sub));
+  v.appendChild(head);
+  const runs = panels.map(([id, render]) => {
+    const slot = el('div');
+    if (id) slot.id = id;
+    v.appendChild(slot);
+    return render(slot);
+  });
+  const reading = first ? v.appendChild(readingLine()) : null;
+  await Promise.allSettled(runs);
+  if (gen === DESK_GEN[view] && reading) reading.remove();
+}
+// §4.8 money: unbilled work and unpaid invoices.
+function renderMoneyView() {
+  return deskView('money', 'What is past due, and finished work ready to bill. Arbo recommends — you decide.', [['queue-money', renderMoney]]);
+}
+// §6E fleet: every unit, what is down or held (R26) — a scheduling constraint — and the Bouncie line (R31).
+function renderFleetView() {
+  return deskView('fleet', 'Every unit, what is down or held, and breakdowns. Only you sign a held unit back on.', [['queue-fleet', renderFleet]]);
+}
+// §6V safety leads: a lapsed rescue card outranks everything else on the desk; its blind spots and
+// aerial stops come first (renderSafety). Then the people and cards on file (§4), training (§6M.5),
+// lessons waiting on Mike's name (§4.7) and the reference library (§6U).
+function renderSafetyView() {
+  return deskView('safety', 'Credentials and near misses first, then the roster, training, safety lessons and the library. Arbo recommends — you decide.', [
+    ['queue-safety', renderSafety], [null, renderRoster], [null, renderTrainingBoard], [null, renderVetting], [null, renderLibraryDesk],
+  ]);
+}
 
 // ---------- Follow-ups (§16–20 queue: ARBOR recommends, you approve) ----------
 const FU_LABEL = {
@@ -5528,16 +5579,17 @@ async function renderFollowUps() {
   const v = $('view-followups');
   const first = !v.hasChildNodes(); // Direction B P3: readingLine() where the read lands, on a first draw only
   v.replaceChildren();
-  // R26: the R25 desks' heading. The Yard Boss desk is this screen's fleet & money part.
+  // R26: the R25 desks' heading. Direction B P13: the Queue is split by the job it holds (R29 #1) —
+  // this is Follow-ups (Chief of Staff); Money, Fleet and Crew & safety are screens of their own (deskView).
   const head = el('div', 'viewhead');
-  head.appendChild(el('div', 'eyebrow', 'Chief of Staff'));
-  head.appendChild(el('h1', '', 'What’s still open'));
-  head.appendChild(el('p', '', 'Open loops, safety, recommended sends, the crew, money and the fleet. Arbo recommends — you decide.'));
+  head.appendChild(el('div', 'eyebrow', DESK_LINE.followups));
+  head.appendChild(el('h1', '', VIEW_TITLES.followups));
+  head.appendChild(el('p', '', 'Open loops and recommended sends. Arbo recommends — you decide.'));
   v.appendChild(head);
-  // Every panel reads its own feed and names its own failure, so they are all
+  // Both panels read their own feed and name their own failure, so both are
   // built BEFORE the follow-ups read. One missing feed must never blank the
-  // whole Queue — the safety board still leads it (§1B).
-  // §1E open loops lead the Queue: the things the day silently dropped.
+  // whole screen (§1B).
+  // §1E open loops lead: the things the day silently dropped.
   const loopsSlot = el('div');
   loopsSlot.id = 'queue-loops'; // two columns on a wide screen (CSS)
   v.appendChild(loopsSlot);
@@ -5551,48 +5603,14 @@ async function renderFollowUps() {
   }).catch(async (e) => {
     if (e.code === 401) return;
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
-    // One line, not a dashed card: the safety stop below must stay on the first screen.
+    // One line, not a dashed card: the recommended sends below stay on the first screen.
     loopsSlot.appendChild(el('div', 'panel-title', 'Open loops'));
     loopsSlot.appendChild(feedLine(e, 'Open loops', 'That is not a sign that nothing is open.'));
   });
-  // §6V safety leads the Queue: a lapsed rescue card outranks an unpaid bill.
-  const safetySlot = el('div');
-  safetySlot.id = 'queue-safety'; // where Today's taps land (Direction B P10, DESK_VIEW)
-  v.appendChild(safetySlot);
-  renderSafety(safetySlot);
-  // The sends the Queue is named for come next — not after every admin desk.
-  // Their own slot, so the read below fills this place whenever it lands.
+  // The sends this screen is named for come next, in their own slot, so the
+  // read below fills this place whenever it lands.
   const fuSlot = el('div');
   v.appendChild(fuSlot);
-  // §4: the safety board above checks people against cards. This is the only
-  // place either one can be put on file.
-  const rosterSlot = el('div');
-  v.appendChild(rosterSlot);
-  renderRoster(rosterSlot);
-  // §6M.5: a man nobody has ever tested is an open loop too.
-  const trainSlot = el('div');
-  v.appendChild(trainSlot);
-  renderTrainingBoard(trainSlot);
-  // §4.7: a safety lesson waiting on Mike's name is an open loop too.
-  const vetSlot = el('div');
-  v.appendChild(vetSlot);
-  renderVetting(vetSlot);
-  // §6U: an entry the crew cannot see because nobody signed it off is an open
-  // loop too — and this is the only place the library can be written at all.
-  const libSlot = el('div');
-  v.appendChild(libSlot);
-  renderLibraryDesk(libSlot);
-  // §4.8 money: unbilled work and unpaid invoices are open loops too.
-  const moneySlot = el('div');
-  moneySlot.id = 'queue-money';
-  v.appendChild(moneySlot);
-  renderMoney(moneySlot);
-  // §6E fleet: a DOWN unit is a scheduling constraint, so it belongs in the
-  // Queue next to the other open loops.
-  const fleetSlot = el('div');
-  fleetSlot.id = 'queue-fleet';
-  v.appendChild(fleetSlot);
-  renderFleet(fleetSlot);
   fuSlot.appendChild(el('div', 'panel-title', 'Recommended sends'));
   const note = el('div', 'zip-run');
   note.appendChild(document.createTextNode('Arbo recommends — nothing sends without you.'));
@@ -6308,7 +6326,11 @@ function renderMore() {
   tile('i-lidar', 'Measure', 'LiDAR scan → DBH', () => { switchTab('measure'); renderMeasure(); });
   tile('i-permit', 'Permits', '4 cities, sourced', () => { switchTab('permits'); renderPermits(); });
   tile('i-book', 'Book', 'Estimates & prep', () => switchTab('book'));
-  tile('i-queue', 'Queue', 'Follow-ups & loops', () => switchTab('followups'));
+  // Direction B P13: the Queue split by the job it holds (R29 #1) — four desks, four tiles.
+  tile('i-queue', 'Follow-ups', 'Loops & sends', () => switchTab('followups'));
+  tile('i-flag', 'Money', 'Owed & to bill', () => switchTab('money'));
+  tile('i-route', 'Fleet', 'Units & holds', () => switchTab('fleet'));
+  tile('i-shield', 'Crew & safety', 'Certs & training', () => switchTab('safety'));
   tile('i-numbers', 'Numbers', 'Which areas & ads pay', () => switchTab('perf'));
   // R26: look only — the crew's page, on this app's key, and it cannot sign,
   // file or clock in. Same tab on purpose: an installed iPhone app keeps its
@@ -6704,13 +6726,14 @@ const REPORT_STATUS = { ok: ['OK', 'good'], degraded: ['MISSING INPUTS', 'watch'
 // Brief numbering (#2, §4.8, R7…) stays in the data and off the screen.
 const noRefs = (s) => s.replace(/^#\d+\s*/, '').replace(/\s*\((?:R\d+|§)[^)]*\)/g, '');
 // A proposal opens the screen where Mike acts on it: [button, tab]. A kind with no screen stays plain text.
+// Direction B P13: the Queue's proposals open the desk that holds their panel.
 const PROPOSAL_GO = {
   call_review: ['Open Calls →', 'calls'],
   route_fix: ['Open the Calendar →', 'cal'], weather_hold_review: ['Open the Calendar →', 'cal'],
-  decide_open_loops: ['Open the Queue →', 'followups'], fix_credentials: ['Open the Queue →', 'followups'],
-  lesson_draft: ['Open the Queue →', 'followups'], vet_reference: ['Open the Queue →', 'followups'],
-  collections_review: ['Open the Queue →', 'followups'], parts_review: ['Open the Queue →', 'followups'],
-  signback_review: ['Open the Queue →', 'followups'],
+  decide_open_loops: ['Open Follow-ups →', 'followups'],
+  collections_review: ['Open Money →', 'money'],
+  parts_review: ['Open Fleet →', 'fleet'], signback_review: ['Open Fleet →', 'fleet'],
+  fix_credentials: ['Open Crew & safety →', 'safety'], lesson_draft: ['Open Crew & safety →', 'safety'], vet_reference: ['Open Crew & safety →', 'safety'],
   area_review: ['Open Numbers →', 'perf'],
 };
 // Direction B P6 (spec: "Agents lists its proposals at the top"): every desk's
@@ -7189,7 +7212,12 @@ async function renderLearn() {
   }
 }
 
-const VIEW_TITLES = { learn: 'Learn', measure: 'Measure', agents: 'Agents', permits: 'Permits', today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Book', followups: 'Queue', calls: 'Calls', perf: 'Numbers', settings: 'Settings', more: 'More', assistant: 'Assistant' };
+const VIEW_TITLES = { learn: 'Learn', measure: 'Measure', agents: 'Agents', permits: 'Permits', today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Book', followups: 'Follow-ups', money: 'Money', fleet: 'Fleet', safety: 'Crew & safety', calls: 'Calls', perf: 'Numbers', settings: 'Settings', more: 'More', assistant: 'Assistant' };
+// Direction B P13: a link that names no screen of its own — #queue (never a link before) opens More, where the Queue's four desks sit.
+const VIEW_ALIAS = { queue: 'more' };
+// Direction B P13: which dock tab lights for each screen — one table (the plan's DOCK_OF), today's dock until P19.
+// Settings opens from the header gear and lights none.
+const DOCK_OF = { today: 'today', leads: 'leads', calls: 'calls', cal: 'cal', book: 'more', followups: 'more', money: 'more', fleet: 'more', safety: 'more', perf: 'more', more: 'more', permits: 'more', agents: 'more', measure: 'more', learn: 'more', assistant: 'more' };
 
 // The line under ARBO. Today's hero already carries the date, so Today shows
 // the name alone; every screen says SIMULATION while the data is practice data.
@@ -7208,14 +7236,10 @@ function setAppSub() {
 
 function switchTab(which) {
   navPush(which);
-  for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf', 'settings', 'more', 'permits', 'agents', 'measure', 'learn', 'assistant']) {
-    $('view-' + t).classList.toggle('active', which === t);
-    const tb = $('tab-' + t); // Settings opens from the header gear — it has no nav tab
-    if (tb) tb.classList.toggle('active', which === t);
-  }
-  // Book, Queue, Numbers and the R25 desks sit behind More in the dock. Settings
-  // opens from the header gear, so it lights no dock tab.
-  $('tab-more').classList.toggle('active', ['book', 'followups', 'perf', 'more', 'permits', 'agents', 'measure', 'learn', 'assistant'].indexOf(which) !== -1);
+  // Direction B P13: every screen is a VIEW_TITLES key, and one DOCK_OF table says which dock tab
+  // lights (Book, Numbers, the desks and the R25 desks sit behind More; Settings lights none).
+  for (const t of Object.keys(VIEW_TITLES)) $('view-' + t).classList.toggle('active', which === t);
+  for (const t of new Set(Object.values(DOCK_OF))) $('tab-' + t).classList.toggle('active', DOCK_OF[which] === t);
   $('apptitle').textContent = VIEW_TITLES[which] || 'ARBO';
   CUR_TAB = which;
   setAppSub();
@@ -7524,7 +7548,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && TAL
 // browser's back all walk the same steps. With no step behind (a reload, a
 // home-screen shortcut, the crew preview's way back) a More desk lands on More
 // and anything else on Today.
-const NAV_PARENT = { book: 'more', followups: 'more', perf: 'more', permits: 'more', agents: 'more', measure: 'more', learn: 'more', assistant: 'more', settings: 'today' };
+const NAV_PARENT = { book: 'more', followups: 'more', money: 'more', fleet: 'more', safety: 'more', perf: 'more', permits: 'more', agents: 'more', measure: 'more', learn: 'more', assistant: 'more', settings: 'today' };
 const SHEETS = ['twin', 'yard', 'bd', 'talk', 'approval', 'photo', 'maps'];
 let NAV_QUIET = false; // true while a back step is drawn — drawing it must not add a new step
 function navPush(which) {
@@ -7615,7 +7639,7 @@ for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf'])
 $('tab-more').addEventListener('click', () => { renderMore(); switchTab('more'); });
 
 // The screens ↻ redraws. The minute timer redraws them too, unless one holds typed text.
-const TIMED = { today: renderToday, leads: renderLeads, cal: renderCalendar, book: renderBook, followups: renderFollowUps, calls: renderCalls, perf: renderPerformance };
+const TIMED = { today: renderToday, leads: renderLeads, cal: renderCalendar, book: renderBook, followups: renderFollowUps, money: renderMoneyView, fleet: renderFleetView, safety: renderSafetyView, calls: renderCalls, perf: renderPerformance };
 function refreshAll() { for (const t in TIMED) TIMED[t](); }
 // ↻ and the key screen also redraw a More desk that is on screen — refreshAll never draws those.
 function refreshActiveMoreView() {
@@ -7665,7 +7689,8 @@ LINKS_READY.then(setAppSub);
 netState();
 // Home-screen shortcuts open a section directly (/app#calls, /app#cal).
 {
-  const want = (location.hash || '').slice(1);
+  const asked = (location.hash || '').slice(1);
+  const want = Object.prototype.hasOwnProperty.call(VIEW_ALIAS, asked) ? VIEW_ALIAS[asked] : asked; // Direction B P13: #queue → More
   if (want && Object.prototype.hasOwnProperty.call(VIEW_TITLES, want) && want !== 'settings') {
     if (want === 'more') renderMore();
     if (want === 'permits') renderPermits();

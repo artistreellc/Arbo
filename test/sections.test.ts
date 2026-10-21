@@ -134,7 +134,7 @@ describe('SECTION_AGENTS — the eight (R25)', () => {
 
 describe('with the data links cut (hasDb false)', () => {
   const DB_BACKED = [
-    'call review backlog', "tomorrow's booked stops", 'open loops on the Queue', 'owner briefing',
+    'call review backlog', "tomorrow's booked stops", 'open loops on Follow-ups', 'owner briefing', // Direction B P13
     'permit screens for recent leads', 'permit board', 'reference library drafts', 'site photos',
     'crew certifications & near-miss log', 'training board', 'open invoices', 'fleet units',
     'area & campaign performance',
