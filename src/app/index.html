@@ -499,6 +499,8 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 .maps-who{font-family:var(--serif);font-size:19px;font-weight:600;color:var(--ink-1);line-height:1.3;margin:0 2px 6px;overflow-wrap:anywhere}
 .maps-stop{font-size:14px;color:var(--ink-2);padding:8px 0;border-bottom:1px solid var(--hairline);overflow-wrap:anywhere}
 #maps .routebtn{margin-top:14px}
+/* Direction B P7: Navigate spans its stop card, a big thumb target. */
+.navbtn{width:100%;min-height:52px;margin:12px 0 0;font-size:15px}
 
 /* ── Offline + toast ─────────────────────────────────────────────────── */
 #offline{display:none;position:sticky;top:0;z-index:25;margin:0 -16px 10px;padding:10px 16px;background:var(--warning-bg);color:color-mix(in srgb,var(--warning) 75%,var(--ink-1));font-size:13.5px;font-weight:600;border-bottom:1px solid color-mix(in srgb,var(--warning) 30%,transparent)}
@@ -992,12 +994,29 @@ function fmtTime(iso) {
   return fmtWhen(iso);
 }
 
+// mapsDirUrl (R35) is the page's one Google Maps link builder (Direction B P7).
 function mapsLink(address, city) {
   const a = el('a', '', address + (city ? ', ' + city : ''));
-  a.href = 'https://maps.google.com/?q=' + encodeURIComponent(address + ', ' + city + ', VA');
+  a.href = mapsDirUrl([address + ', ' + city + ', VA']);
   a.target = '_blank';
   a.rel = 'noopener';
   return a;
+}
+// A stop's whole address for Google Maps: street, city, VA and the ZIP when known. '' when it has no street.
+function stopAddress(s) {
+  return s.address ? [s.address, s.city, 'VA' + (s.zip ? ' ' + s.zip : '')].filter(Boolean).join(', ') : '';
+}
+// Direction B P7 (spec: "Stops get a big Navigate button"): it asks first through
+// R35's own sheet (openMapsStop) — no second sheet, no link of its own. No street, no button.
+function navigateBtn(stop) {
+  const address = stopAddress(stop);
+  if (!address) return null;
+  const b = el('button', 'routebtn navbtn');
+  b.type = 'button';
+  b.appendChild(icon('i-route'));
+  b.appendChild(el('span', '', 'Navigate'));
+  b.addEventListener('click', () => openMapsStop({ title: stop.name || 'Unnamed', address }));
+  return b;
 }
 
 function badge(text, cls) { return el('span', 'badge ' + cls, text); }
@@ -2612,13 +2631,11 @@ async function renderToday() {
   day.appendChild(el('div', 'panel-title', 'Today’s run'));
   // §9 route view: the whole day, one tap, in the maps app you already use.
   {
-    const addrs = brief.stops.map(s => s.address + ', ' + s.city + ', VA').filter(Boolean);
+    const addrs = brief.stops.map(stopAddress).filter(Boolean);
     if (addrs.length) {
       const r = el('a', 'routebtn', 'Route the day (' + plural(addrs.length, 'stop') + ')');
       r.prepend(icon('i-route'));
-      const dest = encodeURIComponent(addrs[addrs.length - 1]);
-      const wps = addrs.slice(0, -1).map(encodeURIComponent).join('|');
-      r.href = 'https://www.google.com/maps/dir/?api=1&destination=' + dest + (wps ? '&waypoints=' + wps : '');
+      r.href = mapsDirUrl(addrs);
       r.target = '_blank';
       r.rel = 'noopener';
       day.appendChild(r);
@@ -2644,6 +2661,9 @@ async function renderToday() {
     stop.redFlags.forEach(f => b.appendChild(chip(f, 'alarm')));
     stop.tags.forEach(t => b.appendChild(chip(t, 'info')));
     c.appendChild(b);
+    // Direction B P7: a big Navigate under each stop with an address — R35's ask-first sheet.
+    const nav = navigateBtn(stop);
+    if (nav) c.appendChild(nav);
     day.appendChild(c);
   }
 }
