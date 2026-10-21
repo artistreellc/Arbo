@@ -6565,12 +6565,14 @@ function heroLoops() {
 // the feeds card counts it too (§1B). The head counts the desks that need Mike (red or amber) and
 // never reads calm over a desk Arbo did not read.
 // need: one of the four jobs the Queue held (the head counts those). side: a second line the tile
-// may name as a gap — Follow-ups' recommended sends (a read of their own); Numbers' ad spend, which
-// no feed in Arbo reads yet (the plan's "Ads: not set up yet").
-const OFFICE_DESKS = [{ view: 'followups', icon: 'i-queue', need: true, side: 'Recommended sends' }, { view: 'money', icon: 'i-flag', need: true }, { view: 'fleet', icon: 'i-truck', need: true }, { view: 'safety', icon: 'i-cone', need: true }, { view: 'perf', icon: 'i-numbers', side: 'Ads' }, { view: 'learn', icon: 'i-learn' }];
-// One desk tile's words, from the same read its screen makes: { n, what, sub, side, tone }. n and
+// may name as a gap — Follow-ups' recommended sends (a read of their own); Numbers' ad spend (the
+// campaigns its own read carries; the plan's "ad spend, or dashed Ads: not set up yet"). part: what a
+// read that landed could not check (Follow-ups' storm and coming-due nudges, P14 review) — named, and
+// the head never reads calm over it.
+const OFFICE_DESKS = [{ view: 'followups', icon: 'i-queue', need: true, side: 'Recommended sends', part: 'Storm or coming-due nudges' }, { view: 'money', icon: 'i-flag', need: true }, { view: 'fleet', icon: 'i-truck', need: true }, { view: 'safety', icon: 'i-cone', need: true }, { view: 'perf', icon: 'i-numbers', side: 'Ads' }, { view: 'learn', icon: 'i-learn' }];
+// One desk tile's words, from the same read its screen makes: { n, what, sub, side, part, tone }. n and
 // what are the count ("2", "overdue"); sub is the line under it; side is the FEED_WORD kind the row's
-// second line names, or null; tone is 'hot' (red: it stops the day), 'warn' (amber: it waits on
+// second line names, or null; part is the FEED_WORD kind of what the read could not check, or null; tone is 'hot' (red: it stops the day), 'warn' (amber: it waits on
 // Mike) or 'ok' on the four job desks, '' on Numbers and Teach Arbo. A count read that failed rejects
 // with its error, and a body without the list it should carry is a read that failed — never a 0 (§1B).
 async function officeDesk(view) {
@@ -6582,10 +6584,14 @@ async function officeDesk(view) {
     const s = await sends;
     const n = q.open.length;
     // Open loops and recommended sends both wait on Mike: either makes the desk amber.
-    const out = { n: n, what: n === 1 ? 'open loop' : 'open loops', sub: '', side: null, tone: n || (s.v && s.v.due.length) ? 'warn' : 'ok' };
+    const out = { n: n, what: n === 1 ? 'open loop' : 'open loops', sub: '', side: null, part: null, tone: n || (s.v && s.v.due.length) ? 'warn' : 'ok' };
     // R33: Arbo sends nothing — Mike texts them himself, from the Quo app.
-    if (s.v) out.sub = plural(s.v.due.length, 'recommended send') + ' — to text from the Quo app' + (s.v.seasonalUnavailable || s.v.growthUnavailable ? ' · some couldn’t be checked' : '');
-    else if (!(s.e && s.e.code === 401)) { await LINKS_READY; out.side = feedKind(s.e); }
+    if (s.v) {
+      // The server drops the storm and coming-due nudges it could not check, and says so (Follow-ups' own line):
+      // the tile says some couldn't be checked, the feeds card names them, and the head never reads calm (§1B).
+      if (s.v.seasonalUnavailable || s.v.growthUnavailable) out.part = 'unread';
+      out.sub = plural(s.v.due.length, 'recommended send') + ' — to text from the Quo app' + (out.part ? ' · some couldn’t be checked' : '');
+    } else if (!(s.e && s.e.code === 401)) { await LINKS_READY; out.side = feedKind(s.e); }
     return out;
   }
   if (view === 'money') {
@@ -6613,7 +6619,19 @@ async function officeDesk(view) {
   if (view === 'perf') {
     const p = lists(await api('/api/performance'), ['areas']);
     const n = p.areas.filter((a) => a.verdict !== 'not_enough_data').length;
-    return { n: n, what: n === 1 ? 'area rated' : 'areas rated', sub: '', side: 'unset', tone: '' };
+    const out = { n: n, what: n === 1 ? 'area rated' : 'areas rated', sub: '', side: null, tone: '' };
+    // The ad spend from the same read Numbers draws its campaigns from (P14 review). Campaigns Arbo couldn't
+    // read are "couldn't read it", as Numbers says; none on file is the plan's "Ads: not set up yet"; a
+    // campaign with no cost on file is said beside the spend, never added in as $0.
+    const c = Array.isArray(p.campaigns) && p.campaignsKnown !== false ? p.campaigns : null;
+    if (!c) out.side = 'unread';
+    else if (!c.length) out.side = 'unset';
+    else {
+      const known = c.filter((x) => typeof x.cost === 'number');
+      const blank = c.length - known.length;
+      out.sub = 'Ads: ' + [known.length ? dollars(known.reduce((a, x) => a + x.cost, 0)) + ' spent' : '', blank ? blank + ' with no cost on file' : ''].filter(Boolean).join(' · ');
+    }
+    return out;
   }
   // Teach Arbo: the lessons waiting for Mike's answer, as Learn lists them.
   const st = await api('/api/sim/state');
@@ -6632,6 +6650,7 @@ function officeProposals() {
   const stale = !!ranAt && Date.now() - Date.parse(ranAt) > 15 * 60 * 1000;
   const props = agentProposals(run);
   const c = el('div', 'card proposals office-props');
+  c.dataset.age = officeRunAge(); // what this card shows: which run, and whether it was over 15 minutes old (officeAge)
   c.appendChild(el('div', 'loop-kind', 'Agents' + (ranAt ? ' · ran ' + fmtWhen(ranAt) : '')));
   c.appendChild(el('div', 'who', props.length ? 'Proposals for you (' + props.length + ')' : 'Proposals for you'));
   if (stale) c.appendChild(el('div', 'feed-state unset', 'Ran ' + fmtWhen(ranAt) + ' — over 15 minutes old. Run again for a current read.'));
@@ -6654,6 +6673,22 @@ function officeProposals() {
     c.appendChild(b);
   }
   return c;
+}
+// Which run Office's proposals card shows, and whether it is over 15 minutes old — as one word to compare.
+function officeRunAge() {
+  const r = AGENT_RUN;
+  if (!r) return 'none';
+  if (!r.reports) return 'error';
+  return r.ranAt + (Date.now() - Date.parse(r.ranAt) > 15 * 60 * 1000 ? ' old' : '');
+}
+// Office is off the minute timer, so its proposals card is drawn again, in place, the minute what it shows
+// goes out of date: the run turns 15 minutes old, or a run made on Agents replaced it (P14 review; Agents'
+// own age line does the same, D102 (8)). The page checks every minute and when the phone wakes. A card
+// whose Run all eight is still running is left alone — its run redraws Office when it lands.
+function officeAge() {
+  const c = $('view-more').querySelector('.office-props');
+  if (!c || c.dataset.age === officeRunAge() || [...c.querySelectorAll('button')].some((b) => b.disabled)) return;
+  c.replaceWith(officeProposals());
 }
 // Office's head, proposals and desk tiles, drawn into v before any read lands; returns its feeds
 // card (renderMore places it). A desk tile opens its screen only once its read has landed; a newer
@@ -6693,7 +6728,7 @@ function officeHub(v) {
       t.setAttribute('aria-disabled', 'false');
       t.setAttribute('aria-label', VIEW_TITLES[d.view] + ': ' + r.n + ' ' + r.what + (r.sub ? '. ' + r.sub : ''));
       go = true;
-      return { d: d, tone: r.tone, side: r.side };
+      return { d: d, tone: r.tone, side: r.side, part: r.part || null };
     }, async (e) => {
       if (e && e.code === 401) { reading.remove(); return { d: d, key: true }; } // the key wall owns the screen
       await LINKS_READY; // whether db_not_configured means "cut" depends on the links
@@ -6707,14 +6742,16 @@ function officeHub(v) {
     // The card counts a desk Arbo couldn't read (and a second line's gap), names it, and leaves it in place.
     feeds.note(VIEW_TITLES[d.view], t, done.then((r) => r.kind || null));
     if (d.side) feeds.note(d.side, t, done.then((r) => r.side || null));
+    if (d.part) feeds.note(d.part, t, done.then((r) => r.part || null));
     return done;
   });
   Promise.all(runs).then((rs) => {
     if (rs.some((r) => r.key)) return;
     const jobs = rs.filter((r) => r.d.need);
     const need = jobs.filter((r) => r.tone === 'hot' || r.tone === 'warn').length;
-    // A desk is read whole only when its second read landed too: no calm line over recommended sends Arbo couldn't read.
-    const read = jobs.filter((r) => !r.kind && !r.side).length;
+    // A desk is read whole only when its second read landed too, and its read checked everything it carries:
+    // no calm line over recommended sends Arbo couldn't read, or nudges it couldn't check (P14 review).
+    const read = jobs.filter((r) => !r.kind && !r.side && !r.part).length;
     const unread = rs.filter((r) => r.kind === 'unread').length;
     const off = rs.filter((r) => r.kind && r.kind !== 'unread').length;
     h1.textContent = need ? plural(need, 'desk needs you', 'desks need you')
@@ -8176,6 +8213,8 @@ setInterval(autoRefresh, 60000);
 // R35: a half-typed route-planner box holds the whole Calendar view (holdsTyping); today's stops keep their own minute.
 setInterval(() => { if (!document.hidden && !$('keywall').classList.contains('show') && holdsTyping($('view-cal'))) renderTodayStops(); }, 60000);
 document.addEventListener('visibilitychange', autoRefresh);
+setInterval(officeAge, 60000);
+document.addEventListener('visibilitychange', officeAge);
 </script>
 </body>
 </html>

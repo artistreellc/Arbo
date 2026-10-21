@@ -8,7 +8,7 @@
 // need Mike and never reads calm over a desk Arbo did not read.
 // vitest has no DOM: renderMore and the Office helpers are lifted out of the
 // page with the page's own helpers, over one stand-in document.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { loadAppHtml } from '../src/server/appPage.js';
 
 const html = loadAppHtml();
@@ -112,10 +112,10 @@ const ZERO: Record<string, Answer> = {
 const CONSTS = ['$', 'el', 'FEED_WORD', 'Cap', 'FEED_TAG', 'FEED_SAYS', 'RETRY', 'TONE', 'FEEDS_SAID', 'FEEDS_OPEN', 'FEEDS_BOX', 'FEEDS_GEN',
   'VIEW_TITLES', 'DESK_LINE', 'OFFICE_DESKS', 'PROPOSAL_GO', 'noRefs'];
 const HELPERS = ['readingLine', 'plural', 'fmtWhen', 'chip', 'badge', 'feedKind', 'feedsCard', 'agentProposals', 'proposalRow', 'moneyCounts', 'lessonsWaiting',
-  'runAllEight', 'officeDesk', 'officeProposals', 'officeHub', 'renderMore'];
+  'runAllEight', 'officeRunAge', 'officeDesk', 'officeProposals', 'officeHub', 'renderMore', 'dollars'];
 
 /** renderMore with the page's own helpers, over one stand-in document, with one answer per path. */
-function kit(answers: Record<string, Answer>, opts: { links?: string; run?: unknown } = {}) {
+function kit(answers: Record<string, Answer>, opts: { links?: string; run?: unknown; extra?: string[] } = {}) {
   const ids = new Map<string, FNode>();
   const document = {
     createElement: (t: string) => new FNode(t),
@@ -138,8 +138,8 @@ function kit(answers: Record<string, Answer>, opts: { links?: string; run?: unkn
     let AGENT_RUN = runIn;
     const { renderAssistant, renderAgents, renderLearn, renderMeasure, renderPermits, themePref, setTheme, installCard, location, window, NAV_DRAW } = stubs;
     ${CONSTS.map(constSrc).join('\n')}
-    ${HELPERS.map(fnSrc).join('\n')}
-    return { renderMore, moneyCounts, getRun: () => AGENT_RUN };`)(
+    ${HELPERS.concat(opts.extra ?? []).map(fnSrc).join('\n')}
+    return { renderMore, moneyCounts, getRun: () => AGENT_RUN, setRun: (r) => { AGENT_RUN = r; }, call: (n, ...a) => eval(n)(...a) };`)(
     document, api, (t: string) => went.push(t), (id: string) => { const s = new FNode('svg'); s.className = 'ico'; s.dataset.icon = id; return s; },
     opts.links ?? 'readonly', opts.run ?? null,
     {
@@ -147,7 +147,8 @@ function kit(answers: Record<string, Answer>, opts: { links?: string; run?: unkn
       renderMeasure: () => {}, renderPermits: () => {}, themePref: () => 'auto', setTheme: () => {}, installCard: () => new FNode('div'),
       location: {}, window: { open: () => {} }, NAV_DRAW: { learn: () => went.push('draw:learn') },
     },
-  ) as { renderMore: () => void; moneyCounts: (m: unknown) => Record<string, number>; getRun: () => unknown };
+  ) as { renderMore: () => void; moneyCounts: (m: unknown) => Record<string, number>; getRun: () => unknown; setRun: (r: unknown) => void;
+    call: (name: string, ...args: unknown[]) => unknown };
   const v = () => document.getElementById('view-more');
   const tiles = () => v().querySelectorAll('.otile');
   const tile = (desk: string) => tiles().find((t) => t.dataset.desk === desk)!;
@@ -438,5 +439,110 @@ describe('Office adds no send (P14)', () => {
     const m = /\n\.otile\{[^}]*min-height:(\d+)px/.exec(css);
     expect(m, '.otile min-height').not.toBeNull();
     expect(Number(m![1])).toBeGreaterThanOrEqual(44);
+  });
+});
+
+// ---------- Review round (after 289baa0): what the two reviews confirmed on Office ----------
+describe('Office review: a run that ages while Office is on screen says so (Office is off the minute timer)', () => {
+  const ago = (min: number) => new Date(Date.now() - min * 60000).toISOString();
+  const run = (min: number) => ({ ranAt: ago(min), reports: [{ agentId: 'yard-boss', name: 'Yard Boss', status: 'ok', inputs: [], findings: [],
+    proposals: [{ kind: 'signback_review', text: 'Sign Unit 3 back on.' }] }] });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('the minute the run turns 15 minutes old, the card is drawn again in place — the stale line above the list, with Run again', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const k = kit(FULL, { run: run(14), extra: ['officeAge'] });
+    k.renderMore();
+    await flush();
+    expect(k.v().children[1]!.textContent).not.toContain('over 15 minutes old');
+    k.call('officeAge'); // nothing changed yet: the card stays the very same node
+    const card = k.v().children[1]!;
+    vi.setSystemTime(Date.now() + 2 * 60000);
+    k.call('officeAge');
+    const now = k.v().children[1]!;
+    expect(now).not.toBe(card);
+    expect(now.has('office-props')).toBe(true);
+    const kids = now.children.map((c) => c.textContent);
+    const stale = kids.findIndex((t) => t.includes('over 15 minutes old'));
+    expect(stale).toBeGreaterThan(-1);
+    expect(stale).toBeLessThan(kids.findIndex((t) => t.includes('Sign Unit 3 back on.')));
+    expect(now.querySelector('.actbtn')!.textContent).toBe('Run all eight again');
+  });
+
+  it('a run made on Agents after Office was drawn replaces the old one; a run in flight is left alone', async () => {
+    const k = kit(FULL, { run: null, extra: ['officeAge'] });
+    k.renderMore();
+    await flush();
+    const card = k.v().children[1]!;
+    card.querySelector('button')!.disabled = true; // Run all eight was tapped and is still running
+    k.setRun(run(0));
+    k.call('officeAge');
+    expect(k.v().children[1]).toBe(card);
+    card.querySelector('button')!.disabled = false;
+    k.call('officeAge');
+    expect(k.v().children[1]!.textContent).toContain('Sign Unit 3 back on.');
+  });
+
+  it('the page checks it every minute and when the phone wakes', () => {
+    expect(html).toContain('setInterval(officeAge, 60000);');
+    expect(html).toContain("document.addEventListener('visibilitychange', officeAge);");
+  });
+});
+
+describe('Office review: the head never reads calm over nudges Follow-ups couldn’t check (§1B)', () => {
+  it('storm or coming-due nudges unread: "No desk Arbo read needs you", and the feeds card names them', async () => {
+    for (const flag of ['seasonalUnavailable', 'growthUnavailable']) {
+      const k = kit({ ...ZERO, '/api/followups': { due: [], suppressed: [], [flag]: true } });
+      k.renderMore();
+      await flush();
+      expect(k.tile('followups').textContent.replace(/\u00a0/g, ' '), flag).toContain('some couldn’t be checked');
+      expect(k.h1().textContent, flag).toBe('No desk Arbo read needs you');
+      expect(k.v().querySelector('.feeds')!.textContent, flag).toContain('Storm or coming-due nudges — couldn’t read it');
+    }
+  });
+});
+
+describe('Office review: Numbers says the ad spend Arbo reads (the plan: "ad spend, or dashed Ads: not set up yet")', () => {
+  const perf = (p: Record<string, unknown>) => ({ ...FULL, '/api/performance': { areas: [{ verdict: 'above' }], withheld: [], ...p } });
+  const said = (k: ReturnType<typeof kit>) => k.tile('perf').textContent.replace(/\u00a0/g, ' ');
+
+  it('campaigns with their cost on file: the spend, never "not set up", and nothing on the feeds card', async () => {
+    const k = kit(perf({ campaigns: [{ cost: 400 }, { cost: 750 }], campaignsKnown: true }));
+    k.renderMore();
+    await flush();
+    expect(said(k)).toContain('Ads: $1,150 spent');
+    expect(said(k)).not.toContain('not set up');
+    expect(k.tile('perf').querySelector('.ogap')).toBeNull();
+    const card = k.v().querySelector('.feeds')!;
+    expect(card.textContent).not.toContain('Ads');
+  });
+
+  it('a campaign with no cost on file is said beside the spend, never folded into it', async () => {
+    const k = kit(perf({ campaigns: [{ cost: 400 }, { cost: null }], campaignsKnown: true }));
+    k.renderMore();
+    await flush();
+    expect(said(k)).toContain('Ads: $400 spent · 1 with no cost on file');
+    const none = kit(perf({ campaigns: [{ cost: null }], campaignsKnown: true }));
+    none.renderMore();
+    await flush();
+    expect(said(none)).toContain('Ads: 1 with no cost on file');
+    expect(said(none)).not.toMatch(/\$0/);
+  });
+
+  it('campaigns Arbo couldn’t read: "couldn’t read it" — the Numbers screen’s own word, never "not set up"', async () => {
+    const k = kit(perf({ campaigns: [], campaignsKnown: false }));
+    k.renderMore();
+    await flush();
+    expect(said(k)).toContain('Ads: couldn’t read it');
+    expect(said(k)).not.toContain('not set up');
+    expect(k.v().querySelector('.feeds')!.textContent).toContain('Ads — couldn’t read it');
+  });
+
+  it('no campaign on file: "Ads: not set up yet", counted on the feeds card', async () => {
+    const k = kit(perf({ campaigns: [], campaignsKnown: true }));
+    k.renderMore();
+    await flush();
+    expect(said(k)).toContain('Ads: not set up yet');
+    expect(k.v().querySelector('.feeds')!.textContent).toContain('Ads — not set up yet');
   });
 });
