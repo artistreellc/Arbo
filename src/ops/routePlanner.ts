@@ -339,7 +339,12 @@ export interface TomTomPlanDeps {
   geocode: (query: string) => Promise<TomTomPoint | null>;
   /** points[0] and the last point are fixed; between them TomTom may reorder (bestOrder). */
   route: (points: TomTomPoint[], opts: { bestOrder: boolean; departAtIso?: string }) => Promise<{ order: number[]; legMinutes: number[] }>;
-  /** RFC 3339 departure for a run that starts `startMin` minutes into the plan's day; undefined = TomTom's "now". */
+  /**
+   * RFC 3339 departure for a run that starts `startMin` minutes into the
+   * plan's day — TomTom then FORECASTS traffic for that time; undefined =
+   * TomTom's documented default, "now" (live traffic at planning time). The
+   * note says which one each run got.
+   */
   departAt?: (startMin: number) => string | undefined;
 }
 
@@ -359,8 +364,8 @@ async function tomtomRun(
   window: PlannedVisit['window'],
   startOrder: number,
   deps: TomTomPlanDeps,
-): Promise<{ visits: PlannedVisit[]; endMin: number; last: PlanStop | null }> {
-  if (stops.length === 0) return { visits: [], endMin: startMin, last: null };
+): Promise<{ visits: PlannedVisit[]; endMin: number; last: PlanStop | null; traffic: 'forecast' | 'now' | null }> {
+  if (stops.length === 0) return { visits: [], endMin: startMin, last: null, traffic: null };
   // No start point: the run begins at its first stop listed and loops back to it.
   const first = origin ? null : stops[0]!;
   const from = origin ?? at.get(stops[0]!)!;
@@ -369,8 +374,11 @@ async function tomtomRun(
   let seq: PlanStop[] = first ? [first] : [];
   // gapBefore[k]: drive minutes into seq[k] from the stop before it (k = 0 is never used).
   let gapBefore: number[] = [0];
+  // Which traffic TomTom timed this run with — null when nothing was driven (one stop, no start point).
+  let traffic: 'forecast' | 'now' | null = null;
   if (waypoints.length > 0) {
     const dep = deps.departAt?.(startMin);
+    traffic = dep ? 'forecast' : 'now';
     const r = await deps.route([from, ...waypoints.map((s) => at.get(s)!), to], { bestOrder: waypoints.length >= 2, ...(dep ? { departAtIso: dep } : {}) });
     const n = waypoints.length;
     const isOrder = r.order.length === n && new Set(r.order).size === n && r.order.every((i) => Number.isInteger(i) && i >= 0 && i < n);
@@ -389,7 +397,16 @@ async function tomtomRun(
     visits.push({ order: startOrder + k, label: s.label, zip: s.zip, ...(s.id !== undefined ? { id: s.id } : {}), window, startTime: fmt(t), endTime: fmt(t + slotMin) });
     t += slotMin;
   });
-  return { visits, endMin: t, last: seq[seq.length - 1] ?? null };
+  return { visits, endMin: t, last: seq[seq.length - 1] ?? null, traffic };
+}
+
+/** What traffic the drive times rest on, in Mike's words — never "live" for a forecast (R35 review). */
+function tomtomTrafficWords(runs: Array<'forecast' | 'now' | null>): string {
+  const used = runs.filter((r): r is 'forecast' | 'now' => r !== null);
+  if (used.length === 0) return 'no drive between stops to time';
+  if (used.every((r) => r === 'forecast')) return "drive times are TomTom's traffic forecast for when each run starts";
+  if (used.every((r) => r === 'now')) return "drive times are TomTom's live traffic when it was planned";
+  return "drive times are TomTom's live traffic for a run already under way and its forecast for a run still ahead";
 }
 
 export async function planRouteTomTom(input: PlanInput, deps: TomTomPlanDeps): Promise<TomTomPlan> {
@@ -409,10 +426,12 @@ export async function planRouteTomTom(input: PlanInput, deps: TomTomPlanDeps): P
   const end = home ?? start;
   const warnings: string[] = [];
   let visits: PlannedVisit[];
+  let traffic: Array<'forecast' | 'now' | null>;
   if (input.day === 'weekday') {
     const run = await tomtomRun(placed, at, start, end, 16 * 60, slotMin, 'after_work', 1, deps);
     if (run.endMin > 20 * 60) warnings.push(`Plan runs past 8pm (ends ${fmt(run.endMin)}) — consider moving a stop to another day.`);
     visits = run.visits;
+    traffic = [run.traffic];
   } else {
     // Saturday: Mike's split decides the run; TomTom only orders inside it.
     const vb = placed.filter((s) => isVirginiaBeach(s));
@@ -423,6 +442,7 @@ export async function planRouteTomTom(input: PlanInput, deps: TomTomPlanDeps): P
     const afternoon = await tomtomRun(vb, at, afternoonFrom, end, 12 * 60, slotMin, 'afternoon', morning.visits.length + 1, deps);
     if (afternoon.endMin > 20 * 60) warnings.push(`Afternoon run passes 8pm (ends ${fmt(afternoon.endMin)}).`);
     visits = [...morning.visits, ...afternoon.visits];
+    traffic = [morning.traffic, afternoon.traffic];
   }
   if (unplaced.length > 0) {
     warnings.push(`TomTom couldn't place ${unplaced.map((s) => s.label).join('; ')} — not in the plan. Check the address.`);
@@ -432,7 +452,9 @@ export async function planRouteTomTom(input: PlanInput, deps: TomTomPlanDeps): P
     : startZip
       ? "TomTom couldn't place the start ZIP, so the route starts at the first stop listed."
       : 'No start ZIP is set (Settings), so the route starts at the first stop listed.';
-  const note = `Planned by TomTom with live traffic — ${slotMin} min on site, drive times traffic-aware at planning time. TomTom picks the order inside Mike's windows (weekdays after 4; Saturdays Norfolk, Chesapeake and Portsmouth from 8, Virginia Beach after 12). ${from} Re-plan if you leave much later.`;
+  // R35 review: a run timed for its start is a FORECAST, not "live traffic at
+  // planning time"; and the note is on Mike's own screen, so it says "your".
+  const note = `Planned by TomTom — ${slotMin} min on site; ${tomtomTrafficWords(traffic)}. TomTom picks the order inside your windows (weekdays after 4; Saturdays Norfolk, Chesapeake and Portsmouth from 8, Virginia Beach after 12). ${from}`;
   return {
     visits,
     totalStops: visits.length,
@@ -456,9 +478,23 @@ export interface BestPlan extends RoutePlan {
   /** Drive minutes between consecutive stops inside each run — not the drive to the first stop, not the drive home. */
   driveMinutes: number;
   unplaced: Array<{ id?: string; label: string }>;
-  /** used = TomTom planned it; not_set = no key; failed = asked and failed (line names how); idle = nothing to plan. */
-  tomtom: { state: 'used' | 'not_set' | 'failed' | 'idle'; line: string | null };
+  /**
+   * used = TomTom planned it; not_set = no key; failed = asked and failed (line
+   * names how); too_many = more stops than ROUTE_MAX_STOPS, so not asked;
+   * idle = nothing to plan.
+   */
+  tomtom: { state: 'used' | 'not_set' | 'failed' | 'too_many' | 'idle'; line: string | null };
 }
+
+/**
+ * The most stops one plan takes (R35 security review). A day is a dozen
+ * stops — 25 is a long day twice over — and it keeps every TomTom call well
+ * under TomTom's documented 150-waypoint limit, so one request can never spend
+ * hundreds of lookups on a route TomTom must refuse. The typed planner refuses
+ * more (400 too_many_stops); a calendar day with more is planned without
+ * TomTom, and the plan says so.
+ */
+export const ROUTE_MAX_STOPS = 25;
 
 export interface BestPlanDeps {
   /** Null = no TOMTOM_API_KEY. */
@@ -488,10 +524,18 @@ function tomtomFailure(err: unknown): string {
   return /^TomTom (?:HTTP \d{3}|timed out|unreachable|unreadable answer|couldn't place any address)$/.test(m) ? m : 'TomTom error';
 }
 
+/** What Mike can do about a TomTom refusal (R35 review: a bare "HTTP 403" is not a next step). */
+function tomtomNextStep(failed: string): string {
+  if (/^TomTom HTTP 40[13]$/.test(failed)) return ' Check TOMTOM_API_KEY in Railway, and that the key is switched on for Search and Routing.';
+  if (failed === 'TomTom HTTP 429') return " TomTom's request limit for the key was reached — it is asked again on the next refresh.";
+  return '';
+}
+
 export async function planRouteBest(input: PlanInput, deps: BestPlanDeps): Promise<BestPlan> {
   let tomtom: BestPlan['tomtom'] = deps.tomtom ? { state: 'idle', line: null } : { state: 'not_set', line: TOMTOM_NOT_SET_LINE };
   let failed: string | null = null;
-  if (deps.tomtom && input.stops.length > 0) {
+  const tooMany = input.stops.length > ROUTE_MAX_STOPS;
+  if (deps.tomtom && input.stops.length > 0 && !tooMany) {
     try {
       const t = await planRouteTomTom(input, deps.tomtom);
       return { ...t, engine: 'tomtom', driveMinutes: driveBetween(t.visits), tomtom: { state: 'used', line: null } };
@@ -501,8 +545,11 @@ export async function planRouteBest(input: PlanInput, deps: BestPlanDeps): Promi
   }
   const g = await planRouteLive(input, deps.google);
   const engine: PlanEngine = g.mode === 'live_traffic' ? 'google' : 'zip';
+  const instead = engine === 'google' ? 'planned by Google Maps instead' : 'these are ZIP estimates';
   if (failed) {
-    tomtom = { state: 'failed', line: `TomTom couldn't plan it (${failed}) — ${engine === 'google' ? 'planned by Google Maps instead' : 'these are ZIP estimates'}.` };
+    tomtom = { state: 'failed', line: `TomTom couldn't plan it (${failed}) — ${instead}.${tomtomNextStep(failed)}` };
+  } else if (deps.tomtom && tooMany) {
+    tomtom = { state: 'too_many', line: `TomTom not asked — ${input.stops.length} stops is more than ${ROUTE_MAX_STOPS} for one plan, so ${instead}.` };
   }
   return { ...g, engine, driveMinutes: driveBetween(g.visits), unplaced: [], tomtom };
 }

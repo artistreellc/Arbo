@@ -241,9 +241,17 @@ export interface TomTomClient {
 }
 
 /**
+ * The ceiling on the day's geocode memory (R35 security review): a day is a
+ * dozen stops, so 200 is room to spare — and past it the oldest answer makes
+ * room, so no run of odd addresses can grow the server's memory without end.
+ */
+export const TOMTOM_MAX_PLACES = 200;
+
+/**
  * The one TomTom client the server builds when the key is set. Geocodes are
- * kept in memory for the ET day (an answer, or "couldn't place it"); a failure
- * is never remembered, so the next plan asks again.
+ * kept in memory for the ET day (an answer, or "couldn't place it"), at most
+ * TOMTOM_MAX_PLACES of them; a failure is never remembered, so the next plan
+ * asks again.
  */
 export function createTomTomClient(
   apiKey: string,
@@ -263,6 +271,10 @@ export function createTomTomClient(
       }
       if (places.has(query)) return places.get(query) ?? null;
       const p = await tomtomGeocode(query, apiKey, fetchFn, timeoutMs);
+      if (places.size >= TOMTOM_MAX_PLACES) {
+        const oldest = places.keys().next();
+        if (!oldest.done) places.delete(oldest.value);
+      }
       places.set(query, p);
       return p;
     },

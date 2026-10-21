@@ -23,7 +23,12 @@ says so on screen. **No secrets live in this file** — the key goes in Railway.
   split into parts and the screen says so.
 - An event with **no address** is listed and says *No address on the event* —
   no Maps button. All-day events and addresses with no ZIP are listed, not
-  planned.
+  planned. A **weekday event before 4 PM** (crew time) is listed at its own
+  time and kept out of the after-4 run; a two-day job reads *Ongoing*. The
+  whole-day sheet names every stop with an address that is not in the route.
+- **Once your run starts** (weekdays 4 PM, Saturdays 8 AM) the plan holds — it
+  won't reshuffle as you drive. Only a change to today's calendar re-plans it.
+  Before that it re-plans on its own; ↻ retries anything that failed.
 - The **route planner** box under the calendar (typed stops) uses the same
   engines.
 
@@ -43,7 +48,8 @@ says so on screen. **No secrets live in this file** — the key goes in Railway.
 
 The plan line always says which one did it. If TomTom is set but fails, it
 says so — e.g. *TomTom couldn't plan it (TomTom HTTP 403) — planned by Google
-Maps instead.*
+Maps instead. Check TOMTOM_API_KEY in Railway…* One plan takes at most 25
+stops; past that TomTom is not asked, and the screen says so.
 
 ## Your rules TomTom can't change (R16)
 
@@ -67,9 +73,10 @@ Maps instead.*
 4. **Railway** → the Arbo service → **Variables** → add `TOMTOM_API_KEY` with
    the key. Nothing else changes.
 5. **Deploy by hand** (auto-deploy stays off), then check the deploy as usual.
-6. Open **Calendar**. The plan line should read *Planned by TomTom with live
-   traffic*. If it says *TomTom couldn't plan it (TomTom HTTP 403)*, the key
-   is wrong or not switched on for Search and Routing.
+6. Open **Calendar**. The plan line should read *Planned by TomTom
+   (traffic-aware)*. If it says *TomTom couldn't plan it (TomTom HTTP 403)*,
+   the key is wrong or not switched on for Search and Routing. *HTTP 429*
+   means the key's request limit was reached.
 
 Not checked from here: TomTom's sign-up screens and its free daily limit — the
 build sandbox could not open developer.tomtom.com.
@@ -77,5 +84,6 @@ build sandbox could not open developer.tomtom.com.
 ## Waiting on Mike
 
 Truck and chipper dimensions, Sunday, where routes start and end, optimise vs
-keep the booked order, the privacy page, and TomTom's newer Orbis maps — all
-listed in `docs/OWNER_RULINGS.md` **R35**.
+keep the booked order, the privacy page, TomTom's newer Orbis maps, which
+events count as stops (estimates vs crew jobs), and what a mid-run calendar
+change should do — all listed in `docs/OWNER_RULINGS.md` **R35**.

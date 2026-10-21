@@ -182,7 +182,7 @@ import { CallMemory, CallRecordStore } from './reception/callMemory.js';
 import { createRefreshTokenProvider } from './integrations/googleOAuth.js';
 import { LEAD_CHANNELS, channelIsOff, setChannelOff } from './reception/leadMail.js';
 import { getTodayWorkZip, setTodayWorkZip, getLiveWorkZip, setLivePingZip, setLocationEnabled, isLocationEnabled, liveLocationState } from './reception/routingHint.js';
-import { planRouteBest, type BestPlanDeps } from './ops/routePlanner.js';
+import { planRouteBest, ROUTE_MAX_STOPS, type BestPlanDeps } from './ops/routePlanner.js';
 import { fetchDriveMinutesMatrix } from './integrations/googleRoutes.js';
 import { createTomTomClient } from './integrations/tomtom.js';
 import { createTodayStops } from './ops/todayStops.js';
@@ -1819,6 +1819,11 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
         const day = body.day === 'saturday' || body.day === 'weekday' ? body.day : null;
         const rawStops = Array.isArray(body.stops) ? (body.stops as Array<Record<string, unknown>>) : null;
         if (!day || !rawStops) return send(400, { error: 'bad_plan_input' });
+        // R35 security review: one plan is one day — more stops than that is refused
+        // before any engine (or TomTom's lookups) is asked.
+        if (rawStops.length > ROUTE_MAX_STOPS) {
+          return send(400, { error: 'too_many_stops', max: ROUTE_MAX_STOPS, line: `One plan takes up to ${ROUTE_MAX_STOPS} stops — split the day into two plans. Nothing was planned.` });
+        }
         const stops = [] as Array<{ label: string; city?: string; zip: string }>;
         for (const s of rawStops) {
           if (typeof s.label !== 'string' || s.label.trim() === '' || typeof s.zip !== 'string' || !/^23\d{3}$/.test(s.zip)) {
@@ -1834,8 +1839,9 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
             startZip: getLiveWorkZip(Date.now()) ?? getTodayWorkZip(),
             homeZip: env.ownerHomeZip ?? null,
           },
-          // The typed planner names no date, so TomTom departs in five minutes, as Google does.
-          routeEngines(() => etRfc3339(new Date(Date.now() + 5 * 60 * 1000))),
+          // The typed planner names no date, so TomTom is given no departAt: its
+          // documented default is "now", and the note says live traffic.
+          routeEngines(() => undefined),
         );
         return send(200, plan);
       }

@@ -209,7 +209,8 @@ describe('planRouteBest — the engine order, and the plan names its engine', ()
     const named = fakeTomTom({ fail: new Error('TomTom HTTP 403') });
     const zip = await planRouteBest({ stops, day: 'weekday' }, { tomtom: named.deps, google: googleNone });
     expect(zip.engine).toBe('zip');
-    expect(zip.tomtom.line).toBe("TomTom couldn't plan it (TomTom HTTP 403) — these are ZIP estimates.");
+    // R35 review: a refused key also says where to fix it.
+    expect(zip.tomtom.line).toBe("TomTom couldn't plan it (TomTom HTTP 403) — these are ZIP estimates. Check TOMTOM_API_KEY in Railway, and that the key is switched on for Search and Routing.");
   });
 
   it('no stops: the ZIP planner’s honest empty plan, and nothing is asked of TomTom', async () => {

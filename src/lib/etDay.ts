@@ -79,16 +79,21 @@ export function etDateOffset(now: Date, days: number): string {
   return ET_DATE.format(new Date(now.getTime() + days * 86400_000));
 }
 
+/** ET midnight starting the given Y-M-D, as a UTC instant (Date.UTC rolls d+1 into the next month). */
+function etMidnightUtc(y: number, m: number, d: number): Date {
+  const naiveMidnightUtc = Date.UTC(y, m - 1, d, 0, 0, 0);
+  return new Date(naiveMidnightUtc - etOffsetMs(new Date(naiveMidnightUtc)));
+}
+
 /**
  * The UTC instants bounding one ET calendar day (DST-correct: the offset is
- * sampled at the target day, not at "now").
+ * sampled at the target day, not at "now"). The end is the NEXT ET midnight,
+ * so a clock-change day is 23 or 25 hours — never a fixed 24 that cuts off
+ * 11pm–midnight in November or reaches into Monday in March (R35 review).
  */
 export function etDayWindow(dayLabel: string): { startUtc: Date; endUtc: Date; dayLabel: string } {
   const [y, m, d] = dayLabel.split('-').map(Number);
-  const naiveMidnightUtc = Date.UTC(y!, m! - 1, d!, 0, 0, 0);
-  const offset = etOffsetMs(new Date(naiveMidnightUtc));
-  const startUtc = new Date(naiveMidnightUtc - offset);
-  return { startUtc, endUtc: new Date(startUtc.getTime() + 86400_000), dayLabel };
+  return { startUtc: etMidnightUtc(y!, m!, d!), endUtc: etMidnightUtc(y!, m!, d! + 1), dayLabel };
 }
 
 /** Tomorrow in Hampton Roads, as a UTC window. */

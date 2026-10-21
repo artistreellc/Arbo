@@ -137,16 +137,19 @@ describe('reading today from the calendar', () => {
     expect(v.stops[0]!.city).toBe('Virginia Beach');
   });
 
-  it('Saturday in ET plans by the Saturday rule; the weekday warning names stops booked before 4', async () => {
-    const sat = harness({ now: () => new Date('2026-10-25T02:00:00Z') }); // Sat 22:00 ET
+  it('Saturday in ET plans by the Saturday rule; a weekday stop booked before 4 says so on its own row (R35 review)', async () => {
+    const sat = harness({ now: () => new Date('2026-10-25T02:00:00Z'), events: [ev('s', 'SIM-Sat', '2026-10-24T10:00:00-04:00', '1 SIM Row, Norfolk, VA 23503')] }); // Sat 22:00 ET
     await sat.stops.read();
     expect(sat.plans[0]!.day).toBe('saturday');
     const early = await harness({ events: [ev('m', 'SIM-Fir', '2026-10-21T09:00:00-04:00', '1 SIM Row, Norfolk, VA 23503')] }).stops.read();
-    expect(early.plan!.warnings.some((w) => w.includes('booked before 4 PM'))).toBe(true);
+    expect(early.stops[0]!.why).toBe('Booked before 4 PM — not in the after-4 run');
+    expect(early.stops[0]!.time).toBe('09:00');
   });
 
   it('Sunday has no R16 rule: nothing is planned, nothing is asked of a map engine, and the plan says why', async () => {
-    const h = harness({ now: () => new Date('2026-10-25T16:00:00Z') }); // Sun noon ET
+    // The same day's events, dated Sunday (listEvents only returns events that touch the day read).
+    const sunday = DAY_EVENTS.map((e) => ({ ...e, startIso: e.startIso.replace('2026-10-21', '2026-10-25'), endIso: e.endIso.replace('2026-10-21', '2026-10-25') }));
+    const h = harness({ now: () => new Date('2026-10-25T16:00:00Z'), events: sunday }); // Sun noon ET
     const v = await h.stops.read();
     expect(v.dayKind).toBe('sunday');
     expect(h.plans).toHaveLength(0);

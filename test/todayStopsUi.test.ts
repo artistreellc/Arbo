@@ -229,6 +229,36 @@ describe('Today’s stops on the Calendar tab', () => {
   });
 });
 
+describe('review fixes on the page (2026-10-21)', () => {
+  it('UI #3 — the whole-day sheet names each stop with an address that is not in the route, and why', () => {
+    const w = sheetWorld();
+    const openDay = pageFn<(d: unknown) => void>('openMapsDay', w.deps);
+    const stops = [
+      STOP,
+      { ...STOP, id: 's2', title: 'SIM-NoZip', address: '5 SIM Row, Norfolk', why: 'No ZIP in the address — not in the plan', plan: null },
+      { ...STOP, id: 's3', title: 'SIM-NoAddr', address: null, why: 'No address on the event', plan: null },
+    ];
+    openDay({ stops, plan: { engine: 'zip', order: ['s1'] } });
+    const body = w.$('maps-body');
+    expect(body.text()).toContain('Not in this route');
+    expect(body.text()).toContain('SIM-NoZip');
+    expect(body.text()).toContain('No ZIP in the address');
+    expect(body.text()).not.toContain('SIM-NoAddr'); // nothing to drive to
+    expect(body.all().filter((n) => n.tag === 'a')).toHaveLength(1);
+  });
+
+  it('UI #4 — a long unbroken title wraps instead of pushing the page sideways', () => {
+    expect(html).toMatch(/\.cal-ev \.who\{[^}]*overflow-wrap:anywhere/);
+    expect(html).toMatch(/\.cal-ev \.where\{[^}]*overflow-wrap:anywhere/);
+  });
+
+  it('rules #2 — an event carried over from an earlier day reads "Ongoing", never a stale clock time', () => {
+    const row = pageFn<(s: unknown) => N>('todayStopRow', { el, clock12, openMapsStop: () => {} })({ ...STOP, time: null, ongoing: true, plan: null, why: 'Started on an earlier day — not routed' });
+    expect(row.children[0]!.textContent).toBe('Ongoing');
+    expect(row.text()).toContain('Started on an earlier day');
+  });
+});
+
 describe('the Calendar tab keeps its frame (R2) and gains a box above it', () => {
   const cal = fnSrc('renderCalendar');
 
