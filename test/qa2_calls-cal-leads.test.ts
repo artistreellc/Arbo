@@ -126,6 +126,7 @@ describe('Leads: the file-it pair, Undo and the chip rows (run, not just read)',
       feedState: (_e: unknown, w: string) => el('div', 'state', w),
       feedLine: (_e: unknown, w: string) => el('div', 'feed-state', w),
       showSaveFail: (_box: Node, e: unknown) => { saveFails.push(e); },
+      clampLine: (t: string) => el('div', 'scope clamp', t), // Direction B P8: a lead's long lines fold
     });
     const card = () => v.children[0]!;
     const buttons = () => card().all().filter((n) => n.tag === 'button');

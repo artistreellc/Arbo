@@ -230,6 +230,7 @@ describe('Leads: a spam Undo holds the minute timer for about 2 minutes, not for
       showKeywall: () => {}, LINKS_READY: Promise.resolve('simulation'),
       state: (t: string) => el('div', 'state', t), feedState: (_e: unknown, w: string) => el('div', 'state', w),
       feedLine, showSaveFail: () => {},
+      clampLine: (t: string) => el('div', 'scope clamp', t), // Direction B P8: a lead's long lines fold
     });
     const spam = () => v.all().find((n) => n.tag === 'button' && n.has('bad'))!;
     return { v, renderLeads, spam };
