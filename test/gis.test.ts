@@ -109,7 +109,7 @@ describe('Google geocoder — confident hit or throw', () => {
 
   it('resolves coordinates on OK', async () => {
     const g = createGoogleGeocoder('k', routedFetch([['maps.googleapis.com', OK]]));
-    expect(await g.geocode('8562 Circle Drive', 'Norfolk')).toEqual({ lat: 36.8508, lng: -76.2859 });
+    expect(await g.geocode('4303 Withheld Drive', 'Norfolk')).toEqual({ lat: 36.8508, lng: -76.2859 });
   });
 
   it('constrains the query to Virginia', async () => {
@@ -242,7 +242,7 @@ describe('live GisProvider — honest end to end', () => {
   });
 });
 
-describe('the proximity tier (D37 — the Circle Drive lesson)', () => {
+describe('the proximity tier (D37 — the Withheld Drive lesson)', () => {
   // Street-centerline geocodes sit 150–300 m from a rear-lot RPA buffer
   // (verified on the real violation case). Direct miss + probe hit must
   // surface as the softer PROXIMITY overlay → REVIEW_NEEDED, never silence.
@@ -253,7 +253,7 @@ describe('the proximity tier (D37 — the Circle Drive lesson)', () => {
 
   it('direct miss + 300 m probe hit → CBPA_RPA_PROXIMITY overlay', async () => {
     const provider = createLiveGisProvider({ geocoder: pointGeocoder(), fetchFn: probeAwareFetch });
-    const overlays = await provider.overlaysFor({ city: 'Norfolk', address: '8562 Circle Drive', isRemoval: true });
+    const overlays = await provider.overlaysFor({ city: 'Norfolk', address: '4303 Withheld Drive', isRemoval: true });
     expect(overlays).toHaveLength(1);
     expect(overlays[0]!.kind).toBe('CBPA_RPA_PROXIMITY');
     expect(overlays[0]!.meaning).toMatch(/300 m/);
@@ -261,9 +261,9 @@ describe('the proximity tier (D37 — the Circle Drive lesson)', () => {
 
   it('a proximity-only hit screens REVIEW_NEEDED — flagged, not PERMIT_LIKELY, never clear', async () => {
     const provider = createLiveGisProvider({ geocoder: pointGeocoder(), fetchFn: probeAwareFetch });
-    const overlays = await provider.overlaysFor({ city: 'Norfolk', address: '8562 Circle Drive', isRemoval: true });
+    const overlays = await provider.overlaysFor({ city: 'Norfolk', address: '4303 Withheld Drive', isRemoval: true });
     const screen = await screenProperty(
-      { city: 'Norfolk', address: '8562 Circle Drive', isRemoval: true },
+      { city: 'Norfolk', address: '4303 Withheld Drive', isRemoval: true },
       { overlaysFor: async () => overlays },
     );
     expect(screen.status).toBe('REVIEW_NEEDED');
@@ -297,11 +297,11 @@ describe('the proximity tier (D37 — the Circle Drive lesson)', () => {
 });
 
 describe('Census geocoder — keyless fallback (verified live 2026-08-01)', () => {
-  const MATCH = { result: { addressMatches: [{ coordinates: { x: -76.260956646037, y: 36.931651997559 } }] } };
+  const MATCH = { result: { addressMatches: [{ coordinates: { x: -76.280123456789, y: 36.850123456789 } }] } };
 
   it('resolves a confident match to lat/lng', async () => {
     const g = createCensusGeocoder(routedFetch([['geocoding.geo.census.gov', MATCH]]));
-    expect(await g.geocode('8562 Circle Drive', 'Norfolk')).toEqual({ lat: 36.931651997559, lng: -76.260956646037 });
+    expect(await g.geocode('4303 Withheld Drive', 'Norfolk')).toEqual({ lat: 36.850123456789, lng: -76.280123456789 });
   });
 
   it('no match / HTTP error → throw (screen goes pending, never wrong-point)', async () => {

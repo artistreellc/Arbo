@@ -61,7 +61,7 @@ describe('portal property flags — the three states (§1B)', () => {
 
   it('reports a direct CBPA hit and a proximity hit as present', () => {
     expect(byKey(propertyOverlayFlags(screen([CBPA])), 'cbpa').state).toBe('present');
-    // D37: the proximity probe is what caught the real 8562 Circle Drive
+    // D37: the proximity probe is what caught the real 4303 Withheld Drive
     // case. If it did not count as present here, the portal would tell that
     // homeowner nothing was found.
     expect(byKey(propertyOverlayFlags(screen([PROX])), 'cbpa').state).toBe('present');

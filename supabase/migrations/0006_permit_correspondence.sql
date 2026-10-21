@@ -50,7 +50,7 @@ create table if not exists permit_correspondence (
                    check (city in ('Virginia Beach', 'Norfolk', 'Chesapeake', 'Portsmouth')),
   kind           text not null
                    check (kind in ('ppr_review','cbpa_case','intake_request','duplicate_warning','payment','other_city_mail')),
-  case_ref       text,                        -- e.g. 2025-DSC-021566 / J04-021654-RPA
+  case_ref       text,                        -- e.g. 2025-DSC-000303 / J04-000505-RPA
   subject        text,
   address_text   text,                        -- address as it appeared in the mail
   property_id    uuid references property(id) on delete set null,

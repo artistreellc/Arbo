@@ -77,7 +77,7 @@ interface CensusGeocodeResponse {
  * US Census Bureau geocoder — free, keyless, federal. The default when no
  * Google Maps key is configured, so the §6B screen can run live with zero
  * paid credentials. Verified against the real service 2026-08-01 (it resolved
- * the 8562 Circle Drive case). Same strictness: no confident match → throw.
+ * the 4303 Withheld Drive case). Same strictness: no confident match → throw.
  */
 export function createCensusGeocoder(fetchFn: FetchFn): Geocoder {
   return {

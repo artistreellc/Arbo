@@ -66,9 +66,9 @@ describe('morning brief (§5A #25) — one glance, know the day', () => {
 
   it('tags first-timers vs repeats and carries source tags', () => {
     const brief = buildMorningBrief(day);
-    const kathy = brief.stops.find((s) => s.id === 'e1')!;
-    expect(kathy.tags).toContain('FIRST-TIMER');
-    expect(kathy.tags).toContain('WEB');
+    const alder = brief.stops.find((s) => s.id === 'e1')!;
+    expect(alder.tags).toContain('FIRST-TIMER');
+    expect(alder.tags).toContain('WEB');
     const ray = brief.stops.find((s) => s.id === 'e2')!;
     expect(ray.tags).toContain('REPEAT');
   });

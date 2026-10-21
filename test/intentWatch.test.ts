@@ -203,7 +203,7 @@ describe('IntentWatch', () => {
       new InboxSurfaceStore(),
       NOW,
     );
-    w.observer(msg({ body: 'need an estimate, I am in 23452 off Holland Rd' }), { kind: 'other' });
+    w.observer(msg({ body: 'need an estimate, I am in 23452 off Testbed Rd' }), { kind: 'other' });
     await w.idle();
     expect(w.store.snapshot(NOW()).surfaced[0]!.zip).toBe('23452');
   });

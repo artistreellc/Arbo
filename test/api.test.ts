@@ -75,7 +75,7 @@ describe('backend API (server handlers)', () => {
     const api = createApi(
       fakeSource({
         stops: [
-          { id: 'e1', kind: 'estimate', timeIso: at(13), name: 'Kathy', address: '12 Holly Rd', city: 'Virginia Beach', zip: '23464' },
+          { id: 'e1', kind: 'estimate', timeIso: at(13), name: 'Sim Alder', address: '12 Holly Rd', city: 'Virginia Beach', zip: '23464' },
           { id: 'j1', kind: 'job', timeIso: at(8), name: 'Henderson', address: '3 Oakcrest Dr', city: 'Chesapeake', zip: '23320' },
         ],
       }),

@@ -56,8 +56,10 @@
 // VERIFICATION PROCEDURE (per endpoint, ~5 min at deploy where egress is open):
 //   1. GET  <url>?f=json  — confirm it's the expected layer (name, polygon
 //      geometry, supportsQuery).
-//   2. Query a KNOWN-RPA point (e.g. 8562 Circle Drive, Norfolk — the real
-//      CBPA violation case) → expect count > 0 on that city's RPA layer.
+//   2. Query a KNOWN-RPA point (e.g. the real Norfolk CBPA violation case —
+//      its address is withheld from this repo as customer PII, so get it from
+//      Mike; "4303 Withheld Drive" in code and tests is a stand-in, not the
+//      case address) → expect count > 0 on that city's RPA layer.
 //   3. Query a clearly inland point → expect count = 0.
 //   4. Flip status to 'live', set lastVerified, commit. (Review loop §13
 //      re-checks these dates like the city rulesets.)
@@ -81,7 +83,7 @@ export interface GisLayer {
 /**
  * Proximity probe radius for CBPA/RPA layers (D37). Geocoders return
  * street-centerline points; the RPA buffer hugs the water at the REAR of a
- * waterfront lot. Verified on the real 8562 Circle Drive violation case
+ * waterfront lot. Verified on the real 4303 Withheld Drive violation case
  * (2026-08-01): direct intersects = 0 hits at the street point, and 0 at 75 m
  * and 150 m — but 1 hit at 300 m. A bare point test would have MISSED the
  * exact violation this engine exists to prevent. A direct hit screens
@@ -100,16 +102,18 @@ export const RPA_PROXIMITY_PROBE_METERS = 300;
 //      candidate URL pointed there and was corrected during verification.)
 //   2. Coverage: distinct LOCALITY values include "Virginia Beach city",
 //      "Norfolk city", "Chesapeake city", "Portsmouth city".
-//   3. Known-RPA case: 8562 Circle Dr, Norfolk (Census-geocoded to
-//      -76.26096, 36.93165) — 1 hit at the 300 m probe (see
-//      RPA_PROXIMITY_PROBE_METERS for the tiering evidence).
+//   3. Known-RPA case: the real Norfolk CBPA violation property, Census-
+//      geocoded — 1 hit at the 300 m probe (see RPA_PROXIMITY_PROBE_METERS
+//      for the tiering evidence). Its address and geocoded point are withheld
+//      from this repo (customer PII); "4303 Withheld Dr" and the point in
+//      test/gis.test.ts are stand-ins, not the verified location.
 //   4. Inland control: 0 hits at 300 m.
 const DEQ_CBPA: Omit<GisLayer, 'meaning'> = {
   kind: 'CBPA_RPA',
   name: 'DEQ — Resource Protection Area (RPA), statewide (EDMA layer 33)',
   url: 'https://gisdata.deq.virginia.gov/arcgis/rest/services/public/EDMA/MapServer/33',
   status: 'live',
-  source: 'Virginia DEQ EDMA public MapServer, layer 33. Verified 2026-08-01: metadata + 4-city coverage + known-RPA (Circle Dr, 300 m probe) + inland control — evidence in this file and DECISIONS D37.',
+  source: 'Virginia DEQ EDMA public MapServer, layer 33. Verified 2026-08-01: metadata + 4-city coverage + known-RPA (Withheld Dr, 300 m probe) + inland control — evidence in this file and DECISIONS D37.',
   lastVerified: '2026-08-01',
 };
 

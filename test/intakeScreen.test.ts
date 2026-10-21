@@ -61,7 +61,7 @@ const gisDown: GisProvider = {
 const params = (qualification: Record<string, unknown> = {}): IntakeScreenParams => ({
   propertyId: 'prop-1',
   city: 'Norfolk',
-  address: '8562 Circle Drive, Norfolk, VA 23503',
+  address: '4303 Withheld Drive, Norfolk, VA 23503',
   qualification,
 });
 

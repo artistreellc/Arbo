@@ -76,12 +76,12 @@ describe('near miss → lesson (§6V/§4.7) — Arbo drafts, a human publishes',
   it('strips obvious contact PII from the crew-facing text (§4.3)', () => {
     const d = buildLessonDraft({
       ...nm,
-      description: 'Call 757-408-1124 or a@b.com about 2620 Meckley Court before the next one',
+      description: 'Call 757-555-0141 or a@b.com about 4101 Mockup Court before the next one',
     });
     const text = d.body.whatHappened;
-    expect(text).not.toMatch(/757-408-1124/);
+    expect(text).not.toMatch(/757-555-0141/);
     expect(text).not.toMatch(/a@b\.com/);
-    expect(text).not.toMatch(/2620 Meckley Court/);
+    expect(text).not.toMatch(/4101 Mockup Court/);
     expect(text).toMatch(/\[phone removed\]/);
   });
 
@@ -103,7 +103,7 @@ describe('near miss → lesson (§6V/§4.7) — Arbo drafts, a human publishes',
   });
 
   it('the redactor reports what it removed rather than doing it silently', () => {
-    const r = redactObviousPii('reach me at 757-408-1124');
+    const r = redactObviousPii('reach me at 757-555-0141');
     expect(r.removed).toContain('phone');
   });
 
@@ -120,7 +120,7 @@ describe('near miss → lesson (§6V/§4.7) — Arbo drafts, a human publishes',
     expect(redactObviousPii('call 7575550142 at 23451').text).toBe('call [phone removed] at 23451');
     expect(redactObviousPii('ZIP 23451 7575550142').text).toBe('ZIP 23451 [phone removed]');
     expect(redactObviousPii('on 2026-08-01, 23451-1234').text).toBe('on 2026-08-01, 23451-1234');
-    expect(redactObviousPii('call 757-408-1124').removed).toEqual(['phone']);
+    expect(redactObviousPii('call 757-555-0141').removed).toEqual(['phone']);
   });
 });
 

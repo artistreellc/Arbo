@@ -90,13 +90,13 @@ describe('arrival documentation (§6) — evidence strength, never "the site was
 describe('change orders (§3/§4.5) — a human prices it, a human agrees to it', () => {
   const good = {
     jobId: 'j1', description: 'Second tree at the fence line',
-    amount: 850, agreedBy: 'Homeowner (Dave)', agreedAtIso: '2026-08-03T17:00:00Z',
+    amount: 850, agreedBy: 'Homeowner (Sim Poplar)', agreedAtIso: '2026-08-03T17:00:00Z',
   };
 
   it('records what was agreed', () => {
     const co = draftChangeOrder(good, NOW);
     expect(co.amount).toBe(850);
-    expect(co.agreedBy).toBe('Homeowner (Dave)');
+    expect(co.agreedBy).toBe('Homeowner (Sim Poplar)');
   });
 
   it('is NEVER approved or invoiced on creation — those are separate human acts', () => {

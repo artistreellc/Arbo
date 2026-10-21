@@ -230,8 +230,8 @@ describe('inbox watch — city permit mail is reported, never stored', () => {
   const VB_LETTER = msg({
     id: 'm-vb-1',
     from: 'PBurns@vbgov.com',
-    subject: 'Tree Removal Request, SIM Residence, 404 Nowhere Lane, Accela Record: 2026-DSC-021566',
-    body: 'Please provide the labeled site map and photos to continue review. Record 2026-DSC-021566.',
+    subject: 'Tree Removal Request, SIM Residence, 404 Nowhere Lane, Accela Record: 2026-DSC-000303',
+    body: 'Please provide the labeled site map and photos to continue review. Record 2026-DSC-000303.',
   });
 
   it('a letter from the city is not a newsletter', async () => {
@@ -239,7 +239,7 @@ describe('inbox watch — city permit mail is reported, never stored', () => {
     expect(r.otherMail).toBe(0);
     expect(r.cityMail).toHaveLength(1);
     expect(r.cityMail[0]!.city).toBe('Virginia Beach');
-    expect(r.cityMail[0]!.caseRefs).toContain('2026-DSC-021566');
+    expect(r.cityMail[0]!.caseRefs).toContain('2026-DSC-000303');
     expect(watchLogLine(r)).toContain('city_mail=1');
   });
 
@@ -252,9 +252,9 @@ describe('inbox watch — city permit mail is reported, never stored', () => {
   });
 
   it('a real Accela case ref does not trip the PII guard', () => {
-    // 2026-DSC-021566 and J04-021654-RPA are digit-and-dash shaped. If the
+    // 2026-DSC-000303 and J04-000505-RPA are digit-and-dash shaped. If the
     // phone pattern ever widened, every city letter would take the pass down.
-    for (const ref of ['2026-DSC-021566', 'J04-021654-RPA', '2026-UTIL-10415']) {
+    for (const ref of ['2026-DSC-000303', 'J04-000505-RPA', '2026-UTIL-00404']) {
       const out = unavailablePass('2026-08-03T12:00:00Z', `case ${ref}`);
       expect(out.reason).toContain(ref);
     }
