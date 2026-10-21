@@ -86,6 +86,19 @@
     <circle cx="18" cy="13.25" r="1.25"/>
     <path d="M6 8.5v4.25a3 3 0 0 0 3 3h3.5"/>
   </symbol>
+  <symbol id="i-truck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Fleet (Direction B P13 review): a work truck — box, cab, two wheels. -->
+    <path d="M3.75 16.75H3.5a1.25 1.25 0 0 1-1.25-1.25V7a1.25 1.25 0 0 1 1.25-1.25h9.25A1.25 1.25 0 0 1 14 7v9.75"/>
+    <path d="M8.75 16.75H15.5"/>
+    <path d="M14 9.25h3.4a1 1 0 0 1 .8.4l2.85 3.7a1 1 0 0 1 .2.6v1.8a1 1 0 0 1-1 1h-.5"/>
+    <circle cx="6.25" cy="16.75" r="2"/><circle cx="18" cy="16.75" r="2"/>
+  </symbol>
+  <symbol id="i-cone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Crew & safety (Direction B P13 review): a safety cone with two bands on its base (the hard hat is the Crew tile's). -->
+    <path d="M10.4 4.5h3.2l4.15 13.25H6.25z"/>
+    <path d="M8.6 10.25h6.8M7.4 14h9.2"/>
+    <path d="M3.75 17.75h16.5a.75.75 0 0 1 .75.75v.25a.75.75 0 0 1-.75.75H3.75a.75.75 0 0 1-.75-.75v-.25a.75.75 0 0 1 .75-.75z"/>
+  </symbol>
   <symbol id="i-tree" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
     <path d="M12 21v-7.25"/>
     <path d="M12 13.75 9 11.5M12 16l3-2.25"/>

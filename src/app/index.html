@@ -6385,11 +6385,12 @@ function renderMore() {
   tile('i-lidar', 'Measure', 'LiDAR scan → DBH', () => { switchTab('measure'); renderMeasure(); });
   tile('i-permit', 'Permits', '4 cities, sourced', () => { switchTab('permits'); renderPermits(); });
   tile('i-book', 'Book', 'Estimates & prep', () => switchTab('book'));
-  // Direction B P13: the Queue split by the job it holds (R29 #1) — four desks, four tiles.
+  // Direction B P13: the Queue split by the job it holds (R29 #1) — four desks, four tiles. Review: no two
+  // tiles share an icon — Fleet is a truck, Crew & safety a safety cone (the Assistant keeps the shield).
   tile('i-queue', 'Follow-ups', 'Loops & sends', () => switchTab('followups'));
   tile('i-flag', 'Money', 'Owed & to bill', () => switchTab('money'));
-  tile('i-route', 'Fleet', 'Units & holds', () => switchTab('fleet'));
-  tile('i-shield', 'Crew & safety', 'Certs & training', () => switchTab('safety'));
+  tile('i-truck', 'Fleet', 'Units & holds', () => switchTab('fleet'));
+  tile('i-cone', 'Crew & safety', 'Certs & training', () => switchTab('safety'));
   tile('i-numbers', 'Numbers', 'Which areas & ads pay', () => switchTab('perf'));
   // R26: look only — the crew's page, on this app's key, and it cannot sign,
   // file or clock in. Same tab on purpose: an installed iPhone app keeps its
