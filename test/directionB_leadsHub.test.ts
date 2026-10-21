@@ -127,7 +127,7 @@ function kit(routes: { leads?: () => unknown; quo?: () => unknown }, links = 're
     throw new Error('unexpected read ' + path);
   };
   const helpers = ['feedKind', 'feedLine', 'plural', 'readingLine', 'slipRuleLabel', 'sonaSlipBox', 'quoOffLine',
-    'leadsTabBadge', 'sonaTabBadge', 'leadsHeadOn', 'leadsFilter', 'renderLeadsHead', 'sonaHandled']; // P17: the calls Mike called back
+    'leadsTabBadge', 'sonaTabBadge', 'leadsHeadOn', 'leadsFilter', 'renderLeadsHead', 'sonaHandled', 'sonaFlagGap']; // P17: the calls Mike called back
   const store = new Map<string, string>();
   const localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => { store.set(k, v); } };
   const built = new Function('document', 'api', 'switchTab', 'openSonaCall', 'linksIn', 'curIn', 'localStorage', `
@@ -654,5 +654,58 @@ describe('review round: a filter never hides leads without its chips on screen (
     await none.renderLeadsHead();
     expect(chips(none).find((c) => c.dataset.filter === 'callback')!.querySelector('b')!.textContent).toBe('0');
     expect(head(none).querySelectorAll('.filter-none').map((n) => n.dataset.for)).toEqual(['emergency', 'callback']);
+  });
+});
+
+describe('review round: Quo answered but its record or the model failed — the Sona half is a gap, never a clean zero (§1B, R33)', () => {
+  const dot = (k: Kit) => k.$('tab-leads').querySelector('.dot');
+  const label = (k: Kit) => k.$('tab-leads').attrs['aria-label'] ?? '';
+  const calm = () => ({ leads: [lead({ id: 'D' })] }); // no emergency lead: the leads half is a clean 0
+  const flagPlace = (k: Kit) => head(k).children.slice(0, head(k).children.findIndex((n) => n.has('lseg')));
+
+  it.each([
+    ['Quo\'s record read failed', { quoRecord: { lastAt: 'x', error: 'HTTP 500 from Quo' } }, 'Quo’s record'],
+    ['the last read of the record was unreadable', { quoRecord: { lastAt: 'x', weekReadOkAt: 'x', unreadable: 'timeout' } }, 'Quo’s record'],
+    ['the model key is missing (calls kept, not checked)', { reading: false }, 'no model key'],
+    ['the model was unavailable for a call', { readsRetrying: 2 }, 'Arbo could not read 2 Sona calls yet'],
+  ])('%s: the badge shows the gap dot, the flag\'s place names it, the segment is – and named', async (_w, st, words) => {
+    const k = kit({ leads: calm, quo: () => quo([call('Q2', { hold: 'not_requested' })], st) });
+    await k.renderLeadsHead();
+    expect(dot(k)).not.toBeNull();
+    expect(dot(k)!.className).toBe('dot gap unread');
+    expect(dot(k)!.textContent).toBe('');
+    expect(label(k)).toContain('Sona calls unknown — not zero');
+    const named = flagPlace(k).find((n) => n.has('feed-state'));
+    expect(named, 'a named line above the segments').toBeDefined();
+    expect(named!.has('unread')).toBe(true);
+    expect(named!.textContent).toContain(words);
+    expect(named!.textContent).toContain('not the same as none');
+    expect(seg(k, 'calls').querySelector('.lcount')!.textContent).toBe('–');
+    expect(seg(k, 'calls').textContent).toContain('couldn’t read it');
+    expect(seg(k, 'calls').attrs['aria-label']).not.toContain('none to count');
+    expect(h1For(k, 'calls').textContent).not.toBe('No call needs you right now');
+  });
+
+  it('a partial read with flags: the count it has, with the gap ring; the flag rows stay and the named line sits with them', async () => {
+    const k = kit({ leads: calm, quo: () => quo([call('Q1', { slips: [SLIP] })], { quoRecord: { lastAt: 'x', error: 'HTTP 500 from Quo' } }) });
+    await k.renderLeadsHead();
+    expect(dot(k)!.textContent).toBe('1');
+    expect(dot(k)!.className).toBe('dot part p-unread');
+    expect(label(k)).toContain('1 Sona flag not handled');
+    expect(label(k)).toContain('Sona calls unknown — not zero');
+    const place = flagPlace(k);
+    expect(place.some((n) => n.has('storm') && n.querySelectorAll('.sliplink').length === 1)).toBe(true);
+    expect(place.some((n) => n.has('feed-state') && n.has('unread'))).toBe(true);
+    const s = seg(k, 'calls');
+    expect(s.querySelector('.lcount')!.textContent).toBe('1');
+    expect(s.textContent).toContain('couldn’t read it');
+    expect(s.attrs['aria-label']).toContain('not the whole count');
+  });
+
+  it('a whole read stays as it was: no gap, no named line', async () => {
+    const k = kit({ leads: calm, quo: () => quo([call('Q2', { hold: 'not_requested' })]) });
+    await k.renderLeadsHead();
+    expect(dot(k)).toBeNull();
+    expect(flagPlace(k).filter((n) => n.has('feed-state'))).toEqual([]);
   });
 });
