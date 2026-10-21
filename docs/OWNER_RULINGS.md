@@ -1253,3 +1253,26 @@ sends; data links stay cut.
 `src/ops/quoStudy.ts`, `src/ops/webhooks.ts`, `src/server.ts`
 (`GET /api/quo/media/<id>`), `src/dev/simQuoTexts.ts`, `src/app/sim-quo-photo.png`,
 `src/app/index.html` (thumbnails, the `#photo` sheet), `test/quoPhotos.test.ts`.
+
+## R36 — One number: Arbo works through the Quo number (Mike, 2026-10-21)
+
+Mike, verbatim: *"Does Arbo have its own number? Cause we're just going to use
+the Quo number"*.
+
+What this settles:
+1. **The Quo number, 757-606-9432, is the one line Arbo works through** —
+   calls (Sona answers, R20), texts and photos (R24, R34), transcripts, and any
+   future send (R22, paused by R33 until Mike says otherwise). The public
+   number stays 757-319-5131 on T-Mobile, forwarding to Quo (unchanged).
+2. **Arbo's own Twilio line, 757-821-6983, is retired, not just cut.** R21 cut
+   it "while development runs off Sona"; R36 makes that the plan, so nobody
+   rebuilds the Twilio → ElevenLabs receptionist or wires the Twilio SMS
+   webhook. The code stays (cut by the R21 switches; nothing deleted), so the
+   decision can be reversed only by Mike's word.
+3. **Releasing the Twilio number is Mike's call.** It is still rented in
+   Twilio. Releasing it is permanent, so Arbo never does it; Mike does it in
+   the Twilio console (Phone Numbers → Active numbers) if he wants to stop
+   paying for it.
+
+*Carried by:* `docs/PHONE_SETUP.md` (the numbers table) and the R21 vendor
+switches in `src/integrations/vendorLinks.ts` (unchanged, still CUT).
