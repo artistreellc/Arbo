@@ -166,7 +166,8 @@ function kit(fail: (typeof FAILS)[number]) {
   const office = /^function officeHub\(/m.test(html);
   if (office) {
     consts.push('VIEW_TITLES', 'DESK_LINE', 'OFFICE_DESKS', 'PROPOSAL_GO', 'noRefs');
-    helpers.push('moneyCounts', 'lessonsWaiting', 'agentProposals', 'proposalRow', 'runAllEight');
+    helpers.push('moneyCounts', 'lessonsWaiting', 'agentProposals', 'proposalRow', 'runAllEight', 'dollars');
+    if (/^function officeRunAge\(/m.test(html)) helpers.push('officeRunAge'); // P14 review: what the proposals card shows
     targets.push('officeDesk', 'officeProposals', 'officeHub', 'renderMore');
   }
   // Direction B P15: Estimate (its tools and the prep form) and Properties on file.
