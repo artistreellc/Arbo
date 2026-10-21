@@ -100,8 +100,8 @@ describe('the Back button', () => {
     pageFn<() => void>('navBack', deps('agents', 0))(); // a reload on #agents: still an Office desk
     expect(calls).toEqual(['show:more', 'replace:more']);
     calls.length = 0;
-    pageFn<() => void>('navBack', deps('calls', 0))(); // a home-screen shortcut to Calls
-    expect(calls).toEqual(['show:today', 'replace:today']);
+    pageFn<() => void>('navBack', deps('calls', 0))(); // the home-screen shortcut to Calls & texts (Direction B P19)
+    expect(calls).toEqual(['show:leads', 'replace:leads']); // a child of the Leads tab lands on New leads
   });
 
   it('the phone\'s own back walks the same steps: popstate draws the screen without adding one, and closes a sheet', () => {
@@ -320,7 +320,10 @@ describe('three small navigation fixes from the usability audit', () => {
     expect(sw).toContain('DOCK_OF[which]');
     const DOCK_OF = new Function(`return ${oneLineVal('DOCK_OF')};`)() as Record<string, string>;
     expect(DOCK_OF).not.toHaveProperty('settings');
-    // R28: the Assistant desk sits behind More too; so do the Queue's four desks.
-    for (const v of ['book', 'followups', 'money', 'fleet', 'safety', 'perf', 'more', 'permits', 'agents', 'measure', 'learn', 'assistant']) expect(DOCK_OF[v], v).toBe('more');
+    // R28: the Assistant desk sits behind Office (the More button, relabelled — P19); so do the Queue's four desks.
+    for (const v of ['followups', 'money', 'fleet', 'safety', 'perf', 'more', 'agents', 'learn', 'assistant']) expect(DOCK_OF[v], v).toBe('more');
+    // Direction B P19: the Estimate tab lights for its tools; Calls & texts lights Leads.
+    for (const v of ['estimate', 'book', 'permits', 'measure']) expect(DOCK_OF[v], v).toBe('estimate');
+    expect(DOCK_OF.calls).toBe('leads');
   });
 });

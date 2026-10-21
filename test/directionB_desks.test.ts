@@ -87,8 +87,10 @@ describe('the four desks are screens of their own (P13)', () => {
 
   it('DOCK_OF says which dock tab lights: More for every desk (today\'s dock — the Office tab is P19), none for Settings', () => {
     const DOCK_OF = constVal<Record<string, string>>('DOCK_OF');
-    for (const v of ['followups', 'money', 'fleet', 'safety', 'book', 'perf', 'more', 'permits', 'agents', 'measure', 'learn', 'assistant']) expect(DOCK_OF[v], v).toBe('more');
-    expect(DOCK_OF).toMatchObject({ today: 'today', leads: 'leads', calls: 'calls', cal: 'cal' });
+    for (const v of ['followups', 'money', 'fleet', 'safety', 'perf', 'more', 'agents', 'learn', 'assistant']) expect(DOCK_OF[v], v).toBe('more');
+    // Direction B P19: the dock flipped — Estimate's tools light Estimate, Calls & texts lights Leads.
+    for (const v of ['estimate', 'book', 'permits', 'measure']) expect(DOCK_OF[v], v).toBe('estimate');
+    expect(DOCK_OF).toMatchObject({ today: 'today', leads: 'leads', calls: 'leads', cal: 'cal' });
     expect(DOCK_OF).not.toHaveProperty('settings');
     expect(Object.keys(DOCK_OF).sort()).toEqual(Object.keys(VIEW_TITLES).filter((v) => v !== 'settings').sort());
   });
@@ -114,7 +116,8 @@ describe('the four desks are screens of their own (P13)', () => {
   it('#queue — never a link before — is an alias for More, where the four desks sit', () => {
     expect(constVal('VIEW_ALIAS')).toEqual({ queue: 'more' });
     const boot = html.slice(html.indexOf('// Home-screen shortcuts open a section directly'), html.indexOf('\nrefreshAll();'));
-    expect(boot).toContain('VIEW_ALIAS');
+    expect(boot).toContain('startView(location.hash);'); // Direction B P19: the boot reads the hash through startView
+    expect(fnSrc('startView')).toContain('VIEW_ALIAS');
   });
 });
 
@@ -377,8 +380,9 @@ describe('every link into the Queue lands on its desk (P13)', () => {
     const sprite = readFileSync(new URL('../src/app/sprite.svg', import.meta.url), 'utf8');
     const desks = constVal<Array<{ view: string; icon: string }>>('OFFICE_DESKS').map((d) => [d.icon, VIEW_TITLES[d.view]!] as const);
     const icons = [...desks, ...[...fnSrc('renderMore').matchAll(/tile\('(i-[a-z-]+)', '([^']+)'/g)].map((m) => [m[1]!, m[2]!] as const)];
-    // Direction B P15: Book, Permits and Measure moved under Estimate (one Estimate tile) — the whole list, exactly.
-    expect(icons.map(([, t]) => t)).toEqual(['Follow-ups', 'Money', 'Fleet', 'Crew & safety', 'Numbers', 'Teach Arbo', 'Assistant', 'Agents', 'Estimate', 'Crew', 'Phone line']);
+    // Direction B P15: Book, Permits and Measure moved under Estimate; P19: Estimate has its own dock tab, so Office
+    // carries no Estimate tile — the whole list, exactly.
+    expect(icons.map(([, t]) => t)).toEqual(['Follow-ups', 'Money', 'Fleet', 'Crew & safety', 'Numbers', 'Teach Arbo', 'Assistant', 'Agents', 'Crew', 'Phone line']);
     const seen = new Map<string, string>();
     for (const [ic, title] of icons) {
       expect(seen.get(ic), `${title} wears ${ic}, as ${seen.get(ic)} does`).toBeUndefined();

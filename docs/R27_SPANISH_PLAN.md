@@ -41,7 +41,7 @@ text: the Learn scenarios, the Permit Desk facts and the Agents desk.
 
 ### The switch
 
-- **Owner app.** An "English | Español" choice sits in More → Appearance, plus
+- **Owner app.** An "English | Español" choice sits in Office → Appearance, plus
   a small toggle on the key screen, because an employee meets that first. It
   is remembered per phone under `arboLang`. A change reloads the page, which
   is the simple way to leave no half-translated screen.
@@ -196,9 +196,10 @@ These stay byte-identical, and tests prove it by output:
 3. **Phase A, in parallel units:**
    - the whole crew door, plus the server text it shows (work orders,
      hazards, permit notes, gate reasons, library);
-   - every owner-app screen's own copy: Today, Calls, Calendar, Leads, Book,
-     Queue (safety, roster, training, money, fleet), Numbers, Settings, More,
-     Permits, Agents, Measure, Learn;
+   - every owner-app screen's own copy (Direction B's screens): Today, Leads and
+     Calls & texts, Calendar, Estimate, Properties on file, Follow-ups, Money,
+     Fleet, Crew & safety, Numbers, Settings, Office, Permit rules, Agents,
+     Measure, Teach Arbo;
    - the shared safety labels.
 4. **Phase B:** the owner-only server prose:
    - the Permit Desk facts (Spanish with the English rule beneath);

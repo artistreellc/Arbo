@@ -251,7 +251,7 @@ describe('R26 qa-x7 / qa-x13 — Book, Queue, Numbers and Settings carry the des
 
   it('the Agents desk cards name the screen each desk works on', () => {
     const section = (id: string) => SECTION_AGENTS.find((a) => a.id === id)!.section;
-    expect(section('arborist')).toContain('Book');
+    expect(section('arborist')).toBe('Estimate'); // Direction B P19: Measure and the Book (Properties on file) sit under Estimate
     // Direction B P13 split the Queue: each desk names the screens it works on now.
     expect(section('chief-of-staff')).toContain('Follow-ups');
     expect(section('analyst')).toBe('Numbers');

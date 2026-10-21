@@ -162,7 +162,7 @@ describe('renderAgents: proposals at the top', () => {
     for (const t of ['Front Desk', 'Review 2 logged conversations.', 'Yard Boss', 'Sign Unit 3 back on.', 'A proposal with no screen.']) expect(p.textContent).toContain(t);
     const buttons = p.all().filter((n) => n.tag === 'button');
     // Direction B P13: signing a unit back on is on the Fleet desk now (the Queue was split).
-    expect(buttons.map((b) => b.textContent)).toEqual(['Open Calls →', 'Open Fleet →']); // a kind with no screen stays plain text
+    expect(buttons.map((b) => b.textContent)).toEqual(['Open Calls & texts →', 'Open Fleet →']); // a kind with no screen stays plain text (P19: Calls & texts by its name)
     buttons[0]!.click(); buttons[1]!.click();
     expect(k.went).toEqual(['calls', 'fleet']);
     // The per-card notes stay.
