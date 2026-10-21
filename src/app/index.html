@@ -3416,7 +3416,8 @@ async function renderLeadsHead() {
   if (lr.d) {
     const fresh = lr.d.leads.filter((l) => !l.older);
     L = { n: fresh.length, alarm: lr.d.leads.filter((l) => l.isEmergency && l.status !== 'qualified').length,
-      emg: fresh.filter((l) => l.isEmergency).length, cb: fresh.filter((l) => l.needsCallback).length };
+      // A chip's number is the cards it shows: Call back keeps the EMERGENCY cards (they show under every filter).
+      emg: fresh.filter((l) => l.isEmergency).length, cb: fresh.filter((l) => l.needsCallback || l.isEmergency).length };
     leadsTabBadge(null, L.alarm);
   } else {
     lk = feedKind(lr.e);
@@ -3497,8 +3498,8 @@ async function renderLeadsHead() {
     out.push(chips);
     // A filter that would show nothing says so, never a blank list (EMERGENCY cards show under every filter).
     if (!L.emg) { const z = el('div', 'storm-muted filter-none', 'No new lead is an emergency. All shows every lead.'); z.dataset.for = 'emergency'; out.push(z); }
-    if (!L.emg && !L.cb) { const z = el('div', 'storm-muted filter-none', 'No new lead is waiting on a call back. All shows every lead.'); z.dataset.for = 'callback'; out.push(z); }
-  }
+    if (!L.cb) { const z = el('div', 'storm-muted filter-none', 'No new lead is waiting on a call back. All shows every lead.'); z.dataset.for = 'callback'; out.push(z); }
+  } else LEADS_FILTER = 'all'; // no chips on screen, no filter: a lead is never hidden under a chip Mike cannot see (§1B)
   h.replaceChildren(...out);
   leadsHeadOn(CUR_TAB);
   leadsFilter(LEADS_FILTER);
@@ -3507,6 +3508,9 @@ async function renderLeadsHead() {
 // lesson) and its segment says which is pressed. switchTab calls it on every switch.
 function leadsHeadOn(which) {
   const h = $('leads-head');
+  // Leaving the Leads hub puts the filter back to All, so coming back never shows part of the list under a
+  // headline that counts all of it. Calls & texts is the same hub: the filter waits there.
+  if (which !== 'leads' && which !== 'calls' && LEADS_FILTER !== 'all') leadsFilter('all');
   h.classList.toggle('on', which === 'leads' || which === 'calls');
   h.classList.toggle('calls', which === 'calls');
   for (const b of h.querySelectorAll('.lseg-btn')) {

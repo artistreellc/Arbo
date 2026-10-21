@@ -185,7 +185,8 @@ describe('the Leads hub head: counts, flag, segments, chips (run)', () => {
     expect(head(k).querySelector('.eyebrow')!.textContent).toBe('Front Desk');
     expect(h1For(k, 'leads').textContent).toBe('5 new leads, 1 emergency');
     expect(seg(k, 'leads').querySelector('.lcount')!.textContent).toBe('5');
-    expect(chips(k).map((c) => [c.dataset.filter, c.querySelector('b')!.textContent])).toEqual([['all', '5'], ['emergency', '1'], ['callback', '2']]);
+    // Call back counts what it shows: the two waiting on a call back and the emergency (shown under every filter).
+    expect(chips(k).map((c) => [c.dataset.filter, c.querySelector('b')!.textContent])).toEqual([['all', '5'], ['emergency', '1'], ['callback', '3']]);
   });
 
   it('an older lead is never new work (R32): not counted, and "filed as an emergency" then never lights the badge', async () => {
@@ -599,5 +600,59 @@ describe('lead rows: the one-line summary (P16 — where the 2× density is addr
     expect(leads).toContain("feedsCard('leads')");
     expect(leads).toContain("else if (lead.historyUnreadable && !lead.historyCut) c.appendChild(feedLine(null, 'Past work'));");
     expect(leads).toContain("if (lead.permitUnreadable && !lead.permitCut) c.appendChild(feedLine(null, 'Permit screen'));");
+  });
+});
+
+describe('review round: a filter never hides leads without its chips on screen (§1B)', () => {
+  it('chips gone because the leads read failed: the filter goes back to All — no lead stays hidden under a chip Mike can no longer see', async () => {
+    let dead = false;
+    const k = kit({ leads: () => { if (dead) throw fail(); return { leads: FIVE }; } });
+    await k.renderLeadsHead();
+    await chips(k).find((c) => c.dataset.filter === 'emergency')!.click();
+    expect(k.$('view-leads').dataset.filter).toBe('emergency');
+    dead = true;
+    await k.renderLeadsHead();
+    expect(chips(k)).toEqual([]);
+    expect(k.filter()).toBe('all');
+    expect(k.$('view-leads').dataset.filter).toBe('all');
+    expect(head(k).dataset.filter).toBe('all');
+  });
+
+  it('chips gone because no new lead is left (only older rows): the filter goes back to All, so the older rows show', async () => {
+    let only = false;
+    const k = kit({ leads: () => ({ leads: only ? [lead({ id: 'OLD', older: true, ageDays: 40 })] : FIVE }) }, 'simulation');
+    await k.renderLeadsHead();
+    await chips(k).find((c) => c.dataset.filter === 'callback')!.click();
+    only = true;
+    await k.renderLeadsHead();
+    expect(chips(k)).toEqual([]);
+    expect(k.$('view-leads').dataset.filter).toBe('all');
+  });
+
+  it('leaving the Leads hub puts the filter back to All; Calls & texts and back keeps it (the same hub)', async () => {
+    const k = kit({});
+    await k.renderLeadsHead();
+    await chips(k).find((c) => c.dataset.filter === 'emergency')!.click();
+    k.leadsHeadOn('calls');
+    expect(k.filter()).toBe('emergency');
+    k.leadsHeadOn('leads');
+    expect(k.$('view-leads').dataset.filter).toBe('emergency');
+    for (const away of ['today', 'cal', 'estimate', 'more', 'settings']) {
+      await chips(k).find((c) => c.dataset.filter === 'emergency')!.click();
+      k.leadsHeadOn(away);
+      expect(k.filter(), away).toBe('all');
+      expect(k.$('view-leads').dataset.filter, away).toBe('all');
+    }
+  });
+
+  it('a chip\'s number is the cards it shows: Call back keeps the emergencies, so they are counted in it', async () => {
+    const k = kit({ leads: () => ({ leads: [lead({ id: 'A', isEmergency: true, status: 'emergency', quality: { priority: 'hot' } }), lead({ id: 'D' })] }) });
+    await k.renderLeadsHead();
+    expect(chips(k).map((c) => [c.dataset.filter, c.querySelector('b')!.textContent])).toEqual([['all', '2'], ['emergency', '1'], ['callback', '1']]);
+    // Nothing for either filter: the line says so, and the chip says 0 over a list that shows nothing.
+    const none = kit({ leads: () => ({ leads: [lead({ id: 'D' })] }) });
+    await none.renderLeadsHead();
+    expect(chips(none).find((c) => c.dataset.filter === 'callback')!.querySelector('b')!.textContent).toBe('0');
+    expect(head(none).querySelectorAll('.filter-none').map((n) => n.dataset.for)).toEqual(['emergency', 'callback']);
   });
 });
