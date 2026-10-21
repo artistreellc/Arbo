@@ -70,8 +70,13 @@ describe('#10 — an unknown role is named once, on the roster card', () => {
 // ─── #11 — the armed roster button says only what happens ────────────────────
 
 describe('#11 — taking someone off the roster promises nothing the code does not do', () => {
-  it('the armed line names the boards and says the crew code still opens the door', () => {
-    expect(roster).toContain("'Tap again to take ' + p.name + ' off the roster — the safety and training boards stop counting them. Their crew code still opens the crew door.'");
+  // Deliberately rewritten (CREW_PLAN C3, D109): the paid crew routes now refuse
+  // an off-roster code, so "Their crew code still opens the crew door." would be
+  // a half-truth and is gone. The meaning kept: the line names the boards and
+  // promises nothing the code does not do — no closed door.
+  it('the armed line names the boards and promises no closed door', () => {
+    expect(roster).toContain("'Tap again to take ' + p.name + ' off the roster — the safety and training boards stop counting them.'");
+    expect(roster).not.toContain('Their crew code still opens the crew door');
     expect(html).not.toContain('lose crew-door access');
   });
 });

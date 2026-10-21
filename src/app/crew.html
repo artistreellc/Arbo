@@ -167,7 +167,8 @@ button.navbtn:disabled{background:var(--surface-alt);color:var(--muted);border:1
 .wo .when{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:16px;
   font-weight:800;color:var(--canopy);white-space:nowrap}
 .wo .addr{font-size:18px;font-weight:800;line-height:1.3;margin:2px 0}
-.wo .addr a{color:var(--info);text-decoration:none}
+/* C3 (D109, D107 open item g): the address is a field-sized target too — the same route as Navigate. */
+.wo .addr a{display:flex;align-items:center;min-height:44px;color:var(--info);text-decoration:none}
 .wo .scope{font-size:15px;color:var(--muted);margin-top:6px}
 .hz{display:flex;align-items:flex-start;gap:8px;background:#2A1D06;border:1px solid var(--warning);
   color:#FFD9A0;border-radius:var(--r-md);padding:10px 12px;margin-top:10px;font-size:14px;font-weight:700}
@@ -210,6 +211,11 @@ main.door-locked #gate-slot,main.door-locked #quiz,main.door-locked #work,main.d
   border-radius:999px;background:var(--surface);color:var(--muted);font-size:13px;font-weight:800;
   padding:0 16px;cursor:pointer}
 #whoami .signed{margin-bottom:0}
+/* C3 (D109): the name line's own word when the roster did not name the person — off the roster, unknown, unread. */
+#whoami .whonote{font-size:14px;line-height:1.4;margin-top:8px}
+#whoami .whonote:empty{display:none}
+#whoami .whonote.err{color:#FFD9A0;font-weight:700;border-left:3px solid var(--warning);padding-left:10px}
+#whoami .okline{font-size:15px;font-weight:700;color:var(--canopy);line-height:1.4;margin-top:10px}
 /* Reference library (§6U). A crew member holding a saw in one hand gets big
    targets and short lines. Limits are styled LOUDER than the how-to, because
    the paragraph that keeps someone out of a bad cut is the one that matters. */
@@ -310,6 +316,42 @@ const PREVIEW_BANNER = 'Preview — this is what the crew sees. Nothing here sig
 const PREVIEW_WHY = 'Off in the preview — nothing here signs, files or clocks in.';
 let KEY = PREVIEW ? load('arborKey') : load('arboCrewKey');
 let CREW_ID = PREVIEW ? '' : load('arboCrewId');
+// ---- C3 (CREW_PLAN, D109): the sign-in link. The office's roster hands each
+// person <origin>/crew#crew=<crew code> — the crew code only (Q6), never the
+// door key. A browser never sends a fragment to a server, and this page never
+// sends this one either: only the code goes out, as crewMemberId, as before.
+const CREW_CODE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const BAD_LINK = 'That sign-in link is broken — ask the office for a new one.';
+/** The crew code in a pasted link, in its #crew= part, or a bare code. '' when it is none of those. */
+function crewCodeFrom(text) {
+  let s = String(text || '').trim();
+  const at = s.indexOf('crew=');
+  if (at !== -1) s = s.slice(at + 5).split(/[&#?\s]/)[0];
+  try { s = decodeURIComponent(s); } catch (e) { return ''; }
+  return CREW_CODE_RE.test(s) ? s.toLowerCase() : '';
+}
+/** True when the page runs as the app added to the home screen, not in a browser tab. */
+function installedApp() {
+  try { if (window.matchMedia('(display-mode: standalone)').matches) return true; } catch (e) { /* no matchMedia: a tab */ }
+  return navigator.standalone === true;
+}
+// The link opened on this phone. The code is used at once, whatever storage
+// does. In a browser tab the fragment stays in the address, so Add to Home
+// Screen carries it; iOS gives the installed app its own storage, so that app
+// reads the code itself — and then takes the fragment out of its address.
+function takeSignInLink() {
+  const h = String(location.hash || '');
+  if (h.indexOf('#crew=') !== 0) return null;
+  const app = installedApp();
+  if (app) { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* it stays in the address; nothing is sent */ } }
+  const code = crewCodeFrom(h);
+  if (!code) return { broken: true, app };
+  CREW_ID = code;
+  let kept = true;
+  try { localStorage.setItem('arboCrewId', code); } catch (e) { kept = false; }
+  return { code, kept, app };
+}
+const SIGN_IN = PREVIEW ? null : takeSignInLink();
 async function api(path, opts) {
   const method = (opts && opts.method) || 'GET';
   // R26: the preview reads and never writes — refused here, before anything
@@ -334,6 +376,16 @@ function crewWhy(e) {
   // The key gate's 429: one phone sent 10 different wrong door keys from this
   // connection (the yard Wi-Fi is shared) — a wait, not the office down.
   if (e && e.code === 429 && e.message === 'too_many_attempts') return 'too many wrong door keys from this connection — wait a minute and try again, or switch between Wi-Fi and cellular';
+  // C3 (D109): a refusal's own name is read on every status, so the crew hears
+  // what was refused — never "the office didn’t answer" over an answer.
+  const name = e && typeof e.message === 'string' ? e.message : '';
+  if (name === 'off_roster') return 'this crew code is off the roster — check with the office';
+  if (name === 'unknown_crew' || name === 'bad_crew_id') return 'the office doesn’t know this crew code — check it with the office';
+  if (name === 'roster_unreadable') return 'Arbo couldn’t read the roster just now';
+  if (name === 'crew_key_not_set') return 'no crew door key is set up on the server yet';
+  if (name === 'no_app_key') return 'the crew door is locked on the server right now — tell the office';
+  // A 401 that names nothing else: the door key on this phone stopped working (it was changed).
+  if (e && e.code === 401) return 'the door key on this phone no longer opens the crew door — ask the office for the new one';
   const m = e && e.code === 503 ? e.message : '';
   if (m === 'not_simulated') return 'not part of the practice data';
   // R32: Arbo is reading but not saving — nothing from this phone was written.
@@ -525,13 +577,18 @@ async function submitGate() {
     // Name the real reason instead of a generic retry (§1B: never bluff). The
     // day stays locked, so the words say so — same order as the briefing card.
     GATE.serverErr = true;
-    GATE.serverHold = e.code === 400 || e.code === 503;
+    // C3 (D109; D107 open item h): every refusal holds GO and is named through
+    // crewWhy — 400, 401 (the door key changed), 403 (off the roster), 409,
+    // 429, 503. Only a dropped connection or a 5xx other than 503 keeps the
+    // retry line with GO green: a retry can pass (qa3_crew-sim item 27).
+    const retry = !e.code || (e.code >= 500 && e.code !== 503);
+    GATE.serverHold = !retry;
     GATE.serverMsg = e.code === 400
       ? 'That sign-off was rejected — check your crew code with the office.'
-      : e.code === 503 || e.code === 429
-        ? 'Your sign-off could not be recorded (' + crewWhy(e) + ').'
-          + ' Your work orders stay locked — do not start work; call the office to log your briefing.'
-        : 'Could not record that — try once more.';
+      : retry
+        ? 'Could not record that — try once more.'
+        : 'Your sign-off could not be recorded (' + crewWhy(e) + ').'
+          + ' Your work orders stay locked — do not start work; call the office to log your briefing.';
     refreshGate();
   }
 }
@@ -960,6 +1017,10 @@ async function libSearch(q, out, btn) {
     out.appendChild(el('div', 'lib-note',
       'Arbo could not read your signed-off level, so nothing below is flagged as above it. That is not a sign-off.'));
   }
+  // C3 (D109, Q7): the library answers whatever the roster says — and names it.
+  if (res.roster === 'off') out.appendChild(el('div', 'lib-warn', 'This crew code is off the roster — check with the office.'));
+  else if (res.roster === 'unknown') out.appendChild(el('div', 'lib-warn', 'The office doesn’t know this crew code — check it with the office.'));
+  else if (res.roster === 'unchecked') out.appendChild(el('div', 'lib-note', 'Arbo couldn’t check the roster just now.'));
 
   if (!entries.length) {
     // "Your words did not match" is an ordinary outcome. "There is nothing in
@@ -1048,9 +1109,16 @@ function renderNearMiss() {
   // Never let a crew member type a whole safety report the page already knows
   // cannot be filed. Exact 'cut' or 'readonly' only (C1: read-only refuses the
   // save; C5 rekeys this to crewWrites); the click's catch stays the backstop.
+  // C3 (D109, D107 review): File it is switched off too, the same reason
+  // directly under it — a button that can only fail is never offered.
   LINKS_READY.then(() => {
-    if (LINKS === 'cut') card.insertBefore(el('div', 'lib-warn', 'Filing is off while the office data link is cut on purpose — tell the office directly.'), ta);
-    else if (LINKS === 'readonly') card.insertBefore(el('div', 'lib-warn', 'Filing is off while Arbo is read-only — tell the office directly.'), ta);
+    const off = LINKS === 'cut'
+      ? 'Filing is off while the office data link is cut on purpose — tell the office directly.'
+      : LINKS === 'readonly' ? 'Filing is off while Arbo is read-only — tell the office directly.' : '';
+    if (!off) return;
+    card.insertBefore(el('div', 'lib-warn', off), ta);
+    btn.disabled = true;
+    out.appendChild(el('div', 'jobwhy', off)); // appended: the preview's own line, if drawn, stays
   });
 
   btn.addEventListener('click', async () => {
@@ -1078,7 +1146,10 @@ function renderNearMiss() {
       out.textContent = 'Filed. Thank you — that is how nobody gets hurt next time.'
         + (res.hazardCategory && res.hazardCategory !== 'uncategorised'
           ? ' Logged under: ' + res.hazardCategory.replace(/_/g, ' ') + '.'
-          : '');
+          : '')
+        // C3 (D109, Q7): never refused over the roster — filed, and where the code stands is said.
+        + (res.roster === 'off' ? ' This crew code is off the roster — the office will see that.'
+          : res.roster === 'unchecked' ? ' Arbo couldn’t check the roster just now.' : '');
     } catch (e) {
       // Never swallow it: a report the crew THINKS they filed is worse than
       // one they know failed.
@@ -1102,40 +1173,79 @@ function renderWhoAmI() {
   box.replaceChildren();
   // R26: the preview runs on the office key — no crew code is asked or used.
   if (PREVIEW) { box.hidden = true; return true; }
+  // C3 (D109): a sign-in link with no crew code in it is said as one, at the top.
+  if (SIGN_IN && SIGN_IN.broken) box.appendChild(el('div', 'errline', BAD_LINK));
   if (CREW_ID) {
     const row = el('div', 'signed');
     // Nothing has checked this code yet, so the line claims nothing more than
-    // what is stored. "Signed in" waits for the §8C login.
-    row.appendChild(el('span', '', 'Crew code on this phone \u00b7 ' + CREW_ID.slice(0, 8)));
+    // what is stored. "Signed in" waits for the §8C login. C3: the roster then
+    // names the person — "On this phone: Rudy — Not you?" (checkWho).
+    const who = row.appendChild(el('span', '', 'Crew code on this phone \u00b7 ' + CREW_ID.slice(0, 8)));
     const out = el('button', '', 'Not you?');
     const err = el('div', 'errline', '');
     out.addEventListener('click', () => {
       try { localStorage.removeItem('arboCrewId'); } catch (e) { err.textContent = STORAGE_BLOCKED; return; }
       CREW_ID = '';
+      // C3: a link still in the address would sign the same code straight back in.
+      if (location.hash) { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* the reload still asks */ } }
       location.reload();
     });
     row.appendChild(out);
     box.appendChild(row);
+    const note = box.appendChild(el('div', 'whonote', ''));
     box.appendChild(err);
+    // C3: a link opened in a browser tab — the installed app is the one the
+    // crew opens each morning, and on iOS it keeps its own storage.
+    if (SIGN_IN && SIGN_IN.code && !SIGN_IN.app) box.appendChild(el('div', 'okline', 'Add to Home Screen now, then open Arbo from there.'));
+    if (SIGN_IN && SIGN_IN.code && !SIGN_IN.kept) err.textContent = STORAGE_BLOCKED;
+    checkWho(who, note);
     return true;
   }
   const h = el('h2', '', 'Who is on this phone?');
-  const p = el('p', '', 'Your briefing sign-off is a safety record — it has to have your name on it. Enter the crew code the office gave you.');
+  const p = el('p', '', 'Your briefing sign-off is a safety record — it has to have your name on it. Paste the sign-in link the office sent you.');
+  // C3 (D109): the fallback in the installed app (and in a tab with no link):
+  // paste the sign-in link — or the bare crew code the roster shows.
   const input = document.createElement('input');
   input.id = 'crewcode';
-  input.placeholder = 'Crew code';
+  input.placeholder = 'Paste your sign-in link';
   input.autocomplete = 'off';
+  input.autocapitalize = 'off';
+  input.spellcheck = false;
   const go = el('button', '', 'Start my day');
   const err = el('div', 'errline', '');
   go.addEventListener('click', () => {
     const v = input.value.trim();
-    if (!v) { err.textContent = 'Enter the code from the office.'; return; }
-    try { localStorage.setItem('arboCrewId', v); } catch (e) { err.textContent = STORAGE_BLOCKED; return; }
+    if (!v) { err.textContent = 'Paste the link from the office.'; return; }
+    const code = crewCodeFrom(v);
+    if (!code) { err.textContent = BAD_LINK; return; }
+    try { localStorage.setItem('arboCrewId', code); } catch (e) { err.textContent = STORAGE_BLOCKED; return; }
     location.reload();
   });
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') go.click(); });
   box.appendChild(h); box.appendChild(p); box.appendChild(input); box.appendChild(go); box.appendChild(err);
   return false;
+}
+
+// C3 (D109): who this crew code is, from the roster (GET /api/crew/me, a read).
+// Only a read that answered names the person; off the roster, unknown and
+// unread are each said in crewWhy's words and the stored-code line stays —
+// none of them is a pass. A locked door (401) or the throttle (429) is the
+// door-key card's to say, so this line stays quiet for those.
+async function checkWho(who, note) {
+  let me;
+  try {
+    me = await api('/api/crew/me?crewMemberId=' + encodeURIComponent(CREW_ID));
+  } catch (e) {
+    if (e.code === 401 || e.code === 429) return;
+    await LINKS_READY; // 'cut on purpose' vs 'not set up' needs /health's answer
+    const why = crewWhy(e);
+    note.className = 'whonote err';
+    note.textContent = e.code === 400 || e.code === 403
+      ? why.charAt(0).toUpperCase() + why.slice(1) + '.'
+      : 'Name not checked — ' + why + '.';
+    return;
+  }
+  who.textContent = 'On this phone: ' + (me.firstName || 'crew code ' + CREW_ID.slice(0, 8)) + ' —';
 }
 
 // R25: the crew door has its own key (CREW_ACCESS_KEY). It opens the crew

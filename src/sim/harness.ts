@@ -380,7 +380,8 @@ async function scriptedPermit(s: Scenario, permit: NonNullable<ScenarioContext['
 const SIM_DAY = '2026-09-28';
 
 function scriptedNearMiss(s: Scenario): string {
-  const filed = fileNearMiss({ reportedBy: 'sim-crew-1', description: s.input, occurredOn: SIM_DAY }, SIM_DAY);
+  // CREW_PLAN C3: the practice crew code is UUID-shaped, as simSource's (SIM_CREW_1).
+  const filed = fileNearMiss({ reportedBy: '00000000-0000-4000-8000-0000000000c1', description: s.input, occurredOn: SIM_DAY }, SIM_DAY);
   const draft = buildLessonDraft({
     id: `sim-nm-${s.id}`,
     description: filed.description,

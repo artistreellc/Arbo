@@ -302,8 +302,12 @@ describe('Crew door — a mistyped crew code is told as one (POST /api/crew/brie
   const content = { id: '33333333-3333-3333-3333-333333333333', body: 'Watch the drop zone. Call every cut.', standardRefs: [] };
   const passing = { scrolledToBottom: true, checkboxTicked: true, secondsOnScreen: 20 };
   const times = { startedAtIso: '2026-10-18T10:00:00Z', completedAtIso: '2026-10-18T10:00:20Z' };
+  // Deliberately updated (CREW_PLAN C3, D109): the sign-off is paid time and Q7
+  // refuses it unless the roster says the code is on it, so the source carries
+  // a roster that does. The foreign key stays the backstop these tests pin.
   const src = (record: DataSource['recordBriefingAck']): DataSource => ({
     ready: () => true, stopsBetween: async () => [], newLeads: async () => [], recordBriefingAck: record,
+    crewMember: async () => ({ name: 'SIM-Alder, Test', active: true }),
   });
   const neverCalled: DataSource['recordBriefingAck'] = async () => { throw new Error('must not be reached'); };
 

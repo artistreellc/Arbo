@@ -4979,11 +4979,35 @@ async function renderRosterList(slot) {
     c.appendChild(el('div', 'scope', 'Crew code: ' + p.id));
     c.appendChild(certAdder(p, slot));
     if (p.active) {
+      // CREW_PLAN C3 (D109, Q6): this person's sign-in link — the crew code only,
+      // never the door key or the app key. Arbo sends nothing: the phone's own
+      // share sheet does, or the link is copied for Mike to paste into a text.
+      const link = location.origin + '/crew#crew=' + encodeURIComponent(p.id);
+      const share = el('button', 'actbtn', 'Send sign-in link');
+      const shared = el('div', 'scope', '');
+      shared.style.overflowWrap = 'anywhere';
+      share.addEventListener('click', async () => {
+        shared.textContent = '';
+        if (navigator.share) {
+          try { await navigator.share({ title: 'Arbo Crew', url: link }); return; } catch (e) {
+            if (e && e.name === 'AbortError') return; // Mike closed the sheet: nothing to say
+          }
+        }
+        try {
+          await navigator.clipboard.writeText(link);
+          shared.textContent = 'Link copied — paste it into a text to ' + p.name + '.';
+        } catch (e) {
+          shared.textContent = 'Copy this link and text it to ' + p.name + ': ' + link;
+        }
+      });
+      c.appendChild(share);
+      c.appendChild(shared);
       // One-way and no undo in the app: quiet danger style, and it asks twice.
-      // It says only what it does: no crew route checks the roster, so the code still opens the crew door.
+      // It says only what it does. C3: an off-roster code is refused on the paid
+      // routes (sign-off, questions), but the armed line promises no closed door.
       const off = el('button', 'actbtn danger', 'Take off the roster');
       const err = el('div', 'errline', '');
-      armTwice(off, 'Tap again to take ' + p.name + ' off the roster — the safety and training boards stop counting them. Their crew code still opens the crew door.', async () => {
+      armTwice(off, 'Tap again to take ' + p.name + ' off the roster — the safety and training boards stop counting them.', async () => {
         off.disabled = true;
         try {
           await api('/api/roster/' + p.id + '/deactivate', { method: 'POST', body: {} });
