@@ -114,7 +114,7 @@ function kit(q: unknown, refuse: 'none' | 'read' | 'write' = 'none', store = sto
     throw new Error('unexpected read ' + path);
   };
   const helpers = ['feedKind', 'feedLine', 'plural', 'readingLine', 'badge', 'chip', 'slipRuleLabel', 'sonaSlipBox', 'quoOffLine',
-    'leadsTabBadge', 'sonaTabBadge', 'leadsHeadOn', 'leadsFilter', 'renderLeadsHead', 'sonaHandled', 'sonaCalledBack', 'sonaPanel', 'sonaFlagGap'];
+    'leadsTabBadge', 'sonaTabBadge', 'leadsHeadOn', 'leadsFilter', 'renderLeadsHead', 'sonaHandled', 'sonaCalledBack', 'sonaPanel', 'sonaFlagGap', 'sonaNeedsYou'];
   const built = new Function('document', 'api', 'localStorage', `
     const $ = (id) => document.getElementById(id);
     const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
@@ -142,7 +142,8 @@ describe('Call back clears a Sona flag (P17)', () => {
   beforeEach(() => { now = Date.parse('2026-10-21T14:00:00Z'); });
 
   it('a tap on Call back marks every open flagged call from that caller, by call id — the head and the badge drop it, the card stays', async () => {
-    const calls = [call('H1', HAZEL, { slips: [SLIP] }), call('H2', HAZEL, { slips: [SLIP] }), call('H3', HAZEL), call('O1', OAK, { slips: [SLIP] })];
+    // Review round: H3 asks for nothing (no estimate) — a call Mike must book is handled too (its own test below).
+    const calls = [call('H1', HAZEL, { slips: [SLIP] }), call('H2', HAZEL, { slips: [SLIP] }), call('H3', HAZEL, { hold: 'not_requested' }), call('O1', OAK, { slips: [SLIP] })];
     const k = kit(quo(calls));
     await k.renderLeadsHead();
     expect(flag(k)!.querySelectorAll('.sliplink')).toHaveLength(3);
@@ -150,7 +151,7 @@ describe('Call back clears a Sona flag (P17)', () => {
     const panel = await k.sonaPanel(20, true);
     await callBack(panel, 'H1').click();
     await flush();
-    // Every flagged call from that caller — H1 and H2, never the unflagged H3, never another caller's O1.
+    // Every flagged call from that caller — H1 and H2, never H3 (it needs nothing), never another caller's O1.
     expect(Object.keys(k.sonaHandled()).sort()).toEqual(['H1', 'H2']);
     expect(flag(k)!.querySelectorAll('.sliplink').map((r) => r.textContent)).toEqual(['SIM-Oak, Test · T(2026-10-18T21:48:00Z) · Promised a day or time']);
     expect(flag(k)!.textContent).toContain('Sona broke your rules on 1 call');
@@ -178,11 +179,12 @@ describe('Call back clears a Sona flag (P17)', () => {
   });
 
   it('a Call back on a different customer clears nothing', async () => {
-    const k = kit(quo([call('H1', HAZEL, { slips: [SLIP] }), call('O9', OAK)]));
+    // Review round: Oak's call asks for nothing, so nothing is marked; one Oak must have booked is marked — Oak's own, never Hazel's.
+    const k = kit(quo([call('H1', HAZEL, { slips: [SLIP] }), call('O9', OAK, { hold: 'not_requested' }), call('O8', OAK)]));
     const panel = await k.sonaPanel(20, true);
     await callBack(panel, 'O9').click();
     await flush();
-    expect(k.sonaHandled()).toEqual({});
+    expect(Object.keys(k.sonaHandled())).toEqual(['O8']);
     await k.renderLeadsHead();
     expect(flag(k)!.querySelectorAll('.sliplink')).toHaveLength(1);
     expect(dot(k)!.textContent).toBe('1');
@@ -304,5 +306,33 @@ describe('Call back clears a Sona flag (P17)', () => {
       expect(src, name).not.toMatch(/api\(|fetch\(|sendBeacon|XMLHttpRequest|sessionStorage|console\./);
     }
     expect(sends(html).length).toBe(42);
+  });
+});
+
+describe('review round: Call back handles every call from that customer that asks Mike to act (R33: holds off)', () => {
+  it('a call Mike must book himself (read_only) is handled by a Call back on that customer: it leaves "calls need you", keeps its card, gets its Handled line', async () => {
+    const k = kit(quo([call('H3', HAZEL), call('O1', OAK)]));
+    await k.renderLeadsHead();
+    expect(callsH1(k)).toBe('2 calls need you');
+    expect(dot(k)).toBeNull(); // the badge counts flags, not bookings
+    const panel = await k.sonaPanel(20, true);
+    await callBack(panel, 'H3').click();
+    await flush();
+    expect(Object.keys(k.sonaHandled())).toEqual(['H3']);
+    expect(callsH1(k)).toBe('1 call needs you');
+    const card = panel.all().find((n) => n.dataset.sonaCall === 'H3')!;
+    expect(card.querySelectorAll('.sona-handled')).toHaveLength(1);
+    expect(card.textContent).toContain('Calendar holds are off');
+    await callBack(panel, 'O1').click();
+    await flush();
+    expect(callsH1(k)).toBe('No call needs you right now');
+  });
+
+  it('a call that needs nothing is never marked, and gets no Handled line', async () => {
+    const k = kit(quo([call('H3', HAZEL, { hold: 'hangup' })]));
+    const panel = await k.sonaPanel(20, true);
+    await callBack(panel, 'H3').click();
+    expect(k.sonaHandled()).toEqual({});
+    expect(panel.all().find((n) => n.dataset.sonaCall === 'H3')!.querySelectorAll('.sona-handled')).toHaveLength(0);
   });
 });
