@@ -1,6 +1,8 @@
 # Arbo maps: build plan
 
-**Status:** plan only, not built yet. Drafted read-only on 2026-10-21 against main e4a6415, then revised once against a 25-point critique. All 25 points were taken. At e4a6415:
+**Status (2026-10-21):** M0 and M1 built (D106, branch `maps-a`, commits 6938c2c and 6f4a5ce; draft ruling R37) — not deployed (Railway unreachable from the build). The ZIP table ships empty (the Census host was refused from the build machine), so ZIP-area pins wait on it; layer 33's limits are not read yet (M2 waits on them). M2, M3 and M4 are not built.
+
+**Status when drafted:** plan only, not built yet. Drafted read-only on 2026-10-21 against main e4a6415, then revised once against a 25-point critique. All 25 points were taken. At e4a6415:
 - Direction B was complete.
 - R35 TomTom was built, with Today's stops above the Calendar frame.
 - R31 Bouncie was dormant, with the owner-only MAP HOOK.
