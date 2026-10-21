@@ -1869,16 +1869,54 @@ function openSonaCall(callId) {
   };
   look();
 }
+// ---------- Call back clears a Sona flag (Direction B P17) ----------
+// Mike, 2026-10-20: tapping Call back on that customer counts as handled — the red flag leaves the flag box and
+// the Leads badge, and the call stays in call history (its red card, SONA BROKE A RULE, her words, a muted
+// "Handled" line). Remembered on this phone only (the plan's Q2), by call id — never a number, never a name —
+// and forgotten after 7 days. A new slip is a new call id, so it raises the flag again. Storage refused or
+// cleared brings the flag back: the loud direction. No POST, no database write, no Quo write (R32, R33).
+const SONA_DONE_KEY = 'arboSonaHandled';
+const SONA_DONE_MS = 7 * 24 * 60 * 60 * 1000;
+// { callId: when Call back was tapped (ms) } — the marks under 7 days old; {} when storage refuses.
+function sonaHandled() {
+  let m;
+  try { m = JSON.parse(localStorage.getItem(SONA_DONE_KEY) || '{}'); } catch (e) { return {}; }
+  const out = {};
+  if (!m || typeof m !== 'object') return out;
+  for (const id of Object.keys(m)) if (typeof m[id] === 'number' && Date.now() - m[id] < SONA_DONE_MS) out[id] = m[id];
+  return out;
+}
+// Call back on a Sona card (Today's or Calls & texts'): every flagged call Arbo holds from that caller is handled,
+// by its id. The head redraws, so the flag and the badge drop it now. Not remembered: the flag stays.
+function sonaCalledBack(c, calls) {
+  if (!c.from) return false;
+  const ids = calls.filter((x) => x.handledBy === 'sona' && x.slips.length && x.from === c.from).map((x) => x.callId);
+  if (!ids.length) return false;
+  try {
+    const m = sonaHandled(); // the older marks pruned on this write
+    for (const id of ids) if (!m[id]) m[id] = Date.now();
+    localStorage.setItem(SONA_DONE_KEY, JSON.stringify(m));
+  } catch (e) { return false; }
+  renderLeadsHead();
+  return true;
+}
+
 // The red Sona flag: who, when and which rule, one row per call, each opening that call's red card — or null
-// when Sona broke no rule. One builder for Today's Sona panel and the Leads head (Direction B P16).
-function sonaSlipBox(d) {
+// when Sona broke no rule. One builder for Today's Sona panel and the Leads head (Direction B P16). A call Mike
+// called back is handled (P17: `done`, from sonaHandled) and leaves the flag; a counted slip older than the calls
+// Arbo still holds cannot be called back from here, so it stays ("… only in Quo now").
+function sonaSlipBox(d, done) {
   const st = d.status;
   if (!(st.callsWithSlips > 0)) return null;
+  const held = d.calls.filter((c) => c.handledBy === 'sona' && c.slips.length);
+  const handled = done || sonaHandled();
+  const slipCalls = held.filter((c) => !handled[c.callId]);
+  const older = Math.max(0, st.callsWithSlips - held.length);
+  if (!slipCalls.length && !older) return null;
   // Mike, 2026-10-20: "it doesnt say which one … is it clickable". Each call is
   // a row that says who, when and which rule, and opens that call's red card.
   const box = el('div', 'storm');
-  box.appendChild(el('div', '', 'Sona broke your rules on ' + plural(st.callsWithSlips, 'call') + ' — tap one to see what she said, then call them back.'));
-  const slipCalls = d.calls.filter((c) => c.handledBy === 'sona' && c.slips.length);
+  box.appendChild(el('div', '', 'Sona broke your rules on ' + plural(slipCalls.length + older, 'call') + ' — tap one to see what she said, then call them back.'));
   for (const c of slipCalls) {
     const f = c.facts || {};
     const rules = [...new Set(c.slips.map((sl) => slipRuleLabel(sl.rule)))].join(', ');
@@ -1887,7 +1925,7 @@ function sonaSlipBox(d) {
     box.appendChild(row);
   }
   // Calls older than the ones Arbo still holds are counted but cannot be opened: said, not hidden.
-  if (slipCalls.length < st.callsWithSlips) box.appendChild(el('div', '', plural(st.callsWithSlips - slipCalls.length, 'older call is', 'older calls are') + ' only in Quo now.'));
+  if (older) box.appendChild(el('div', '', plural(older, 'older call is', 'older calls are') + ' only in Quo now.'));
   return box;
 }
 async function sonaPanel(limit, withTranscripts) {
@@ -1933,10 +1971,12 @@ async function sonaPanel(limit, withTranscripts) {
     wrap.appendChild(el('div', 'feed-state unread', 'Arbo could not read ' + plural(st.readsRetrying, 'Sona call') + ' yet (the AI model was unavailable) — trying again every 10 minutes.' + (st.holds === 'read_only' ? '' : ' No hold is filed until it can.')));
   }
   const sona = d.calls.filter((c) => c.handledBy === 'sona');
+  // Direction B P17: the calls Mike called back (this phone's marks, read once), only when there is a flag to clear.
+  const done = sona.some((c) => c.slips.length) ? sonaHandled() : {};
   // Direction B P16: on Calls & texts the red flag rides the Leads head above the segments (one builder,
   // sonaSlipBox); Today keeps its own box here.
   if (!withTranscripts) {
-    const box = sonaSlipBox(d);
+    const box = sonaSlipBox(d, done);
     if (box) wrap.appendChild(box);
   }
   const rec = st.quoRecord || {};
@@ -2030,10 +2070,23 @@ async function sonaPanel(limit, withTranscripts) {
     else if (f.treeDetails) card.appendChild(el('div', 'scope', f.treeDetails));
     if (f.requestedTime) card.appendChild(el('div', 'scope', 'Asked for: ' + f.requestedTime));
     for (const sl of c.slips) card.appendChild(el('div', 'storm', slipRuleLabel(sl.rule) + ' — Sona said: \u201c' + sl.said + '\u201d'));
+    // Direction B P17: a flag Mike cleared by calling back stays in history, said in a muted line.
+    const handledLine = (at) => el('div', 'storm-muted sona-handled', 'Handled — you tapped Call back at ' + fmtTime(new Date(at).toISOString()) + '.');
     const hl = holdLine(c);
     if (hl) card.appendChild(el('div', hl[0], hl[1]));
+    if (c.slips.length && done[c.callId]) card.appendChild(handledLine(done[c.callId]));
     const actions = el('div', 'actions');
-    if (c.from) { const call = el('a', 'callbtn', 'Call back'); call.href = 'tel:' + c.from; actions.appendChild(call); }
+    if (c.from) {
+      const call = el('a', 'callbtn', 'Call back');
+      call.href = 'tel:' + c.from;
+      // P17: calling back is handling it — every flag from this caller clears (ids only, on this phone); the phone app still dials.
+      call.addEventListener('click', () => {
+        if (!sonaCalledBack(c, d.calls) || !c.slips.length || card.querySelector('.sona-handled')) return;
+        const at = sonaHandled()[c.callId];
+        if (at) card.insertBefore(handledLine(at), actions);
+      });
+      actions.appendChild(call);
+    }
     card.appendChild(actions);
     if (withTranscripts && c.dialogue.length) {
       const det = document.createElement('details');
@@ -3355,16 +3408,19 @@ async function renderLeadsHead() {
   }
   // Calls & texts: the red calls (a rule slip, an emergency, a hold that failed) and the red flags. A counted slip
   // older than the calls Arbo still holds is still a flag ("… only in Quo now"). Quo not set up is a gap of its own.
-  let S = null, qk = null, qe = null;
+  let S = null, qk = null, qe = null, done = {};
   if (qr.e) qe = qr.e;
   else if (qr.d.status.registration.state === 'not_configured') qe = { code: 503, message: links === 'simulation' ? 'not_simulated' : 'quo_not_configured' };
   else {
     const st = qr.d.status, rec = st.quoRecord || {};
     const sona = qr.d.calls.filter((c) => c.handledBy === 'sona');
     const older = Math.max(0, (st.callsWithSlips || 0) - sona.filter((c) => c.slips.length).length);
+    // Direction B P17: a flag Mike cleared by calling back (this phone's marks) leaves the count, the flag and the badge.
+    done = sonaHandled();
+    const flagged = (c) => c.slips.length > 0 && !done[c.callId];
     S = {
-      flags: sona.filter((c) => c.slips.length).length + older,
-      need: sona.filter((c) => c.slips.length || (c.facts && c.facts.emergency) || c.hold === 'failed').length + older,
+      flags: sona.filter(flagged).length + older,
+      need: sona.filter((c) => flagged(c) || (c.facts && c.facts.emergency) || c.hold === 'failed').length + older,
       // "No call needs you" only over a whole read: wired, checked by the model, the week read through, nothing retrying.
       whole: (st.registration.state === 'ok' || st.registration.state === 'read_only') && !!st.reading && !rec.error && !rec.unreadable
         && !(rec.weekThreadsNotRead > 0) && !!rec.weekReadOkAt && !(st.readsRetrying > 0),
@@ -3385,7 +3441,7 @@ async function renderLeadsHead() {
     : title(VIEW_TITLES.calls, 'lh-calls', FEED_WORD[qk]));
   out.push(head);
   // The red Sona flag, above the segments and on both. Quo unreadable: a named line in its place; Quo not set up: the fold's words, once.
-  if (S) { const box = sonaSlipBox(qr.d); if (box) out.push(box); }
+  if (S) { const box = sonaSlipBox(qr.d, done); if (box) out.push(box); }
   else if (qr.e) out.push(feedLine(qr.e, 'Sona calls (Quo)', 'Her rule flags can’t show here — not the same as none.'));
   else out.push(quoOffLine(links));
   // The two segments: a count only when there is one; a read that failed is '–' and its feed word, never a 0.
