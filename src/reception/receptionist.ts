@@ -56,7 +56,7 @@ import {
   type NotifyDecision, type MissRecord,
 } from './judgment.js';
 import { detectIntent, isCredentialQuestion, type CallIntent, type IncidentType } from './intent.js';
-import { emergencySafetyCalls } from './emergency.js';
+import { emergencySafetyCalls, injuryDenied } from './emergency.js';
 import type { CallerLanguage } from './language.js';
 import { capture, nextQuestion, isComplete, toQualificationJson, type QualField, type QualState } from './qualification.js';
 
@@ -276,7 +276,9 @@ export class Receptionist {
       const calls = emergencySafetyCalls(text);
       const lines = this.deps.g.emergency.safetyLines;
       const first: string[] = [];
-      if ((calls.call911 || intent.incidentType === 'injury') && !/\b911\b/.test(reply)) first.push(lines.personHurt);
+      // R29 #4: an injury the caller denied ("the line is down, nobody was injured") is Dominion only — never 911.
+      // The intent stays 'injury', so the alert to Mike and the notify tier below do not move.
+      if ((calls.call911 || (intent.incidentType === 'injury' && !injuryDenied(text))) && !/\b911\b/.test(reply)) first.push(lines.personHurt);
       if (calls.callDominion && !/\bDominion\b/i.test(reply)) first.push(lines.powerLine);
       if (first.length > 0) reply = `${first.join(' ')} ${reply}`;
     }

@@ -16,7 +16,7 @@ import { createElevenLabsBridge, END_CALL_MARKER, type CallHold } from '../src/v
 import { CallRecordStore } from '../src/reception/callMemory.js';
 import { guardReply } from '../src/reception/outputGuard.js';
 import { findDatePromise } from '../src/reception/datePromise.js';
-import { detectEmergency, emergencySafetyCalls } from '../src/reception/emergency.js';
+import { detectEmergency, emergencySafetyCalls, injuryDenied } from '../src/reception/emergency.js';
 import { detectIntent, isCredentialQuestion } from '../src/reception/intent.js';
 import { detectCallerLanguage, foldAccents } from '../src/reception/language.js';
 import { FINANCIAL_DEFERRAL } from '../src/reception/judgment.js';
@@ -434,6 +434,141 @@ describe('R26.2 — the emergency script says 911 and Dominion Energy', () => {
     const { r } = desk(['Happy to help — what is the property address?']);
     const turn = await r.handleUserTurn("Hi, I'd like an estimate to take down a pine in the back yard.");
     expect(turn.reply).toBe('Happy to help — what is the property address?');
+  });
+});
+
+// ─────────────── R29 #4 — DOWNED LINE, NOBODY HURT: DOMINION ONLY ───────────────
+// Mike, 2026-10-20 (R29 #4): a downed power line with nobody hurt keeps the
+// Dominion line only — NOT 911 ("call dominion"). Only an explicit denial
+// drops the 911 line ("nobody hurt", "no one is injured", "nobody was
+// injured", "no injuries", and the Spanish "nadie está herido", "no hay
+// heridos"). Anything that leaves a person possibly hurt keeps it: another
+// hurt word, "but my son…", "nobody else", a hedge ("I think"), a question,
+// or a tree on a house or car. Detection stays sensitive: the intent, the
+// alert to Mike and the notify tier do not move.
+describe('R29 #4 — a downed line with nobody hurt: the Dominion line only, never 911 (Direction B P5)', () => {
+  const INCIDENT_LINE = g.callRouting.incident.approvedLine;
+
+  it.each([
+    'The power line is down, nobody was injured.',
+    'A line is down in the yard — no one is injured.',
+    'Power line down, nobody hurt.',
+    'A limb took the power line down. No injuries.',
+    "There's a power line down but nobody's hurt.",
+    'There’s a power line down but nobody’s hurt.',
+    'Nobody was injured, but the wires are sparking.',
+    'Se cayó un cable de luz, nadie está herido.',
+    'Hay cables en el suelo. Nadie salió lastimado.',
+    'Los cables se cayeron, no hay heridos.',
+    'Se cayeron los cables, nadie se lastimó.',
+  ])('denied: %s → injuryDenied', (text) => {
+    expect(injuryDenied(text)).toBe(true);
+  });
+
+  it.each([
+    // another hurt word, before or after the denial
+    'No one is injured but my son is bleeding.',
+    'My son is bleeding, nobody else is hurt.',
+    // an exception that names a person
+    'Nobody was injured except my dad.',
+    "Nobody's hurt but my wife.",
+    // "nobody else" says someone IS hurt
+    'Nobody else was injured, but the line is down.',
+    // a hedge, or a question
+    "Nobody's hurt I think, the power line is down.",
+    'Nobody hurt? The power line is down.',
+    'Nobody was injured, right? The power line is down.',
+    // no denial at all
+    'Is anyone hurt? No. The power line is down.',
+    'My son is hurt and a line is down.',
+    'I am not hurt but the line is down.',
+    // Spanish
+    'Nadie está herido pero mi hijo está sangrando.',
+    'Creo que nadie está herido, los cables están en el suelo.',
+    'Nadie más se lastimó, pero los cables están en el suelo.',
+  ])('not denied: %s', (text) => {
+    expect(injuryDenied(text)).toBe(false);
+  });
+
+  it.each([
+    'The power line is down, nobody was injured.',
+    'A line is down in the yard — no one is injured.',
+    'Power line down, nobody was seriously injured.',
+  ])('English, run: "%s" (the injury path) → Dominion, no 911; Mike alerted as before', async (text) => {
+    const { r } = desk([]);
+    const before = alerts.length;
+    const turn = await r.handleUserTurn(text);
+    expect(turn.reply).toBe(`${DOMINION} ${INCIDENT_LINE}`);
+    expect(turn.reply).not.toContain('911');
+    // Detection did not move: still the injury incident, still the alert, still the same tier.
+    expect(turn.intent).toBe('incident');
+    expect(turn.incidentType).toBe('injury');
+    expect(alerts.length).toBe(before + 1);
+    expect(alerts.at(-1)).toMatch(/^INCIDENT \(injury\)/);
+    const hurt = await desk([]).r.handleUserTurn('My son got hurt, a branch fell on him and he is bleeding.');
+    expect(turn.notify).toEqual(hurt.notify);
+  });
+
+  it.each([
+    // No injury trigger in these: they ride the power-line emergency, which never said 911 — and still does not.
+    'A limb took the power line down. No injuries.',
+    "There's a power line down but nobody's hurt.",
+    // Spanish: "herido" is a person-in-danger word, so before R29 #4 these heard 911 too.
+    'Se cayó un cable de luz, nadie está herido.',
+    'Los cables se cayeron, no hay heridos.',
+    'Se cayeron los cables, nadie se lastimó.',
+  ])('the power-line emergency, run: "%s" → Dominion, no 911; Mike alerted as before', async (text) => {
+    expect(emergencySafetyCalls(text)).toEqual({ call911: false, callDominion: true });
+    const { r } = desk(['Mike is being alerted right away.']);
+    const before = alerts.length;
+    const turn = await r.handleUserTurn(text);
+    expect(turn.intent).toBe('emergency');
+    expect(alerts.length).toBe(before + 1);
+    expect(alerts.at(-1)).toBe(detectEmergency(text).reason);
+    expect(turn.reply).toBe(`${DOMINION} Mike is being alerted right away.`);
+  });
+
+  it.each([
+    ['No one is injured but my son is bleeding.', false],
+    ['Nobody else was injured, but the line is down.', true],
+    // (an injury word, so the injury path is the one that must not drop it)
+    ['Nobody was injured I think, the power line is down.', true],
+    ['Nobody injured? The power line is down.', true],
+    ['Is anyone hurt? No. The power line is down.', true],
+    ['My son is hurt and a line is down.', true],
+  ] as Array<[string, boolean]>)('keeps 911 whenever someone may be hurt: %s', async (text, dominion) => {
+    const { r } = desk(['Mike is being alerted right away.']);
+    const turn = await r.handleUserTurn(text);
+    expect(turn.reply.startsWith(NINE_ONE_ONE)).toBe(true);
+    expect(turn.reply.includes(DOMINION)).toBe(dominion);
+  });
+
+  it.each([
+    ['A tree fell on my house and took the power line down — nobody was injured.', true],
+    ['Nobody was injured, but a tree came down on my car.', false],
+    ['Se cayó un árbol sobre la casa, nadie está herido.', false],
+  ] as Array<[string, boolean]>)('a tree on a house or car keeps 911 even with "nobody hurt" (someone may be inside): %s', async (text, dominion) => {
+    expect(emergencySafetyCalls(text).call911).toBe(true);
+    const { r } = desk(['Mike is being alerted right away.']);
+    const turn = await r.handleUserTurn(text);
+    expect(turn.reply.startsWith(NINE_ONE_ONE)).toBe(true);
+    expect(turn.reply.includes(DOMINION)).toBe(dominion);
+  });
+
+  it.each([
+    'Nadie está herido pero mi hijo está sangrando.',
+    'Creo que nadie está herido, los cables están en el suelo.',
+  ])('Spanish keeps 911 whenever someone may be hurt: %s', async (text) => {
+    expect(emergencySafetyCalls(text).call911).toBe(true);
+    const { r } = desk(['Mike is being alerted right away.']);
+    const turn = await r.handleUserTurn(text);
+    expect(turn.reply.startsWith(NINE_ONE_ONE)).toBe(true);
+  });
+
+  it('the guardrails and the intent are untouched: "injured" is still an injury trigger, and the line still reads 911', () => {
+    expect(g.callRouting.incident.triggers.injury).toContain('injured');
+    expect(detectIntent('The power line is down, nobody was injured.', g)).toMatchObject({ intent: 'incident', incidentType: 'injury' });
+    expect(g.emergency.safetyLines.personHurt).toBe(NINE_ONE_ONE);
   });
 });
 

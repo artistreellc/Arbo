@@ -133,8 +133,78 @@ const MAY_HURT_SOMEONE = new Set(['person in danger', 'tree down on a structure/
 
 export function emergencySafetyCalls(text: string): SafetyCalls {
   const reasons = emergencyReasons(text);
+  // R29 #4: a hurt word the caller DENIED ("nadie está herido") is not a hurt
+  // person — the 911 line is decided on the rest of what they said. A tree on
+  // a house or car still says 911 (someone may be inside); nothing else moves.
+  const hurtReasons = injuryDenied(text) ? emergencyReasons(withoutDenials(text)) : reasons;
   return {
-    call911: reasons.some((r) => MAY_HURT_SOMEONE.has(r)),
+    call911: hurtReasons.some((r) => MAY_HURT_SOMEONE.has(r)),
     callDominion: reasons.includes('power line involved'),
   };
+}
+
+/*
+ * R29 #4 (Mike, 2026-10-20): a downed power line with nobody hurt keeps the
+ * Dominion line only — NOT 911 ("call dominion"). The word "injured" is an
+ * injury trigger (guardrails.json, left as it is), so "the line is down,
+ * nobody was injured" was read as an injury and heard the 911 line.
+ *
+ * Only an explicit, whole denial counts: "nobody hurt", "no one is injured",
+ * "nobody was injured", "no injuries"; in Spanish "nadie está herido", "nadie
+ * salió lastimado", "nadie se lastimó", "no hay heridos", "sin heridos". Anything that leaves a
+ * person possibly hurt keeps the 911 line — detection stays sensitive (R29 #4):
+ *   · another hurt word anywhere ("…but my son is bleeding");
+ *   · an exception that names someone after the denial ("except my dad", "but my wife");
+ *   · "nobody else" / "nadie más" (someone IS hurt);
+ *   · a hedge ("I think", "maybe", "creo", "parece");
+ *   · a denial asked as a question ("nobody injured?", "nobody hurt, right?").
+ * A bare first-person "I'm not hurt" denies nothing about anyone else.
+ * The alert to Mike and the notify tier never read this: they stay on the intent.
+ */
+const DENIALS: RegExp[] = [
+  /\b(?:no one|no-one|noone|nobody)(?!\s+else\b)(?:'s|\s+(?:is|was|got|were|are|has been|had been))?(?:\s+(?:really|seriously|badly|actually))?\s+(?:hurt|injured)\b/g,
+  /\bno injur(?:y|ies)\b/g,
+  /\bnadie(?!\s+mas\b)(?:\s+(?:esta|estaba|salio|resulto|quedo|fue|se))?\s+(?:herid|lastimad|lesionad)[oa]s?\b/g,
+  /\bnadie(?!\s+mas\b)\s+se\s+(?:lastimo|hirio|lesiono)\b/g,
+  /\b(?:no hay|sin|ningun|ninguna)\s+(?:herid|lastimad|lesionad)[oa]s?\b/g,
+];
+// A person may be hurt: any of these words left once the denials are taken out.
+const HURT_WORD = /\b(?:hurt\w*|injur\w*|bleed\w*|blood\w*|ambulance|hospital|trapped|pinned|unconscious|not moving|not breathing|passed out|knocked out|broken? (?:arm|leg|bone|neck|back|ribs?)|concussion|crushed|911|paramedics?|herid\w*|lastimad\w*|lesionad\w*|sangr\w*|ambulancia|atrapad\w*|inconsciente|no se mueve|no respira|se (?:lastimo|hirio|lastimaron|hirieron)|desmayad\w*)\b/;
+const EXCEPT_WORD = /\b(?:but|except|other than|besides|apart from|aside from|only|although|though|however|pero|excepto|menos|salvo|aunque|solo|sino)\b/;
+// Not the Spanish "el": folded, the article and "él" are one word ("pero el cable…").
+const PERSON_WORD = /\b(?:he|she|him|her|his|they|them|someone|somebody|anyone|anybody|people|person|man|woman|kids?|child|children|boy|girl|baby|worker|guys?|neighbou?r|husband|wife|son|daughter|mom|mother|dad|father|brother|sister|grand\w+|friend|ella|ellos|ellas|alguien|nin[oa]s?|bebe|hombre|mujer|trabajador\w*|vecin[oa]s?|espos[oa]|hij[oa]s?|madre|padre|mama|papa|herman[oa]s?|abuel[oa]s?|amig[oa]s?)\b/;
+const HEDGE = /\b(?:i think|i guess|i believe|not sure|i don'?t know|dunno|maybe|probably|hopefully|i hope|as far as i (?:know|can tell)|can'?t tell|can'?t see|seems?|appears?|looks like|creo|no se|no estoy segur[oa]|tal vez|quizas?|a lo mejor|espero|parece)\b/;
+
+/** Folded, lower-case, plain apostrophes: the form every pattern above is written for. */
+function denialText(text: string): string {
+  return foldAccents(text).toLowerCase().replace(/[\u2018\u2019]/g, "'");
+}
+function denialSpans(t: string): Array<[number, number]> {
+  const spans: Array<[number, number]> = [];
+  for (const re of DENIALS) for (const m of t.matchAll(re)) spans.push([m.index!, m.index! + m[0].length]);
+  return spans.sort((a, b) => a[0] - b[0]);
+}
+/** What the caller said with every denial taken out (a comma in each place). */
+function withoutDenials(text: string): string {
+  const t = denialText(text);
+  let out = '';
+  let at = 0;
+  for (const [s, e] of denialSpans(t)) { if (s >= at) { out += t.slice(at, s) + ','; at = e; } }
+  return out + t.slice(at);
+}
+
+/** True only when the caller explicitly said nobody is hurt, and nothing they said leaves someone possibly hurt. */
+export function injuryDenied(text: string): boolean {
+  const t = denialText(text);
+  const spans = denialSpans(t);
+  if (!spans.length) return false;
+  if (HEDGE.test(t)) return false;
+  if (spans.some(([, e]) => /^[^.!]*\?/.test(t.slice(e)))) return false; // asked, not told: "nobody injured?", "nobody hurt, right?"
+  const rest = withoutDenials(text);
+  if (HURT_WORD.test(rest)) return false;
+  // After the first denial: "…but my son", "except my dad" — a person named past an exception.
+  const tail = rest.slice(spans[0]![0]);
+  const ex = EXCEPT_WORD.exec(tail);
+  if (ex && PERSON_WORD.test(tail.slice(ex.index))) return false;
+  return true;
 }
