@@ -154,3 +154,24 @@ describe('the map page fits its frame (UI review)', () => {
     expect(script).not.toMatch(/minZoom: 10\b/);
   });
 });
+
+// Review round (D106): the correctness review's test gaps — what these scans missed, now pinned.
+describe('the scans hold against the gaps the review found', () => {
+  it('Leaflet content is always a node: bindPopup takes the popup built from groupNode, setContent a node builder; no tooltips', () => {
+    const binds = [...script.matchAll(/bindPopup\(([^)]*)\)/g)].map((m) => m[1]);
+    expect(binds).toEqual(['pop']);
+    expect(script).toMatch(/const pop = L\.popup\(/);
+    for (const m of script.matchAll(/setContent\(([^\n]*)/g)) expect(m[1], m[0]).toMatch(/^(?:groupNode|el)\(/);
+    expect(script).not.toContain('bindTooltip');
+  });
+  it('storage holds two things only: the layer choice and the shell\'s theme — never a point', () => {
+    const sets = [...script.matchAll(/localStorage\.setItem\(([^)]*\))\)/g)].map((m) => m[1]);
+    expect(sets).toEqual(["'arboMapLayers', JSON.stringify(ON)"]);
+    const gets = [...script.matchAll(/localStorage\.getItem\('([^']+)'\)/g)].map((m) => m[1]).sort();
+    expect(gets).toEqual(['arboMapLayers', 'arboTheme']);
+    expect(script).not.toMatch(/localStorage\[|localStorage\.(?!getItem|setItem)/);
+  });
+  it('no referrer setting of any kind on the page (OSM\'s tile policy needs the Referer)', () => {
+    expect(page).not.toMatch(/referrer/i);
+  });
+});

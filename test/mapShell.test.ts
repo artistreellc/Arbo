@@ -189,6 +189,9 @@ describe('opening Map from a screen, and Back', () => {
     expect(fnSrc('renderMap')).toContain("if ($('map-frame')) return;");
     expect(fnSrc('renderMap')).toContain("f.src = '/map';");
     expect(html).not.toMatch(/map-frame'\)\.src\s*=|\.contentWindow\.location|#map-[a-z]+'\s*;?\s*\/\/ frame/);
+    // Review round (D106): no frame address with a hash or a query anywhere — the one src is renderMap's '/map'.
+    expect(html).not.toMatch(/['"`]\/map[#?]/);
+    expect([...html.matchAll(/\.src = '\/map/g)]).toHaveLength(1);
   });
 
   it('↻ on Map reaches the frame as a refresh message', () => {
