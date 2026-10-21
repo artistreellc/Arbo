@@ -553,6 +553,27 @@ describe('C2 — one maps builder, one Navigate per card, opened straight from a
     expect(card.kids.filter((k) => k.className === 'preview-why').map((k) => k.textContent)).toEqual(['Off in the preview — nothing here signs, files or clocks in.']);
   });
 
+  // UI review 2 (D107): the card's one preview line sat at the bottom of the
+  // card, 417–457 px below the switched-off Navigate. R26: a control off in the
+  // preview has PREVIEW_WHY beside it — Navigate is the one control on the card
+  // that is off BECAUSE of the preview (the job buttons are off on the crew
+  // phone too, and keep their own reason beside them).
+  it('R26: in the preview the card’s preview line sits directly under Navigate — with or without a street', async () => {
+    for (const over of [{}, { address: '' }]) {
+      const v = await render([WO(1, over)], true);
+      const card = v.kids.find((k) => k.className === 'wo')!;
+      const at = card.kids.findIndex((k) => k.className === 'navbtn');
+      expect(at, 'Navigate is a direct child of the card').toBeGreaterThan(-1);
+      expect(card.kids[at + 1]!.className, JSON.stringify(over)).toBe('preview-why');
+      expect(card.kids.filter((k) => k.className === 'preview-why')).toHaveLength(1);
+      // The job buttons keep the job-record reason beside them.
+      const jobs = card.kids.findIndex((k) => k.className === 'jobaction');
+      expect(card.kids.slice(jobs).map((k) => k.className)).toEqual(['jobaction', 'jobaction', 'jobwhy']);
+    }
+    const phone = await render([WO(1)], false);
+    expect(phone.all().some((n) => n.className === 'preview-why')).toBe(false);
+  });
+
   it('no sheet and no dialog: the page never asks "Open in Google Maps?" and calls no prompt(), confirm() or alert()', () => {
     expect(html).not.toContain('Open in Google Maps?');
     expect(html).not.toMatch(/\b(prompt|confirm|alert)\(/);
