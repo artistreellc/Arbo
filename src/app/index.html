@@ -263,6 +263,7 @@ button.hstat{position:relative}.hstat .cue{display:none}.hstat[aria-disabled="fa
 .card .toprow{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:4px}
 .card .who{font-family:var(--serif);font-size:19px;font-weight:600;line-height:1.22;color:var(--ink-1);display:flex;align-items:center;font-variation-settings:'opsz' 30}
 .card .when{font-variant-numeric:tabular-nums;font-size:14px;font-weight:700;color:var(--gold-6);white-space:nowrap}
+.card .toprow .who{min-width:0;overflow-wrap:anywhere} /* a long unbroken name wraps, never pushes the page sideways */
 .card .addr{font-size:15px;margin:2px 0 8px;color:var(--ink-2)}
 .card .addr a{color:var(--forest);text-decoration:none;font-weight:600}
 .card .scope{font-size:14.5px;color:var(--ink-2);margin-bottom:8px;line-height:1.5}
@@ -312,6 +313,9 @@ nav button .navpill span:last-child{white-space:nowrap;overflow:hidden;text-over
 nav button .ico{width:23px;height:23px}
 nav button.active{color:var(--forest);background:var(--f-100)}
 nav button.dock-hidden{display:none}
+/* Wave 3b review: on a 320 px phone five labels filled their buttons edge to edge ("Calendar Estimate" read as one) —
+   the buttons take the gutter and the gaps instead (the 12 px label floor, P2, stays). */
+@media (max-width:359px){nav{left:8px;right:8px;padding:8px 4px;gap:0}nav button{letter-spacing:0}}
 /* The Leads tab's badge (R26): a red count of EMERGENCY leads. A leads feed Arbo could not read keeps a dot in the
    feed-state colours (grey = cut or not simulated, amber = not set up, hollow amber = couldn't read it) — never a
    quiet no-badge (§1B). The button's aria-label says which in words. */
@@ -321,6 +325,11 @@ nav button .dot.gap{min-width:0;width:12px;height:12px;padding:0;top:7px;left:ca
 nav button .dot.cut,nav button .dot.sim{background:var(--ink-4)}
 nav button .dot.unset{background:var(--warning)}
 nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--warning)}
+/* Direction B P16: the badge is built from two reads (emergency leads, Sona flags). A half Arbo could not read rides
+   the other half's count as a small marker in the same feed-state colours — never a quiet zero (§1B). */
+nav button .dot.part::after{content:'';position:absolute;top:-6px;right:-7px;width:10px;height:10px;border-radius:50%;border:2px solid var(--card);background:var(--warning)}
+nav button .dot.p-cut::after,nav button .dot.p-sim::after{background:var(--ink-4)}
+nav button .dot.p-unread::after{background:var(--card);box-shadow:inset 0 0 0 2px var(--warning)}
 
 /* ── More sheet: every surface within two taps (§9) ──────────────────── */
 .grid-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:6px}
@@ -361,6 +370,7 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 .storm .sliplink,.card .sliplink{display:flex;width:100%;min-height:44px;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;padding:10px 12px;
   border-radius:12px;border:1px solid color-mix(in srgb,var(--emergency) 40%,transparent);background:var(--card);color:inherit;font:inherit;font-weight:600;text-align:left}
 .storm .sliplink::after,.card .sliplink::after{content:'\203A';font-size:22px;line-height:1;flex:none}
+.sliplink{overflow-wrap:anywhere} /* wave 3b review: a long unbroken name wraps inside the row, never widens the page */
 .card.flash{animation:cardflash 1.8s var(--ease)}
 .flash:not(.card){animation:cardflash 1.8s var(--ease);border-radius:var(--r-md)} /* Direction B P10: a panel a tap landed on */
 @keyframes cardflash{0%,40%{box-shadow:0 0 0 3px var(--emergency)}100%{box-shadow:none}}
@@ -377,9 +387,9 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 .texts .feed-state + .storm-muted{padding-left:18px}
 /* Direction B P12: one feeds card per screen — its headline is a button that opens every feed it folded or counted.
    The dot is the worst kind it holds (the feed-state dots). A button, never a <details>: Today redraws every minute. */
-.card.feeds{padding:4px 14px}
+.card.feeds{padding:0 14px}
 .feeds[hidden],.feeds-list[hidden]{display:none}
-.feeds-head{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:48px;border:0;background:none;padding:6px 0;font:inherit;text-align:left;color:var(--ink-2)}
+.feeds-head{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:44px;border:0;background:none;padding:4px 0;font:inherit;text-align:left;color:var(--ink-2)}
 .feeds-head .feed-state{margin:0;font-size:14.5px}
 .feeds-head .fh{white-space:nowrap} /* a count stays with its words on a 320 px phone */
 .feeds-head::after{content:'';flex:none;width:8px;height:8px;border-right:2px solid var(--forest);border-bottom:2px solid var(--forest);transform:rotate(45deg);margin:0 6px 4px 0;transition:transform .2s}
@@ -391,6 +401,8 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 .feeds-item .feed-state,.feeds-item .storm-muted{margin-bottom:6px}
 .card.feeds .reading{padding:12px 2px;margin:0}
 @media (min-width:900px){.view .feeds{grid-column:1 / -1}}
+/* Direction B P16: on Calls & texts the card sits in a plain slot under Sona's calls — a card of its own, not a flat one. */
+.feeds-at > .card.feeds{background:var(--card);border-color:var(--hairline);box-shadow:var(--shadow-card);margin-bottom:14px}
 .loc-strip{display:flex;align-items:center;gap:12px;margin-bottom:12px;font-size:14px;color:var(--ink-2)}
 .loc-strip .badge{flex:none;min-width:92px;text-align:center;white-space:nowrap}
 .fleet-track{margin-top:10px}
@@ -423,16 +435,33 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 /* P8 review: the time and the city flow on one line and the city drops whole to the next when it does not
    fit — never cut off ("Chesap…" at 320), never squeezed into a narrow column. The button sits right, centred. */
 .card .toprow.has-call{display:flex;flex-wrap:wrap;justify-content:flex-start;align-items:baseline;align-content:center;column-gap:10px;row-gap:2px;position:relative;min-height:52px;padding-right:62px}
-.card .toprow.has-call .who{flex:1 1 100%;min-width:0;overflow-wrap:anywhere}
+.card .toprow.has-call .who{flex:1 1 auto;min-width:0;overflow-wrap:anywhere} /* P16: the time beside the name when both fit, under it when not */
 .card .toprow.has-call .when{flex:none}
 .card .toprow.has-call .addr{flex:0 1 auto;margin:0;font-size:14px;min-width:0;overflow-wrap:anywhere}
 .card .toprow.has-call .callbtn{position:absolute;right:0;top:50%;margin-top:-26px}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
 .clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
 .clamp.open{display:block}
-#view-leads .card{padding:12px 14px}
-#view-leads .card .toprow.has-call{margin-bottom:6px}
-#view-leads .card .actions{margin-top:10px}
+/* Review round (UI #1): compact cards — the plan's "twice as many leads per screen" (8 px padding and gaps). */
+#view-leads .card{padding:8px 12px;margin-bottom:8px}
+#view-leads .card .toprow.has-call{margin-bottom:2px}
+#view-leads .card .actions{margin-top:4px;gap:6px}
+/* Direction B P16: the one-line summary. The name and its time share the top line (the time to the right), and under
+   them where (city · ZIP) and what they said, folded to one line — a tap opens it whole. The city never gives way
+   (P8 review): what they said does, and drops under the city when the two cannot share a line. A line carrying a
+   contact instruction is not in the summary at all: it keeps a line of its own, whole (§5.9, CONTACT_LINE). */
+.card .lsum{flex:1 1 100%;display:flex;flex-wrap:wrap;align-items:baseline;column-gap:8px;min-width:0;font-size:14px;line-height:1.45;padding:12px 0;margin:-12px 0}
+.card > .lsum{margin:-12px 0 -6px}
+/* Review round (UI #4): the summary is the tap that opens what they said — a 44 px box (12 px above and below its
+   line), the margins taking the 24 px back so the row does not grow. Nothing it overlaps is a control. */
+.card .lsum .addr{flex:0 1 auto;margin:0;font-size:14px;font-weight:600;color:var(--ink-2);overflow-wrap:anywhere}
+.card .lsum .clamp{flex:1 1 80px;min-width:0;margin:0;font-size:14px;line-height:1.45;color:var(--ink-3);-webkit-line-clamp:1}
+.card .lsum .clamp.open{flex-basis:100%}
+/* Good lead, Spam and Prep estimate › share one row on a 390 px phone (a 320 px one drops Prep to its own line). */
+#view-leads .card .actions .minibtn{flex:1 1 auto;padding:0 8px;font-size:13px;white-space:nowrap}
+#view-leads .card .badge{padding:2px 8px}
+@media (max-width:359px){#view-leads .card .actions{gap:4px}#view-leads .card .actions .minibtn{padding:0 6px}#view-leads .card .actions .minibtn.mark .ico{display:none}}
+/* Review round: at 320 px the three share one row (they took two) — the words stay, only the icons go (R23). */
 .minibtn{min-height:48px;min-width:56px;border:1px solid var(--border);border-radius:var(--r-pill);background:var(--card);color:var(--ink-1);font-size:14px;font-weight:700;padding:0 16px}
 .minibtn:hover{background:var(--paper)}
 .minibtn:disabled{opacity:.5;box-shadow:none;background:var(--paper)}
@@ -631,6 +660,7 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 .agent-in{display:contents}
 .agent-in .badge{justify-self:start}
 .agent-law{margin-top:10px}
+.sona-tr > summary{min-height:44px;box-sizing:border-box;padding:10px 0;cursor:pointer}
 .agent-law summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--forest);min-height:44px;display:flex;align-items:center;justify-content:space-between;gap:12px;list-style:none}
 .agent-law summary::-webkit-details-marker{display:none}
 .agent-law summary::after{content:'';flex:none;width:8px;height:8px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);margin-right:4px;transition:transform .2s}
@@ -754,12 +784,38 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 .prep-from{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 12px;padding:2px 2px 2px 14px;border-radius:var(--r-pill);background:color-mix(in srgb,var(--forest) 10%,var(--card));color:var(--forest);font-size:14px;font-weight:700}
 .prep-x{flex:none;min-width:44px;min-height:44px;border:0;border-radius:var(--r-pill);background:none;color:var(--forest);font-size:22px;line-height:1;cursor:pointer}
 .field + .storm-muted,.field + .feed-state,.prep-cityzip + .storm-muted{margin-top:-4px}
-/* A line of its own under Good lead / Spam: the pair already fills a 390 px row (three across squeezed "Good lead" onto two lines). */
-.minibtn.prep-lead{flex:1 1 100%;min-height:44px;font-size:13.5px;color:var(--forest);border-color:var(--hairline)}
+/* Beside Good lead / Spam (P16: one row at 390 — the labels keep one line each, nowrap, so "Good lead" is never squeezed onto two). */
+.minibtn.prep-lead{flex:1 1 auto;min-height:44px;font-size:13.5px;color:var(--forest);border-color:var(--hairline)}
 .verdict .prep-lab{margin:14px 0 2px}.verdict .prep-lab:first-child{margin-top:0}
 .verdict .prep-jc{margin-top:10px}
 .verdict .feed-state .prep-again{display:block;margin-top:8px}
 .viewhead h1 .h1-gap{font-family:var(--sans);font-size:15px;font-weight:600;letter-spacing:0;color:var(--ink-3);font-variation-settings:normal}
+/* Direction B P16: the Leads hub's head, over New leads and Calls & texts alike (outside both views, so an open
+   transcript on one never holds the other). A class shows it — never [hidden] — and says which segment is on. The
+   red Sona flag sits ABOVE the segments, so it never sinks into the second one; the chips are New leads' only. */
+.hubhead{display:none}.hubhead.on{display:block}
+.hubhead .viewhead{margin:4px 2px 8px}
+.hubhead .storm{margin-bottom:8px}
+.hubhead .lh-calls,.hubhead.calls .lh-leads{display:none}.hubhead.calls .lh-calls{display:block}
+.hubhead.calls .lchips,.hubhead.calls .filter-none{display:none}
+.lseg{display:flex;width:100%;margin:0 0 8px}
+.lseg .lseg-btn{flex:1 1 0;min-width:0;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;column-gap:8px;row-gap:0;min-height:44px;padding:4px 8px;font-size:14.5px;line-height:1.2}
+.lseg .lseg-btn[aria-pressed="true"]{background:var(--seg-on,var(--card));color:var(--forest);box-shadow:0 1px 3px rgba(20,40,30,.14),inset 0 0 0 1px var(--border)}
+.lseg .lcount{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 7px;border-radius:var(--r-pill);background:var(--f-100);color:var(--forest);font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
+.lseg .lcount.hot{background:var(--emergency);color:var(--on-emergency)}
+.lseg .lcount.gap{background:none;border:1px dashed var(--border);color:var(--ink-3)}
+.lseg small{flex:1 1 100%;font-size:12px;font-weight:600;color:var(--ink-3);text-align:center}
+.lchips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px}
+.lchip{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 14px;border-radius:var(--r-pill);border:1px solid var(--border);background:var(--card);color:var(--ink-1);font-size:14px;font-weight:700}
+.lchip b{font-family:var(--serif);font-size:16px;font-weight:650;color:var(--forest);font-variant-numeric:tabular-nums}
+.lchip[data-filter="emergency"] b{color:var(--emergency)}
+.lchip[aria-pressed="true"]{background:var(--forest);border-color:var(--forest);color:var(--paper)}.lchip[aria-pressed="true"] b{color:inherit}
+@media (max-width:359px){.lchips{gap:6px}.lchip{padding:0 10px;font-size:13px;gap:4px}} /* the three chips keep one row on a 320 px phone */
+/* A filter hides by class (the chips set #view-leads[data-filter]); an EMERGENCY card shows under every filter. */
+#view-leads[data-filter="emergency"] .card.lead:not(.emergency),#view-leads[data-filter="callback"] .card.lead:not(.callback):not(.emergency),
+#view-leads[data-filter="emergency"] .older-head,#view-leads[data-filter="callback"] .older-head{display:none}
+.filter-none{display:none}
+#leads-head[data-filter="emergency"] .filter-none[data-for="emergency"],#leads-head[data-filter="callback"] .filter-none[data-for="callback"]{display:block}
 /* The state line drops under its chip when they cannot share a row, so a variable name never breaks mid-word. */
 .asst-state{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;font-size:15px;font-weight:600;color:var(--ink-1);margin-bottom:10px}
 .asst-state .badge{flex:none}
@@ -808,6 +864,7 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 <main>
   <div id="offline">You are offline. What you see was loaded earlier — nothing new can be read until the signal is back.</div>
   <div id="view-today" class="view active"></div>
+  <div id="leads-head" class="hubhead"></div>
   <div id="view-leads" class="view"></div>
   <div id="view-cal" class="view"></div>
   <div id="view-book" class="view"></div>
@@ -932,15 +989,18 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 </div>
 
 <nav aria-label="Sections">
+  <!-- Direction B P19 (R29 #1): the dock is Today · Leads · Calendar · Estimate · Office. Office is the More
+       button relabelled (its id kept). Calls & texts sits under Leads, Properties on file under Estimate,
+       Follow-ups and Numbers under Office (every surface within two taps, §9); their old buttons stay,
+       dock-hidden, so every existing link to them keeps working. -->
   <button id="tab-today" class="active"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-today"/></svg><span>Today</span></span></button>
-  <button id="tab-calls"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-calls"/></svg><span>Calls</span></span></button>
-  <button id="tab-cal"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-calendar"/></svg><span>Calendar</span></span></button>
   <button id="tab-leads"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-leads"/></svg><span>Leads</span></span></button>
-  <button id="tab-more"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-more"/></svg><span>More</span></span></button>
-  <!-- Book, Queue and Numbers live in More (every surface within two taps, §9);
-       their buttons stay so every existing link to them keeps working. -->
-  <button id="tab-book" class="dock-hidden"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-book"/></svg><span>Book</span></span></button>
-  <button id="tab-followups" class="dock-hidden"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-queue"/></svg><span>Queue</span></span></button>
+  <button id="tab-cal"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-calendar"/></svg><span>Calendar</span></span></button>
+  <button id="tab-estimate"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-tree"/></svg><span>Estimate</span></span></button>
+  <button id="tab-more"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-more"/></svg><span>Office</span></span></button>
+  <button id="tab-calls" class="dock-hidden"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-calls"/></svg><span>Calls &amp; texts</span></span></button>
+  <button id="tab-book" class="dock-hidden"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-book"/></svg><span>Properties on file</span></span></button>
+  <button id="tab-followups" class="dock-hidden"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-queue"/></svg><span>Follow-ups</span></span></button>
   <button id="tab-perf" class="dock-hidden"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-numbers"/></svg><span>Numbers</span></span></button>
 </nav>
 
@@ -1767,8 +1827,17 @@ async function studyPanel(limit) {
 // its own slot, and a read that throws empties only its own ('.slot:empty').
 // Direction B P12: a screen with a feeds card hands its place(slot, x); every
 // slot is handed over now, before the reads land, so the card knows they are in
-// flight. Without one (Calls), each answer is appended, as it always was.
-function fillQuoSlots(reads, slots, place) {
+// flight (Today, and Calls & texts since P16). Without one, each answer is appended.
+// The fold's words: Quo is not connected (or, in practice mode, not in the practice data). One builder, so the
+// fold on Today and Calls & texts and the Leads head's flag place (Direction B P16) say it the same way.
+function quoOffLine(links) {
+  return links === 'simulation'
+    ? el('div', 'feed-state sim', Cap(FEED_WORD.sim) + ' — no real customer threads, texts or Sona calls show here; those stay in Quo.') // "real": the PRACTICE text under Calls › Texts is made up
+    : el('div', 'feed-state unset', 'Quo isn’t connected to Arbo yet — Arbo can’t read your customer threads, can’t text anyone, and Sona’s calls aren’t reaching Arbo. That doesn’t mean there are no customer threads or Sona calls.');
+}
+// saidAbove: the screen already says the fold's words where Sona's flag goes (the Leads head, on Calls & texts), so the
+// folded card names Quo and points there — the paragraph is said once on the screen (wave 3b review, UI #7).
+function fillQuoSlots(reads, slots, place, saidAbove) {
   const put = place || ((slot, x) => x.then((b) => { if (b) slot.appendChild(b); }));
   // LINKS_READY too: in practice mode the gap is "not in the practice data",
   // not a real outage — the same words Inbox and Website forms use there.
@@ -1777,9 +1846,7 @@ function fillQuoSlots(reads, slots, place) {
     if (bs.every((b) => b && b.dataset.quoOff)) {
       const q = el('div');
       q.appendChild(el('div', 'panel-title', 'Quo'));
-      q.appendChild(links === 'simulation'
-        ? el('div', 'feed-state sim', Cap(FEED_WORD.sim) + ' — no real customer threads, texts or Sona calls show here; those stay in Quo.') // "real": the PRACTICE text under Calls › Texts is made up
-        : el('div', 'feed-state unset', 'Quo isn’t connected to Arbo yet — Arbo can’t read your customer threads, can’t text anyone, and Sona’s calls aren’t reaching Arbo. That doesn’t mean there are no customer threads or Sona calls.'));
+      q.appendChild(saidAbove ? el('div', 'storm-muted', 'Shown in its own place on this screen.') : quoOffLine(links));
       q.dataset.off = links === 'simulation' ? 'sim' : 'unset'; // Direction B P12: one feed on the feeds card
       q.dataset.feedName = 'Quo';
       return slots.map((s, i) => (i ? null : q)); // the first slot carries it; the others stay empty
@@ -1819,6 +1886,85 @@ function openSonaCall(callId) {
   };
   look();
 }
+// ---------- Call back clears a Sona flag (Direction B P17) ----------
+// Mike, 2026-10-20: tapping Call back on that customer counts as handled — the red flag leaves the flag box and
+// the Leads badge, and the call stays in call history (its red card, SONA BROKE A RULE, her words, a muted
+// "Handled" line). Remembered on this phone only (the plan's Q2), by call id — never a number, never a name —
+// and forgotten after 7 days. A new slip is a new call id, so it raises the flag again. Storage refused or
+// cleared brings the flag back: the loud direction. No POST, no database write, no Quo write (R32, R33).
+const SONA_DONE_KEY = 'arboSonaHandled';
+const SONA_DONE_MS = 7 * 24 * 60 * 60 * 1000;
+// { callId: when Call back was tapped (ms) } — the marks under 7 days old; {} when storage refuses.
+function sonaHandled() {
+  let m;
+  try { m = JSON.parse(localStorage.getItem(SONA_DONE_KEY) || '{}'); } catch (e) { return {}; }
+  const out = {};
+  if (!m || typeof m !== 'object') return out;
+  for (const id of Object.keys(m)) if (typeof m[id] === 'number' && Date.now() - m[id] < SONA_DONE_MS) out[id] = m[id];
+  return out;
+}
+// Call back on a Sona card (Today's or Calls & texts'): every call Arbo holds from that caller that asks Mike to act
+// (a flag, or one to book — sonaNeedsYou) is handled, by its id. The head redraws, so the flag, the badge and
+// "calls need you" drop it now. Not remembered: the flag stays.
+function sonaCalledBack(c, calls) {
+  if (!c.from) return false;
+  const ids = calls.filter((x) => x.handledBy === 'sona' && sonaNeedsYou(x) && x.from === c.from).map((x) => x.callId);
+  if (!ids.length) return false;
+  try {
+    const m = sonaHandled(); // the older marks pruned on this write
+    for (const id of ids) if (!m[id]) m[id] = Date.now();
+    localStorage.setItem(SONA_DONE_KEY, JSON.stringify(m));
+  } catch (e) { return false; }
+  renderLeadsHead();
+  // Every Sona panel on screen — Today's and Calls & texts', not only the one tapped — drops that caller's flags
+  // and says Handled now, so two screens never disagree until the minute redraw.
+  for (const p of document.querySelectorAll('.sona-panel')) if (p.sonaCalledBack) p.sonaCalledBack();
+  return true;
+}
+
+// The red Sona flag: who, when and which rule, one row per call, each opening that call's red card — or null
+// when Sona broke no rule. One builder for Today's Sona panel and the Leads head (Direction B P16). A call Mike
+// called back is handled (P17: `done`, from sonaHandled) and leaves the flag; a counted slip older than the calls
+// Arbo still holds cannot be called back from here, so it stays ("… only in Quo now").
+function sonaSlipBox(d, done) {
+  const st = d.status;
+  if (!(st.callsWithSlips > 0)) return null;
+  const held = d.calls.filter((c) => c.handledBy === 'sona' && c.slips.length);
+  const handled = done || sonaHandled();
+  const slipCalls = held.filter((c) => !handled[c.callId]);
+  const older = Math.max(0, st.callsWithSlips - held.length);
+  if (!slipCalls.length && !older) return null;
+  // Mike, 2026-10-20: "it doesnt say which one … is it clickable". Each call is
+  // a row that says who, when and which rule, and opens that call's red card.
+  const box = el('div', 'storm');
+  box.appendChild(el('div', '', 'Sona broke your rules on ' + plural(slipCalls.length + older, 'call') + ' — tap one to see what she said, then call them back.'));
+  for (const c of slipCalls) {
+    const f = c.facts || {};
+    const rules = [...new Set(c.slips.map((sl) => slipRuleLabel(sl.rule)))].join(', ');
+    const row = el('button', 'sliplink', (f.name || c.from || 'Caller') + ' · ' + fmtTime(c.at) + ' · ' + rules);
+    row.addEventListener('click', () => openSonaCall(c.callId));
+    box.appendChild(row);
+  }
+  // Calls older than the ones Arbo still holds are counted but cannot be opened: said, not hidden.
+  if (older) box.appendChild(el('div', '', plural(older, 'older call is', 'older calls are') + ' only in Quo now.'));
+  return box;
+}
+// A Sona call that asks Mike to act: a red one (a rule slip, an emergency, a hold that failed) or one he must book
+// himself — R33 holds off ('read_only'), or no hold filed ('learned_only', 'no_writer'); its card says so. Calls &
+// texts counts these ("N calls need you"), and a Call back on that customer handles them (P17).
+function sonaNeedsYou(c) {
+  return c.slips.length > 0 || !!(c.facts && c.facts.emergency) || c.hold === 'failed' || c.hold === 'read_only' || c.hold === 'learned_only' || c.hold === 'no_writer';
+}
+// /api/quo can answer while what the flags come from did not: Quo's record unreadable (R33 — Arbo makes no Quo
+// webhook, so the record is the only way Sona's calls reach it) or the model down (a call kept but not checked
+// for a rule slip). Then "no flag" is not "no slip" (§1B): the words for the flag's place, or null when whole.
+function sonaFlagGap(st) {
+  const rec = st.quoRecord || {};
+  if (rec.error || rec.unreadable) return 'Arbo could not read Sona’s calls from Quo’s record — her rule flags can’t all show here. No flag here is not the same as none.';
+  if (!st.reading) return 'Arbo cannot read Sona’s calls right now (no model key) — a rule slip can be missed, so no flag here is not the same as none.';
+  if (st.readsRetrying > 0) return 'Arbo could not read ' + plural(st.readsRetrying, 'Sona call') + ' yet (the AI model was unavailable) — a rule slip on ' + (st.readsRetrying === 1 ? 'it' : 'them') + ' can’t show until Arbo reads ' + (st.readsRetrying === 1 ? 'it' : 'them') + ', so no flag here is not the same as none.';
+  return null;
+}
 async function sonaPanel(limit, withTranscripts) {
   // M15: wiring that is not whole is tried again on its own \u2014 the line says when, so a wait never reads as a quiet phone.
   const quoRegLine = (reg) => reg.detail + (reg.retryAt ? ' Arbo tries again at ' + fmtTime(reg.retryAt) + ' \u2014 no redeploy needed.' : '');
@@ -1833,7 +1979,7 @@ async function sonaPanel(limit, withTranscripts) {
     w.dataset.feedName = 'Sona calls';
     return w;
   }
-  const wrap = el('div');
+  const wrap = el('div', 'sona-panel'); // P17 review: found on screen by a Call back on another screen (sonaCalledBack)
   wrap.appendChild(el('div', 'panel-title', 'Sona calls (Quo)'));
   const st = d.status;
   if (st.registration.state === 'not_configured') {
@@ -1862,23 +2008,30 @@ async function sonaPanel(limit, withTranscripts) {
     wrap.appendChild(el('div', 'feed-state unread', 'Arbo could not read ' + plural(st.readsRetrying, 'Sona call') + ' yet (the AI model was unavailable) — trying again every 10 minutes.' + (st.holds === 'read_only' ? '' : ' No hold is filed until it can.')));
   }
   const sona = d.calls.filter((c) => c.handledBy === 'sona');
-  if (st.callsWithSlips > 0) {
-    // Mike, 2026-10-20: "it doesnt say which one … is it clickable". Each call is
-    // a row that says who, when and which rule, and opens that call's red card.
-    const box = el('div', 'storm');
-    box.appendChild(el('div', '', 'Sona broke your rules on ' + plural(st.callsWithSlips, 'call') + ' — tap one to see what she said, then call them back.'));
-    const slipCalls = sona.filter((c) => c.slips.length);
-    for (const c of slipCalls) {
-      const f = c.facts || {};
-      const rules = [...new Set(c.slips.map((sl) => slipRuleLabel(sl.rule)))].join(', ');
-      const row = el('button', 'sliplink', (f.name || c.from || 'Caller') + ' · ' + fmtTime(c.at) + ' · ' + rules);
-      row.addEventListener('click', () => openSonaCall(c.callId));
-      box.appendChild(row);
-    }
-    // Calls older than the ones Arbo still holds are counted but cannot be opened: said, not hidden.
-    if (slipCalls.length < st.callsWithSlips) box.appendChild(el('div', '', plural(st.callsWithSlips - slipCalls.length, 'older call is', 'older calls are') + ' only in Quo now.'));
-    wrap.appendChild(box);
+  // Direction B P17: the calls Mike called back (this phone's marks, read once), only when a call asks him to act.
+  const done = sona.some(sonaNeedsYou) ? sonaHandled() : {};
+  // Direction B P16: on Calls & texts the red flag rides the Leads head above the segments (one builder,
+  // sonaSlipBox); Today keeps its own box here.
+  let flagBox = null;
+  if (!withTranscripts) {
+    flagBox = sonaSlipBox(d, done);
+    if (flagBox) wrap.appendChild(flagBox);
   }
+  // P17: a Call back here clears that caller at the tap, not at the next redraw — Today's own box is drawn
+  // again in its place (gone with its last flag), and every card from that caller gets its Handled line.
+  const cards = [];
+  const handledLine = (at) => el('div', 'storm-muted sona-handled', 'Handled — you tapped Call back at ' + fmtTime(new Date(at).toISOString()) + '.');
+  const calledBack = () => {
+    const now = sonaHandled();
+    if (flagBox) {
+      const box = sonaSlipBox(d, now);
+      if (box) wrap.insertBefore(box, flagBox);
+      flagBox.remove();
+      flagBox = box;
+    }
+    for (const k of cards) if (sonaNeedsYou(k.c) && now[k.c.callId] && !k.card.querySelector('.sona-handled')) k.card.insertBefore(handledLine(now[k.c.callId]), k.actions);
+  };
+  wrap.sonaCalledBack = calledBack;
   const rec = st.quoRecord || {};
   if (rec.error) {
     wrap.appendChild(el('div', 'storm', 'Arbo could not read Sona\u2019s calls from Quo (' + rec.error + ') \u2014 calls the webhook missed are not being learned. That doesn\u2019t mean no calls came in.'));
@@ -1970,13 +2123,23 @@ async function sonaPanel(limit, withTranscripts) {
     else if (f.treeDetails) card.appendChild(el('div', 'scope', f.treeDetails));
     if (f.requestedTime) card.appendChild(el('div', 'scope', 'Asked for: ' + f.requestedTime));
     for (const sl of c.slips) card.appendChild(el('div', 'storm', slipRuleLabel(sl.rule) + ' — Sona said: \u201c' + sl.said + '\u201d'));
+    // Direction B P17: a flag Mike cleared by calling back stays in history, said in a muted line.
     const hl = holdLine(c);
     if (hl) card.appendChild(el('div', hl[0], hl[1]));
+    if (sonaNeedsYou(c) && done[c.callId]) card.appendChild(handledLine(done[c.callId]));
     const actions = el('div', 'actions');
-    if (c.from) { const call = el('a', 'callbtn', 'Call back'); call.href = 'tel:' + c.from; actions.appendChild(call); }
+    cards.push({ c: c, card: card, actions: actions });
+    if (c.from) {
+      const call = el('a', 'callbtn', 'Call back');
+      call.href = 'tel:' + c.from;
+      // P17: calling back is handling it — every flag from this caller clears (ids only, on this phone); the phone app still dials.
+      call.addEventListener('click', () => { if (sonaCalledBack(c, d.calls)) calledBack(); });
+      actions.appendChild(call);
+    }
     card.appendChild(actions);
     if (withTranscripts && c.dialogue.length) {
       const det = document.createElement('details');
+      det.className = 'sona-tr'; // Direction B P16: Sona first puts this toggle on Calls & texts' first screen — 44 px tall
       det.appendChild(el('summary', '', 'Transcript (' + plural(c.dialogue.length, 'line') + ')'));
       for (const line of c.dialogue) det.appendChild(el('div', 'addr', (line.speaker === 'agent' ? 'Sona: ' : line.speaker === 'mike' ? 'You: ' : 'Caller: ') + line.text));
       card.appendChild(det);
@@ -2214,11 +2377,21 @@ async function receptionStrip() {
 // away, and the Leads tab carries its count. A leads feed Arbo could not read
 // is named on Today and on the tab — never a quiet no-badge (§1B).
 // The badge on the dock's Leads button: err = the failed read, or null with n = how many emergency leads.
-function leadsTabBadge(err, n) {
+// Direction B P16: the badge is built from two reads — the emergency leads (this half) and the Sona flags not
+// yet handled (from = 'sona', through sonaTabBadge). Each half is kept on the button: a count, or the feed kind
+// of a read that failed. A failed half never reads as 0: the other half's count shows with a gap marker in the
+// feed-state colours (or the plain gap dot when nothing is counted), and the label says which half is unknown.
+// A half not read yet is left out. The dot is the louder gap when both failed.
+function leadsTabBadge(err, n, from) {
   const btn = $('tab-leads');
+  // A partial read keeps what it counted beside its gap ('gap:unread:2'): the count shows, ringed, never a clean number.
+  btn.dataset[from === 'sona' ? 'sonaHalf' : 'leadsHalf'] = err ? 'gap:' + feedKind(err) + (n ? ':' + n : '') : String(n || 0);
+  const half = (s) => (!s ? null : s.startsWith('gap:') ? { k: s.split(':')[1], n: Number(s.split(':')[2]) || 0 } : { n: Number(s) || 0 });
+  const L = half(btn.dataset.leadsHalf), S = half(btn.dataset.sonaHalf);
+  const count = (L && L.n || 0) + (S && S.n || 0);
+  const k = ['unread', 'unset', 'sim', 'cut'].find((x) => (L && L.k === x) || (S && S.k === x)) || null;
   let dot = btn.querySelector('.dot');
-  const k = err ? feedKind(err) : null;
-  if (!k && !n) {
+  if (!k && !count) {
     if (dot) dot.remove();
     btn.removeAttribute('aria-label');
     btn.removeAttribute('title');
@@ -2229,17 +2402,26 @@ function leadsTabBadge(err, n) {
     dot.setAttribute('aria-hidden', 'true'); // the button's own label says it in words
     btn.appendChild(dot);
   }
-  dot.className = 'dot' + (k ? ' gap ' + k : '');
-  dot.textContent = k ? '' : String(n);
-  const say = k ? 'Leads: ' + FEED_WORD[k] + '. Emergency leads unknown — not zero.' : 'Leads: ' + plural(n, 'emergency lead');
+  dot.className = 'dot' + (k ? (count ? ' part p-' + k : ' gap ' + k) : '');
+  dot.textContent = count ? String(count) : '';
+  const parts = [];
+  if (L && L.k) parts.push(FEED_WORD[L.k] + '. Emergency leads unknown — not zero.');
+  else if (L && L.n) parts.push(plural(L.n, 'emergency lead'));
+  if (S && S.k) parts.push((S.n ? plural(S.n, 'Sona flag') + ' not handled. ' : '') + 'Sona calls: ' + FEED_WORD[S.k] + '. Sona calls unknown — not zero.');
+  else if (S && S.n) parts.push(plural(S.n, 'Sona flag') + ' not handled');
+  const say = 'Leads: ' + parts.map((p, i) => (i < parts.length - 1 && !p.endsWith('.') ? p + '.' : p)).join(' ');
   btn.setAttribute('aria-label', say);
   btn.title = say;
 }
+// The Sona half of the Leads tab's badge: err = Quo's read that failed (or Quo not set up), or null with n = the
+// red Sona flags not yet handled. The head (renderLeadsHead) reads Quo for it every minute.
+function sonaTabBadge(err, n) { leadsTabBadge(err, n, 'sona'); }
 
 // Leads, scrolled to one lead. Leads redraws first, so the card is the current one;
 // a lead filed since stays at the top of the list instead. A spam Undo still on
 // offer holds the redraw (holdsTyping, as the minute timer does) unless this lead is not on Leads yet.
 async function openLead(id) {
+  leadsFilter('all'); // Direction B P16: a lead Mike is sent to is never hidden by a filter chip
   switchTab('leads');
   if (!holdsTyping($('view-leads')) || !document.getElementById('lead-' + id)) await renderLeads();
   const c = document.getElementById('lead-' + id);
@@ -2510,7 +2692,7 @@ async function fillAssistToday(slot) {
   if (!list) { slot.appendChild(el('div', 'feed-state unread', 'Assistant: couldn’t read what’s waiting. ' + RETRY)); return; }
   if (list.length) slot.appendChild(el('div', 'panel-title', 'Waiting for your OK'));
   if (!s) { if (!(st.reason && st.reason.code === 401)) slot.appendChild(feedLine(st.status === 'rejected' ? st.reason : null, 'Assistant status')); }
-  else if (s.state === 'error') slot.appendChild(el('div', 'feed-state unread', 'Assistant: ' + (s.reason ? String(s.reason).replace(/\.\s*$/, '') : 'something is wrong and Arbo didn’t say what') + '. Open More → Assistant.'));
+  else if (s.state === 'error') slot.appendChild(el('div', 'feed-state unread', 'Assistant: ' + (s.reason ? String(s.reason).replace(/\.\s*$/, '') : 'something is wrong and Arbo didn’t say what') + '. Open Office → Assistant.'));
   for (const a of list.slice(0, 4)) slot.appendChild(approvalRow(a));
   if (list.length > 4) {
     const more = el('button', 'hudbtn approw-all', 'All ' + list.length + ' waiting →');
@@ -2562,7 +2744,7 @@ function assistStateLine(s) {
 }
 const ASSIST_STATE = { ready: ['ON', 'good'], off: ['OFF', 'info'], not_set_up: ['NOT SET UP', 'watch'], error: ['ERROR', 'stop'] };
 
-// The desk (More → Assistant): is it on, what it asks first, what is waiting, what it did.
+// The desk (Office → Assistant): is it on, what it asks first, what is waiting, what it did.
 let ASSIST_GEN = 0;
 async function renderAssistant() {
   const gen = ++ASSIST_GEN;
@@ -3228,6 +3410,170 @@ $('y-go').addEventListener('click', async () => {
   out.appendChild(box);
 });
 
+// ---------- The Leads hub's head (Direction B P16; R29 #1: "Calls folds into Leads … a red Sona flag stays above
+// the segments, just as loud as today, so it never sinks into the second segment") ----------
+// One head over New leads and Calls & texts alike, outside both views: an open transcript on Calls & texts never
+// holds New leads, and the reverse (each view keeps its own minute hold). "Front Desk", what each segment holds,
+// the red Sona flag ABOVE the segments, the two segments (each tap a Back step), and New leads' filter chips. It
+// makes its own two reads (the leads, and Quo) — every minute, even while both views hold (autoRefresh) — and
+// keeps the Leads tab's badge current on every screen. A redraw keeps the old head up until both reads land; the
+// newest draw owns it. Every count is from a read that succeeded: one that failed is '–' with its feed word, a
+// segment never shows a bare 0, and "nothing here" is said only when the read was whole (§1B).
+let LH_GEN = 0;
+let LEADS_FILTER = 'all'; // New leads' filter chip — kept here, so it survives the minute redraw (not a Back step)
+const LEADS_FILTERS = [['all', 'All'], ['emergency', 'Emergency'], ['callback', 'Call back']];
+async function renderLeadsHead() {
+  const h = $('leads-head');
+  const gen = ++LH_GEN;
+  const title = (text, cls, gap) => {
+    const n = el('h1', cls, text);
+    if (gap) n.appendChild(el('span', 'h1-gap', ' · ' + gap));
+    return n;
+  };
+  if (!h.hasChildNodes()) {
+    const head0 = el('div', 'viewhead');
+    head0.appendChild(el('div', 'eyebrow', 'Front Desk'));
+    head0.appendChild(title(VIEW_TITLES.leads, ''));
+    h.replaceChildren(head0, readingLine());
+  }
+  // A body without the list it should carry is a read that failed — never "no leads", never "no calls".
+  const read = (path, ok) => api(path).then((d) => { if (!ok(d)) throw new Error('unreadable'); return { d: d }; }).catch((e) => ({ e: e }));
+  const [lr, qr] = await Promise.all([
+    read('/api/leads?limit=50', (d) => d && Array.isArray(d.leads)),
+    read('/api/quo', (d) => d && d.status && d.status.registration && Array.isArray(d.calls)),
+  ]);
+  if (gen !== LH_GEN || (lr.e && lr.e.code === 401) || (qr.e && qr.e.code === 401)) return; // a newer draw, or the key wall
+  const links = await LINKS_READY; // whether db_not_configured means "cut", and the practice data's words
+  if (gen !== LH_GEN) return;
+
+  // New leads. R32: an older lead is never new work. The alarm count is the badge's (an emergency marked Good is acted on).
+  let L = null, lk = null;
+  if (lr.d) {
+    const fresh = lr.d.leads.filter((l) => !l.older);
+    L = { n: fresh.length, alarm: lr.d.leads.filter((l) => l.isEmergency && l.status !== 'qualified').length,
+      // A chip's number is the cards it shows: Call back keeps the EMERGENCY cards (they show under every filter).
+      emg: fresh.filter((l) => l.isEmergency).length, cb: fresh.filter((l) => l.needsCallback || l.isEmergency).length };
+    leadsTabBadge(null, L.alarm);
+  } else {
+    lk = feedKind(lr.e);
+    leadsTabBadge(lr.e);
+  }
+  // Calls & texts: the calls that ask Mike to act (sonaNeedsYou: the red ones, and the ones he must book) and the red flags. A counted slip
+  // older than the calls Arbo still holds is still a flag ("… only in Quo now"). Quo not set up is a gap of its own.
+  let S = null, qk = null, qe = null, done = {};
+  if (qr.e) qe = qr.e;
+  else if (qr.d.status.registration.state === 'not_configured') qe = { code: 503, message: links === 'simulation' ? 'not_simulated' : 'quo_not_configured' };
+  else {
+    const st = qr.d.status, rec = st.quoRecord || {};
+    const sona = qr.d.calls.filter((c) => c.handledBy === 'sona');
+    const older = Math.max(0, (st.callsWithSlips || 0) - sona.filter((c) => c.slips.length).length);
+    // Direction B P17: a flag Mike cleared by calling back (this phone's marks) leaves the count, the flag and the badge.
+    done = sonaHandled();
+    const open = (c) => !done[c.callId];
+    S = {
+      flags: sona.filter((c) => c.slips.length > 0 && open(c)).length + older,
+      // Review round (R33): a call Mike must book himself needs him too — its card says so. Red ones color the pill.
+      need: sona.filter((c) => sonaNeedsYou(c) && open(c)).length + older,
+      red: sona.filter((c) => open(c) && (c.slips.length > 0 || (c.facts && c.facts.emergency) || c.hold === 'failed')).length + older,
+      // "No call needs you" only over a whole read: wired, checked by the model, the week read through, nothing retrying.
+      whole: (st.registration.state === 'ok' || st.registration.state === 'read_only') && !!st.reading && !rec.error && !rec.unreadable
+        && !(rec.weekThreadsNotRead > 0) && !!rec.weekReadOkAt && !(st.readsRetrying > 0),
+      // Quo answered, but its record or the model did not: the flags counted are not all the flags (§1B, R33).
+      gap: sonaFlagGap(st),
+    };
+  }
+  if (qe) qk = feedKind(qe);
+  // A partial Sona read is a gap on its half of the badge, with what it did count: never a clean zero.
+  sonaTabBadge(qe || (S && S.gap ? { message: 'sona_partial' } : null), S ? S.flags : 0);
+
+  const out = [];
+  const head = el('div', 'viewhead');
+  head.appendChild(el('div', 'eyebrow', 'Front Desk'));
+  head.appendChild(L
+    ? title(L.n ? plural(L.n, 'new lead') + (L.alarm ? ', ' + plural(L.alarm, 'emergency', 'emergencies') : '')
+      : links === 'simulation' ? 'No new leads' : 'New leads are not in Arbo', 'lh-leads') // R4: on real data, an unfed list — never a 0
+    : title(VIEW_TITLES.leads, 'lh-leads', FEED_WORD[lk]));
+  head.appendChild(S
+    ? title(S.need ? plural(S.need, 'call needs you', 'calls need you') : S.whole ? 'No call needs you right now' : 'No call Arbo read needs you', 'lh-calls')
+    : title(VIEW_TITLES.calls, 'lh-calls', FEED_WORD[qk]));
+  out.push(head);
+  // The red Sona flag, above the segments and on both. Quo unreadable: a named line in its place; Quo not set up: the fold's words, once.
+  // Each part of the flag's place carries lh-flag: no rule may hide it on either segment (the review's CSS guard).
+  const flagPart = (n) => { n.classList.add('lh-flag'); out.push(n); };
+  if (S) {
+    const box = sonaSlipBox(qr.d, done);
+    if (box) flagPart(box);
+    if (S.gap) flagPart(el('div', 'feed-state unread', S.gap)); // named in the flag's place, under any flag it did read
+  } else if (qr.e) flagPart(feedLine(qr.e, 'Sona calls (Quo)', 'Her rule flags can’t show here — not the same as none.'));
+  else flagPart(quoOffLine(links));
+  // The two segments: a count only when there is one; a read that failed is '–' and its feed word, never a 0.
+  const segs = el('div', 'seg lseg');
+  segs.setAttribute('role', 'group');
+  segs.setAttribute('aria-label', 'Leads and Calls & texts');
+  const segBtn = (view, label, n, k, hot) => {
+    const b = el('button', 'lseg-btn');
+    b.type = 'button';
+    b.dataset.seg = view;
+    b.appendChild(el('span', '', label));
+    // A partial read (a count and a gap) keeps its count beside the feed word: never a clean number, never a 0.
+    if (k && !n) b.appendChild(el('span', 'lcount gap', '–'));
+    else if (n) b.appendChild(el('span', 'lcount' + (hot ? ' hot' : ''), String(n)));
+    if (k) b.appendChild(el('small', '', FEED_WORD[k]));
+    b.setAttribute('aria-label', label + ': ' + (k ? (n ? n + ' counted, ' + FEED_WORD[k] + ' — not the whole count' : FEED_WORD[k] + ' — not a zero') : n ? String(n) : 'none to count'));
+    b.addEventListener('click', () => switchTab(view)); // one Back step each (switchTab → navPush)
+    segs.appendChild(b);
+  };
+  segBtn('leads', 'New leads', L ? L.n : 0, lk, false);
+  segBtn('calls', 'Calls & texts', S ? S.need : 0, qk || (S && S.gap ? 'unread' : null), !!(S && S.red));
+  out.push(segs);
+  // New leads' filter chips — from a read that landed, with leads to filter. Not Back steps: the list stays the same screen.
+  if (L && L.n) {
+    const chips = el('div', 'lchips');
+    chips.setAttribute('role', 'group');
+    chips.setAttribute('aria-label', 'Show');
+    const n = { all: L.n, emergency: L.emg, callback: L.cb };
+    for (const [f, label] of LEADS_FILTERS) {
+      const c = el('button', 'lchip');
+      c.type = 'button';
+      c.dataset.filter = f;
+      c.appendChild(el('span', '', label));
+      c.appendChild(el('b', '', String(n[f])));
+      c.addEventListener('click', () => leadsFilter(f));
+      chips.appendChild(c);
+    }
+    out.push(chips);
+    // A filter that would show nothing says so, never a blank list (EMERGENCY cards show under every filter).
+    if (!L.emg) { const z = el('div', 'storm-muted filter-none', 'No new lead is an emergency. All shows every lead.'); z.dataset.for = 'emergency'; out.push(z); }
+    if (!L.cb) { const z = el('div', 'storm-muted filter-none', 'No new lead is waiting on a call back. All shows every lead.'); z.dataset.for = 'callback'; out.push(z); }
+  } else LEADS_FILTER = 'all'; // no chips on screen, no filter: a lead is never hidden under a chip Mike cannot see (§1B)
+  h.replaceChildren(...out);
+  leadsHeadOn(CUR_TAB);
+  leadsFilter(LEADS_FILTER);
+}
+// Which Leads screen is on: the head shows over Leads and Calls & texts (a class, never [hidden] — the .sys
+// lesson) and its segment says which is pressed. switchTab calls it on every switch.
+function leadsHeadOn(which) {
+  const h = $('leads-head');
+  // Leaving the Leads hub puts the filter back to All, so coming back never shows part of the list under a
+  // headline that counts all of it. Calls & texts is the same hub: the filter waits there.
+  if (which !== 'leads' && which !== 'calls' && LEADS_FILTER !== 'all') leadsFilter('all');
+  h.classList.toggle('on', which === 'leads' || which === 'calls');
+  h.classList.toggle('calls', which === 'calls');
+  for (const b of h.querySelectorAll('.lseg-btn')) {
+    b.classList.toggle('on', b.dataset.seg === which);
+    b.setAttribute('aria-pressed', b.dataset.seg === which ? 'true' : 'false');
+  }
+}
+// New leads' filter: kept in LEADS_FILTER, set on #view-leads (CSS does the hiding) and on the head (its chip
+// pressed, its "nothing to show" line). Not a Back step.
+function leadsFilter(f) {
+  LEADS_FILTER = f;
+  $('view-leads').dataset.filter = f;
+  const h = $('leads-head');
+  h.dataset.filter = f;
+  for (const c of h.querySelectorAll('.lchip')) c.setAttribute('aria-pressed', c.dataset.filter === f ? 'true' : 'false');
+}
+
 // ---------- Leads ----------
 // Direction B P8: a lead's longer lines fold to two; a tap opens (and folds) them.
 // Direction B P8 review: the lines Mike opened, by lead and line ('L1:details'), so
@@ -3238,10 +3584,11 @@ const LEAD_OPEN = new Set();
 // "gets home at 3", "call her cell"), so a line that carries one never folds. Broad on
 // purpose: a line kept whole by mistake costs a line of screen; one folded by mistake hides a rule.
 const CONTACT_LINE = /\b(?:call|text|phone|ring)\s+(?:first|ahead|before|after|only|between|her|his|their|my|the|me|him|them)\b|\b(?:text|calls?)\s+only\b|\b(?:do\s*n[o’']?t|never|no)\s+(?:call|text|knock|ring)|\b(?:gets?|be|is|are)\s+home\b|[’']s\s+home\b|\bhome\s+(?:by|after|at|around|before)\b|\b(?:cell|mobile|landline|work (?:number|phone))\b|\b(?:before|after|until|between)\s+\d|\b\d{1,2}(?::\d\d)?\s*[ap]\.?m\b|\bvoicemail\b|\bask for\b|\bspeak (?:to|with)\b/i;
-function clampLine(text, key) {
+function clampLine(text, key, hit) {
   if (CONTACT_LINE.test(text)) return el('div', 'scope', text);
   const n = el('div', 'scope clamp' + (key && LEAD_OPEN.has(key) ? ' open' : ''), text);
-  n.addEventListener('click', () => {
+  // The tap lands on `hit` when given (the one-line summary: a 44 px box around it), else on the line itself.
+  (hit || n).addEventListener('click', () => {
     n.classList.toggle('open');
     if (key) { if (n.classList.contains('open')) LEAD_OPEN.add(key); else LEAD_OPEN.delete(key); }
   });
@@ -3267,8 +3614,13 @@ async function renderLeads() {
     // The boot /health read decides whether db_not_configured means cut.
     await LINKS_READY;
     leadsTabBadge(e); // the tab says it too (R26)
+    // Direction B P16: New leads' feeds card counts it, and the named state stays where the list would be.
+    // The card is counted before it goes up, so it never says "Reading…" over a read that already landed.
+    const dead = feedState(e, 'Leads', 'an empty inbox');
+    const feeds = feedsCard('leads');
+    await feeds.note('Leads', dead, feedKind(e));
     if (kept()) return; // the tab names it now; the page says it on the next redraw
-    v.replaceChildren(feedState(e, 'Leads', 'an empty inbox'));
+    v.replaceChildren(feeds.el, dead);
     return;
   }
   leadsTabBadge(null, data.leads.filter((l) => l.isEmergency && l.status !== 'qualified').length); // the same count as emergencyLeads
@@ -3299,13 +3651,16 @@ async function renderLeads() {
     (rank[a.quality.priority] - rank[b.quality.priority]) ||
     (new Date(b.createdAt) - new Date(a.createdAt)));
   let olderTitled = false;
+  // Direction B P16: a past-work or permit read cut on purpose (R32 — the jobs and permits links stay cut) is one
+  // line in New leads' feeds card, not a line on every lead; one Arbo couldn't read stays on its lead (§1B).
+  let cutPast = false, cutPermit = false;
   for (const lead of leads) {
     if (lead.older && !olderTitled) {
       olderTitled = true;
-      out.push(el('div', 'panel-title', 'Older leads — more than 14 days old'));
-      out.push(el('div', 'storm-muted', 'Shown for the record with the day each came in. Not new work, and nothing here asks you to call anyone.'));
+      out.push(el('div', 'panel-title older-head', 'Older leads — more than 14 days old'));
+      out.push(el('div', 'storm-muted older-head', 'Shown for the record with the day each came in. Not new work, and nothing here asks you to call anyone.'));
     }
-    const c = el('div', 'card' + (lead.isEmergency ? ' emergency' : '') + (lead.needsCallback ? ' callback' : ''));
+    const c = el('div', 'card lead' + (lead.isEmergency ? ' emergency' : '') + (lead.needsCallback ? ' callback' : ''));
     c.id = 'lead-' + lead.id; // where Today's emergency card lands (openLead)
     if (lead.needsCallback) c.appendChild(el('div', 'cb-label', 'Call back needed'));
     const top = el('div', 'toprow');
@@ -3315,9 +3670,16 @@ async function renderLeads() {
     // app does, with Mike's thumb on it. Direction B P8: a round button in the top
     // row (it was a full-width slab), so about twice as many leads fit a screen.
     // An older lead carries no Call back button: contacting anyone is Mike's call (R32).
-    // With the button, the city rides beside the time under the name (one line less).
-    const where = lead.city ? el('div', 'addr', lead.city + (lead.zip ? ' · ' + lead.zip : '')) : null;
-    let whereInTop = false;
+    // Direction B P16: the one-line summary — where (city · ZIP) and what they said, one line, a tap opens it.
+    // With the button it rides the top row under the name; without one, it is the line under the top row.
+    // A line that carries a contact instruction is never folded (§5.9): clampLine keeps it whole, and it keeps
+    // a line of its own below instead of the summary's.
+    const sum = el('div', 'lsum');
+    if (lead.city) sum.appendChild(el('div', 'addr', lead.city + (lead.zip ? ' · ' + lead.zip : '')));
+    const said = lead.details ? clampLine(lead.details, lead.id + ':details', sum) : null; // a tap anywhere on the summary opens it
+    const sayInSum = !!said && said.classList.contains('clamp');
+    if (sayInSum) sum.appendChild(said);
+    let sumInTop = false;
     if (lead.phone && !lead.older) {
       const call = el('a', 'callbtn round');
       call.href = 'tel:' + lead.phone;
@@ -3326,7 +3688,7 @@ async function renderLeads() {
       call.appendChild(el('span', 'sr-only', 'Call back'));
       top.classList.add('has-call');
       top.appendChild(call);
-      if (where) { top.appendChild(where); whereInTop = true; }
+      if (sum.hasChildNodes()) { top.appendChild(sum); sumInTop = true; }
     }
     c.appendChild(top);
     if (lead.older) {
@@ -3334,13 +3696,14 @@ async function renderLeads() {
       c.appendChild(el('div', 'scope', 'Older lead — came in ' + plural(lead.ageDays || 0, 'day') + ' ago.'
         + (lead.filedAsEmergency ? ' Filed as an emergency then — not a live alarm.' : '')));
     }
-    if (where && !whereInTop) c.appendChild(where);
-    // Direction B P8: past work and what they said fold to two lines; a tap opens them.
+    if (sum.hasChildNodes() && !sumInTop) c.appendChild(sum);
+    // Direction B P8: past work folds to two lines; a tap opens it.
     if (lead.history) c.appendChild(clampLine('' + lead.history, lead.id + ':history'));
-    // §1B: a past-work read that failed is named — a missing line is not "no history".
-    // R32: a link cut on purpose is said as "cut", never "couldn't read it — try again".
-    else if (lead.historyUnreadable) c.appendChild(feedLine(lead.historyCut ? { code: 503, message: 'link_cut' } : null, 'Past work'));
-    if (lead.details) c.appendChild(clampLine(lead.details, lead.id + ':details'));
+    // §1B: a past-work read that failed is named on its lead — a missing line is not "no history".
+    // R32: a link cut on purpose is said as "cut" (once, in the feeds card), never "couldn't read it — try again".
+    else if (lead.historyUnreadable && !lead.historyCut) c.appendChild(feedLine(null, 'Past work'));
+    if (lead.historyUnreadable && lead.historyCut) cutPast = true;
+    if (said && !sayInSum) c.appendChild(said);
     // Line 1 is triage + who they are; EMERGENCY already outranks HOT, so an
     // emergency lead carries no second red-ish chip beside it.
     const b = el('div', 'badges');
@@ -3360,7 +3723,9 @@ async function renderLeads() {
     if (pb) { const pr = el('div', 'badges'); pr.style.marginTop = '6px'; pr.appendChild(pb); c.appendChild(pr); }
     // §1B: a permit read that FAILED is not "screen pending". It is named in the
     // feed-state words under the badges — never as a permit badge (wording is Mike's, X6).
-    if (lead.permitUnreadable) c.appendChild(feedLine(lead.permitCut ? { code: 503, message: 'link_cut' } : null, 'Permit screen'));
+    // R32: one cut on purpose is said once, as "cut", in the feeds card (P16), not on every lead.
+    if (lead.permitUnreadable && !lead.permitCut) c.appendChild(feedLine(null, 'Permit screen'));
+    if (lead.permitUnreadable && lead.permitCut) cutPermit = true;
     // §9 one-tap actions: file the lead (Call back sits in the top row).
     const row = el('div', 'actions');
     // Said in words, never a bare glyph: a one-tap SPAM on a lead must say what
@@ -3455,6 +3820,19 @@ async function renderLeads() {
     }
     c.appendChild(row);
     out.push(c);
+  }
+  // Direction B P16: New leads' feeds card, on top, when a read behind the list is off — each such feed one line,
+  // folded into the card (R29 #1: one feeds card per screen that still names every dead feed).
+  if (cutPast || cutPermit) {
+    const feeds = feedsCard('leads');
+    const cutLine = (what) => {
+      const n = feedLine({ code: 503, message: 'link_cut' }, what, 'It shows on no lead below.');
+      n.dataset.off = 'cut';
+      n.dataset.feedName = what;
+      return n;
+    };
+    await Promise.all([cutPast && feeds.place(v, cutLine('Past work')), cutPermit && feeds.place(v, cutLine('Permit screen'))]);
+    out.unshift(feeds.el);
   }
   if (kept()) return;
   v.replaceChildren(...out);
@@ -4113,17 +4491,26 @@ async function renderCalls() {
   const page = first ? v : el('div');
   let reading = null;
   if (first) { reading = el('div', 'slot'); reading.appendChild(readingLine()); v.appendChild(reading); }
+  // Direction B P16: Leads › Calls & texts, in the mockup's order — Sona's calls first (her red cards on the first
+  // screen; the red flag itself rides the Leads head above the segments), then the customer study, outreach, texts
+  // and photos, notes, and Arbo's own line. One feeds card, under Sona's calls: a feed cut on purpose, not in the
+  // practice data or not set up folds into it; one Arbo couldn't read stays where it shows and is counted too.
+  const feeds = feedsCard('calls');
+  const off = (cls, words, kind, name) => { const n = el('div', cls, words); n.dataset.off = kind; n.dataset.feedName = name; return n; };
+  // Sona via Quo — every call, with transcripts.
+  const sonaCallsSlot = el('div', 'slot');
+  page.appendChild(sonaCallsSlot);
+  // The card goes up with its page, never ahead of it (release): a first draw keeps one "Reading…".
+  const feedsAt = el('div', 'slot plain feeds-at');
+  page.appendChild(feedsAt);
   // R24 customer notes — every customer thread, read-only.
   const studyFull = el('div', 'slot');
   page.appendChild(studyFull);
   // R22 text outreach — the full list: who is ready, who was texted.
   const outreachFull = el('div', 'slot');
   page.appendChild(outreachFull);
-  // Sona via Quo — every call, with transcripts.
-  const sonaCallsSlot = el('div', 'slot');
-  page.appendChild(sonaCallsSlot);
-  // The three fill together, so a Quo that is not connected is ONE card here too, as on Today.
-  fills.push(fillQuoSlots([studyPanel(60), outreachPanel(true), sonaPanel(20, true)], [studyFull, outreachFull, sonaCallsSlot]));
+  // The three fill together, so a Quo that is not connected is ONE card (in the feeds card here, as on Today).
+  fills.push(fillQuoSlots([sonaPanel(20, true), studyPanel(60), outreachPanel(true)], [sonaCallsSlot, studyFull, outreachFull], feeds.place, true));
   // Texts + photos sent to the Arbo number (Mike, 2026-09-24). Receive only.
   // '.texts': the business-cell line hangs under the Arbo-line row's text (two peer lines).
   const txSlot = el('div', 'slot texts');
@@ -4137,18 +4524,20 @@ async function renderCalls() {
       txSlot.appendChild(e.code === 401
         ? el('div', 'feed-state unset', 'Texts: locked — either this phone’s key was not accepted, or APP_ACCESS_KEY isn’t set on the server. That doesn’t mean there are no texts.')
         : feedLine(e, 'Texts'));
+      if (e.code !== 401) await feeds.note('Texts', txSlot, feedKind(e)); // counted on the card, named here
       return;
     }
     txSlot.appendChild(el('div', 'panel-title', 'Texts'));
     // Two lines, two honest states (§1B): the Arbo number needs the Twilio
     // webhook; the business cell needs the iPhone Shortcut. Neither missing
     // piece may read as "no texts". R21: a cut line is not an unset one.
+    // Direction B P16: Arbo's own line is cut on purpose (R21, retired by R36) — its texts are one line in the feeds card.
     if (t.linkCut) {
-      txSlot.appendChild(el('div', 'feed-state cut',
-        'Arbo line (757-821-6983): disconnected while Sona handles calls — this is not zero texts. Nothing was deleted.'));
+      await feeds.place(txSlot, off('feed-state cut',
+        'Arbo line (757-821-6983): disconnected while Sona handles calls — this is not zero texts. Nothing was deleted.', 'cut', 'Arbo line texts'));
     } else if (!t.wired) {
-      txSlot.appendChild(el('div', 'feed-state unset',
-        'Arbo line (757-821-6983): incoming texts aren’t set up in Twilio yet — this is not zero texts.'));
+      await feeds.place(txSlot, off('feed-state unset',
+        'Arbo line (757-821-6983): incoming texts aren’t set up in Twilio yet — this is not zero texts.', 'unset', 'Arbo line texts'));
     }
     // R33: the Quo texts hook is one Arbo won't create while read-only — Quo
     // texts never land here, which is not the same as none coming in (§1B).
@@ -4193,7 +4582,7 @@ async function renderCalls() {
     let n;
     try { n = await api('/api/relay/call-notes'); }
     catch (e) { // §1B: an unread notes feed keeps its title and says so; a 401 is the backlog read's to send to the key wall
-      if (e.code !== 401) { cnSlot.appendChild(el('div', 'panel-title', 'Notes from calls you answered')); cnSlot.appendChild(feedLine(e, 'Call notes')); }
+      if (e.code !== 401) { cnSlot.appendChild(el('div', 'panel-title', 'Notes from calls you answered')); cnSlot.appendChild(feedLine(e, 'Call notes')); await feeds.note('Call notes', cnSlot, feedKind(e)); }
       return;
     }
     if (!n.notes.length) return;
@@ -4219,16 +4608,16 @@ async function renderCalls() {
   fills.push((async () => {
     let t;
     try { t = await api('/api/webhooks/calls'); }
-    catch (e) { if (e.code !== 401) trSlot.appendChild(feedLine(e, 'Call transcripts')); return; } // §1B: unread is named, never an absent row
+    catch (e) { if (e.code !== 401) { trSlot.appendChild(feedLine(e, 'Call transcripts')); await feeds.note('Call transcripts', trSlot, feedKind(e)); } return; } // §1B: unread is named, never an absent row
     // R21: cut on purpose is not "not set up" (§1B). The call log below
-    // carries this card's one "not zero calls".
+    // carries this card's one "not zero calls". Direction B P16: either is one line in the feeds card.
     if (t.linkCut) {
-      trSlot.appendChild(el('div', 'feed-state cut',
-        'Call transcripts: disconnected while Sona handles calls. Sona answers on the Quo line — its status is in the Quo card above.'));
+      await feeds.place(trSlot, off('feed-state cut',
+        'Call transcripts: disconnected while Sona handles calls. Sona answers on the Quo line — its status is in the Quo card above.', 'cut', 'Call transcripts'));
       return;
     }
     if (!t.wired) {
-      trSlot.appendChild(el('div', 'feed-state unset', 'Call transcripts: not set up yet.'));
+      await feeds.place(trSlot, off('feed-state unset', 'Call transcripts: not set up yet.', 'unset', 'Call transcripts'));
       return;
     }
     if (!t.transcripts.length) return;
@@ -4250,10 +4639,15 @@ async function renderCalls() {
       trSlot.appendChild(c);
     }
   })());
-  // The held height goes once every slot has landed, on every way out below.
+  // The held height goes once every slot has landed, on every way out below. The feeds card goes up with its page;
+  // a page kept as Mike left it (keepsPage) keeps its own card. Arbo's own line with both its feeds folded into the
+  // card keeps no title alone in an empty card (.slot:empty).
   const release = () => Promise.allSettled(fills).then(() => {
     if (reading) reading.remove();
-    if (!first && !keepsPage(v, taps0, byTimer)) v.replaceChildren(...page.childNodes);
+    const swap = !first && !keepsPage(v, taps0, byTimer);
+    if (first || swap) feedsAt.appendChild(feeds.el);
+    if (ownSlot.children.length === 2 && !trSlot.hasChildNodes()) ownSlot.replaceChildren();
+    if (swap) v.replaceChildren(...page.childNodes);
     v.style.minHeight = '';
   });
   let data;
@@ -4262,8 +4656,12 @@ async function renderCalls() {
   } catch (e) {
     if (e.code === 401) { release(); return showKeywall(); }
     await LINKS_READY; // 'cut' vs 'not set up' needs /health's answer
-    // One line in the card, never a big dashed box: the log is one feed of this line.
-    ownSlot.appendChild(feedLine(e, 'Call log', 'This is not zero calls.'));
+    // One line in the card, never a big dashed box: the log is one feed of this line. Direction B P16: cut on
+    // purpose, not in the practice data or not set up, it is that line in the feeds card; unread, it stays here.
+    const n = feedLine(e, 'Call log', 'This is not zero calls.');
+    n.dataset.off = feedKind(e);
+    n.dataset.feedName = 'Call log';
+    await feeds.place(ownSlot, n);
     release();
     return;
   }
@@ -5912,13 +6310,13 @@ async function renderFollowUps() {
   }
   if (gen !== FU_GEN) return;
   // The server drops storm and coming-due nudges it could not check, and says
-  // so. 'Queue clear' must never be drawn over a feed Arbo could not read.
+  // so. 'No follow-ups due' must never be drawn over a feed Arbo could not read.
   const unread = [];
   if (q.seasonalUnavailable) unread.push('storm nudges (weather feed unreadable)');
   if (q.growthUnavailable) unread.push('coming-due nudges (property records unreadable)');
   if (unread.length) fuSlot.appendChild(el('div', 'feed-state unread', 'Arbo could not check ' + unread.join(' or ') + '. This is not a claim that none are due.'));
   if (!q.due.length) {
-    fuSlot.appendChild(state(unread.length ? 'Nothing due from what Arbo could read' : 'Queue clear',
+    fuSlot.appendChild(state(unread.length ? 'Nothing due from what Arbo could read' : 'No follow-ups due',
       'Estimate follow-ups, review asks, and no-show saves land here when due.'));
   }
   for (const a of q.due) {
@@ -6830,9 +7228,8 @@ function renderMore() {
   });
   tile('i-agents', 'Agents', 'Eight desks, one brain', () => { switchTab('agents'); renderAgents(); });
   // Direction B P14: the four desks the Queue held, Numbers and Teach Arbo are Office's counted desk
-  // tiles above (OFFICE_DESKS; no two Office tiles share an icon). P15: Book, Permits and Measure live
-  // under Estimate now — one tile opens it until the dock gets its own Estimate tab (P19).
-  tile('i-tree', 'Estimate', 'Prep, permit rules, measure', () => switchTab('estimate'));
+  // tiles above (OFFICE_DESKS; no two Office tiles share an icon). P15/P19: Book, Permits and Measure live
+  // under Estimate, which has its own dock tab now — Office carries no tile for it.
   // R26: look only — the crew's page, on this app's key, and it cannot sign,
   // file or clock in. Same tab on purpose: an installed iPhone app keeps its
   // own saved data, so a new tab might not have the key.
@@ -7232,7 +7629,7 @@ const noRefs = (s) => s.replace(/^#\d+\s*/, '').replace(/\s*\((?:R\d+|§)[^)]*\)
 // A proposal opens the screen where Mike acts on it: [button, tab]. A kind with no screen stays plain text.
 // Direction B P13: the Queue's proposals open the desk that holds their panel.
 const PROPOSAL_GO = {
-  call_review: ['Open Calls →', 'calls'],
+  call_review: ['Open Calls & texts →', 'calls'],
   route_fix: ['Open the Calendar →', 'cal'], weather_hold_review: ['Open the Calendar →', 'cal'],
   decide_open_loops: ['Open Follow-ups →', 'followups'],
   collections_review: ['Open Money →', 'money'],
@@ -7747,12 +8144,12 @@ async function renderLearn() {
   }
 }
 
-const VIEW_TITLES = { learn: 'Teach Arbo', measure: 'Measure', agents: 'Agents', permits: 'Permit rules', today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Properties on file', estimate: 'Estimate', followups: 'Follow-ups', money: 'Money', fleet: 'Fleet', safety: 'Crew & safety', calls: 'Calls', perf: 'Numbers', settings: 'Settings', more: 'Office', assistant: 'Assistant' };
+const VIEW_TITLES = { learn: 'Teach Arbo', measure: 'Measure', agents: 'Agents', permits: 'Permit rules', today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Properties on file', estimate: 'Estimate', followups: 'Follow-ups', money: 'Money', fleet: 'Fleet', safety: 'Crew & safety', calls: 'Calls & texts', perf: 'Numbers', settings: 'Settings', more: 'Office', assistant: 'Assistant' };
 // Direction B P13: a link that names no screen of its own — #queue (never a link before) opens More, where the Queue's four desks sit.
 const VIEW_ALIAS = { queue: 'more' };
-// Direction B P13: which dock tab lights for each screen — one table (the plan's DOCK_OF), today's dock until P19.
-// Settings opens from the header gear and lights none.
-const DOCK_OF = { today: 'today', leads: 'leads', calls: 'calls', cal: 'cal', estimate: 'more', book: 'more', followups: 'more', money: 'more', fleet: 'more', safety: 'more', perf: 'more', more: 'more', permits: 'more', agents: 'more', measure: 'more', learn: 'more', assistant: 'more' };
+// Direction B P13/P19: which dock tab lights for each screen — one table, the plan's DOCK_OF (the dock is
+// Today · Leads · Calendar · Estimate · Office). Settings opens from the sliders button and lights none.
+const DOCK_OF = { today: 'today', leads: 'leads', calls: 'leads', cal: 'cal', estimate: 'estimate', book: 'estimate', permits: 'estimate', measure: 'estimate', more: 'more', followups: 'more', money: 'more', fleet: 'more', safety: 'more', perf: 'more', agents: 'more', learn: 'more', assistant: 'more' };
 
 // The line under ARBO. Today's hero already carries the date, so Today shows
 // the name alone; every screen says SIMULATION while the data is practice data.
@@ -7793,6 +8190,7 @@ function switchTab(which) {
   for (const t of Object.keys(VIEW_TITLES)) $('view-' + t).classList.toggle('active', which === t);
   for (const t of new Set(Object.values(DOCK_OF))) $('tab-' + t).classList.toggle('active', DOCK_OF[which] === t);
   $('apptitle').textContent = VIEW_TITLES[which] || 'ARBO';
+  leadsHeadOn(which); // Direction B P16: the Leads head over Leads and Calls & texts
   CUR_TAB = which;
   setAppSub();
   navShowBack();
@@ -8099,9 +8497,10 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && TAL
 // installed app has no browser bar, so every screen and every sheet is a step in
 // the phone's own history: the ‹ in the header, Android's back button and a
 // browser's back all walk the same steps. With no step behind (a reload, a
-// home-screen shortcut, the crew preview's way back) a More desk lands on More
-// and anything else on Today.
-const NAV_PARENT = { book: 'estimate', followups: 'more', money: 'more', fleet: 'more', safety: 'more', perf: 'more', permits: 'estimate', agents: 'more', measure: 'estimate', learn: 'more', assistant: 'more', settings: 'today', estimate: 'today' };
+// home-screen shortcut, the crew preview's way back) a screen lands on its hub —
+// an Office desk on Office, an Estimate tool on Estimate, Calls & texts on Leads
+// (Direction B P19) — and anything else on Today.
+const NAV_PARENT = { calls: 'leads', book: 'estimate', followups: 'more', money: 'more', fleet: 'more', safety: 'more', perf: 'more', permits: 'estimate', agents: 'more', measure: 'estimate', learn: 'more', assistant: 'more', settings: 'today', estimate: 'today' };
 const SHEETS = ['twin', 'yard', 'bd', 'talk', 'approval', 'photo', 'maps'];
 let NAV_QUIET = false; // true while a back step is drawn — drawing it must not add a new step
 function navPush(which) {
@@ -8123,6 +8522,17 @@ function navShowBack() {
 // A screen drawn by stepping back keeps what it showed (an agents run, a typed
 // ZIP); only one never drawn yet is drawn now. More is always redrawn, as its tab does.
 const NAV_DRAW = { more: () => renderMore(), settings: () => renderSettings(), permits: () => renderPermits(), agents: () => renderAgents(), measure: () => renderMeasure(), learn: () => renderLearn(), assistant: () => renderAssistant() };
+// Direction B P19: where a link lands — the home-screen shortcuts (/app#calls, /app#cal), crew.html's way back
+// (/app#more) and every #screen. An alias lands on its screen (#queue → Office); Settings (it opens from the
+// sliders button) and a hash that names no screen land on Today. Drawn the way a step back draws (navShow), so a
+// desk off the minute timer is drawn before it shows; the start is step zero, so Back from it lands on the
+// screen's parent (NAV_PARENT), or is hidden on Today.
+function startView(hash) {
+  const asked = String(hash || '').replace(/^#/, '');
+  const want = Object.prototype.hasOwnProperty.call(VIEW_ALIAS, asked) ? VIEW_ALIAS[asked] : asked;
+  if (want && want !== 'today' && want !== 'settings' && Object.prototype.hasOwnProperty.call(VIEW_TITLES, want)) navShow(want);
+  try { history.replaceState({ v: CUR_TAB, d: 0 }, '', '#' + CUR_TAB); } catch (e) { /* ignore */ }
+}
 function navShow(which) {
   NAV_QUIET = true;
   try {
@@ -8186,14 +8596,14 @@ if (STANDALONE) {
     if (dx > 70 && dy < 60 && !$('keywall').classList.contains('show')) navBack();
   }, { passive: true });
 }
-for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf']) {
+for (const t of ['today', 'leads', 'cal', 'estimate', 'book', 'followups', 'calls', 'perf']) {
   $('tab-' + t).addEventListener('click', () => switchTab(t));
 }
 $('tab-more').addEventListener('click', () => { renderMore(); switchTab('more'); });
 
 // The screens ↻ redraws. The minute timer redraws them too, unless one holds typed text.
 const TIMED = { today: renderToday, leads: renderLeads, cal: renderCalendar, estimate: renderEstimate, book: renderBook, followups: renderFollowUps, money: renderMoneyView, fleet: renderFleetView, safety: renderSafetyView, calls: renderCalls, perf: renderPerformance };
-function refreshAll() { for (const t in TIMED) TIMED[t](); }
+function refreshAll() { for (const t in TIMED) TIMED[t](); renderLeadsHead(); }
 // ↻ and the key screen also redraw a More desk that is on screen — refreshAll never draws those.
 function refreshActiveMoreView() {
   const r = { settings: renderSettings, permits: renderPermits, agents: renderAgents, measure: renderMeasure, learn: renderLearn, assistant: renderAssistant, more: renderMore };
@@ -8227,6 +8637,7 @@ function autoRefresh() {
   if (document.hidden || $('keywall').classList.contains('show')) return;
   TIMER_REDRAW = true;
   try { for (const t in TIMED) if (!holdsTyping($('view-' + t))) TIMED[t](); } finally { TIMER_REDRAW = false; }
+  renderLeadsHead(); // Direction B P16: the Leads head and the tab's badge, every minute, even while both Leads views hold
 }
 for (const t of ['leads', 'calls']) $('view-' + t).addEventListener('click', (e) => { e.currentTarget.dataset.taps = String(tapCount(e.currentTarget) + 1); }, true);
 $('refresh').addEventListener('click', () => {
@@ -8244,21 +8655,7 @@ setAppSub();
 LINKS_READY.then(setAppSub);
 netState();
 // Home-screen shortcuts open a section directly (/app#calls, /app#cal).
-{
-  const asked = (location.hash || '').slice(1);
-  const want = Object.prototype.hasOwnProperty.call(VIEW_ALIAS, asked) ? VIEW_ALIAS[asked] : asked; // Direction B P13: #queue → More
-  if (want && Object.prototype.hasOwnProperty.call(VIEW_TITLES, want) && want !== 'settings') {
-    if (want === 'more') renderMore();
-    if (want === 'permits') renderPermits();
-    if (want === 'agents') renderAgents();
-    if (want === 'measure') renderMeasure();
-    if (want === 'learn') renderLearn();
-    if (want === 'assistant') renderAssistant();
-    NAV_QUIET = true;
-    try { switchTab(want); } finally { NAV_QUIET = false; }
-  }
-  try { history.replaceState({ v: CUR_TAB, d: 0 }, '', '#' + CUR_TAB); } catch (e) { /* ignore */ }
-}
+startView(location.hash);
 refreshAll();
 setInterval(autoRefresh, 60000);
 // R35: a half-typed route-planner box holds the whole Calendar view (holdsTyping); today's stops keep their own minute.

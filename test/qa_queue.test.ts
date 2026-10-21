@@ -76,9 +76,11 @@ describe('Queue — one dead feed never blanks the screen (§1B)', () => {
     expect(q).toContain('q.growthUnavailable');
     expect(q).toContain("'feed-state unread', 'Arbo could not check '");
     expect(q).toContain('This is not a claim that none are due.');
-    // The only way to reach 'Queue clear' is with nothing unread.
-    expect(q).toContain("state(unread.length ? 'Nothing due from what Arbo could read' : 'Queue clear',");
-    expect(html).not.toContain("state('Queue clear'");
+    // The only way to reach the calm line — 'No follow-ups due' since Direction B P19 (Queue → Follow-ups, an
+    // approved rename) — is with nothing unread.
+    expect(q).toContain("state(unread.length ? 'Nothing due from what Arbo could read' : 'No follow-ups due',");
+    expect(html).not.toContain("state('No follow-ups due'");
+    expect(html).not.toContain('Queue clear');
   });
 
   it('no roster or library form is offered over a feed Arbo could not read', () => {

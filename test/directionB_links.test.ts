@@ -57,24 +57,29 @@ const TAB_IDS = [...NAV.matchAll(/<button id="(tab-[a-z]+)"( class="[^"]*")?/g)]
 const VISIBLE_TABS = TAB_IDS.filter((m) => !/dock-hidden/.test(m[2] ?? '')).map((m) => m[1]!);
 const ALL_TABS = TAB_IDS.map((m) => m[1]!);
 
-/** The page's boot block (the home-screen shortcut reader), run for one hash. Returns the screen it lands on. */
+/** The page's boot block (the home-screen shortcut reader), run for one hash. Returns the screen it lands on.
+ *  Direction B P19: the block hands the hash to startView, which draws the way a step back draws (navShow, NAV_DRAW). */
 const BOOT = (() => {
   const start = html.indexOf('// Home-screen shortcuts open a section directly');
   const end = html.indexOf('\nrefreshAll();', start);
   if (start < 0 || end < 0) throw new Error('the boot block moved');
   return html.slice(start, end);
 })();
+const NAV_DRAW_LINE = /^const NAV_DRAW = .*;$/m.exec(html)![0];
 function boot(hash: string): { landed: string; drawn: string[] } {
   const drawn: string[] = [];
-  const renders = [...new Set([...BOOT.matchAll(/\b(render[A-Z]\w*)\(/g)].map((m) => m[1]!))];
-  // Direction B P13: the boot block also reads VIEW_ALIAS (#queue → More).
-  const fn = new Function('location', 'VIEW_TITLES', 'VIEW_ALIAS', 'history', ...renders, `
+  const renders = [...new Set([...NAV_DRAW_LINE.matchAll(/\b(render[A-Z]\w*)\(/g)].map((m) => m[1]!))];
+  // Direction B P13: the start reads VIEW_ALIAS (#queue → Office).
+  const fn = new Function('location', 'VIEW_TITLES', 'VIEW_ALIAS', 'history', '$', ...renders, `
     let CUR_TAB = 'today'; let NAV_QUIET = false;
     const switchTab = (w) => { CUR_TAB = w; };
+    ${NAV_DRAW_LINE}
+    ${fnSrc('navShow')}
+    ${fnSrc('startView')}
     ${BOOT}
     return CUR_TAB;`);
   const landed = fn({ hash: hash ? '#' + hash : '' }, VIEW_TITLES, constVal<Record<string, string>>('VIEW_ALIAS'), { replaceState: () => {} },
-    ...renders.map((r) => () => drawn.push(r))) as string;
+    () => ({ hasChildNodes: () => false }), ...renders.map((r) => () => drawn.push(r))) as string;
   return { landed, drawn };
 }
 
@@ -90,6 +95,7 @@ function litTabs(view: string): string[] {
   const sw = pageFn<(w: string) => void>('switchTab', {
     navPush: () => {}, $, VIEW_TITLES, DOCK_OF: constVal<Record<string, string>>('DOCK_OF'), CUR_TAB: 'today', setAppSub: () => {}, navShowBack: () => {}, window: { scrollTo: () => {} },
     fitTitle: () => {}, // P13 review: the app bar's title fit (its own tests: directionB_desks)
+    leadsHeadOn: () => {}, // P16: the Leads head says which segment is on (its own tests: directionB_leadsHub)
   });
   sw(view);
   expect($('view-' + view)!.on.has('active'), 'view-' + view + ' is shown').toBe(true);

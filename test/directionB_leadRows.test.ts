@@ -107,10 +107,12 @@ describe('Leads: compact rows with a round call button (P8)', () => {
     expect(call.children.some((n) => n.tag === 'svg' && n.has('i-calls'))).toBe(true);
     const hidden = call.children.find((n) => n.has('sr-only'))!;
     expect(hidden.textContent).toBe('Call back');
-    // The top row keeps the name and the time, then the button, then the city (beside the time on screen).
+    // The top row keeps the name and the time, then the button, then the city — since P16 at the head of the
+    // one-line summary under the name (city · what they said).
     const top = call.parent!;
-    expect(top.children.map((n) => n.className.split(' ')[0])).toEqual(['who', 'when', 'callbtn', 'addr']);
-    expect(top.children[3]!.textContent).toBe('Norfolk · 23503');
+    expect(top.children.map((n) => n.className.split(' ')[0])).toEqual(['who', 'when', 'callbtn', 'lsum']);
+    expect(top.children[3]!.children[0]!.className).toBe('addr');
+    expect(top.children[3]!.children[0]!.textContent).toBe('Norfolk · 23503');
     expect(c.children.filter((n) => n.has('addr'))).toEqual([]); // said once
   });
 
@@ -118,7 +120,10 @@ describe('Leads: compact rows with a round call button (P8)', () => {
     const { cards } = await draw([lead({ phone: null })]);
     const c = cards[0]!;
     expect(c.children.find((n) => n.has('toprow'))!.children.map((n) => n.className)).toEqual(['who', 'when']);
-    expect(c.children.find((n) => n.has('addr'))!.textContent).toBe('Norfolk · 23503');
+    // P16: that line is the one-line summary, the city first.
+    const sum = c.children.find((n) => n.has('lsum'))!;
+    expect(c.children.indexOf(sum)).toBe(c.children.findIndex((n) => n.has('toprow')) + 1);
+    expect(sum.children[0]!.textContent).toBe('Norfolk · 23503');
   });
 
   it('no element carries the old full-width slab (flexBasis)', async () => {
@@ -155,16 +160,19 @@ describe('Leads: compact rows with a round call button (P8)', () => {
     expect(c.all().filter((n) => n.has('callbtn') && n.parent!.has('toprow'))).toHaveLength(1);
   });
 
-  it('what the customer said and past work fold to two lines, and a tap opens them', async () => {
+  // P16: what they said folds into the one-line summary under the name (CSS clamps it to one line); past work
+  // keeps its own two-line fold. A tap opens either.
+  it('what the customer said and past work fold, and a tap opens them', async () => {
     const { cards } = await draw([lead({ details: 'SIM words: a long note about the oak by the fence and when to call.', history: '2 past jobs' })]);
     const c = cards[0]!;
-    const said = c.children.find((n) => n.textContent.startsWith('SIM words'))!;
+    const said = c.all().find((n) => n.textContent.startsWith('SIM words'))!;
+    expect(said.parent!.has('lsum')).toBe(true);
     const past = c.children.find((n) => n.textContent === '2 past jobs')!;
     for (const n of [said, past]) {
       expect(n.has('scope') && n.has('clamp')).toBe(true);
       expect(n.has('open')).toBe(false);
     }
-    await said.click();
+    await said.parent!.click(); // review round: the tap lands on the summary's 44 px box (a click on the words bubbles there)
     expect(said.has('open')).toBe(true);
     // The ruling lines never fold: an older lead's age line and the spam Undo line.
     const old = (await draw([lead({ older: true, ageDays: 40, filedAsEmergency: true })])).cards[0]!;
@@ -178,14 +186,14 @@ describe('Leads: compact rows with a round call button (P8)', () => {
   it('a line Mike opened stays open through the minute redraw — by lead and by line; closed again, it stays closed', async () => {
     LEAD_OPEN.clear();
     const leads = [lead({ details: 'SIM words: a long note about the oak by the fence.', history: '2 past jobs' }), lead({ id: 'L2', details: 'SIM words: another long note about a pine.' })];
-    const said = (cards: Node[], i: number) => cards[i]!.children.find((n) => n.textContent.startsWith('SIM words'))!;
+    const said = (cards: Node[], i: number) => cards[i]!.all().find((n) => n.textContent.startsWith('SIM words'))!; // P16: in the summary
     const first = await draw(leads);
-    await said(first.cards, 0).click();
+    await said(first.cards, 0).parent!.click(); // review round: the summary's 44 px box takes the tap
     const again = await draw(leads);
     expect(said(again.cards, 0).has('open'), 'L1 said: still open').toBe(true);
     expect(again.cards[0]!.children.find((n) => n.textContent === '2 past jobs')!.has('open'), 'L1 past work: never opened').toBe(false);
     expect(said(again.cards, 1).has('open'), 'L2: never opened').toBe(false);
-    await said(again.cards, 0).click(); // closed by hand
+    await said(again.cards, 0).parent!.click(); // closed by hand (on the summary's box)
     const third = await draw(leads);
     expect(said(third.cards, 0).has('open')).toBe(false);
   });
@@ -210,7 +218,7 @@ describe('Leads: compact rows with a round call button (P8)', () => {
   it('a line with no contact instruction still folds (the plan\'s two-line fold stands)', async () => {
     LEAD_OPEN.clear();
     const { cards } = await draw([lead({ details: 'SIMULATED phone enquiry — seeded, not a real customer' })]);
-    expect(cards[0]!.children.find((x) => x.textContent.startsWith('SIMULATED'))!.has('clamp')).toBe(true);
+    expect(cards[0]!.all().find((x) => x.textContent.startsWith('SIMULATED'))!.has('clamp')).toBe(true); // P16: folded into the summary
   });
 
   // Review (b-wave-1b, UI 6): beside the time, the city had nowrap + an ellipsis, so at
@@ -237,5 +245,66 @@ describe('Leads: compact rows with a round call button (P8)', () => {
     expect(fnSrc('emergencyLeadCard')).toContain("const call = el('a', 'callbtn', 'Call back');");
     expect(fnSrc('sonaPanel')).toContain("el('a', 'callbtn', 'Call back')");
     expect(html.match(/callbtn round/g)).toHaveLength(1);
+  });
+});
+
+// Review round (b-wave-3b, UI #1 and #4): the summary line was the only way to read what the customer said and
+// a 20 px tall target (93×20 at 320); and the rows, the Leads head and the feeds card were not yet the plan's
+// "twice as many leads per screen" (1.7× in practice data, the first screen down to one lead in production).
+describe('review round: the summary is a 44 px tap target, and the rows and the head are compact', () => {
+  const rule = (sel: string) => {
+    const m = new RegExp(`(?:^|\\n|\\})${sel.replace(/[.*+?^${}()|[\]\\>]/g, '\\$&')}\\{([^}]*)\\}`).exec(css);
+    if (!m) throw new Error('no rule ' + sel);
+    return m[1]!;
+  };
+  const px = (body: string, prop: string) => { const m = new RegExp(`(?:^|;)${prop}:(-?\\d+)px`).exec(body); return m ? Number(m[1]) : null; };
+
+  it('a tap anywhere on the summary line opens what they said — and closes it — one toggle per tap', async () => {
+    LEAD_OPEN.clear();
+    const { cards } = await draw([lead({ details: 'SIM words: a long note about the oak by the fence.' })]);
+    const sum = cards[0]!.all().find((n) => n.has('lsum'))!;
+    const said = sum.children.find((n) => n.has('clamp'))!;
+    expect(said, 'what they said rides the summary').toBeTruthy();
+    await sum.click();
+    expect(said.has('open')).toBe(true);
+    await sum.click();
+    expect(said.has('open')).toBe(false);
+    expect(fnSrc('renderLeads')).toContain("clampLine(lead.details, lead.id + ':details', sum)");
+  });
+
+  it('CSS: the summary box is 44 px tall (12 px above and below its 20 px line) and its margins take that back — the row does not grow', () => {
+    const sum = rule('.card .lsum');
+    expect(sum).toMatch(/padding:12px 0;margin:-12px 0(;|$)/);
+    expect(sum).toMatch(/font-size:14px;line-height:1\.45/); // 20.3 px a line: 20.3 + 24 ≥ 44
+    expect(rule('.card > .lsum')).toBe('margin:-12px 0 -6px');
+  });
+
+  it('CSS: compact lead cards — 8 px padding top and bottom, 8 px between cards, the action row 4 px under', () => {
+    const card = rule('#view-leads .card');
+    expect(px(card, 'margin-bottom')).toBeLessThanOrEqual(8);
+    expect(card).toMatch(/padding:8px 12px/);
+    expect(px(rule('#view-leads .card .actions'), 'margin-top')).toBeLessThanOrEqual(4);
+    expect(px(rule('#view-leads .card .toprow.has-call'), 'margin-bottom')).toBeLessThanOrEqual(2);
+  });
+
+  it('CSS: on a 320 px phone Good lead, Spam and Prep estimate › share one row — the words stay, only the icons go (R23)', () => {
+    const narrow = /@media \(max-width:359px\)\{(#view-leads \.card \.actions[^@]*?)\}\n/.exec(css);
+    expect(narrow, 'a narrow-phone rule for the lead action row').toBeTruthy();
+    expect(narrow![1]).toContain('#view-leads .card .actions .minibtn.mark .ico{display:none}');
+    expect(narrow![1]).not.toMatch(/\.minibtn(\.mark)?( span)?\{[^}]*display:none/); // never the words
+    expect(narrow![1]).toMatch(/#view-leads \.card \.actions \.minibtn\{padding:0 6px\}/);
+  });
+
+  it('CSS: the Leads head is tight — its title, the segments and the chips 8 px apart; the segments still 44 px targets', () => {
+    expect(rule('.hubhead .viewhead')).toBe('margin:4px 2px 8px');
+    expect(rule('.hubhead .storm')).toBe('margin-bottom:8px');
+    expect(rule('.lseg')).toContain('margin:0 0 8px');
+    expect(rule('.lseg .lseg-btn')).toContain('min-height:44px');
+    expect(rule('.lchips')).toContain('margin:0 0 8px');
+  });
+
+  it('CSS: the feeds card is one 44 px line when closed (it sits on every screen\'s first screen)', () => {
+    expect(rule('.card.feeds')).toBe('padding:0 14px');
+    expect(rule('.feeds-head')).toMatch(/min-height:44px;/);
   });
 });

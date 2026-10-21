@@ -122,6 +122,8 @@ type Panels = {
   renderMore?: () => void;
   // Direction B P15: Estimate, and Properties on file (the Book, renamed).
   renderEstimate?: () => Promise<void>; renderBook?: () => Promise<void>;
+  // Direction B P16: the Leads hub's head (its own reads, the badge's two halves) and Calls & texts.
+  renderLeadsHead?: () => Promise<void>; renderCalls?: () => Promise<void>;
 };
 /** The page's helpers and the panels under test, built together with one stand-in document. */
 function kit(fail: (typeof FAILS)[number]) {
@@ -176,6 +178,13 @@ function kit(fail: (typeof FAILS)[number]) {
     consts.push('VIEW_TITLES', 'ESTIMATE_TOOLS');
     targets.push('estimatePrepPanel', 'renderEstimate', 'renderBook');
   }
+  // Direction B P16: the Leads hub's head and Calls & texts (the old Calls screen, its cut lines through the feeds card).
+  const hub = /^async function renderLeadsHead\(/m.test(html);
+  if (hub) {
+    consts.push('VIEW_TITLES', 'LEADS_FILTERS');
+    helpers.push('sonaSlipBox', 'sonaFlagGap', 'sonaNeedsYou', 'quoOffLine', 'sonaTabBadge', 'leadsHeadOn', 'leadsFilter', 'fillQuoSlots');
+    targets.push('renderLeadsHead', 'renderCalls');
+  }
   const built = new Function('document', 'api', 'HERO', 'sysSet', 'showKeywall', 'linksIn', `
     let LINKS = linksIn;
     let TIMER_REDRAW = false;
@@ -188,6 +197,8 @@ function kit(fail: (typeof FAILS)[number]) {
     ${office ? `let AGENT_RUN = null; const NAV_DRAW = {}; const icon = () => document.createElement('svg'); const switchTab = () => {};
       const renderAssistant = () => {}, renderAgents = () => {}, renderMeasure = () => {}, renderPermits = () => {}, renderLearn = () => {};
       const themePref = () => 'auto', setTheme = () => {}, installCard = () => document.createElement('div'), location = {}, window = {};` : ''}
+    ${hub ? `let LH_GEN = 0; let LEADS_FILTER = 'all'; let CUR_TAB = 'leads'; const openSonaCall = () => {}; const photoStrip = () => document.createElement('div');
+      const showSaveFail = () => {};${office ? '' : ' const switchTab = () => {};'}` : ''}
     ${estimate ? `let EST_GEN = 0; let EST_BOOK = null; let PERMIT_CITY = 'Virginia Beach'; let PREP_LEAD = null; const openYard = () => {};
       const Option = function (t, val) { const o = document.createElement('option'); o.textContent = t; o.value = val; return o; };` : ''}
     ${[...new Set(consts)].map(constSrc).join('\n')}
@@ -224,6 +235,37 @@ describe.each(FAILS)('a read that died: $kind', (fail) => {
     const dot = k.$('tab-leads').querySelector('.dot')!;
     expect(dot.className).toContain('gap ' + fail.kind);
     expect(dot.textContent).toBe(''); // no digit on a gap
+  });
+
+  // Direction B P16: the head reads the leads and Quo itself; each segment and the flag's place name the feed.
+  it('Leads hub head: each read is named — in the h1, the segment and the flag\'s place — never a 0 or a calm line', async () => {
+    const k = kit(fail);
+    await k.renderLeadsHead!();
+    const head = k.$('leads-head');
+    expectNamed(head.textContent, fail.kind, 'Leads head');
+    expect(head.querySelectorAll('.lcount').map((n) => n.textContent)).toEqual(['–', '–']);
+    expect(head.querySelectorAll('.lchip')).toEqual([]);
+    expect([...k.paths].sort()).toEqual(['/api/leads?limit=50', '/api/quo']);
+    // The badge: both halves unknown — the gap dot, no digit, both named.
+    const dot = k.$('tab-leads').querySelector('.dot')!;
+    expect(dot.textContent).toBe('');
+    expect(k.$('tab-leads').title).toContain('Emergency leads unknown — not zero.');
+    expect(k.$('tab-leads').title).toContain('Sona calls unknown — not zero');
+  });
+
+  it('Calls & texts: every read named, in its place or in the feeds card — never "no calls", never a 0', async () => {
+    const k = kit(fail);
+    await k.renderCalls!();
+    await flush(); await flush(); await flush();
+    const v = k.$('view-calls');
+    expectNamed(v.textContent, fail.kind, 'Calls & texts');
+    // The call log keeps its "not zero calls" whether it folded into the card or stayed in its own-line card.
+    expect(v.textContent).toContain('Call log: ' + FEED_WORD[fail.kind] + '.');
+    expect(v.textContent).toContain('This is not zero calls.');
+    const card = v.querySelector('.feeds')!;
+    // Off on purpose (cut, not simulated, not set up) folds into the card; one Arbo couldn't read stays where it shows.
+    if (fail.kind === 'unread') expect(card.querySelector('.feeds-head')!.textContent).toContain('couldn’t read');
+    else expect(card.querySelectorAll('.feeds-item').length).toBeGreaterThan(0);
   });
 
   it('Sona (Quo): named, never "No Sona calls"', async () => {
@@ -397,7 +439,8 @@ describe('the dead-feed harness knows every panel in the page', () => {
     'renderMoneyView', 'renderFleetView', 'renderSafetyView', 'renderFollowUps', // P13: the Queue's four desks …
     'renderRosterList', 'renderTrainingBoard', 'renderVetting', 'renderLibraryQueue', // … and the panels Crew & safety holds
     'renderMore', // P14: Office, its desks counted
-    'renderEstimate', 'renderBook']; // P15: Estimate, and Properties on file (the Book)
+    'renderEstimate', 'renderBook', // P15: Estimate, and Properties on file (the Book)
+    'renderLeadsHead', 'renderCalls']; // P16: the Leads hub's head, and Calls & texts (joined, as P1 said it would)
   const EXEMPT: Record<string, string> = {
     renderToday: 'a page of panels; its dead-feed lines are pinned in qa_today, qa2_today and qa3_today-rest (emergencyLeads, stormBanner, heroLoops are covered above)',
     renderAssistant: 'R28 desk; its gaps are pinned in assistantUi',
@@ -405,7 +448,6 @@ describe('the dead-feed harness knows every panel in the page', () => {
     routePlannerPanel: 'R35 planner form — no read until a tap; B never edits it',
     renderCalendar: 'R2: the calendar is an iframe — Arbo reads nothing there itself (today\'s stops are renderTodayStops)',
     estimatePrepPanel: 'a form — reads only on Build; its failure line is pinned in estimatePrep',
-    renderCalls: 'not seeded in P1; its Quo gaps are pinned in qa3_quo-fold and r33Review (joins with P16)',
     renderRoster: 'wrapper of renderRosterList',
     renderPerformance: 'not seeded in P1; pinned in qa2_queue-numbers-book',
     renderCampaignList: 'draws a list it is handed — no read of its own',

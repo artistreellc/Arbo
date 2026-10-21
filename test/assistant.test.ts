@@ -1173,7 +1173,7 @@ describe('the daily office check (Mike, 2026-10-20: "One daily office check")', 
 
   it('a check that ended its turn without a word says so — never "done" with nothing to read (§1B)', async () => {
     const { a } = await officeDone(null);
-    expect(a.status().officeCheck).toEqual({ day: '2026-10-24', state: 'done', line: "Today's office check finished without a report — see More → Assistant." });
+    expect(a.status().officeCheck).toEqual({ day: '2026-10-24', state: 'done', line: "Today's office check finished without a report — see Office → Assistant." }); // Direction B P19: More is Office
   });
 
   it('a finished check still reads done after 50 later sessions finish — never "could not start"', async () => {

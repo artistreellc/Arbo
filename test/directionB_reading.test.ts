@@ -89,6 +89,9 @@ function kit(target: string, inject: Record<string, unknown>, links = 'readonly'
   if (/^const DESK_LINE = /m.test(html)) consts.push('DESK_LINE'); // Direction B P13: the desk names, one table
   consts.push('VIEW_TITLES'); // Direction B P15: a desk's h1 can be its screen title (the Book's is)
   const helpers = ['readingLine', 'state', 'feedKind', 'feedSays', 'feedLine', 'feedState', 'chip', 'badge', 'plural', 'fmtWhen', 'fmtTime', 'leadsTabBadge', 'permitChip', 'permitBadge', 'tapCount', 'keepsPage', 'clampLine'];
+  // Direction B P16: Leads and Calls & texts each have the feeds card (the page's own, with its tables).
+  consts.push('FEEDS_SAID', 'FEEDS_OPEN', 'FEEDS_BOX', 'FEEDS_GEN');
+  helpers.push('feedsCard');
   const names = Object.keys(inject);
   const fn = new Function('document', 'linksIn', ...names, `
     ${'TIMER_REDRAW' in inject ? '' : 'let TIMER_REDRAW = false;'}

@@ -469,6 +469,7 @@ describe('the app says it', () => {
     get textContent(): string { return this.text + this.children.map((c) => c.textContent).join(' '); }
     set textContent(t: string) { this.text = t; this.children = []; }
     appendChild(n: FakeEl) { this.children.push(n); return n; }
+    addEventListener(): void { /* Direction B P17: a Sona card's Call back carries its tap (its own tests: directionB_sonaHandled) */ }
     all(): FakeEl[] { return [this, ...this.children.flatMap((c) => c.all())]; }
   }
   const el = (tag: string, cls?: string, text?: string) => { const n = new FakeEl(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
@@ -477,6 +478,9 @@ describe('the app says it', () => {
     plural: (n: number, one: string, many?: string) => n + ' ' + (n === 1 ? one : many || one + 's'), fmtTime: () => '',
     renderCalls: () => {}, renderToday: () => {}, slipRuleLabel: (r: string) => r, openSonaCall: () => {},
     document: { createElement: (t: string) => el(t) },
+    // Direction B P16: the red flag's one builder, the page's own (Today's panel calls it).
+    sonaSlipBox: (d: unknown) => pageFn<(d: unknown) => unknown>('sonaSlipBox', { el, plural: (n: number, one: string, many?: string) => n + ' ' + (n === 1 ? one : many || one + 's'), fmtTime: () => '', slipRuleLabel: (r: string) => r, openSonaCall: () => {} })(d),
+    sonaNeedsYou: pageFn<(c: unknown) => boolean>('sonaNeedsYou', {}), sonaHandled: () => ({}), // review round: the calls that ask Mike to act; none handled here (directionB_sonaHandled)
   };
   const outreachStatus = {
     wired: true, fromNumber: LINE, autoFollowUps: false, readOnly: true, template: { ok: true, text: 'Art-is-Tree. Reply STOP to opt out.', problems: [] },

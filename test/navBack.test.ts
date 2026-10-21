@@ -100,8 +100,8 @@ describe('the Back button', () => {
     pageFn<() => void>('navBack', deps('agents', 0))(); // a reload on #agents: still an Office desk
     expect(calls).toEqual(['show:more', 'replace:more']);
     calls.length = 0;
-    pageFn<() => void>('navBack', deps('calls', 0))(); // a home-screen shortcut to Calls
-    expect(calls).toEqual(['show:today', 'replace:today']);
+    pageFn<() => void>('navBack', deps('calls', 0))(); // the home-screen shortcut to Calls & texts (Direction B P19)
+    expect(calls).toEqual(['show:leads', 'replace:leads']); // a child of the Leads tab lands on New leads
   });
 
   it('the phone\'s own back walks the same steps: popstate draws the screen without adding one, and closes a sheet', () => {
@@ -197,7 +197,7 @@ describe('Back retraces every tab tapped, in order (Direction B P1)', () => {
     const drawn: string[] = [];
     const navDrawLine = oneLine('NAV_DRAW');
     const renders = [...new Set([...navDrawLine.matchAll(/\b(render[A-Z]\w*)\(/g)].map((m) => m[1]!))];
-    const core = new Function('$', 'history', 'window', 'setAppSub', 'talkEnd', 'photoLetGo', 'fitTitle', ...renders, `
+    const core = new Function('$', 'history', 'window', 'setAppSub', 'talkEnd', 'photoLetGo', 'fitTitle', 'leadsHeadOn', ...renders, `
       let CUR_TAB = 'today'; let NAV_QUIET = false; const TALK = { on: false }; let PHOTO_OPEN = null;
       ${oneLine('VIEW_TITLES')}
       ${oneLine('DOCK_OF')}
@@ -207,7 +207,7 @@ describe('Back retraces every tab tapped, in order (Direction B P1)', () => {
       ${['switchTab', 'navPush', 'navShowBack', 'navShow', 'navBack', 'sheetOpened', 'closeSheet'].map(fnText).join('\n')}
       ${pop}
       return { switchTab, navBack, sheetOpened, tab: () => CUR_TAB };`)(
-      $, history, window, () => {}, () => {}, () => {}, () => {} /* fitTitle (P13 review) */, ...renders.map((r) => () => drawn.push(r)),
+      $, history, window, () => {}, () => {}, () => {}, () => {} /* fitTitle (P13 review) */, () => {} /* leadsHeadOn (P16) */, ...renders.map((r) => () => drawn.push(r)),
     ) as { switchTab: (w: string) => void; navBack: () => void; sheetOpened: (id: string) => void; tab: () => string };
     history.replaceState({ v: 'today', d: 0 }, '', '#today'); // the boot step
     const openSheet = (id: string) => { $(id)!.classList.add!('show'); core.sheetOpened(id); };
@@ -259,7 +259,9 @@ describe('the red Sona flags say which call and open it', () => {
   });
 
   it('the banner is a list of tappable rows — who, when, which rule — each opening that call', () => {
-    const p = html.slice(html.indexOf('async function sonaPanel('), html.indexOf('const holdText = {', html.indexOf('async function sonaPanel(')));
+    // Direction B P16: the banner is one builder now, sonaSlipBox — Today's Sona panel and the Leads head share it (same text).
+    const p = html.slice(html.indexOf('function sonaSlipBox('), html.indexOf('async function sonaPanel('));
+    expect(html.slice(html.indexOf('async function sonaPanel('), html.indexOf('const holdText = {', html.indexOf('async function sonaPanel(')))).toContain('flagBox = sonaSlipBox(d, done);'); // P17: with the calls Mike called back (kept, so a Call back redraws it in place)
     expect(p).toContain("const row = el('button', 'sliplink', (f.name || c.from || 'Caller') + ' · ' + fmtTime(c.at) + ' · ' + rules);");
     expect(p).toContain("row.addEventListener('click', () => openSonaCall(c.callId));");
     expect(p).toContain("' only in Quo now.'"); // a counted call Arbo no longer holds is said, not hidden
@@ -318,7 +320,10 @@ describe('three small navigation fixes from the usability audit', () => {
     expect(sw).toContain('DOCK_OF[which]');
     const DOCK_OF = new Function(`return ${oneLineVal('DOCK_OF')};`)() as Record<string, string>;
     expect(DOCK_OF).not.toHaveProperty('settings');
-    // R28: the Assistant desk sits behind More too; so do the Queue's four desks.
-    for (const v of ['book', 'followups', 'money', 'fleet', 'safety', 'perf', 'more', 'permits', 'agents', 'measure', 'learn', 'assistant']) expect(DOCK_OF[v], v).toBe('more');
+    // R28: the Assistant desk sits behind Office (the More button, relabelled — P19); so do the Queue's four desks.
+    for (const v of ['followups', 'money', 'fleet', 'safety', 'perf', 'more', 'agents', 'learn', 'assistant']) expect(DOCK_OF[v], v).toBe('more');
+    // Direction B P19: the Estimate tab lights for its tools; Calls & texts lights Leads.
+    for (const v of ['estimate', 'book', 'permits', 'measure']) expect(DOCK_OF[v], v).toBe('estimate');
+    expect(DOCK_OF.calls).toBe('leads');
   });
 });

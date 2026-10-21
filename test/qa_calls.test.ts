@@ -82,7 +82,8 @@ describe('the Calls screen', () => {
 
   it('a call log Arbo could not read never heads itself with a zero', () => {
     // QA round 2: one feed line inside the own-line card, not a dashed state card.
-    expect(calls).toContain("ownSlot.appendChild(feedLine(e, 'Call log', 'This is not zero calls.'))");
+    expect(calls).toContain("const n = feedLine(e, 'Call log', 'This is not zero calls.');");
+    expect(calls).toContain('await feeds.place(ownSlot, n);'); // Direction B P16: unread stays in the card; off folds into the feeds card
     expect(calls).not.toContain('feedState(');
     expect(calls).toContain('await LINKS_READY');
     expect(html).not.toContain('No calls logged yet');
