@@ -29,7 +29,7 @@ function el(tag: string, className = '', textContent = ''): Fake {
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 /** The page's M11 block, run with fakes for everything it calls. */
-function load(opts: { answers: Array<unknown>; day?: () => string }) {
+function load(opts: { answers: Array<unknown>; day?: () => string; crewId?: string }) {
   const block = html.slice(html.indexOf('let BRIEF_LOADING = false;'), html.indexOf('if (renderWhoAmI()) {'));
   const slot = el('div', 'gate-slot');
   const GATE: Record<string, unknown> = { content: null, unlocked: false };
@@ -48,13 +48,17 @@ function load(opts: { answers: Array<unknown>; day?: () => string }) {
   const intl = opts.day
     ? { DateTimeFormat: function () { return { format: () => opts.day!() }; } }
     : Intl;
+  // Deliberately updated (CREW_PLAN C4, D109): the read carries the crew code
+  // when there is one (CREW_ID), so the harness says whose phone this is. With
+  // none — as here, unless a test asks — the read is the bare path it pinned.
   const run = new Function(
-    'GATE', 'api', 'renderGate', 'renderDoorKey', '$', 'el', 'LINKS_READY', 'crewWhy', 'document', 'location', 'Intl',
+    'GATE', 'api', 'renderGate', 'renderDoorKey', '$', 'el', 'LINKS_READY', 'crewWhy', 'document', 'location', 'Intl', 'CREW_ID',
     `${block}\nreturn { loadBriefing, resumeDay };`,
   );
   const fns = run(
     GATE, api, renderGate, renderDoorKey, (id: string) => (id === 'gate-slot' ? slot : el('div')), el, Promise.resolve(),
     () => 'the office didn’t answer', { querySelector: () => ({ classList: { remove() {}, add() {} } }), createTextNode: (t: string) => el('#text', '', t) }, { reload }, intl,
+    opts.crewId ?? '',
   ) as { loadBriefing: () => void; resumeDay: () => void };
   return { ...fns, slot, GATE, calls, api, renderGate, renderDoorKey, reload };
 }
@@ -139,5 +143,26 @@ describe('M11 — the crew door asks for the briefing again instead of locking t
     expect(html).toContain('if (!GATE.ticking) GATE.ticking = setInterval(refreshGate, 1000);');
     expect(html).not.toMatch(/\n {2}setInterval\(refreshGate, 1000\);/);
     expect(html).toContain("new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' })");
+  });
+});
+
+// CREW_PLAN C4 (D109): the crew phone's read says who it is, so the server can
+// answer "already signed today"; a try again asks the same way.
+describe('C4 — the briefing read carries the crew code on a crew phone', () => {
+  it('with a crew code: every read, the retry included, asks for this crew member', async () => {
+    const id = '00000000-0000-4000-8000-0000000000c1';
+    const p = load({ answers: [new Error('Failed to fetch'), { body: 'SIM briefing' }], crewId: id });
+    p.loadBriefing();
+    await flush(); await flush();
+    p.slot.children[0]!.children.find((c) => c.className === 'retry')!.click();
+    await flush(); await flush();
+    expect(p.calls).toEqual([`/api/crew/briefing?crewMemberId=${id}`, `/api/crew/briefing?crewMemberId=${id}`]);
+  });
+
+  it('with none (the preview): the bare read', async () => {
+    const p = load({ answers: [{ body: 'SIM briefing' }] });
+    p.loadBriefing();
+    await flush();
+    expect(p.calls).toEqual(['/api/crew/briefing']);
   });
 });

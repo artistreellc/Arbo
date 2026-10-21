@@ -101,7 +101,9 @@ describe('a failure looks like a failure (§1B)', () => {
   });
 
   it('only a real 404 gets the plain "no briefing" box; an unreadable one is the stop-work box', () => {
-    const boot = html.slice(html.indexOf("api('/api/crew/briefing').then(renderGate)"));
+    // C4 (D109): the read now carries the crew code, so the slice starts at the call itself.
+    const boot = html.slice(html.indexOf("api('/api/crew/briefing' + (CREW_ID"));
+    expect(boot.length).toBeLessThan(html.length);
     expect(boot).toMatch(/if \(e\.code === 404\) \{\s*\$\('gate-slot'\)\.appendChild\(el\('div', 'state', 'No briefing published/);
     expect(boot).toContain("const s = el('div', 'state err');");
     expect(boot).toContain("Briefing didn\\u2019t come through");
@@ -160,18 +162,20 @@ describe('identity and the door key', () => {
     expect(html.match(/localStorage\.getItem\(/g)).toHaveLength(1);
     expect(html).toContain("const load = (k) => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };");
     // Every write is guarded, and a failure stops before the reload.
-    // Deliberately updated (CREW_PLAN C3, D109): the sign-in link's own write
-    // (takeSignInLink) runs at boot, before any card exists, so it records the
-    // failure instead (kept = false) and the who-am-I card says STORAGE_BLOCKED.
-    // Every write is still a one-line try/catch; every write before a reload
-    // still says STORAGE_BLOCKED and stops.
+    // Deliberately updated (CREW_PLAN C3 + C4, D109): two writes come before no
+    // reload. The sign-in link's (takeSignInLink) runs at boot, before any card
+    // exists: it records the failure (kept = false) and the who-am-I card says
+    // STORAGE_BLOCKED. The sign-off's kept start (keptGateStart) falls back to
+    // a fresh start — the server's own "already signed today" check stays the
+    // guard. Every write is still a one-line try/catch; every write before a
+    // reload still says STORAGE_BLOCKED and stops.
     const writes = html.split('\n').filter((l) => /localStorage\.(setItem|removeItem)\(/.test(l));
-    expect(writes).toHaveLength(4);
-    const beforeReload = writes.filter((l) => !l.includes('kept = false'));
+    expect(writes).toHaveLength(5);
+    const noReload = ["  try { localStorage.setItem('arboCrewId', code); } catch (e) { kept = false; }", '    try { localStorage.setItem(k, now); } catch (e) { return now; }'];
+    expect(writes.filter((l) => noReload.includes(l))).toEqual(noReload);
+    const beforeReload = writes.filter((l) => !noReload.includes(l));
     expect(beforeReload).toHaveLength(3);
     for (const l of beforeReload) expect(l).toMatch(/try \{ localStorage\.\w+\([^)]*\); \} catch \(e\) \{ err\.textContent = STORAGE_BLOCKED; return; \}/);
-    const link = writes.filter((l) => l.includes('kept = false'));
-    expect(link).toEqual(["  try { localStorage.setItem('arboCrewId', code); } catch (e) { kept = false; }"]);
     expect(html).toContain('if (SIGN_IN && SIGN_IN.code && !SIGN_IN.kept) err.textContent = STORAGE_BLOCKED;');
   });
 });

@@ -308,6 +308,8 @@ describe('Crew door — a mistyped crew code is told as one (POST /api/crew/brie
   const src = (record: DataSource['recordBriefingAck']): DataSource => ({
     ready: () => true, stopsBetween: async () => [], newLeads: async () => [], recordBriefingAck: record,
     crewMember: async () => ({ name: 'SIM-Alder, Test', active: true }),
+    // C4 (D109): the server signs against its own briefing for today — the same one here.
+    todaysBriefing: async () => content,
   });
   const neverCalled: DataSource['recordBriefingAck'] = async () => { throw new Error('must not be reached'); };
 
@@ -420,7 +422,9 @@ describe('Crew door — one wording for a read that failed', () => {
   });
 
   it('the briefing card: the reason, then the order as its own line — never "Do / not start work"', () => {
-    const boot = crew.slice(crew.indexOf("api('/api/crew/briefing').then(renderGate)"));
+    // C4 (D109): the read now carries the crew code, so the slice starts at the call itself.
+    const boot = crew.slice(crew.indexOf("api('/api/crew/briefing' + (CREW_ID"));
+    expect(boot.length).toBeLessThan(crew.length);
     expect(boot).toContain('await LINKS_READY;');
     expect(boot).toContain("s.appendChild(document.createTextNode(why.charAt(0).toUpperCase() + why.slice(1) + '.'));");
     expect(boot).toContain("s.appendChild(el('b', 'order', 'Do not start work \\u2014 call the office.'));");

@@ -448,8 +448,9 @@ describe('C1 — the clock-in question names an empty pool and a failed read', (
 describe('C1 — the work-order list: a failed read is named; "Nothing scheduled" only over a read that succeeded', () => {
   const work = async (answer: () => Promise<unknown>, links: string | null = 'readonly') => {
     const v = new Node1('div');
+    // CREW_PLAN C4 (D109): the crew phone's read carries its code (CREW_ID).
     const renderWork = lift<() => Promise<void>>('renderWork', {
-      $: () => v, el: el1, document: doc1, api: answer, GATE: { unlocked: true }, PREVIEW: false, PREVIEW_WHY: '',
+      $: () => v, el: el1, document: doc1, api: answer, GATE: { unlocked: true }, PREVIEW: false, PREVIEW_WHY: '', CREW_ID: 'x',
       fmtTime: () => '9:00 AM', arrivalButton: () => el1('div'), changeOrderButton: () => el1('div'),
       crewMapsUrl: () => 'https://www.google.com/maps/dir/?api=1&destination=x',
       LINKS_READY: Promise.resolve(), crewWhy: crewWhyAt(links),
@@ -494,7 +495,7 @@ describe('C2 — one maps builder, one Navigate per card, opened straight from a
     const v = new Node1('div');
     const deps = { el: el1, PREVIEW: preview, api: async () => { throw new Error('a switched-off job action must not send'); }, CREW_ID: 'x' };
     await lift<() => Promise<void>>('renderWork', {
-      $: () => v, el: el1, document: doc1, GATE: { unlocked: !preview }, PREVIEW: preview, PREVIEW_WHY: 'Off in the preview — nothing here signs, files or clocks in.',
+      $: () => v, el: el1, document: doc1, GATE: { unlocked: !preview }, PREVIEW: preview, PREVIEW_WHY: 'Off in the preview — nothing here signs, files or clocks in.', CREW_ID: 'x',
       api: async () => ({ workOrders: orders, notWorkOrders: held, contractLookupFailed: false }), fmtTime: () => '9:00 AM',
       arrivalButton: lift('arrivalButton', deps), changeOrderButton: lift('changeOrderButton', deps), crewMapsUrl,
       LINKS_READY: Promise.resolve(), crewWhy: crewWhyAt('simulation'),
@@ -595,7 +596,7 @@ describe('C2 — arrival and extra work are off until real job records exist, wi
     let sent = 0;
     const deps = { el: el1, PREVIEW: preview, api: async () => { sent += 1; return {}; }, CREW_ID: 'x' };
     await lift<() => Promise<void>>('renderWork', {
-      $: () => v, el: el1, document: doc1, GATE: { unlocked: !preview }, PREVIEW: preview, PREVIEW_WHY: WHY,
+      $: () => v, el: el1, document: doc1, GATE: { unlocked: !preview }, PREVIEW: preview, PREVIEW_WHY: WHY, CREW_ID: 'x',
       api: async () => ({ workOrders: [wo], notWorkOrders: 0, contractLookupFailed: false }), fmtTime: () => '',
       arrivalButton: lift('arrivalButton', deps), changeOrderButton: lift('changeOrderButton', deps), crewMapsUrl,
       LINKS_READY: Promise.resolve(), crewWhy: crewWhyAt('simulation'),
