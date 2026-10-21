@@ -391,6 +391,20 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 .actions{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
 .callbtn{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;min-height:50px;border-radius:var(--r-pill);
   background:linear-gradient(180deg,#245F4D,#1B4D3E);color:#fff;font-size:15px;font-weight:700;text-decoration:none;box-shadow:var(--shadow-pop);border:0;padding:0 18px}
+/* Direction B P8: a lead's Call back is a round button in its top row; the word is kept for screen readers. */
+.callbtn.round{flex:none;width:52px;height:52px;min-height:52px;padding:0;border-radius:50%}
+/* The name on top, its time and city under it, the round button beside both — the name keeps the width at 320 px. */
+.card .toprow.has-call{display:grid;grid-template-columns:auto minmax(0,1fr) auto;column-gap:10px;row-gap:2px;align-items:center}
+.card .toprow.has-call .who{grid-column:1 / 3;grid-row:1;min-width:0;overflow-wrap:anywhere}
+.card .toprow.has-call .when{grid-column:1;grid-row:2}
+.card .toprow.has-call .addr{grid-column:2;grid-row:2;margin:0;font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card .toprow.has-call .callbtn{grid-column:3;grid-row:1 / span 2}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+.clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
+.clamp.open{display:block}
+#view-leads .card{padding:12px 14px}
+#view-leads .card .toprow.has-call{margin-bottom:6px}
+#view-leads .card .actions{margin-top:10px}
 .minibtn{min-height:48px;min-width:56px;border:1px solid var(--border);border-radius:var(--r-pill);background:var(--card);color:var(--ink-1);font-size:14px;font-weight:700;padding:0 16px}
 .minibtn:hover{background:var(--paper)}
 .minibtn:disabled{opacity:.5;box-shadow:none;background:var(--paper)}
@@ -2724,6 +2738,12 @@ $('y-go').addEventListener('click', async () => {
 });
 
 // ---------- Leads ----------
+// Direction B P8: a lead's longer lines fold to two; a tap opens (and folds) them.
+function clampLine(text) {
+  const n = el('div', 'scope clamp', text);
+  n.addEventListener('click', () => n.classList.toggle('open'));
+  return n;
+}
 async function renderLeads() {
   const v = $('view-leads');
   // Direction B P3: the first draw says "Reading…" instead of a blank screen. A
@@ -2788,18 +2808,36 @@ async function renderLeads() {
     const top = el('div', 'toprow');
     top.appendChild(el('div', 'who', lead.name || 'Unknown caller'));
     top.appendChild(el('div', 'when', fmtWhen(lead.createdAt)));
+    // §9 one tap: call the human back. ARBOR never calls anyone itself — the phone
+    // app does, with Mike's thumb on it. Direction B P8: a round button in the top
+    // row (it was a full-width slab), so about twice as many leads fit a screen.
+    // An older lead carries no Call back button: contacting anyone is Mike's call (R32).
+    // With the button, the city rides beside the time under the name (one line less).
+    const where = lead.city ? el('div', 'addr', lead.city + (lead.zip ? ' · ' + lead.zip : '')) : null;
+    let whereInTop = false;
+    if (lead.phone && !lead.older) {
+      const call = el('a', 'callbtn round');
+      call.href = 'tel:' + lead.phone;
+      call.setAttribute('aria-label', 'Call back');
+      call.appendChild(icon('i-calls'));
+      call.appendChild(el('span', 'sr-only', 'Call back'));
+      top.classList.add('has-call');
+      top.appendChild(call);
+      if (where) { top.appendChild(where); whereInTop = true; }
+    }
     c.appendChild(top);
     if (lead.older) {
       // The day it came in is the card's own time, top right (fmtWhen); this says how old that is.
       c.appendChild(el('div', 'scope', 'Older lead — came in ' + plural(lead.ageDays || 0, 'day') + ' ago.'
         + (lead.filedAsEmergency ? ' Filed as an emergency then — not a live alarm.' : '')));
     }
-    if (lead.city) c.appendChild(el('div', 'addr', lead.city + (lead.zip ? ' · ' + lead.zip : '')));
-    if (lead.history) c.appendChild(el('div', 'scope', '' + lead.history));
+    if (where && !whereInTop) c.appendChild(where);
+    // Direction B P8: past work and what they said fold to two lines; a tap opens them.
+    if (lead.history) c.appendChild(clampLine('' + lead.history));
     // §1B: a past-work read that failed is named — a missing line is not "no history".
     // R32: a link cut on purpose is said as "cut", never "couldn't read it — try again".
     else if (lead.historyUnreadable) c.appendChild(feedLine(lead.historyCut ? { code: 503, message: 'link_cut' } : null, 'Past work'));
-    if (lead.details) c.appendChild(el('div', 'scope', lead.details));
+    if (lead.details) c.appendChild(clampLine(lead.details));
     // Line 1 is triage + who they are; EMERGENCY already outranks HOT, so an
     // emergency lead carries no second red-ish chip beside it.
     const b = el('div', 'badges');
@@ -2820,17 +2858,8 @@ async function renderLeads() {
     // §1B: a permit read that FAILED is not "screen pending". It is named in the
     // feed-state words under the badges — never as a permit badge (wording is Mike's, X6).
     if (lead.permitUnreadable) c.appendChild(feedLine(lead.permitCut ? { code: 503, message: 'link_cut' } : null, 'Permit screen'));
-    // §9 one-tap actions: call the human back, or file the lead. ARBOR never
-    // calls anyone itself — the phone app does, with Mike's thumb on it.
+    // §9 one-tap actions: file the lead (Call back sits in the top row).
     const row = el('div', 'actions');
-    // An older lead carries no Call back button: contacting anyone is Mike's call (R32).
-    if (lead.phone && !lead.older) {
-      const call = el('a', 'callbtn', 'Call back');
-      call.href = 'tel:' + lead.phone;
-      // Its own line: beside two worded buttons it squeezed to "Call / back" at 390px.
-      call.style.flexBasis = '100%';
-      row.appendChild(call);
-    }
     // Said in words, never a bare glyph: a one-tap SPAM on a lead must say what
     // it does (R23 — a "Spam Likely" caller can be a customer), and it can be undone.
     const btns = [];
