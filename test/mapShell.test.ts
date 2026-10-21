@@ -96,13 +96,13 @@ function core() {
     ${['VIEW_TITLES', 'VIEW_ALIAS', 'DOCK_OF', 'NAV_PARENT', 'SHEETS', 'MAP_HOME', 'MAP_LAYER_OF', 'MAP_MAX'].map(oneLine).join('\n')}
     let MAP_READY = false; let MAP_HELD = null;
     ${navDraw}
-    ${['switchTab', 'navPush', 'navShowBack', 'navShow', 'navBack', 'startView', 'mapPost', 'mapAim', 'openMap', 'renderMap', 'refreshMap', 'mapMessage'].map(fnSrc).join('\n')}
+    ${['switchTab', 'navPush', 'navShowBack', 'navShow', 'navBack', 'startView', 'mapPost', 'mapAim', 'openMap', 'renderMap', 'refreshMap', 'mapTick', 'mapMessage'].map(fnSrc).join('\n')}
     ${pop}
-    return { switchTab, navBack, startView, openMap, refreshMap, mapMessage, tab: () => CUR_TAB, dock: () => DOCK_OF, parent: () => NAV_PARENT, ready: () => MAP_READY };`)(
+    return { switchTab, navBack, startView, openMap, refreshMap, mapTick, mapMessage, tab: () => CUR_TAB, dock: () => DOCK_OF, parent: () => NAV_PARENT, ready: () => MAP_READY };`)(
     $, history, window, document, location, el, () => {}, () => {}, () => {}, () => {}, () => {},
     (s: unknown) => opened.push(['stop', s]), (v: string, t: string) => opened.push(['panel', v, t]), async () => ({}), () => {}, () => {}, () => {},
     ...renders.map(() => () => {}),
-  ) as { switchTab: (w: string) => void; navBack: () => void; startView: (h: string) => void; openMap: (l: string) => void; refreshMap: () => void; mapMessage: (e: unknown) => void; tab: () => string; dock: () => Record<string, string>; parent: () => Record<string, string>; ready: () => boolean };
+  ) as { switchTab: (w: string) => void; navBack: () => void; startView: (h: string) => void; openMap: (l: string) => void; refreshMap: () => void; mapTick: () => void; mapMessage: (e: unknown) => void; tab: () => string; dock: () => Record<string, string>; parent: () => Record<string, string>; ready: () => boolean };
   const lit = () => { $('tab-today'); return [...nodes.entries()].filter(([id, n]) => id.startsWith('tab-') && n.on.has('active')).map(([id]) => id); };
   const ready = () => c.mapMessage({ origin: location.origin, source: frameWin, data: { type: 'ready' } });
   return { ...c, lit, history, posted, opened, frameWin, frames: () => frames, readyFrame: ready, location };
@@ -266,5 +266,65 @@ describe('the frame in the Calendar view\'s place: the swipe strip and the size'
   });
   it('the frame is at least 560 px tall', () => {
     expect(html).toMatch(/#map-frame\{[^}]*min-height:560px/);
+  });
+});
+
+// Review round (D106): the map must never sit on an old day, and "Route the whole day" from the map must
+// never say "Nothing to route" over a calendar Arbo couldn't read (§1B).
+describe('the shell keeps the map on today (review round)', () => {
+  it('the minute tick and coming back on screen send the frame a tick; a hidden app or the key screen sends none', () => {
+    const run = (hidden: boolean, wall: boolean) => {
+      const ticks: number[] = [];
+      const fake = (on: boolean) => ({ classList: { contains: () => on }, querySelector: () => null, querySelectorAll: () => [] });
+      const auto = new Function('$', 'document', 'TIMED', 'holdsTyping', 'renderLeadsHead', 'mapTick', `let TIMER_REDRAW = false;\n${fnSrc('autoRefresh')}\nreturn autoRefresh;`)(
+        (id: string) => fake(id === 'keywall' ? wall : false), { hidden }, { cal: () => {} }, () => false, () => {}, () => ticks.push(1),
+      ) as () => void;
+      auto();
+      return ticks.length;
+    };
+    expect(run(false, false)).toBe(1);
+    expect(run(true, false)).toBe(0);
+    expect(run(false, true)).toBe(0);
+    expect(html).toContain("document.addEventListener('visibilitychange', autoRefresh);");
+  });
+
+  it('mapTick posts {type:"tick"} to a ready frame only', () => {
+    const n = core();
+    n.openMap('today');
+    n.mapTick();
+    expect(n.posted).toEqual([]);
+    n.readyFrame();
+    n.posted.length = 0;
+    n.mapTick();
+    expect(n.posted).toEqual([{ msg: { type: 'tick' }, origin: 'https://arbo.test' }]);
+  });
+});
+
+describe('Route the whole day from the map (review round)', () => {
+  const SIGNIN = "Couldn't read your calendar — Google sign-in needs reconnecting (Settings → Reconnect Google). This is not an empty day.";
+  async function day(answer: unknown) {
+    const did: unknown[] = [];
+    const mapDay = new Function('api', 'openMapsDay', 'readOnlyToast', 'showKeywall', 'mapTick', `${fnSrc('mapDay')}\nreturn mapDay;`)(
+      async () => { if (answer instanceof Error) throw answer; return answer; },
+      (d: unknown) => did.push(['day', d]), (t: string) => did.push(['toast', t]), () => did.push(['keywall']), () => did.push(['tick']),
+    ) as () => Promise<void>;
+    await mapDay();
+    return did;
+  }
+  it('a calendar not read: R35\'s own line, never "Nothing to route"; the frame re-reads so the map agrees', async () => {
+    for (const state of ['google_signin', 'calendar_refused', 'calendar_error', 'google_not_connected']) {
+      const did = await day({ state, line: SIGNIN, practice: false, stops: [], plan: null });
+      expect(did, state).toEqual([['toast', SIGNIN], ['tick']]);
+    }
+  });
+  it('a good read with a plan opens R35\'s day sheet; a good read with nothing in the route says so', async () => {
+    const ok = { state: 'ok', line: null, stops: [{ id: 'a', address: '1 Sim St' }], plan: { engine: 'tomtom', order: ['a'] } };
+    expect(await day(ok)).toEqual([['day', ok]]);
+    expect(await day({ ...ok, plan: { engine: null, order: [] } })).toEqual([['toast', 'Nothing to route today — Calendar says why for each stop.']]);
+    expect(await day({ ...ok, state: 'practice', plan: null })).toEqual([['toast', 'Nothing to route today — Calendar says why for each stop.']]);
+  });
+  it('a refused key opens the key screen; a failed read is named', async () => {
+    expect(await day(Object.assign(new Error('unauthorized'), { code: 401 }))).toEqual([['keywall']]);
+    expect(await day(Object.assign(new Error('x'), { code: 503 }))).toEqual([['toast', 'Couldn’t read today’s route just now — tap ↻ and try again.']]);
   });
 });

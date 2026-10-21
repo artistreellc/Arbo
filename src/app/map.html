@@ -140,6 +140,8 @@ const MAP_SAYS = {
   openArbo: 'Open Arbo',
   noKey: 'Open Arbo and enter the key first.',
   refused: 'Arbo didn’t take this phone’s key — open Arbo and enter it again. Nothing is drawn; this is not an empty map.',
+  throttled: 'Too many wrong keys from this connection — wait a minute, then tap ↻, or switch between Wi-Fi and cellular. Nothing is drawn; this is not an empty map.',
+  readingToday: 'Reading today’s stops…',
   noAppKey: 'Arbo’s server has no app key set yet, so nothing can be read. Nothing is drawn; this is not an empty map.',
   codeFailed: 'The map’s own code didn’t load — check your signal, then tap ↻. Nothing is drawn; this is not an empty map.',
   tilesFailed: 'Street map didn’t load (OpenStreetMap) — pins are still placed; this is not an empty map.',
@@ -219,7 +221,9 @@ async function mapGet(path) {
   }
   let body = null;
   try { body = await res.json(); } catch (e) { body = null; }
-  if (res.status === 401 || res.status === 429) throw Object.assign(new Error('refused'), { why: body && body.error === 'no_app_key' ? 'noAppKey' : 'refused' });
+  // The door's 429 (too many wrong keys from this connection) is a wait, not a refused key; any other 429 is a read that failed.
+  if (res.status === 429 && body && body.error === 'too_many_attempts') throw Object.assign(new Error('throttled'), { why: 'throttled' });
+  if (res.status === 401) throw Object.assign(new Error('refused'), { why: body && body.error === 'no_app_key' ? 'noAppKey' : 'refused' });
   if (!res.ok || !body || typeof body !== 'object') throw Object.assign(new Error('unread'), { why: 'unread', code: res.status });
   return body;
 }
@@ -227,7 +231,9 @@ async function mapGet(path) {
 // A read refused at the door is said once, for the whole map, in the key's own words.
 function keyGap(e) {
   if (!e || !MAP_SAYS[e.why] || e.why === 'unread') return false;
-  GAPS.key = [{ cls: e.why === 'outsideShell' ? 'unset' : 'unread', text: MAP_SAYS[e.why], link: e.why === 'outsideShell' }];
+  // A slowed connection clears by waiting: its line has its own ↻. A refused key is fixed on Arbo's key screen.
+  const retry = e.why === 'throttled' ? () => { GAPS.key = []; readAll(); } : null;
+  GAPS.key = [{ cls: e.why === 'outsideShell' ? 'unset' : 'unread', text: MAP_SAYS[e.why], link: e.why === 'outsideShell', retry: retry }];
   drawStatus();
   return true;
 }
@@ -356,7 +362,47 @@ function onShellMessage(e) {
     GAPS.key = [];
     retryTiles();
     readAll();
+    return;
   }
+  if (m.type === 'tick') onTick();
+}
+
+// The ET calendar day (Arbo's day), whatever zone the phone is in; null when the phone can't say.
+function etToday(now) {
+  try {
+    const p = {};
+    for (const x of new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now)) p[x.type] = x.value;
+    return p.year && p.month && p.day ? p.year + '-' + p.month + '-' + p.day : null;
+  } catch (e) {
+    return null;
+  }
+}
+function staleDay(day, today) {
+  return typeof day === 'string' && typeof today === 'string' && day !== today;
+}
+// Is Map on screen? The app in front and the shell's Map view active (or this page open on its own).
+function shownNow() {
+  if (document.hidden) return false;
+  try {
+    const v = window.frameElement ? window.frameElement.closest('.view') : null;
+    return !v || v.classList.contains('active');
+  } catch (e) {
+    return true;
+  }
+}
+// Yesterday's pins come down at once — never shown as today's while the new day reads.
+function dropStaleDay() {
+  if (!TODAY.d || !staleDay(TODAY.d.day, etToday(new Date()))) return;
+  clearToday();
+  GAPS.today = [{ cls: 'unset', text: MAP_SAYS.readingToday }];
+  drawStatus();
+}
+// The shell's minute tick (and its back-on-screen one): Today re-reads while Map shows, on the minute Calendar's
+// Today's stops reads.
+function onTick() {
+  if (!shownNow()) return;
+  dropStaleDay();
+  readLayer('today');
 }
 
 // ═══ TODAY (M1): today's calendar stops, numbered in R35's planned order ═══
@@ -510,6 +556,8 @@ async function readToday() {
   }
   if (seq !== TODAY.seq || !ON.today) return;
   GAPS.key = [];
+  // The minute's re-read of an unchanged day draws nothing new: an open stop list stays open.
+  if (TODAY.d && JSON.stringify(TODAY.d) === JSON.stringify(d)) { drawStatus(); return; }
   drawToday(d);
 }
 FACTS.today = () => {
@@ -572,7 +620,7 @@ function watchShown() {
   let shown = view.classList.contains('active');
   new MutationObserver(() => {
     const now = view.classList.contains('active');
-    if (now && !shown) readAll();
+    if (now && !shown) { dropStaleDay(); readAll(); }
     shown = now;
   }).observe(view, { attributes: true, attributeFilter: ['class'] });
 }

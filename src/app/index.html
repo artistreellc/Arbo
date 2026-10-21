@@ -4153,6 +4153,11 @@ function renderMap() {
 function refreshMap() {
   mapPost({ type: 'refresh' });
 }
+// The minute tick and coming back on screen (autoRefresh): Today re-reads in the frame while Map shows, the
+// same minute Calendar's Today's stops reads — a map left open overnight never shows yesterday as today (§1B).
+function mapTick() {
+  mapPost({ type: 'tick' });
+}
 function mapMessage(e) {
   const f = $('map-frame');
   if (!f || e.origin !== location.origin || e.source !== f.contentWindow) return;
@@ -4179,6 +4184,12 @@ async function mapDay() {
   catch (e) {
     if (e.code === 401) { showKeywall(); return; }
     readOnlyToast('Couldn’t read today’s route just now — tap ↻ and try again.');
+    return;
+  }
+  // A calendar Arbo couldn't read is said in R35's own words — never "nothing to route" — and the map re-reads to agree.
+  if (d && d.state !== 'ok' && d.state !== 'practice') {
+    readOnlyToast(typeof d.line === 'string' && d.line ? d.line : 'Couldn’t read today’s route just now — tap ↻ and try again.');
+    mapTick();
     return;
   }
   if (d && d.plan && Array.isArray(d.plan.order) && d.plan.order.length) openMapsDay(d);
@@ -8728,6 +8739,7 @@ function autoRefresh() {
   TIMER_REDRAW = true;
   try { for (const t in TIMED) if (!holdsTyping($('view-' + t))) TIMED[t](); } finally { TIMER_REDRAW = false; }
   renderLeadsHead(); // Direction B P16: the Leads head and the tab's badge, every minute, even while both Leads views hold
+  mapTick(); // Maps wave A review: the map's Today re-reads on the same minute (the frame skips it while Map is off screen)
 }
 for (const t of ['leads', 'calls']) $('view-' + t).addEventListener('click', (e) => { e.currentTarget.dataset.taps = String(tapCount(e.currentTarget) + 1); }, true);
 $('refresh').addEventListener('click', () => {

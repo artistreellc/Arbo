@@ -239,7 +239,7 @@ describe('refresh', () => {
       'view-book': view([{ value: '12 Oak St', type: 'text' }]), // half-typed estimate prep
       keywall: { classList: { contains: () => wallUp } },
     };
-    const tick = pageFn<() => void>('autoRefresh', { document: page, $: (id: string) => els[id], TIMED, holdsTyping, renderLeadsHead: () => {} /* P16: the Leads head */ });
+    const tick = pageFn<() => void>('autoRefresh', { document: page, $: (id: string) => els[id], TIMED, holdsTyping, renderLeadsHead: () => {} /* P16: the Leads head */, mapTick: () => {} /* Maps review: the map's tick */ });
     tick();
     expect(ran).toEqual(['today', 'leads', 'calls']);
     page.hidden = true;
