@@ -235,6 +235,25 @@ describe('Prep estimate from a lead: handed over in memory, by id (P18)', () => 
     expect(card.textContent).not.toContain('Street not on file');
   });
 
+  it('a lead with no ZIP says so before Build — the drive time needs one; with a ZIP nothing is said; × takes the line away (P18 review)', async () => {
+    const k = kit();
+    k.prepFromLead({ ...LEAD, zip: null });
+    const card = k.estimatePrepPanel();
+    await flush();
+    expect(k.field(card, 'zip').value).toBe('');
+    expect(card.textContent).toContain('ZIP not on file — without it the drive time can’t be worked out.');
+    // the box's grey hint never reads like a filled-in ZIP
+    expect(k.field(card, 'zip').placeholder).not.toMatch(/^\d{5}$/);
+    const x = card.all().find((n) => n.tag === 'button' && n.getAttribute('aria-label') === 'Clear the lead')!;
+    await x.click();
+    expect(card.textContent).not.toContain('ZIP not on file');
+    const withZip = kit();
+    withZip.prepFromLead(LEAD);
+    expect(withZip.estimatePrepPanel().textContent).not.toContain('ZIP not on file');
+    // a blank form (no lead) says nothing about a ZIP
+    expect(kit().estimatePrepPanel().textContent).not.toContain('ZIP not on file');
+  });
+
   it('a city outside the four is kept as the lead said it — the server flags it; never silently swapped for Virginia Beach', () => {
     const k = kit();
     k.prepFromLead({ ...LEAD, city: 'Suffolk' });

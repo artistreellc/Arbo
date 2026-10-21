@@ -451,8 +451,11 @@ describe('Q7 — the Book never dresses a dead screen as a help tip', () => {
     expect(c.indexOf('if (e.code === 401) return showKeywall();')).toBeLessThan(c.indexOf('await LINKS_READY;'));
     expect(c.indexOf('await LINKS_READY;')).toBeLessThan(c.indexOf("'feed-state ' + feedKind(e)"));
     // The intro stays a help tip, and the Book's own dead feed stays the dashed card.
-    expect(p).toContain("card.appendChild(el('div', 'storm-muted', 'Permit check, drive time");
-    expect(book()).toContain("feedState(e, 'The Book', 'an empty Book')");
+    // Direction B P15 review: the intro is Estimate's head line now (said once, above the form), still plain help text;
+    // the Book is "Properties on file", and its dead feed says that name.
+    expect(between('async function renderEstimate()', 'function estimatePrepPanel()')).toContain("head.appendChild(el('p', '', 'Start with the address: permit, drive time, 811 and access. Never a price, never a booking.'));");
+    expect(p).not.toContain("'feed-state', 'Permit check");
+    expect(book()).toContain("feedState(e, VIEW_TITLES.book, 'an empty list')");
   });
 
   it('the property counts read as real plurals', () => {

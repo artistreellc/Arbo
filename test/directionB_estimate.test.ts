@@ -167,9 +167,12 @@ describe('Estimate: the head and the prep form first, then the tools (P15)', () 
     expect(kids[0]!.has('viewhead')).toBe(true);
     expect(kids[0]!.children[0]!.textContent).toBe('Arborist · Permit Desk');
     expect(kids[0]!.children[1]!.textContent).toBe('Before you write it up');
-    expect(kids[1]!.textContent).toContain('Estimate prep');
-    expect(kids[1]!.textContent).toContain('Never a price, never a booking.');
-    expect(k.tools().map((t) => t.dataset.tool)).toEqual(['permits', 'measure', 'yard', 'book']);
+    // P15 review: the head says once what the sheet is and that it never prices or books; the form card follows it.
+    expect(kids[0]!.children[2]!.textContent).toBe('Start with the address: permit, drive time, 811 and access. Never a price, never a booking.');
+    expect(kids[1]!.has('prep-card')).toBe(true);
+    expect(kids[1]!.textContent).toContain('Build prep sheet');
+    // the spec's order — the Yard check first, so it sits on the first screen (R29 #4: one tap away)
+    expect(k.tools().map((t) => t.dataset.tool)).toEqual(['yard', 'measure', 'book', 'permits']);
     expect(k.tool('book').textContent).toContain('Reading…');
   });
 
@@ -343,6 +346,9 @@ describe('Properties on file (the Book, renamed): its list only — the prep for
     expect(v.children.map((c) => c.className)).toEqual(['viewhead', 'state']);
     expect(v.children[0]!.children[1]!.textContent).toBe('Properties on file');
     expect(v.textContent).toContain('cut on purpose');
+    // P15 review: the dead feed names the screen by its new name — never "The Book … not an empty Book" under it
+    expect(v.children[1]!.textContent).toContain('Properties on file — cut on purpose');
+    expect(v.textContent).not.toMatch(/\bBook\b/);
   });
 });
 
@@ -352,5 +358,41 @@ describe('Office, until the dock flips (P19): one Estimate tile where Book, Perm
     expect(more).toContain("tile('i-tree', 'Estimate', ");
     expect(more).toContain("switchTab('estimate')");
     for (const gone of ["'Book'", "'Permits'", "'Measure'"]) expect(more, gone).not.toContain(gone);
+  });
+});
+
+// ---------- Review round (after 289baa0): what the reviews confirmed on Estimate and Properties on file ----------
+describe('Estimate review: the Yard check on the first screen, its desk line, a row that opens while it reads, the Book renamed', () => {
+  it('the tools come straight after the form — no heading row between (the list keeps its name for a screen reader)', () => {
+    const k = kit({ '/api/properties': () => new Promise(() => {}) });
+    void k.renderEstimate();
+    const kids = k.v().children;
+    expect(kids.map((c) => c.className)).toEqual(['viewhead', 'card prep-card', 'est-tools']);
+    expect(kids[2]!.getAttribute('role')).toBe('group');
+    expect(kids[2]!.getAttribute('aria-label')).toBe('Tools for the estimate');
+    // the form card carries no title or help line of its own — the head says them once
+    expect(kids[1]!.querySelector('.panel-title')).toBeNull();
+    expect(kids[1]!.textContent).not.toContain('one sheet before you drive');
+    // two lines of access notes, a little tighter, on Estimate only
+    const css = html.slice(0, html.indexOf('</style>'));
+    expect(css).toContain('.prep-card .field textarea{min-height:60px}');
+  });
+
+  it('every tool’s small line is a desk name (R26) — the Yard check’s is the Yard Boss, not a note that it moved', () => {
+    const tools = constVal<Array<{ key: string; line: string }>>('ESTIMATE_TOOLS');
+    const desks = Object.values(constVal<Record<string, string>>('SECTION_NAMES'));
+    for (const t of tools) expect(desks, t.key).toContain(t.line);
+    expect(tools.find((t) => t.key === 'yard')!.line).toBe('Yard Boss');
+  });
+
+  it('Properties on file opens while its count still reads — only a read that failed makes it inert', async () => {
+    const k = kit({ '/api/properties': () => new Promise(() => {}) });
+    void k.renderEstimate();
+    await flush();
+    expect(k.tool('book').textContent).toContain('Reading…');
+    expect(k.tool('book').getAttribute('aria-disabled')).toBe('false');
+    expect(k.tool('book').has('gap')).toBe(false);
+    await k.tool('book').click();
+    expect(k.went).toEqual(['book']);
   });
 });

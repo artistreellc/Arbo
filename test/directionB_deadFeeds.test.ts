@@ -357,7 +357,7 @@ describe.each(FAILS)('a read that died: $kind', (fail) => {
     for (let i = 0; i < 6; i++) await flush();
     const v = k.$('view-estimate');
     expect(v.children[0]!.className).toBe('viewhead');
-    expect(v.textContent).toContain('Estimate prep');
+    expect(v.textContent).toContain('Build prep sheet'); // P15 review: the form card has no title of its own; the head names the sheet
     const row = v.querySelectorAll('.est-tool').find((t) => t.dataset.tool === 'book')!;
     expect(row.textContent).toContain('Not counted — ' + FEED_WORD[fail.kind]);
     expect(row.textContent).not.toMatch(/\b0 (?:on file|coming due)/);
