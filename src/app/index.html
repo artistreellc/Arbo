@@ -651,6 +651,8 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 #appbar .hrow > div:first-child{min-width:0}
 #appbar .brand > span{min-width:0}
 #apptitle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* P13 review: a long title that will not fit one line even stepped down takes two (fitTitle), clamped — never spilled. */
+#apptitle.two{white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-height:1.1}
 .hbtns{flex:none}
 .talk-body{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
 .talk-body [hidden]{display:none}
@@ -7244,6 +7246,23 @@ function setAppSub() {
   else $('appsub').replaceChildren(date, ' · Art-is-Tree');
 }
 
+// P13 review: the app bar says a screen's title whole. Beside ‹ Back, Talk, the gear and ↻ a 390 px bar
+// leaves it about 97 px — "Follow-ups" and "Crew & safety" were cut to "Follow…" / "Crew …". A long title
+// steps down on one line (the bar's 21 px → 16), then takes two lines (17 → 14); past that floor it is
+// drawn as before — one line at 21 px, cut short by the "…" rule (a 320 px phone, as before).
+function fitTitle() {
+  const t = $('apptitle');
+  const fits = (px, two) => {
+    t.style.fontSize = px === 21 ? '' : px + 'px';
+    t.classList.toggle('two', two);
+    // Wide enough — and on two lines, no third one hidden by the clamp (half a line of slack for the glyphs).
+    return t.scrollWidth <= t.clientWidth && (!two || t.scrollHeight < t.clientHeight + px / 2);
+  };
+  for (let px = 21; px >= 16; px--) if (fits(px, false)) return;
+  for (let px = 17; px >= 14; px--) if (fits(px, true)) return;
+  fits(21, false);
+}
+
 function switchTab(which) {
   navPush(which);
   // Direction B P13: every screen is a VIEW_TITLES key, and one DOCK_OF table says which dock tab
@@ -7254,6 +7273,7 @@ function switchTab(which) {
   CUR_TAB = which;
   setAppSub();
   navShowBack();
+  fitTitle(); // after Back is shown or hidden: that changes the room the title has
   window.scrollTo(0, 0);
 }
 
@@ -7693,6 +7713,9 @@ $('refresh').addEventListener('click', () => {
 });
 $('settings-btn').addEventListener('click', () => { switchTab('settings'); renderSettings(); });
 
+// The title's room changes with the phone's width, and the bar's font lands after the first paint (font-display: swap).
+window.addEventListener('resize', fitTitle);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitTitle);
 $('dateline').textContent = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
 setAppSub();
 LINKS_READY.then(setAppSub);

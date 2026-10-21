@@ -391,3 +391,94 @@ describe('the desks\' names outside the page (P13)', () => {
     expect(doc).toContain('On the Fleet screen each unit gets one line.');
   });
 });
+
+// ---------- the app bar says a desk's title whole (UI review of b-wave-2, medium 1) ----------
+// At 390 the bar beside ‹ Back, Talk, the gear and ↻ leaves the title 97 px: "Follow-ups" (117 px at
+// 21 px) read "Follow…" and "Crew & safety" (149) read "Crew …" — on a66f36d nothing was cut at 390.
+// fitTitle steps a long title down on one line (21 → 16 px), then lets it take two lines (17 → 14 px);
+// only past that floor does the old "…" rule cut it short.
+describe('the app bar title fits whole (fitTitle)', () => {
+  /** A stand-in #apptitle: text width scales with the font size; in two-line mode it wraps at spaces and after hyphens. */
+  function titleBox(width: number, text: string) {
+    const style: Record<string, string> = {};
+    const cls = new Set<string>();
+    let box = width;
+    const px = () => parseFloat(style.fontSize || '21');
+    const w = (s: string) => s.length * px() * 0.56;
+    const lines = () => {
+      if (!cls.has('two')) return [text];
+      const out: string[] = [];
+      for (const word of text.match(/[^\s-]+-?/g)!) {
+        const last = out[out.length - 1];
+        const join = last === undefined ? word : last + (last.endsWith('-') ? '' : ' ') + word;
+        if (last !== undefined && w(join) <= box) out[out.length - 1] = join; else out.push(word);
+      }
+      return out;
+    };
+    const lh = () => px() * 1.1;
+    const t = {
+      style, textContent: text,
+      classList: { contains: (c: string) => cls.has(c), toggle: (c: string, f: boolean) => { if (f) cls.add(c); else cls.delete(c); } },
+      get scrollWidth() { return Math.ceil(Math.max(...lines().map(w))); },
+      get clientWidth() { return box; },
+      get scrollHeight() { return Math.ceil(lines().length * lh()); },
+      get clientHeight() { return Math.ceil(Math.min(lines().length, cls.has('two') ? 2 : 1) * lh()); },
+    };
+    return { t, fits: () => t.scrollWidth <= t.clientWidth && t.scrollHeight <= t.clientHeight, lines, resize: (n: number) => { box = n; } };
+  }
+  const fit = (t: unknown) => new Function('$', `${fnSrc('fitTitle')}\nreturn fitTitle;`)(() => t) as () => void;
+
+  it('a title that fits keeps the bar\'s own size (21 px, one line)', () => {
+    for (const title of ['Leads', 'Money', 'Fleet', 'ARBO']) {
+      const b = titleBox(97, title);
+      fit(b.t)();
+      expect(b.t.style.fontSize, title).toBe('');
+      expect(b.t.classList.contains('two'), title).toBe(false);
+    }
+  });
+
+  it('at 390 "Follow-ups" steps down on one line and shows whole — never "Follow…"', () => {
+    const b = titleBox(97, 'Follow-ups');
+    fit(b.t)();
+    expect(b.t.classList.contains('two')).toBe(false);
+    expect(parseFloat(b.t.style.fontSize ?? '')).toBeGreaterThanOrEqual(16);
+    expect(parseFloat(b.t.style.fontSize ?? '')).toBeLessThan(21);
+    expect(b.fits()).toBe(true);
+  });
+
+  it('at 390 "Crew & safety" takes two lines and shows whole — never "Crew …"', () => {
+    const b = titleBox(97, 'Crew & safety');
+    fit(b.t)();
+    expect(b.t.classList.contains('two')).toBe(true);
+    expect(parseFloat(b.t.style.fontSize ?? '')).toBeGreaterThanOrEqual(14);
+    expect(b.lines()).toEqual(['Crew &', 'safety']);
+    expect(b.fits()).toBe(true);
+  });
+
+  it('a wider bar (a rotated phone, Back gone) is fitted afresh: the title goes back to its own size', () => {
+    const b = titleBox(97, 'Follow-ups');
+    fit(b.t)();
+    b.resize(200);
+    fit(b.t)();
+    expect(b.t.style.fontSize).toBe('');
+    expect(b.t.classList.contains('two')).toBe(false);
+  });
+
+  it('past the floor (a 27 px box at 320) it is drawn as before — 21 px, one line, the "…" rule — no endless loop', () => {
+    const b = titleBox(27, 'Crew & safety');
+    fit(b.t)();
+    expect(b.t.style.fontSize).toBe('');
+    expect(b.t.classList.contains('two')).toBe(false);
+    // The old one-line rule stays (the ellipsis), and two lines are clamped, never spilled.
+    expect(html).toContain('#apptitle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}');
+    expect(html).toMatch(/#apptitle\.two\{[^}]*white-space:normal[^}]*-webkit-line-clamp:2[^}]*\}/);
+  });
+
+  it('it runs whenever the title or the room changes: every screen switch, a resize, the font landing', () => {
+    const sw = fnSrc('switchTab');
+    expect(sw.indexOf('fitTitle();')).toBeGreaterThan(sw.indexOf("$('apptitle').textContent = VIEW_TITLES[which] || 'ARBO';"));
+    expect(sw.indexOf('fitTitle();')).toBeGreaterThan(sw.indexOf('navShowBack();')); // Back shown or hidden changes the room
+    expect(html).toContain("window.addEventListener('resize', fitTitle);");
+    expect(html).toContain('document.fonts.ready.then(fitTitle)');
+  });
+});

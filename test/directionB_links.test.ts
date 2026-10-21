@@ -89,6 +89,7 @@ function litTabs(view: string): string[] {
   };
   const sw = pageFn<(w: string) => void>('switchTab', {
     navPush: () => {}, $, VIEW_TITLES, DOCK_OF: constVal<Record<string, string>>('DOCK_OF'), CUR_TAB: 'today', setAppSub: () => {}, navShowBack: () => {}, window: { scrollTo: () => {} },
+    fitTitle: () => {}, // P13 review: the app bar's title fit (its own tests: directionB_desks)
   });
   sw(view);
   expect($('view-' + view)!.on.has('active'), 'view-' + view + ' is shown').toBe(true);
