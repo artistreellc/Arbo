@@ -408,6 +408,20 @@ describe('C1 — the clock-in question names an empty pool and a failed read', (
     expect(v.text()).not.toContain(NAMED_EMPTY);
   });
 
+  // Review D2 (D107): the route answered, but the questions themselves could not
+  // be read (itemsLoaded false). §1B: that is never "none published" — it wears
+  // the warning box and says it could not be loaded, and nothing is asked.
+  it('questions the server could not read are named in the warning box — never "none published"', async () => {
+    const v = await quiz(async () => ({ itemsLoaded: false, items: [], shortfall: 1 }));
+    const box = v.all().find((n) => n.className === 'state err')!;
+    expect(box, 'an unread pool wears the warning box, not the empty one').toBeDefined();
+    expect(box.text()).toContain('could not be loaded');
+    expect(box.text()).toContain('This is not "no questions"');
+    expect(v.text()).not.toContain(NAMED_EMPTY);
+    expect(v.text()).not.toContain(GAP);
+    expect(v.all().some((n) => n.id === 'quiz-go')).toBe(false);
+  });
+
   it('a rejected crew code is said as one — never "the office didn’t answer"', async () => {
     const v = await quiz(refused(400, 'bad_crew_id'));
     expect(v.text()).toMatch(/the office did not recognise your crew code/i);
