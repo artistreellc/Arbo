@@ -107,6 +107,7 @@ type Panels = {
   renderLeads: () => Promise<void>; emergencyLeads: () => Promise<unknown>; sonaPanel: (limit: number, full: boolean) => Promise<unknown>;
   renderSafety: (slot: FNode) => Promise<void>; renderFleetList: (slot: FNode) => Promise<boolean>; renderMoney: (slot: FNode) => Promise<void>;
   stormBanner: () => Promise<unknown>; heroLoops: () => void;
+  beforeYouRoll?: (emgP: Promise<unknown>, stormP: Promise<unknown>) => FNode;
 };
 /** The page's helpers and the panels under test, built together with one stand-in document. */
 function kit(fail: (typeof FAILS)[number]) {
@@ -132,10 +133,15 @@ function kit(fail: (typeof FAILS)[number]) {
   // The P3 review's tap guard (keepsPage) and what it reads; a read here is never tapped.
   if (/^function keepsPage\(/m.test(html)) helpers.push('tapCount', 'keepsPage', 'holdsTyping');
   const targets = ['renderLeads', 'emergencyLeads', 'sonaPanel', 'renderSafety', 'renderFleetList', 'renderMoney', 'stormBanner', 'heroLoops'];
+  // Direction B P11: Before you roll, with the tables it reads.
+  if (/^function beforeYouRoll\(/m.test(html)) { consts.push('DESK_VIEW', 'UNIT_STATUS', 'ROLL_ROWS'); targets.push('beforeYouRoll'); }
   const built = new Function('document', 'api', 'HERO', 'sysSet', 'showKeywall', 'linksIn', `
     let LINKS = linksIn;
     let TIMER_REDRAW = false;
     const LINKS_READY = Promise.resolve(linksIn);
+    let STORM_READ = null; // Direction B P11: stormBanner keeps its outcome for Before you roll
+    let ROLL_BOX = null; // P11 review: the card a redraw keeps up, and the draw that owns it
+    let ROLL_GEN = 0;
     ${consts.map(constSrc).join('\n')}
     ${[...helpers, ...targets].map(fnSrc).join('\n')}
     return { ${targets.join(', ')} };`)(
@@ -208,6 +214,16 @@ describe.each(FAILS)('a read that died: $kind', (fail) => {
     expect(s.label).not.toMatch(CALM[3]!);
   });
 
+  it('Before you roll (P11): every dead read named, no 0 beside a noun, never "Nothing to check"', async () => {
+    const k = kit(fail);
+    // The weather comes from stormBanner's own read (its outcome), the leads from emergencyLeads'.
+    const box = k.beforeYouRoll!(k.emergencyLeads(), Promise.resolve({ error: fail.err() }));
+    for (let i = 0; i < 8; i++) await flush();
+    expectNamed(box.textContent, fail.kind, 'Before you roll');
+    expect(box.textContent).not.toMatch(/\b0 to check\b/);
+    expect(k.paths.filter((p) => p === '/api/safety' || p === '/api/fleet/units')).toEqual(['/api/safety', '/api/fleet/units']);
+  });
+
   it('Open loops (the hero stat): a dash and the feed tag, never 0 open', async () => {
     const k = kit(fail);
     k.heroLoops();
@@ -252,6 +268,7 @@ describe('the dead-feed harness knows every panel in the page', () => {
     studyPanel: 'not seeded in P1; pinned in qa2_calls-cal-leads (joins with P12)',
     outreachPanel: 'not seeded in P1; pinned in outreach and qa2_today (joins with P12)',
     websiteFormsPanel: 'not seeded in P1; pinned in qa_today and webhooks (joins with P12)',
+    openPanel: 'P10 navigation, not a panel: it opens a screen and lands on one of its panels — no read of its own (directionB_todayTaps)',
   };
   it('every render* and *Panel function is covered or exempt with a reason — never both', () => {
     const names = [...html.matchAll(/^(?:async )?function (\w+)\(/gm)].map((m) => m[1]!).filter((n) => /^render[A-Z]/.test(n) || /Panel$/.test(n));

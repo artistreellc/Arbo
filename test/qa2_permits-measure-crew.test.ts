@@ -65,6 +65,8 @@ class FakeNode {
   }
   remove(): void { if (this.parent) this.parent.kids = this.parent.kids.filter((k) => k !== this); this.parent = null; }
   scrollIntoView(opts: unknown): void { this.scrolled.push(opts); }
+  // Direction B P9: a rule sits in a folded topic; the jump opens the <details> around it first.
+  closest(sel: string): FakeNode | null { for (let n = this.parent; n; n = n.parent) if (sel === n.tag + '.' + n.cls.split(' ')[0]) return n; return null; }
   get firstChild(): FakeNode | null { return this.kids[0] ?? null; }
   get textContent(): string { return this.text + this.kids.map((k) => k.textContent).join(''); }
 }

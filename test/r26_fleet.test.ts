@@ -482,6 +482,7 @@ function pageTable(name: string): Record<string, [string, string]> {
 interface FakeNode {
   tag: string; className: string; textContent: string; disabled: boolean; kids: FakeNode[];
   style: Record<string, string>;
+  dataset: Record<string, string>;
   classList: { add(c: string): void; remove(c: string): void; contains(c: string): boolean };
   appendChild(n: FakeNode): FakeNode;
   replaceChildren(...n: FakeNode[]): void;
@@ -491,7 +492,7 @@ interface FakeNode {
 function node(tag: string, cls = '', text?: string): FakeNode {
   const listeners: Array<() => unknown> = [];
   const n: FakeNode = {
-    tag, className: cls, textContent: text ?? '', disabled: false, kids: [], style: {},
+    tag, className: cls, textContent: text ?? '', disabled: false, kids: [], style: {}, dataset: {}, // dataset: Direction B P11 — a unit card carries data-unit
     classList: {
       add: (c) => { if (!n.className.split(' ').includes(c)) n.className = `${n.className} ${c}`.trim(); },
       remove: (c) => { n.className = n.className.split(' ').filter((x) => x !== c).join(' '); },

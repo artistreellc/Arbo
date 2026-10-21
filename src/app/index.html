@@ -214,6 +214,11 @@ main{padding:8px 16px 16px;max-width:680px;margin:0 auto}
 .hstat small{display:block;font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(244,239,224,.9);margin-top:3px}
 .hstat small:empty{display:none}
 .hstat.hot{border-color:rgba(255,160,143,.45)}.hstat.hot small{color:#FFA08F}
+/* Direction B P10: a stat opens what it counts; a '–' is a gap — dashed, and it opens nothing. */
+button.hstat{font:inherit;text-align:left;color:inherit;width:100%;min-height:44px}
+.hstat[aria-disabled="false"]{cursor:pointer}.hstat[aria-disabled="true"]:active{transform:none}
+button.hstat{position:relative}.hstat .cue{display:none}.hstat[aria-disabled="false"] .cue{display:block;position:absolute;top:6px;right:10px;font-style:normal;font-size:20px;line-height:1;color:rgba(244,239,224,.75)} /* Direction B P10 review: a › on a stat that opens something */
+.hstat.gap{border-style:dashed;border-color:rgba(255,255,255,.3);background:transparent}
 .ring-legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:12px;font-size:12px;color:rgba(244,239,224,.75)}
 .ring-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px}
 
@@ -353,6 +358,7 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
   border-radius:12px;border:1px solid color-mix(in srgb,var(--emergency) 40%,transparent);background:var(--card);color:inherit;font:inherit;font-weight:600;text-align:left}
 .storm .sliplink::after,.card .sliplink::after{content:'\203A';font-size:22px;line-height:1;flex:none}
 .card.flash{animation:cardflash 1.8s var(--ease)}
+.flash:not(.card){animation:cardflash 1.8s var(--ease);border-radius:var(--r-md)} /* Direction B P10: a panel a tap landed on */
 @keyframes cardflash{0%,40%{box-shadow:0 0 0 3px var(--emergency)}100%{box-shadow:none}}
 .storm-muted{color:var(--ink-3);font-size:13.5px;line-height:1.55;margin-bottom:12px;text-wrap:pretty}
 /* Direction B P3: what a read in flight looks like — a plain line, never an empty screen. */
@@ -391,6 +397,22 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 .actions{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
 .callbtn{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;min-height:50px;border-radius:var(--r-pill);
   background:linear-gradient(180deg,#245F4D,#1B4D3E);color:#fff;font-size:15px;font-weight:700;text-decoration:none;box-shadow:var(--shadow-pop);border:0;padding:0 18px}
+/* Direction B P8: a lead's Call back is a round button in its top row; the word is kept for screen readers. */
+.callbtn.round{flex:none;width:52px;height:52px;min-height:52px;padding:0;border-radius:50%}
+/* The name on top, its time and city under it, the round button beside both — the name keeps the width at 320 px. */
+/* P8 review: the time and the city flow on one line and the city drops whole to the next when it does not
+   fit — never cut off ("Chesap…" at 320), never squeezed into a narrow column. The button sits right, centred. */
+.card .toprow.has-call{display:flex;flex-wrap:wrap;justify-content:flex-start;align-items:baseline;align-content:center;column-gap:10px;row-gap:2px;position:relative;min-height:52px;padding-right:62px}
+.card .toprow.has-call .who{flex:1 1 100%;min-width:0;overflow-wrap:anywhere}
+.card .toprow.has-call .when{flex:none}
+.card .toprow.has-call .addr{flex:0 1 auto;margin:0;font-size:14px;min-width:0;overflow-wrap:anywhere}
+.card .toprow.has-call .callbtn{position:absolute;right:0;top:50%;margin-top:-26px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+.clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
+.clamp.open{display:block}
+#view-leads .card{padding:12px 14px}
+#view-leads .card .toprow.has-call{margin-bottom:6px}
+#view-leads .card .actions{margin-top:10px}
 .minibtn{min-height:48px;min-width:56px;border:1px solid var(--border);border-radius:var(--r-pill);background:var(--card);color:var(--ink-1);font-size:14px;font-weight:700;padding:0 16px}
 .minibtn:hover{background:var(--paper)}
 .minibtn:disabled{opacity:.5;box-shadow:none;background:var(--paper)}
@@ -443,6 +465,17 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 .tile.hot{border-color:color-mix(in srgb,var(--emergency) 35%,transparent)} .tile.hot b{color:var(--emergency)}
 .tile.warn{border-color:color-mix(in srgb,var(--warning) 35%,transparent)} .tile.warn b{color:var(--warning)}
 .tile.ok-t b{color:var(--ok)}
+/* Direction B P11: Before you roll — under the hero; each row a full-width tap that lands on its item. */
+.card.roll{padding:12px 14px}
+.roll-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 10px}
+.roll .sliplink.roll-row{min-height:48px;margin-top:6px;font-size:15px}
+.roll .roll-group{margin:12px 0 0}
+.roll .feed-state,.roll .storm-muted{margin:10px 0 0}
+.roll .roll-retry{display:flex;width:fit-content;align-items:center;justify-content:center;margin-top:8px;min-height:44px}
+/* Direction B P10: a tile opens what it counts; a tile whose feed failed is dashed and opens nothing. */
+.tile.go:not(.gap){cursor:pointer}.tile.go:not(.gap):active{transform:scale(.975)}
+.tile .cue{display:none}.tile.go:not(.gap) .cue{display:block;position:absolute;top:8px;right:10px;font-style:normal;font-size:20px;line-height:1;color:var(--ink-3)} /* the tile's › */
+.tile.gap{border-style:dashed;border-color:var(--border);box-shadow:none;background:transparent}
 .tile::after{content:'';position:absolute;left:0;right:0;top:0;height:3px;background:var(--forest);opacity:.18}
 .tile.hot::after{background:var(--emergency);opacity:.7}.tile.warn::after{background:var(--gold-5);opacity:.7}
 .hud .wide{grid-column:1 / -1}
@@ -499,6 +532,8 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 .maps-who{font-family:var(--serif);font-size:19px;font-weight:600;color:var(--ink-1);line-height:1.3;margin:0 2px 6px;overflow-wrap:anywhere}
 .maps-stop{font-size:14px;color:var(--ink-2);padding:8px 0;border-bottom:1px solid var(--hairline);overflow-wrap:anywhere}
 #maps .routebtn{margin-top:14px}
+/* Direction B P7: Navigate spans its stop card, a big thumb target. */
+.navbtn{width:100%;min-height:52px;margin:12px 0 0;font-size:15px}
 
 /* ── Offline + toast ─────────────────────────────────────────────────── */
 #offline{display:none;position:sticky;top:0;z-index:25;margin:0 -16px 10px;padding:10px 16px;background:var(--warning-bg);color:color-mix(in srgb,var(--warning) 75%,var(--ink-1));font-size:13.5px;font-weight:600;border-bottom:1px solid color-mix(in srgb,var(--warning) 30%,transparent)}
@@ -513,7 +548,7 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
   header{padding-left:32px;padding-right:32px}.hrow{max-width:1056px}
   .view.active{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
   .view > *{grid-column:auto}
-  .view .viewhead,.view .hero,.view .systems,.view .sect,.view .zip-run,.view .state,.view .panel-title,.view .storm,.view .storm-muted,.view .feed-state,.view .reading,.view .routebtn,.view .hudbtn,.view .hud,.view .grid-tiles{grid-column:1 / -1}
+  .view .viewhead,.view .hero,.view .systems,.view .sect,.view .zip-run,.view .state,.view .panel-title,.view .storm,.view .storm-muted,.view .feed-state,.view .reading,.view .routebtn,.view .hudbtn,.view .hud,.view .grid-tiles,.view .proposals{grid-column:1 / -1}
   #view-today .hud{grid-template-columns:repeat(6,1fr)}
   #view-today .hud .wide{grid-column:span 2}
   #view-today .routebtn{justify-self:start;padding:0 24px}
@@ -538,6 +573,18 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 .seg button.on{background:var(--seg-on,var(--card));color:var(--forest);box-shadow:0 1px 3px rgba(20,40,30,.14),inset 0 0 0 1px var(--border)}
 .check-item .who{font-size:17px;margin-top:8px}
 .card.fact{scroll-margin-top:calc(84px + env(safe-area-inset-top))} /* a "Source ↓" jump lands below the sticky app bar */
+/* Direction B P9: the job check's result, pinned under the app bar while the questions are worked; the topics fold. */
+.permit-verdict{position:sticky;top:calc(64px + env(safe-area-inset-top));z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;width:100%;min-height:52px;margin:0 0 10px;padding:8px 14px;border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-card);text-align:left;color:var(--ink-1)}
+.permit-verdict .pv-line{font-size:14px;font-weight:700;color:var(--ink-2)}
+.permit-verdict .reading{margin:0;padding:0}
+.pv-results{scroll-margin-top:calc(144px + env(safe-area-inset-top))}
+.topic > summary{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;min-height:52px;padding:10px 30px 10px 2px;cursor:pointer;list-style:none;position:relative;border-bottom:1px solid var(--hairline)}
+.topic > summary::-webkit-details-marker{display:none}
+.topic > summary::after{content:'';position:absolute;right:8px;top:50%;width:8px;height:8px;border-right:2px solid var(--forest);border-bottom:2px solid var(--forest);transform:translateY(-70%) rotate(45deg);transition:transform .2s}
+.topic[open] > summary::after{transform:translateY(-30%) rotate(-135deg)}
+.topic[open] > summary{margin-bottom:12px}
+.topic .topic-name{font-family:var(--serif);font-size:17.5px;font-weight:600;color:var(--ink-1)}
+.topic .topic-n{font-size:13px;font-weight:600;color:var(--ink-3)}
 .factmeta{font-size:13.5px;color:var(--ink-3);margin-top:10px;display:grid;gap:4px}
 .factmeta b{color:var(--ink-1);font-weight:650}
 .factmeta a{color:var(--forest);font-weight:600;text-decoration:none}
@@ -572,6 +619,11 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 .lesson-kind{display:flex;justify-content:space-between;gap:10px}.lesson-kind .n{white-space:nowrap;font-weight:600}
 .actbtn.alt{background:var(--card);color:var(--ink-1);border:1px solid var(--border);box-shadow:none}
 #view-agents .wide-btn + .feed-state{margin-top:14px}
+/* Direction B P6: the proposals list above the desk cards. */
+.proposals .who{margin-bottom:4px}
+.prop-row{padding:12px 0 2px;border-top:1px solid var(--hairline);margin-top:10px}
+.prop-row .scope{margin-bottom:10px}
+.proposals .feed-state,.proposals .storm-muted{margin:10px 0 0}
 .bigcheck{width:26px;height:26px;flex:none;accent-color:var(--forest)}
 /* ── Talk (R30) — Mike's voice line inside Arbo. The header button sits on
    every screen; the sheet is one huge Start/End, a status line, the last
@@ -987,12 +1039,37 @@ function fmtTime(iso) {
   return fmtWhen(iso);
 }
 
+// mapsDirUrl (R35) is the page's one Google Maps link builder (Direction B P7).
 function mapsLink(address, city) {
+  if (!address) return el('span', '', city || ''); // no street, nothing to drive to: never a link to the middle of town (P7 review)
   const a = el('a', '', address + (city ? ', ' + city : ''));
-  a.href = 'https://maps.google.com/?q=' + encodeURIComponent(address + ', ' + city + ', VA');
+  a.href = mapsDirUrl([address + ', ' + city + ', VA']);
   a.target = '_blank';
   a.rel = 'noopener';
   return a;
+}
+// A stop's whole address for Google Maps: street, city, VA and the ZIP when known. '' when it has no street.
+function stopAddress(s) {
+  return s.address ? [s.address, s.city, 'VA' + (s.zip ? ' ' + s.zip : '')].filter(Boolean).join(', ') : '';
+}
+// Direction B P7 review: Route the day routes only stops with a street; the ones it
+// leaves out are named under it — never silently missing from the drive, as R35's day sheet names its own.
+function routeLeftOut(stops) {
+  const left = stops.filter((s) => !stopAddress(s));
+  if (!left.length) return null;
+  return el('div', 'late', '⚠ Not in the route: ' + plural(left.length, 'stop') + ' with no street on file — ' + left.map((s) => s.name || 'Unnamed').join(', ') + '.');
+}
+// Direction B P7 (spec: "Stops get a big Navigate button"): it asks first through
+// R35's own sheet (openMapsStop) — no second sheet, no link of its own. No street, no button.
+function navigateBtn(stop) {
+  const address = stopAddress(stop);
+  if (!address) return null;
+  const b = el('button', 'routebtn navbtn');
+  b.type = 'button';
+  b.appendChild(icon('i-route'));
+  b.appendChild(el('span', '', 'Navigate'));
+  b.addEventListener('click', () => openMapsStop({ title: stop.name || 'Unnamed', address }));
+  return b;
 }
 
 function badge(text, cls) { return el('span', 'badge ' + cls, text); }
@@ -1015,10 +1092,14 @@ function permitBadge(lead) {
 }
 
 // ---------- Storm banner (§26: flags, never silently clear) ----------
+// Direction B P11: the last weather read's outcome — { alerts, events } or { error } —
+// for Before you roll, so the weather is read once, never a second time.
+let STORM_READ = null;
 async function stormBanner() {
   try {
     const s = await api('/api/storm');
     const na = s.alerts.length;
+    STORM_READ = { alerts: na, events: s.alerts.map((a) => a.event) };
     if (HERO) HERO.stat('alerts', na, na ? 'warn' : '', na ? plural(na, 'weather alert') : 'no weather alerts');
     sysSet('weather', na ? 'warn' : 'ok', na ? plural(na, 'alert') : 'no alerts');
     if (!na) return null;
@@ -1036,6 +1117,7 @@ async function stormBanner() {
   } catch (e) {
     // A dead weather feed is reported, never treated as clear skies. The hero
     // subline names it — once, in one word (Weather has no chip of its own).
+    STORM_READ = { error: e };
     const k = feedKind(e);
     if (HERO) HERO.stat('alerts', '–', '', 'weather ' + FEED_TAG[k]);
     sysSet('weather', k === 'unread' ? 'down' : 'warn', FEED_TAG[k]);
@@ -1967,6 +2049,7 @@ async function emergencyLeads() {
 // the two taps that matter — call back, or open it in Leads.
 function emergencyLeadCard(l) {
   const c = el('div', 'card emergency');
+  c.dataset.lead = l.id; // where Before you roll lands (Direction B P11)
   const top = el('div', 'toprow');
   top.appendChild(el('div', 'who', l.name || 'Unknown caller'));
   top.appendChild(el('div', 'when', fmtWhen(l.createdAt)));
@@ -2329,10 +2412,165 @@ async function renderAssistant() {
 }
 
 // ---------- Today (Morning Brief) ----------
+// Direction B P11 (spec: Today gets a "Before you roll" strip): what can stop the
+// day before the trucks leave — crew who can't go aerial, trucks down or held,
+// emergencies, weather — and a named row for any of them Arbo couldn't read.
+// The feeds, in the order their rows draw.
+const ROLL_ROWS = { safety: 'Crew & safety', fleet: 'Fleet', leads: 'Emergency leads', weather: 'Weather alerts' };
+// It reads /api/safety and /api/fleet/units itself; the emergency leads and the
+// weather come from the reads Today already made (emgP, stormP) — nothing twice.
+// Every unreadable read is its own named row; cut and not set up share one muted
+// line; the chip counts only real items; "Nothing to check" only when every read
+// succeeded and there is no blind spot (§1B). No <details>: Today is on the timer.
+// Review (b-wave-1b): Today redraws every minute, and a card rebuilt as a bare
+// "Reading…" fell ~650 px for as long as NWS took — a tap meant for a row landed on
+// what slid under it. So a redraw keeps this card, rows and all, until its own reads
+// land (P3's swap); only a first draw says "Reading…". The newest draw owns the card.
+let ROLL_BOX = null;
+let ROLL_GEN = 0;
+function beforeYouRoll(emgP, stormP) {
+  const gen = ++ROLL_GEN;
+  const box = ROLL_BOX || el('div', 'card roll');
+  ROLL_BOX = box;
+  if (!box.hasChildNodes()) box.appendChild(readingLine());
+  const settle = (p) => p.then((v) => ({ v: v }), (e) => ({ e: e }));
+  // A body without the lists it should carry is a read that failed, never "nothing to check" (§1B).
+  const lists = (o, keys) => { if (!o || keys.some((k) => !Array.isArray(o[k]))) throw new Error('unreadable'); return o; };
+  // Each read is { v } (read), { e } (what stopped it), or null (a 401 — the key wall owns the screen).
+  const res = {};
+  const got = {
+    safety: settle(api('/api/safety').then((v) => lists(v, ['aerialBlocked', 'blindSpots', 'certProblems']))),
+    fleet: settle(api('/api/fleet/units').then((v) => lists(v, ['units']))),
+    leads: emgP.then((r) => (!r ? null : r.gap ? { e: r.gap } : { v: r.list }), (e) => ({ e: e })),
+    weather: stormP.then((o) => (!o ? { e: null } : o.error ? { e: o.error } : { v: o }), (e) => ({ e: e })),
+  };
+  const names = (a) => (a.length === 1 ? a[0] : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]);
+  const draw = () => {
+    if (gen !== ROLL_GEN) return; // a newer redraw owns the card
+    if (Object.values(res).some((r) => r === null || (r.e && r.e.code === 401))) { box.replaceChildren(); box.remove(); return; }
+    const rows = [];
+    const unread = [];
+    const off = { cut: [], sim: [], unset: [] };
+    let n = 0; // real items only: a blind spot is a "cannot see", counted on its own (blind)
+    let blind = 0;
+    // One small heading per feed, then its rows: a full-width tap each.
+    const row = (k, text, go) => {
+      if (!rows.some((r) => r.dataset.roll === k)) { const h = el('div', 'loop-kind roll-group', ROLL_ROWS[k]); h.dataset.roll = k; rows.push(h); }
+      const b = el('button', 'sliplink roll-row', text);
+      b.type = 'button';
+      b.dataset.roll = k;
+      b.addEventListener('click', go);
+      rows.push(b);
+    };
+    for (const k of Object.keys(ROLL_ROWS)) {
+      const r = res[k];
+      if ('e' in r) { const kind = feedKind(r.e); if (kind === 'unread') unread.push(k); else off[kind].push(ROLL_ROWS[k]); continue; }
+      if (k === 'safety') {
+        for (const id of r.v.aerialBlocked) {
+          const who = (r.v.certProblems.find((f) => f.crewMemberId === id) || {}).crewMemberName || 'A crew member';
+          row(k, who + ' can’t go aerial', () => openPanel(DESK_VIEW.safety, () => [...document.querySelectorAll('#view-' + DESK_VIEW.safety + ' [data-crew]')].find((x) => x.dataset.crew === id)));
+          n++;
+        }
+        for (const b of r.v.blindSpots) { row(k, '⚠ CANNOT SEE · ' + b, () => openPanel(DESK_VIEW.safety, 'queue-safety')); blind++; }
+      } else if (k === 'fleet') {
+        for (const u of r.v.units.filter((x) => x.status === 'held' || x.status === 'down')) {
+          row(k, u.name + ' is ' + UNIT_STATUS[u.status][0] + (u.status === 'held' ? ' · ' + (u.holdReason || 'brake/steering defect') : ''),
+            () => openPanel(DESK_VIEW.fleet, () => [...document.querySelectorAll('#view-' + DESK_VIEW.fleet + ' [data-unit]')].find((x) => x.dataset.unit === u.id)));
+          n++;
+        }
+      } else if (k === 'leads') {
+        // The first three are Today's red cards just below; more than three, one row to all of them on Leads.
+        for (const l of r.v.slice(0, 3)) row(k, (l.name || 'Unknown caller') + (l.city ? ' · ' + l.city : ''), () => openPanel('today', () => [...document.querySelectorAll('#view-today [data-lead]')].find((x) => x.dataset.lead === l.id)));
+        if (r.v.length > 3) row(k, 'All ' + r.v.length + ' emergency leads', () => openPanel('leads'));
+        n += r.v.length;
+      } else if (r.v.alerts > 0) {
+        row(k, (r.v.events || []).filter(Boolean).join(' · ') || plural(r.v.alerts, 'weather alert'), () => openPanel('today', 'today-storm'));
+        n++;
+      }
+    }
+    const out = [];
+    const head = el('div', 'roll-head');
+    head.appendChild(el('div', 'who', 'Before you roll'));
+    const said = [n ? n + ' to check' : '', unread.length ? unread.length + ' couldn’t read' : '', blind ? blind + ' can’t see' : ''].filter(Boolean).join(' · ');
+    if (said) { const c = chip(said, n ? 'stop' : 'watch'); c.classList.add('roll-count'); head.appendChild(c); }
+    out.push(head, ...rows);
+    for (const k of unread) {
+      const line = el('div', 'feed-state unread', ROLL_ROWS[k] + ': ' + FEED_WORD.unread + ' — not the same as none.');
+      if (k === 'weather') {
+        // ↻ asks the weather again, and only the weather.
+        const again = el('button', 'minibtn roll-retry', '↻ Try again');
+        again.type = 'button';
+        again.addEventListener('click', () => {
+          again.disabled = true;
+          stormBanner().then((b) => {
+            const slot = document.getElementById('today-storm');
+            if (b && slot && !slot.hasChildNodes()) slot.appendChild(b);
+            // As the first read does: alerts found, the hero's weather stat opens the storm card (review: it stayed inert).
+            if (b && HERO) HERO.go('alerts', () => openPanel('today', 'today-storm'));
+            res.weather = !STORM_READ ? { e: null } : STORM_READ.error ? { e: STORM_READ.error } : { v: STORM_READ };
+            draw();
+          });
+        });
+        line.appendChild(again);
+      }
+      out.push(line);
+    }
+    const kinds = ['cut', 'sim', 'unset'].filter((k) => off[k].length);
+    if (kinds.length) out.push(el('div', 'feed-state ' + (off.unset.length ? 'unset' : 'cut') + ' roll-off', kinds.map((k) => names(off[k]) + ': ' + FEED_WORD[k] + '.').join(' ')));
+    if (!n && !blind && !unread.length && !kinds.length) out.push(el('div', 'storm-muted', 'Nothing to check before you roll.'));
+    box.replaceChildren(...out);
+  };
+  Promise.all(Object.keys(ROLL_ROWS).map((k) => got[k].then((r) => { res[k] = r; }))).then(() => LINKS_READY).then(draw);
+  return box;
+}
+// Direction B P10: where Today's taps land. The four back-office desks still live on
+// the Queue; P13 splits it and re-points them here, in one place.
+const DESK_VIEW = { loops: 'followups', money: 'followups', fleet: 'followups', safety: 'followups' };
+// Open a screen and land on one panel of it — openSonaCall's way: switch, look
+// (again while the screen draws), scroll, flash. A desk never drawn is drawn first
+// (the step-back draw). A miss still lands on the right screen. `target` is an
+// element id or a function that finds it.
+function openPanel(view, target) {
+  if (CUR_TAB !== view) {
+    if (NAV_DRAW[view] && !$('view-' + view).hasChildNodes()) NAV_DRAW[view]();
+    switchTab(view);
+  }
+  if (!target) return;
+  let tries = 0;
+  const look = () => {
+    const t = typeof target === 'function' ? target() : document.getElementById(target);
+    if (t) {
+      // Land below the sticky app bar, never under it (review: a unit's name and chip were hidden).
+      const bar = document.getElementById('appbar');
+      t.style.scrollMarginTop = Math.round((bar ? bar.getBoundingClientRect().height : 0) + 12) + 'px';
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      t.classList.remove('flash'); void t.offsetWidth; t.classList.add('flash');
+      return;
+    }
+    if (++tries < 30) setTimeout(look, 150);
+  };
+  look();
+}
+// A Today tile opens what it counts. A tile still showing '–' (a feed not read) opens nothing.
+function goTile(t, fn) {
+  t.setAttribute('role', 'button');
+  t.tabIndex = 0;
+  t.classList.add('go');
+  // The › says it opens something; the CSS draws it only on a tile that can (never a gap).
+  const cue = el('i', 'cue', '›');
+  cue.setAttribute('aria-hidden', 'true');
+  t.appendChild(cue);
+  t.addEventListener('click', () => { if (t.querySelector('b').textContent !== '–') fn(); });
+}
 async function renderToday() {
   const v = $('view-today');
   v.replaceChildren();
   v.appendChild(buildHero());
+  // Direction B P11: Before you roll sits directly under the hero. It is filled
+  // (and its reads start) below, before the brief's await — that await ends
+  // Today early whenever the schedule is cut, which is always in production.
+  const rollSlot = el('div', 'slot plain roll-slot');
+  v.appendChild(rollSlot);
   v.appendChild(buildSystems());
   // R32: one plain line while Arbo reads real records and saves nothing.
   const roSlot = el('div', 'slot plain');
@@ -2340,9 +2578,12 @@ async function renderToday() {
   LINKS_READY.then(() => { if (LINKS === 'readonly') roSlot.appendChild(el('div', 'storm-muted', 'Read-only: Arbo is reading your real records and saving nothing. Anything that would save says so.')); });
   heroLoops();
   const stormSlot = el('div', 'slot plain');
+  stormSlot.id = 'today-storm'; // where the hero's weather alerts land (Direction B P10)
   v.appendChild(stormSlot);
   // true when the banner drew a card: the NWS feed named at least one alert. The law flag reuses it.
   const alerting = stormBanner().then((b) => { if (b) stormSlot.appendChild(b); return !!b; });
+  // Direction B P10: weather alerts above 0 open the storm card; a real 0 stays inert (a fact, not a gap).
+  alerting.then((on) => { if (on && HERO) HERO.go('alerts', () => openPanel('today', 'today-storm')); });
   // R26: an EMERGENCY lead sits right under the storm alert and above the run,
   // then the owner's storm price-law flag. Their places are set before any read;
   // the leads read starts below, once the tiles it counts into exist. The alarm
@@ -2407,7 +2648,7 @@ async function renderToday() {
     if (cls) t.classList.add(cls);
   };
   // A tile whose feed failed keeps its '–' and says why in one small line.
-  const tileWhy = (t, why) => { if (t.querySelector('small')) return; t.appendChild(el('small', '', why)); };
+  const tileWhy = (t, why) => { if (t.querySelector('small')) return; t.appendChild(el('small', '', why)); if (t.querySelector('b').textContent === '–') t.classList.add('gap'); };
   // Each instrument fills independently; a dead feed shows '–' and why, never a fake 0.
   // The loops feed fills its panel only — heroLoops names it when it is dead.
   api('/api/queue').then((q) => {
@@ -2423,11 +2664,14 @@ async function renderToday() {
   }).catch(() => {});
   api('/api/properties').then((p) => {
     // A dead forecast feed stays '\u2013' \u2014 null is not zero (\u00a71B honesty).
-    if (Array.isArray(p.comingDue)) setTile(dueTile, p.comingDue.length, p.comingDue.length ? 'warn' : 'ok-t');
-    else tileWhy(dueTile, 'forecast unreadable');
+    if (Array.isArray(p.comingDue)) {
+      setTile(dueTile, p.comingDue.length, p.comingDue.length ? 'warn' : 'ok-t');
+      goTile(dueTile, () => openPanel('book'));
+    } else tileWhy(dueTile, 'forecast unreadable');
   }).catch((e) => { if (e.code !== 401) tileWhy(dueTile, FEED_TAG[feedKind(e)]); });
   api('/api/agents/runs?limit=5').then((r) => {
     setTile(agentTile, r.runs.length, r.runs.some(x => x.status === 'error') ? 'warn' : 'ok-t');
+    goTile(agentTile, () => openPanel('agents'));
     // R32: these runs live in memory and were not saved — the tile says so.
     if (r.runLog === 'not_saved_read_only') tileWhy(agentTile, 'not saved — read-only');
   }).catch((e) => { if (e.code !== 401) tileWhy(agentTile, FEED_TAG[feedKind(e)]); });
@@ -2444,11 +2688,16 @@ async function renderToday() {
     const nb = (m.blocked || []).length;
     setTile(billTile, m.drafts.length, (m.drafts.length || nb) ? 'warn' : 'ok-t');
     if (nb) billTile.appendChild(el('small', '', '+' + nb + ' no agreed figure'));
+    goTile(owedTile, () => openPanel(DESK_VIEW.money, 'queue-money'));
+    goTile(billTile, () => openPanel(DESK_VIEW.money, 'queue-money'));
   }).catch((e) => {
     if (e.code === 401) return;
     tileWhy(owedTile, FEED_TAG[feedKind(e)]);
     tileWhy(billTile, FEED_TAG[feedKind(e)]);
   });
+  // Direction B P11: the emergency read below, handed to Before you roll — never a second read.
+  let emgDone;
+  const emgP = new Promise((res) => { emgDone = res; });
   // Safety flags fill the first row exactly (one: all of it, two: half each), so the six tiles stay one even row on a wide screen.
   const layoutFlags = () => {
     const flags = hud.querySelectorAll('.wide');
@@ -2463,7 +2712,11 @@ async function renderToday() {
     emg[half] = val;
     const n = (typeof emg.stops === 'number' ? emg.stops : 0) + (typeof emg.leads === 'number' ? emg.leads : 0);
     if (!n) return;
-    if (!emgTile) emgTile = tile(n, '', 'hot wide');
+    if (!emgTile) {
+      emgTile = tile(n, '', 'hot wide');
+      // Direction B P10: the first emergency card — an EMERGENCY lead's above the run, else the run's emergency stop.
+      goTile(emgTile, () => openPanel('today', () => emgSlot.querySelector('.card') || day.querySelector('[data-emg]')));
+    }
     emgTile.querySelector('b').textContent = String(n);
     emgTile.querySelector('span').textContent = n === 1 ? 'emergency' : 'emergencies';
     const gap = typeof emg.stops === 'string' ? 'schedule ' + emg.stops : typeof emg.leads === 'string' ? 'leads ' + emg.leads : '';
@@ -2472,6 +2725,7 @@ async function renderToday() {
     layoutFlags();
   };
   emergencyLeads().then((r) => {
+    emgDone(r);
     if (!r) return;
     if (r.gap) {
       emgSlot.appendChild(feedLine(r.gap, 'Emergency leads', 'That doesn’t mean there are none.'));
@@ -2487,6 +2741,7 @@ async function renderToday() {
       emgSlot.appendChild(more);
     }
   });
+  rollSlot.appendChild(beforeYouRoll(emgP, alerting.then(() => STORM_READ)));
   const locSlot = el('div', 'slot plain');
   v.appendChild(locSlot);
   // A failed read gets a titled card (data-feed); the live ON/OFF strip stays plain.
@@ -2558,8 +2813,13 @@ async function renderToday() {
   // H4: the top numbers count Arbo's own bookings too \u2014 labelled so, never "0 jobs today" over a calendar Arbo does not read.
   if (onlyArbo) { jobsTile.querySelector('span').textContent = 'jobs in Arbo'; estTile.querySelector('span').textContent = 'estimates in Arbo'; }
   setTile(jobsTile, s.jobs || 0); setTile(estTile, s.estimates || 0);
+  // Direction B P10: jobs, estimates and the hero's stops open the run — or, with none, the schedule card.
+  const runAt = brief.stops.length ? 'today-run' : 'today-schedule';
+  goTile(jobsTile, () => openPanel('today', runAt));
+  goTile(estTile, () => openPanel('today', runAt));
   // A safety flag takes the first slot of the grid: emergencies (stops and leads, setEmergencies), then flagged stops.
   if (s.redFlagCount) hud.prepend(tile(s.redFlagCount, s.redFlagCount === 1 ? 'flagged stop' : 'flagged stops', 'hot wide'));
+  if (s.redFlagCount) goTile(hud.firstChild, () => openPanel('today', () => day.querySelector('.card.emergency'))); // the first flagged stop
   setEmergencies('stops', s.emergencies || 0);
   layoutFlags();
   {
@@ -2572,6 +2832,7 @@ async function renderToday() {
       const flagNote = s.emergencies ? plural(s.emergencies, 'emergency', 'emergencies') : s.redFlagCount ? s.redFlagCount + ' flagged' : '';
       HERO.stat('stops', s.totalStops, (s.emergencies || s.redFlagCount) ? 'hot' : '', plural(s.totalStops, 'stop') + (onlyArbo ? ' in Arbo today' : ' today'), flagNote);
       HERO.ring('stops', s.totalStops ? passed / s.totalStops : 0);
+      HERO.go('stops', () => openPanel('today', runAt));
       // Clock time past each stop's slot — nothing records a stop as done (D85).
       // The run is in route order, not clock order: the next stop is the earliest time still ahead.
       const next = timed.filter((st) => Date.parse(st.timeIso) >= nowMs).sort((a, b) => Date.parse(a.timeIso) - Date.parse(b.timeIso))[0];
@@ -2601,26 +2862,30 @@ async function renderToday() {
       calBtn.addEventListener('click', () => { switchTab('cal'); renderCalendar(); });
       none.appendChild(calBtn);
     }
+    none.id = 'today-schedule';
     day.appendChild(none);
     return;
   }
-  day.appendChild(el('div', 'panel-title', 'Today’s run'));
+  const runTitle = el('div', 'panel-title', 'Today’s run');
+  runTitle.id = 'today-run';
+  day.appendChild(runTitle);
   // §9 route view: the whole day, one tap, in the maps app you already use.
   {
-    const addrs = brief.stops.map(s => s.address + ', ' + s.city + ', VA').filter(Boolean);
+    const addrs = brief.stops.map(stopAddress).filter(Boolean);
     if (addrs.length) {
       const r = el('a', 'routebtn', 'Route the day (' + plural(addrs.length, 'stop') + ')');
       r.prepend(icon('i-route'));
-      const dest = encodeURIComponent(addrs[addrs.length - 1]);
-      const wps = addrs.slice(0, -1).map(encodeURIComponent).join('|');
-      r.href = 'https://www.google.com/maps/dir/?api=1&destination=' + dest + (wps ? '&waypoints=' + wps : '');
+      r.href = mapsDirUrl(addrs);
       r.target = '_blank';
       r.rel = 'noopener';
       day.appendChild(r);
     }
+    const left = routeLeftOut(brief.stops);
+    if (left) day.appendChild(left);
   }
   for (const stop of brief.stops) {
     const c = el('div', 'card' + (stop.redFlags.length ? ' emergency' : ''));
+    if (stop.redFlags.includes('EMERGENCY')) c.dataset.emg = '1'; // where the emergencies tile lands (Direction B P10)
     const top = el('div', 'toprow');
     const who = el('div', 'who');
     who.appendChild(el('span', 'ordernum', String(stop.order)));
@@ -2639,6 +2904,9 @@ async function renderToday() {
     stop.redFlags.forEach(f => b.appendChild(chip(f, 'alarm')));
     stop.tags.forEach(t => b.appendChild(chip(t, 'info')));
     c.appendChild(b);
+    // Direction B P7: a big Navigate under each stop with an address — R35's ask-first sheet.
+    const nav = navigateBtn(stop);
+    if (nav) c.appendChild(nav);
     day.appendChild(c);
   }
 }
@@ -2699,6 +2967,24 @@ $('y-go').addEventListener('click', async () => {
 });
 
 // ---------- Leads ----------
+// Direction B P8: a lead's longer lines fold to two; a tap opens (and folds) them.
+// Direction B P8 review: the lines Mike opened, by lead and line ('L1:details'), so
+// the minute redraw draws them open again (holding the redraw instead would freeze
+// Leads, as an open <details> does). Kept for this launch only.
+const LEAD_OPEN = new Set();
+// A customer's contact instructions bind every contact (VA brief §5.9: "CALL FIRST",
+// "gets home at 3", "call her cell"), so a line that carries one never folds. Broad on
+// purpose: a line kept whole by mistake costs a line of screen; one folded by mistake hides a rule.
+const CONTACT_LINE = /\b(?:call|text|phone|ring)\s+(?:first|ahead|before|after|only|between|her|his|their|my|the|me|him|them)\b|\b(?:text|calls?)\s+only\b|\b(?:do\s*n[o’']?t|never|no)\s+(?:call|text|knock|ring)|\b(?:gets?|be|is|are)\s+home\b|[’']s\s+home\b|\bhome\s+(?:by|after|at|around|before)\b|\b(?:cell|mobile|landline|work (?:number|phone))\b|\b(?:before|after|until|between)\s+\d|\b\d{1,2}(?::\d\d)?\s*[ap]\.?m\b|\bvoicemail\b|\bask for\b|\bspeak (?:to|with)\b/i;
+function clampLine(text, key) {
+  if (CONTACT_LINE.test(text)) return el('div', 'scope', text);
+  const n = el('div', 'scope clamp' + (key && LEAD_OPEN.has(key) ? ' open' : ''), text);
+  n.addEventListener('click', () => {
+    n.classList.toggle('open');
+    if (key) { if (n.classList.contains('open')) LEAD_OPEN.add(key); else LEAD_OPEN.delete(key); }
+  });
+  return n;
+}
 async function renderLeads() {
   const v = $('view-leads');
   // Direction B P3: the first draw says "Reading…" instead of a blank screen. A
@@ -2763,18 +3049,36 @@ async function renderLeads() {
     const top = el('div', 'toprow');
     top.appendChild(el('div', 'who', lead.name || 'Unknown caller'));
     top.appendChild(el('div', 'when', fmtWhen(lead.createdAt)));
+    // §9 one tap: call the human back. ARBOR never calls anyone itself — the phone
+    // app does, with Mike's thumb on it. Direction B P8: a round button in the top
+    // row (it was a full-width slab), so about twice as many leads fit a screen.
+    // An older lead carries no Call back button: contacting anyone is Mike's call (R32).
+    // With the button, the city rides beside the time under the name (one line less).
+    const where = lead.city ? el('div', 'addr', lead.city + (lead.zip ? ' · ' + lead.zip : '')) : null;
+    let whereInTop = false;
+    if (lead.phone && !lead.older) {
+      const call = el('a', 'callbtn round');
+      call.href = 'tel:' + lead.phone;
+      call.setAttribute('aria-label', 'Call back');
+      call.appendChild(icon('i-calls'));
+      call.appendChild(el('span', 'sr-only', 'Call back'));
+      top.classList.add('has-call');
+      top.appendChild(call);
+      if (where) { top.appendChild(where); whereInTop = true; }
+    }
     c.appendChild(top);
     if (lead.older) {
       // The day it came in is the card's own time, top right (fmtWhen); this says how old that is.
       c.appendChild(el('div', 'scope', 'Older lead — came in ' + plural(lead.ageDays || 0, 'day') + ' ago.'
         + (lead.filedAsEmergency ? ' Filed as an emergency then — not a live alarm.' : '')));
     }
-    if (lead.city) c.appendChild(el('div', 'addr', lead.city + (lead.zip ? ' · ' + lead.zip : '')));
-    if (lead.history) c.appendChild(el('div', 'scope', '' + lead.history));
+    if (where && !whereInTop) c.appendChild(where);
+    // Direction B P8: past work and what they said fold to two lines; a tap opens them.
+    if (lead.history) c.appendChild(clampLine('' + lead.history, lead.id + ':history'));
     // §1B: a past-work read that failed is named — a missing line is not "no history".
     // R32: a link cut on purpose is said as "cut", never "couldn't read it — try again".
     else if (lead.historyUnreadable) c.appendChild(feedLine(lead.historyCut ? { code: 503, message: 'link_cut' } : null, 'Past work'));
-    if (lead.details) c.appendChild(el('div', 'scope', lead.details));
+    if (lead.details) c.appendChild(clampLine(lead.details, lead.id + ':details'));
     // Line 1 is triage + who they are; EMERGENCY already outranks HOT, so an
     // emergency lead carries no second red-ish chip beside it.
     const b = el('div', 'badges');
@@ -2795,17 +3099,8 @@ async function renderLeads() {
     // §1B: a permit read that FAILED is not "screen pending". It is named in the
     // feed-state words under the badges — never as a permit badge (wording is Mike's, X6).
     if (lead.permitUnreadable) c.appendChild(feedLine(lead.permitCut ? { code: 503, message: 'link_cut' } : null, 'Permit screen'));
-    // §9 one-tap actions: call the human back, or file the lead. ARBOR never
-    // calls anyone itself — the phone app does, with Mike's thumb on it.
+    // §9 one-tap actions: file the lead (Call back sits in the top row).
     const row = el('div', 'actions');
-    // An older lead carries no Call back button: contacting anyone is Mike's call (R32).
-    if (lead.phone && !lead.older) {
-      const call = el('a', 'callbtn', 'Call back');
-      call.href = 'tel:' + lead.phone;
-      // Its own line: beside two worded buttons it squeezed to "Call / back" at 390px.
-      call.style.flexBasis = '100%';
-      row.appendChild(call);
-    }
     // Said in words, never a bare glyph: a one-tap SPAM on a lead must say what
     // it does (R23 — a "Spam Likely" caller can be a customer), and it can be undone.
     const btns = [];
@@ -4829,6 +5124,7 @@ async function renderFleetList(slot) {
   // A unit off the schedule (DOWN or HELD) is the one that changes the day, so it leads the list.
   for (const u of [...f.units].sort((a, b) => (!b.schedulable) - (!a.schedulable))) {
     const c = el('div', 'card' + (u.schedulable ? '' : ' emergency'));
+    c.dataset.unit = u.id; // where Before you roll lands (Direction B P11)
     const top = el('div', 'toprow');
     top.appendChild(el('div', 'who', u.name));
     top.appendChild(el('div', 'when', u.kind || ''));
@@ -5100,6 +5396,7 @@ async function renderFollowUps() {
   });
   // §6V safety leads the Queue: a lapsed rescue card outranks an unpaid bill.
   const safetySlot = el('div');
+  safetySlot.id = 'queue-safety'; // where Today's taps land (Direction B P10, DESK_VIEW)
   v.appendChild(safetySlot);
   renderSafety(safetySlot);
   // The sends the Queue is named for come next — not after every admin desk.
@@ -5126,11 +5423,13 @@ async function renderFollowUps() {
   renderLibraryDesk(libSlot);
   // §4.8 money: unbilled work and unpaid invoices are open loops too.
   const moneySlot = el('div');
+  moneySlot.id = 'queue-money';
   v.appendChild(moneySlot);
   renderMoney(moneySlot);
   // §6E fleet: a DOWN unit is a scheduling constraint, so it belongs in the
   // Queue next to the other open loops.
   const fleetSlot = el('div');
+  fleetSlot.id = 'queue-fleet';
   v.appendChild(fleetSlot);
   renderFleet(fleetSlot);
   fuSlot.appendChild(el('div', 'panel-title', 'Recommended sends'));
@@ -5674,15 +5973,31 @@ function buildHero() {
   grid.appendChild(ring.svg);
   box.appendChild(grid);
   const stats = el('div', 'hero-stats');
-  const stat = (label) => {
-    const s = el('div', 'hstat');
+  // Direction B P10: each stat is a button that opens what it counts (HERO.go names
+  // where). A '–' is a gap — dashed, inert, its feed word on its name — never a tap.
+  const go = {};
+  const gap = {};
+  const labels = {};
+  const live = (key) => cells[key].setAttribute('aria-disabled', go[key] && !gap[key] ? 'false' : 'true');
+  const one = {}; // the screen-reader name for exactly one: "1 stop today", never "1 stops today"
+  const stat = (key, label, single) => {
+    const s = el('button', 'hstat');
+    s.type = 'button';
     s.appendChild(el('b', 'num', '–'));
     s.appendChild(el('span', '', label));
     s.appendChild(el('small')); // HERO.stat's note: why the number is coloured
+    // The › says it opens something; the CSS draws it only while it can (aria-disabled="false").
+    const cue = el('i', 'cue', '›');
+    cue.setAttribute('aria-hidden', 'true');
+    s.appendChild(cue);
+    s.setAttribute('aria-disabled', 'true'); // nothing to open until its read lands
+    s.addEventListener('click', () => { if (go[key] && !gap[key]) go[key](); });
+    labels[key] = label;
+    one[key] = single;
     stats.appendChild(s);
     return s;
   };
-  const cells = { stops: stat('stops today'), loops: stat('open loops'), alerts: stat('weather alerts') };
+  const cells = { stops: stat('stops', 'stops today', 'stop today'), loops: stat('loops', 'open loops', 'open loop'), alerts: stat('alerts', 'weather alerts', 'weather alert') };
   box.appendChild(stats);
   const legend = el('div', 'ring-legend');
   const leg = {};
@@ -5714,11 +6029,16 @@ function buildHero() {
     stat: function (key, value, cls, fact, note) {
       const c = cells[key];
       c.querySelector('b').textContent = String(value);
-      c.className = 'hstat' + (cls ? ' ' + cls : '');
+      gap[key] = String(value) === '–';
+      c.className = 'hstat' + (gap[key] ? ' gap' : '') + (cls ? ' ' + cls : '');
       c.querySelector('small').textContent = note || ''; // no note: the line is empty and hidden
+      // A gap says its feed word on its name as well as in the subline (§1B): "open loops — loops cut".
+      c.setAttribute('aria-label', gap[key] ? labels[key] + ' — ' + fact : String(value) + ' ' + (String(value) === '1' ? one[key] : labels[key]) + (note ? ', ' + note : ''));
       facts[key] = String(value) === '–' ? fact : null; // a real number is on the tile; the subline names only the dashes (§1B)
       say();
+      live(key);
     },
+    go: function (key, fn) { go[key] = fn; live(key); },
     ring: ring.set,
     legend: function (key, text) { leg[key](text); },
   };
@@ -5772,6 +6092,7 @@ function heroLoops() {
       HERO.stat('loops', n, urgent ? 'hot' : n ? 'warn' : '', plural(n, 'open loop'));
       HERO.ring('loops', Math.min(n, 10) / 10);
       HERO.legend('loops', String(n) + ' open');
+      HERO.go('loops', () => openPanel(DESK_VIEW.loops, 'queue-loops'));
     }
     sysSet('loops', urgent ? 'down' : n ? 'warn' : 'ok', n + ' open');
   }).catch((e) => LINKS_READY.then(() => {
@@ -5943,6 +6264,50 @@ const PERMIT_ANS = { inRpa: 'unknown', nearPowerLines: 'unknown', inRightOfWay: 
 // split at a hyphen: a word joiner after each digit-hyphen-digit keeps them whole,
 // and a no-break space keeps "§" on the same line as its section number.
 const nb = (s) => String(s).replace(/(\d)-(?=\d)/g, '$1-\u2060').replace(/§\s+/g, '§\u00a0');
+// Direction B P9 (spec: "Permits folds down … with the result pinned"): the job
+// check's result on one line, then "N steps · city". It always carries the
+// strongest permit word the steps hold (PERMIT LIKELY > REVIEW NEEDED > NO
+// OVERLAY), with every CALL FIRST and TICKET REQUIRED beside it, the loudest
+// chip first (alarm > stop > watch > info; the permit word wins a tie). Review
+// (b-wave-1b): one chip picked by colour let a tie or a louder call-ahead drop
+// PERMIT LIKELY off the pin. No steps back is never a calm line: it is not an answer.
+function permitVerdict(items, city) {
+  if (!items.length) return { chips: [], line: 'No steps came back — that is not an answer. Check with the city.' };
+  const rank = ['alarm', 'stop', 'watch', 'good', 'info'];
+  const strength = { 'PERMIT LIKELY': 0, 'REVIEW NEEDED': 1, 'NO OVERLAY–VERIFY': 2 }; // the permit words, strongest first (keys only: the labels live in PERMIT_STATE)
+  // The chip each result card wears (checkCard): CALL FIRST is the alarm only on the power-line step.
+  const look = (it) => { const st = PERMIT_STATUS[it.status]; return [st[0], it.status === 'CALL FIRST' && !it.safety ? 'watch' : st[1]]; };
+  const word = items.map((it) => it.status).filter((st) => st in strength).sort((a, b) => strength[a] - strength[b])[0];
+  const chips = word ? [look({ status: word })] : [];
+  for (const it of items) {
+    if (it.status !== 'CALL FIRST' && it.status !== 'TICKET REQUIRED') continue;
+    const c = look(it);
+    const had = chips.find((x) => x[0] === c[0]);
+    if (!had) chips.push(c);
+    else if (rank.indexOf(c[1]) < rank.indexOf(had[1])) had[1] = c[1]; // the power-line CALL FIRST keeps its alarm
+  }
+  chips.sort((a, b) => rank.indexOf(a[1]) - rank.indexOf(b[1])); // stable: the permit word stays first among equals
+  return { chips, line: plural(items.length, 'step') + ' · ' + city };
+}
+// Direction B P9: one rule topic, folded. The summary names it, counts its rules and
+// keeps UNCONFIRMED and RE-CHECK DUE in sight while it is closed. Permits is not on
+// the minute timer, so an open fold holds nothing.
+function topicFold(name, facts, staleSet) {
+  const d = el('details', 'topic');
+  const s = el('summary');
+  s.appendChild(el('span', 'topic-name', name));
+  s.appendChild(el('span', 'topic-n', plural(facts.length, 'rule')));
+  const counts = {};
+  for (const f of facts) if (f.confidence !== 'SOURCED') counts[f.confidence] = (counts[f.confidence] || 0) + 1;
+  const due = facts.filter((f) => staleSet.has(f.id)).length;
+  const b = el('span', 'badges');
+  for (const k of Object.keys(counts)) b.appendChild(chip(counts[k] + ' ' + k, 'watch'));
+  if (due) b.appendChild(chip(due + ' RE-CHECK DUE', 'watch'));
+  if (b.children.length) s.appendChild(b);
+  d.appendChild(s);
+  for (const f of facts) d.appendChild(factCard(f, staleSet.has(f.id)));
+  return d;
+}
 
 let PERMIT_GEN = 0;
 async function renderPermits() {
@@ -5968,24 +6333,34 @@ async function renderPermits() {
   // put. A city change is the one thing that rebuilds the whole desk.
   const job = el('div', 'slot');
   job.appendChild(el('div', 'panel-title', 'Job check — ' + PERMIT_CITY));
-  const out = el('div');
+  // Direction B P9: the result, pinned above the questions (sticky while they are worked); a tap goes to the steps.
+  const verdict = el('button', 'permit-verdict');
+  verdict.type = 'button';
+  verdict.appendChild(readingLine());
+  job.appendChild(verdict);
+  const out = el('div', 'pv-results');
+  verdict.addEventListener('click', () => out.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   let ck = 0;
   const runCheck = () => {
     const g = ++ck;
     // The old results stay up, dimmed and at their height, until the new ones land.
     out.style.minHeight = out.offsetHeight + 'px';
     out.style.opacity = '.5';
+    verdict.style.opacity = '.5';
     out.setAttribute('aria-busy', 'true');
     api('/api/permits/checklist', { method: 'POST', body: Object.assign({ city: PERMIT_CITY }, PERMIT_ANS) }).then((r) => {
       if (g !== ck || gen !== PERMIT_GEN) return; // a newer check or render owns the screen
       out.replaceChildren(...r.items.map(checkCard));
+      const pv = permitVerdict(r.items, PERMIT_CITY);
+      verdict.replaceChildren(...pv.chips.map((c) => chip(c[0], c[1])), el('span', 'pv-line', pv.line));
     }).catch((e) => {
       if (g !== ck || gen !== PERMIT_GEN) return;
       if (e.code === 401) showKeywall();
       // §1B: a failed check REPLACES the old results — they are never left up as current.
       out.replaceChildren(el('div', 'feed-state unread', (e.code ? 'Arbo could not build the checklist right now.' : 'Could not reach Arbo (no signal?).') + ' An empty list here is not an answer — Arbo could not check.'));
+      verdict.replaceChildren(el('span', 'pv-line', 'Not checked — Arbo could not build the checklist. That is not an answer.'));
     }).finally(() => {
-      if (g === ck) { out.style.minHeight = ''; out.style.opacity = ''; out.removeAttribute('aria-busy'); }
+      if (g === ck) { out.style.minHeight = ''; out.style.opacity = ''; verdict.style.opacity = ''; out.removeAttribute('aria-busy'); }
     });
   };
   const tri = (key, q) => {
@@ -6037,11 +6412,12 @@ async function renderPermits() {
   const staleSet = new Set(db.stale);
   const byTopic = {};
   for (const f of db.facts) (byTopic[f.topic] = byTopic[f.topic] || []).push(f);
+  // Direction B P9: each topic folds; a summary keeps its counts in sight.
+  v.appendChild(el('div', 'panel-title', 'The rules, by topic'));
   for (const topic of Object.keys(TOPIC_NAMES)) {
     const list = byTopic[topic];
     if (!list) continue;
-    v.appendChild(el('div', 'panel-title', TOPIC_NAMES[topic]));
-    for (const f of list) v.appendChild(factCard(f, staleSet.has(f.id)));
+    v.appendChild(topicFold(TOPIC_NAMES[topic], list, staleSet));
   }
 }
 
@@ -6069,6 +6445,9 @@ function checkCard(it) {
       const t = document.getElementById('fact-' + it.factIds[0]);
       if (!t) return;
       ev.preventDefault();
+      // Direction B P9: the rule sits in a folded topic — open it before the jump.
+      const fold = t.closest('details.topic');
+      if (fold) fold.open = true;
       t.scrollIntoView({ behavior: 'smooth' });
       // The rule sits far below the job check: one link back to the result that was tapped.
       const old = t.querySelector('.back-to-check');
@@ -6173,6 +6552,33 @@ const PROPOSAL_GO = {
   signback_review: ['Open the Queue →', 'followups'],
   area_review: ['Open Numbers →', 'perf'],
 };
+// Direction B P6 (spec: "Agents lists its proposals at the top"): every desk's
+// proposals in one list, in the roster's order, each with the desk that made it.
+// With no roster (Office's card) the run's own order. A desk the roster does not
+// name is still listed, last — a proposal is never dropped.
+function agentProposals(run, roster) {
+  if (!run || !Array.isArray(run.reports)) return [];
+  const ids = (roster || []).map((a) => a.id);
+  const at = (r) => { const i = ids.indexOf(r.agentId); return i < 0 ? ids.length : i; };
+  const names = {};
+  for (const a of roster || []) names[a.id] = a.name;
+  return run.reports.slice().sort((a, b) => at(a) - at(b))
+    .flatMap((r) => (r.proposals || []).map((p) => ({ desk: names[r.agentId] || r.name, text: noRefs(p.text), kind: p.kind })));
+}
+// One proposal: the desk, what it proposes, and the screen where Mike acts on it (a kind with no screen stays text).
+function proposalRow(p) {
+  const row = el('div', 'prop-row');
+  row.appendChild(el('div', 'loop-kind', p.desk));
+  row.appendChild(el('div', 'scope', p.text));
+  const go = PROPOSAL_GO[p.kind];
+  if (go) {
+    const b = el('button', 'minibtn', go[0]);
+    b.type = 'button';
+    b.addEventListener('click', () => switchTab(go[1]));
+    row.appendChild(b);
+  }
+  return row;
+}
 let AGENT_RUN = null;
 
 let AGENT_GEN = 0;
@@ -6200,9 +6606,18 @@ async function renderAgents() {
   // When it ran rides on the help line; past 15 minutes it is a warning line of its own.
   // Whether the hourly check is on is said on each NOT RUN row, not here.
   const ranAt = AGENT_RUN && AGENT_RUN.ranAt;
-  const stale = !!ranAt && Date.now() - Date.parse(ranAt) > 15 * 60 * 1000;
-  if (stale) v.appendChild(el('div', 'feed-state unset', 'Ran ' + fmtWhen(ranAt) + ' — over 15 minutes old. Run again for a current read.'));
-  v.appendChild(el('div', 'storm-muted', (ranAt && !stale ? 'Ran ' + fmtWhen(ranAt) + '. ' : '') + 'Run only looks — it never changes anything.'));
+  // Direction B P6 review: Agents is off the minute timer, and Today's "agent runs"
+  // tile and the header Back show it as drawn — so these lines are drawn again, in
+  // place, the minute the run goes stale. `v` is where they go: the view, or the
+  // stand-in they are built in. A newer draw owns the screen.
+  const ageLines = (v) => {
+    const stale = !!ranAt && Date.now() - Date.parse(ranAt) > 15 * 60 * 1000;
+    if (stale) v.appendChild(el('div', 'feed-state unset', 'Ran ' + fmtWhen(ranAt) + ' — over 15 minutes old. Run again for a current read.'));
+    return v.appendChild(el('div', 'storm-muted', (ranAt && !stale ? 'Ran ' + fmtWhen(ranAt) + '. ' : '') + 'Run only looks — it never changes anything.'));
+  };
+  const help = ageLines(v);
+  const fresh = ranAt ? Date.parse(ranAt) + 15 * 60 * 1000 - Date.now() : -1; // ms before the run goes stale
+  if (fresh >= 0) setTimeout(() => { if (gen !== AGENT_GEN) return; const now = el('div'); ageLines(now); help.replaceWith(...now.children); }, fresh + 1000);
   v.appendChild(roster.brain === 'online'
     ? el('div', 'storm-muted', 'Brain: Opus online — each desk gets a plain-English read.')
     : el('div', 'feed-state unset', 'AI off — plain counts only, no AI key yet.'));
@@ -6221,6 +6636,21 @@ async function renderAgents() {
     // The cut is said once here, not on every row (the switches live in Settings).
     if (AGENT_RUN.reports.some((r) => r.inputs.some((i) => i.state === 'cut'))) v.appendChild(el('div', 'feed-state cut', 'Data links are cut on purpose until each one is checked — rows marked CUT were not read.'));
   }
+  // Direction B P6: every proposal above the first desk card; the stale line and a
+  // run that did not complete sit above it. No run is never "no proposals", and a
+  // bare "none" only when every desk on the roster read fully (§1B).
+  const ran = !!(AGENT_RUN && AGENT_RUN.reports);
+  const props = agentProposals(AGENT_RUN, roster.agents);
+  const short = ran ? roster.agents.filter((a) => !reports[a.id] || reports[a.id].status !== 'ok').length : 0;
+  const pbox = el('div', 'card proposals');
+  pbox.appendChild(el('div', 'who', props.length ? 'Proposals for you (' + props.length + ')' : 'Proposals for you'));
+  if (!ran) pbox.appendChild(el('div', 'storm-muted', AGENT_RUN ? 'Run all eight again — proposals show here after a run that completes.' : 'Run all eight first — their proposals show here.'));
+  else if (props.length) {
+    for (const p of props) pbox.appendChild(proposalRow(p));
+    if (short) pbox.appendChild(el('div', 'feed-state unset', plural(short, 'desk', 'desks') + ' couldn’t read everything (named below) — there may be more.'));
+  } else if (short) pbox.appendChild(el('div', 'feed-state unset', 'No proposals — ' + plural(short, 'desk', 'desks') + ' couldn’t read everything (named below).'));
+  else pbox.appendChild(el('div', 'storm-muted', 'No proposals from this run.'));
+  v.appendChild(pbox);
   for (const a of roster.agents) {
     const c = el('div', 'card agent');
     const top = el('div', 'agent-top');
