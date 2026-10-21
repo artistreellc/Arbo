@@ -85,7 +85,7 @@ function kit(target: string, inject: Record<string, unknown>, links = 'readonly'
     createTextNode: (t: string) => { const n = new FNode('#text'); n.textContent = t; return n; },
     getElementById: (id: string) => { if (!ids.has(id)) { const n = new FNode('div'); n.id = id; ids.set(id, n); } return ids.get(id)!; },
   };
-  const consts = ['$', 'el', 'FEED_WORD', 'Cap', 'FEED_TAG', 'FEED_SAYS', 'RETRY', 'TONE'];
+  const consts = ['$', 'el', 'FEED_WORD', 'Cap', 'FEED_TAG', 'FEED_SAYS', 'RETRY', 'TONE', 'LEAD_OPEN', 'CONTACT_LINE'];
   const helpers = ['readingLine', 'state', 'feedKind', 'feedSays', 'feedLine', 'feedState', 'chip', 'badge', 'plural', 'fmtWhen', 'fmtTime', 'leadsTabBadge', 'permitChip', 'permitBadge', 'tapCount', 'keepsPage', 'clampLine'];
   const names = Object.keys(inject);
   const fn = new Function('document', 'linksIn', ...names, `
