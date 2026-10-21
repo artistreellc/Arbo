@@ -142,6 +142,7 @@ import {
   crewWithProfiles,
   referenceEntries,
   crewSkillLevel,
+  crewMemberById,
   draftReferenceEntries,
   createReferenceEntry,
   publishReferenceEntry,
@@ -499,6 +500,7 @@ export function createLiveSource(): DataSource {
     crewProfiles: () => crewWithProfiles(),
     referenceEntries: () => referenceEntries(),
     crewSkillLevel: (id) => crewSkillLevel(id),
+    crewMember: (id) => crewMemberById(id),
     createEquipmentUnit: (input) => createEquipmentUnit(input),
     retireEquipmentUnit: (id) => retireEquipmentUnit(id),
     addEquipmentPart: (input) => addEquipmentPart(input),
@@ -1343,6 +1345,10 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
       }
       if (req.method === 'GET' && url.pathname === '/api/crew/briefing') {
         return send(...unpack(await api.crewBriefing()));
+      }
+      // CREW_PLAN C3: who a crew code is ("On this phone: Rudy") — a read on the crew link.
+      if (req.method === 'GET' && url.pathname === '/api/crew/me') {
+        return send(...unpack(await api.crewMe(url.searchParams.get('crewMemberId') ?? '')));
       }
       if (req.method === 'POST' && url.pathname === '/api/crew/briefing/ack') {
         return send(...unpack(await api.ackBriefing((await readJson(req)) as Record<string, unknown>)));

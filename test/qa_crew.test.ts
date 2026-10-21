@@ -160,9 +160,19 @@ describe('identity and the door key', () => {
     expect(html.match(/localStorage\.getItem\(/g)).toHaveLength(1);
     expect(html).toContain("const load = (k) => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };");
     // Every write is guarded, and a failure stops before the reload.
+    // Deliberately updated (CREW_PLAN C3, D109): the sign-in link's own write
+    // (takeSignInLink) runs at boot, before any card exists, so it records the
+    // failure instead (kept = false) and the who-am-I card says STORAGE_BLOCKED.
+    // Every write is still a one-line try/catch; every write before a reload
+    // still says STORAGE_BLOCKED and stops.
     const writes = html.split('\n').filter((l) => /localStorage\.(setItem|removeItem)\(/.test(l));
-    expect(writes).toHaveLength(3);
-    for (const l of writes) expect(l).toMatch(/try \{ localStorage\.\w+\([^)]*\); \} catch \(e\) \{ err\.textContent = STORAGE_BLOCKED; return; \}/);
+    expect(writes).toHaveLength(4);
+    const beforeReload = writes.filter((l) => !l.includes('kept = false'));
+    expect(beforeReload).toHaveLength(3);
+    for (const l of beforeReload) expect(l).toMatch(/try \{ localStorage\.\w+\([^)]*\); \} catch \(e\) \{ err\.textContent = STORAGE_BLOCKED; return; \}/);
+    const link = writes.filter((l) => l.includes('kept = false'));
+    expect(link).toEqual(["  try { localStorage.setItem('arboCrewId', code); } catch (e) { kept = false; }"]);
+    expect(html).toContain('if (SIGN_IN && SIGN_IN.code && !SIGN_IN.kept) err.textContent = STORAGE_BLOCKED;');
   });
 });
 

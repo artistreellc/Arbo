@@ -757,3 +757,92 @@ describe('R26 owner-ui — the law holds on the new copy', () => {
     for (const code of added) expect(code).not.toContain('badge(');
   });
 });
+
+// ---------- CREW_PLAN C3 (D109): the roster hands each person their sign-in link ----------
+// Q6 default: the link carries the crew code only — never the door key, never
+// the app key. Arbo sends nothing: the phone's own share sheet does, or the
+// link is copied for Mike to paste. The armed "Take off the roster" line no
+// longer says the code still opens the crew door (an off-roster code is now
+// refused on the paid routes), and still promises nothing the code does not do.
+describe('C3 — Send sign-in link on each active person, and the armed line', () => {
+  const ON = '00000000-0000-4000-8000-0000000000c1';
+  const people = [
+    { id: ON, name: 'SIM-Alder, Test', role: 'climber', competencyLevel: 7, active: true, certCount: 1 },
+    { id: '00000000-0000-4000-8000-0000000000c9', name: 'SIM-Gone, Test', role: 'groundie', competencyLevel: 2, active: false, certCount: 0 },
+  ];
+  const list = async (navigator: Record<string, unknown>) => {
+    const slot = el('div');
+    const armed: string[] = [];
+    const sent: string[] = [];
+    const fn = pageFn<(s: N) => Promise<boolean>>('renderRosterList', {
+      api: async (path: string, opts?: { method?: string }) => { if (opts?.method) sent.push(path); return { people, certsKnown: true, activeCount: 1 }; },
+      LINKS_READY: Promise.resolve(), state: () => el('div'), FEED_WORD: {}, feedKind: () => 'x', feedSays: () => '',
+      el, chip, plural, CREW_ROLES: ['climber', 'foreman', 'groundie', 'driver'], certAdder: () => el('div'),
+      armTwice: (_b: N, text: string) => { armed.push(text); },
+      location: { origin: 'https://arbo.example' }, navigator,
+    });
+    await fn(slot);
+    const cards = slot.children;
+    const sendBtn = (i: number) => cards[i]!.all().find((n) => n.tag === 'button' && n.textContent === 'Send sign-in link');
+    return { slot, cards, armed, sent, sendBtn };
+  };
+
+  it('each active person gets a Send sign-in link button; someone off the roster does not', async () => {
+    const r = await list({});
+    expect(r.sendBtn(0)).toBeDefined();
+    expect(r.sendBtn(0)!.className).toBe('actbtn');
+    expect(r.sendBtn(1)).toBeUndefined();
+  });
+
+  it('it hands the phone’s share sheet the link — the crew code only, in the fragment, no key — and Arbo sends nothing', async () => {
+    const shared: Array<Record<string, string>> = [];
+    const r = await list({ share: async (d: Record<string, string>) => { shared.push(d); } });
+    await r.sendBtn(0)!.click();
+    expect(shared).toHaveLength(1);
+    expect(shared[0]!.url).toBe(`https://arbo.example/crew#crew=${ON}`);
+    expect(JSON.stringify(shared[0])).not.toMatch(/key|arbor|x-arbo/i);
+    expect(r.sent).toEqual([]);
+  });
+
+  it('no share sheet: the link is copied, and the card says so', async () => {
+    const copied: string[] = [];
+    const r = await list({ clipboard: { writeText: async (t: string) => { copied.push(t); } } });
+    await r.sendBtn(0)!.click();
+    expect(copied).toEqual([`https://arbo.example/crew#crew=${ON}`]);
+    expect(r.cards[0]!.text()).toContain('Link copied — paste it into a text to SIM-Alder, Test.');
+  });
+
+  it('a share sheet that fails (not a cancel) falls back to the copy; a cancel does nothing', async () => {
+    const copied: string[] = [];
+    const clipboard = { writeText: async (t: string) => { copied.push(t); } };
+    const failed = await list({ share: async () => { throw Object.assign(new Error('no'), { name: 'NotAllowedError' }); }, clipboard });
+    await failed.sendBtn(0)!.click();
+    expect(copied).toHaveLength(1);
+    const cancelled = await list({ share: async () => { throw Object.assign(new Error('cancel'), { name: 'AbortError' }); }, clipboard });
+    await cancelled.sendBtn(0)!.click();
+    expect(copied).toHaveLength(1);
+    expect(cancelled.cards[0]!.text()).not.toContain('Link copied');
+  });
+
+  it('neither share nor copy: the link is shown to copy by hand — never a silent nothing', async () => {
+    const r = await list({ clipboard: { writeText: async () => { throw new Error('denied'); } } });
+    await r.sendBtn(0)!.click();
+    expect(r.cards[0]!.text()).toContain(`Copy this link and text it to SIM-Alder, Test: https://arbo.example/crew#crew=${ON}`);
+  });
+
+  it('the armed line names the boards and no longer says the code still opens the crew door', async () => {
+    const r = await list({});
+    expect(r.armed).toEqual(['Tap again to take SIM-Alder, Test off the roster — the safety and training boards stop counting them.']);
+    expect(html).not.toContain('Their crew code still opens the crew door');
+    expect(html).not.toContain('lose crew-door access');
+  });
+
+  it('the new words keep the law: no "clear", no price, nothing logged', () => {
+    const code = fnSrc('renderRosterList');
+    for (const lit of literals(code)) {
+      expect(lit).not.toMatch(/\b(clear|cleared|exempt)\b/i);
+      expect(lit).not.toMatch(/\$\s?\d/);
+    }
+    expect(code).not.toContain('console.');
+  });
+});

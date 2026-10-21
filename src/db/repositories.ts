@@ -2476,6 +2476,21 @@ export async function crewSkillLevel(crewMemberId: string): Promise<number | nul
 }
 
 /**
+ * CREW_PLAN C3: one crew member by crew code — the name and whether they are
+ * on the roster. A read (crew link). Null when no such person; a failed read
+ * throws, so the caller names it instead of reading it as "not on the roster".
+ */
+export async function crewMemberById(crewMemberId: string): Promise<{ name: string; active: boolean } | null> {
+  const db = getDb();
+  const res = await db.from('crew_member')
+    .select('name, active')
+    .eq('id', crewMemberId)
+    .maybeSingle();
+  if (res.error) throw res.error;
+  return res.data ? { name: String(res.data.name ?? ''), active: res.data.active === true } : null;
+}
+
+/**
  * Every property with a permit track, plus the ones that have NO track at all.
  *
  * The second half is the point. A LEFT JOIN from property, not a SELECT from

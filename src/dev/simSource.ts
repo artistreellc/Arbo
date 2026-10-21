@@ -72,11 +72,17 @@ const iso = (dayOffset: number, hour: number) => {
   return d.toISOString();
 };
 
+// CREW_PLAN C3 (D109): practice crew codes are UUID-shaped, as a real crew
+// code is, so the sign-in link and every crew route take them — and still
+// obviously fake: all zeros, ending c1, c2, c3.
+const SIM_CREW_1 = '00000000-0000-4000-8000-0000000000c1';
+const SIM_CREW_2 = '00000000-0000-4000-8000-0000000000c2';
+const SIM_CREW_3 = '00000000-0000-4000-8000-0000000000c3';
 const SIM_CREW = [
-  { id: 'sim-crew-1', name: 'SIM-Alder, Test', role: 'climber', competencyLevel: 7, active: true },
-  { id: 'sim-crew-2', name: 'SIM-Birch, Test', role: 'groundie', competencyLevel: 3, active: true },
+  { id: SIM_CREW_1, name: 'SIM-Alder, Test', role: 'climber', competencyLevel: 7, active: true },
+  { id: SIM_CREW_2, name: 'SIM-Birch, Test', role: 'groundie', competencyLevel: 3, active: true },
   // An unrecognised role, so the STRICTEST-requirements path is visible.
-  { id: 'sim-crew-3', name: 'SIM-Cedar, Test', role: 'bucket op', competencyLevel: 4, active: true },
+  { id: SIM_CREW_3, name: 'SIM-Cedar, Test', role: 'bucket op', competencyLevel: 4, active: true },
 ];
 
 /**
@@ -84,9 +90,9 @@ const SIM_CREW = [
  * third is the important one — it must render as UNKNOWN, never as current.
  */
 const SIM_CERTS = [
-  { id: 'sim-cert-1', crewMemberId: 'sim-crew-1', type: 'first_aid' as const, expiresOn: iso(300, 12).slice(0, 10) },
-  { id: 'sim-cert-2', crewMemberId: 'sim-crew-1', type: 'aerial_rescue' as const, expiresOn: iso(-20, 12).slice(0, 10) },
-  { id: 'sim-cert-3', crewMemberId: 'sim-crew-2', type: 'cpr' as const, expiresOn: null },
+  { id: 'sim-cert-1', crewMemberId: SIM_CREW_1, type: 'first_aid' as const, expiresOn: iso(300, 12).slice(0, 10) },
+  { id: 'sim-cert-2', crewMemberId: SIM_CREW_1, type: 'aerial_rescue' as const, expiresOn: iso(-20, 12).slice(0, 10) },
+  { id: 'sim-cert-3', crewMemberId: SIM_CREW_2, type: 'cpr' as const, expiresOn: null },
 ];
 
 const SIM_UNITS = [
@@ -188,6 +194,11 @@ export function createSimSource(): DataSource {
     certifications: async () => SIM_CERTS,
     fullRoster: async () => SIM_CREW,
     crewSkillLevel: async (id: string) => SIM_CREW.find((c) => c.id === id)?.competencyLevel ?? null,
+    // C3: who a practice crew code is ("On this phone: Test"), from the same roster.
+    crewMember: async (id: string) => {
+      const c = SIM_CREW.find((m) => m.id === id);
+      return c ? { name: c.name, active: c.active } : null;
+    },
 
     // One billable job with an agreed figure, one WITHOUT — the §3 path where
     // Arbo refuses to invent a number and says why.

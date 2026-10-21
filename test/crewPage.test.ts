@@ -344,6 +344,7 @@ class Node1 {
   rel = '';
   constructor(public tag: string, public className = '', public textContent = '') {}
   appendChild(k: Node1): Node1 { this.kids.push(k); return k; }
+  insertBefore(k: Node1, ref: Node1): Node1 { this.kids.splice(this.kids.indexOf(ref), 0, k); return k; }
   replaceChildren(): void { this.kids = []; }
   addEventListener(type: string, fn: () => unknown): void { this.listeners[type] = fn; }
   setAttribute(): void {}
@@ -625,5 +626,159 @@ describe('C2 — arrival and extra work are off until real job records exist, wi
   it('the photo line promises no close flow the app lacks', () => {
     expect(html).toContain('Before + after photos are required — the app can’t take them yet; ask the office how to send them.');
     expect(html).not.toContain('required to close this job');
+  });
+});
+
+// ═══ CREW_PLAN C3 (D109) — crewWhy reads the error name on every status ═══
+describe('C3 — crewWhy names every refusal the crew door can meet, on any status', () => {
+  const why = crewWhyAt('live');
+  const e = (code: number, message: string) => ({ code, message });
+
+  it('off the roster, an unknown code, an unreadable roster', () => {
+    expect(why(e(403, 'off_roster'))).toBe('this crew code is off the roster — check with the office');
+    expect(why(e(400, 'unknown_crew'))).toBe('the office doesn’t know this crew code — check it with the office');
+    expect(why(e(400, 'bad_crew_id'))).toBe('the office doesn’t know this crew code — check it with the office');
+    expect(why(e(503, 'roster_unreadable'))).toBe('Arbo couldn’t read the roster just now');
+  });
+
+  it('the door: a key that no longer opens it, and a door with no key set up', () => {
+    expect(why(e(401, 'unauthorized'))).toBe('the door key on this phone no longer opens the crew door — ask the office for the new one');
+    expect(why(e(401, 'crew_key_not_set'))).toBe('no crew door key is set up on the server yet');
+  });
+
+  it('the names are read whatever the status — a refusal is never "the office didn’t answer"', () => {
+    for (const code of [400, 401, 403, 409, 503]) expect(why(e(code, 'off_roster')), String(code)).toBe('this crew code is off the roster — check with the office');
+    // The old feed states keep their 503 (a 500 with that word is still no answer — qa2's pin).
+    expect(why(e(500, 'not_simulated'))).toBe('the office didn’t answer');
+  });
+
+  it('words a crew member reads: no code names, no "clear"', () => {
+    for (const m of ['off_roster', 'unknown_crew', 'roster_unreadable', 'unauthorized', 'crew_key_not_set']) {
+      const w = why(e(403, m));
+      expect(w).not.toMatch(/_/);
+      expect(w).not.toMatch(/\bclear(ed)?\b/i);
+    }
+  });
+});
+
+// ═══ C3 + the D107 open item (h) — a refused sign-off holds GO, named ═══
+// A 401 (the door key changed), 403 (off the roster), 409 (not today's
+// briefing, C4), 429, 400 and 503 are refusals a retry cannot fix: the line
+// names why through crewWhy and GO is never green under it. Only a dropped
+// connection or a 5xx other than 503 keeps the deliberate "try once more"
+// with GO green (qa3_crew-sim item 27 — a retry can pass).
+describe('C3 — submitGate holds GO on every refusal, and keeps the retry only for a drop or a 5xx', () => {
+  const run = async (code: number | undefined, message = 'x') => {
+    const GATE: Record<string, unknown> = { content: {}, startedAt: '', scrolled: true, checked: true, openedMs: 0, unlocked: false, serverMsg: '', serverErr: false, serverHold: false };
+    const go = { disabled: false, textContent: 'GO', className: '' };
+    const submitGate = lift<() => Promise<void>>('submitGate', {
+      $: () => go, GATE, api: async () => { throw Object.assign(new Error(message), { code }); }, CREW_ID: 'x', secondsOnScreen: () => 20,
+      GATE_NEED: {}, refreshGate: () => {}, renderQuiz: () => {}, renderWork: () => {}, loadBriefing: () => {},
+      document: { querySelector: () => ({}) }, LINKS_READY: Promise.resolve(), crewWhy: crewWhyAt('live'),
+    });
+    await submitGate();
+    return GATE;
+  };
+
+  it('401, 403 and 429 hold GO with the reason in crewWhy’s words — never "try once more"', async () => {
+    for (const [code, message, reason] of [
+      [401, 'unauthorized', 'the door key on this phone no longer opens the crew door'],
+      [403, 'off_roster', 'this crew code is off the roster'],
+      [429, 'too_many_attempts', 'too many wrong door keys'],
+    ] as const) {
+      const g = await run(code, message);
+      expect(g.serverHold, String(code)).toBe(true);
+      expect(g.serverErr, String(code)).toBe(true);
+      expect(String(g.serverMsg), String(code)).toContain(reason);
+      expect(String(g.serverMsg), String(code)).not.toMatch(/try once more/);
+    }
+  });
+
+  it('a 400 and a 503 still hold, as before — and any other refusal (a 409) holds too', async () => {
+    expect((await run(400, 'bad_crew_id')).serverHold).toBe(true);
+    expect((await run(503, 'read_only')).serverHold).toBe(true);
+    const g409 = await run(409, 'conflict');
+    expect(g409.serverHold).toBe(true);
+    expect(g409.serverMsg).not.toMatch(/try once more/);
+  });
+
+  it('a dropped connection, a 500 and a 502 keep the retry line with GO un-held', async () => {
+    for (const code of [undefined, 500, 502]) {
+      const g = await run(code, code ? 'server_error' : 'Failed to fetch');
+      expect(g.serverHold, String(code)).toBe(false);
+      expect(g.serverMsg, String(code)).toBe('Could not record that — try once more.');
+    }
+  });
+
+  it('GO is never green under a held refusal (refreshGate)', () => {
+    const go = { disabled: true, className: '' };
+    const status = { textContent: '', classList: { toggle: () => {} } };
+    const GATE = { unlocked: false, scrolled: true, checked: true, requiredSeconds: 10, serverMsg: 'Your sign-off could not be recorded (this crew code is off the roster — check with the office).', serverErr: true, serverHold: true };
+    lift<() => void>('refreshGate', { GATE, $: (id: string) => (id === 'gobtn' ? go : status), secondsOnScreen: () => 99 })();
+    expect(go.className).toBe('');
+  });
+});
+
+// ═══ C3 + D107 open item — under cut or read-only the near miss's "File it" is off, with the reason ═══
+describe('C3 — the near-miss button is off when filing is off, the warning’s reason beside it', () => {
+  const card = async (links: string | null) => {
+    const box = new Node1('div');
+    const ready = Promise.resolve();
+    lift<() => void>('renderNearMiss', {
+      $: () => box, el: el1, document: { createElement: (t: string) => new Node1(t) },
+      LINKS_READY: ready, LINKS: links, CREW_ID: 'x', api: () => {}, crewWhy: crewWhyAt(links),
+    })();
+    await ready.then(() => {});
+    return box.kids[1]!;
+  };
+
+  it('read-only: File it is off and its reason sits directly under it', async () => {
+    const c = await card('readonly');
+    const btn = c.kids.find((k) => k.id === 'nm-go')!;
+    expect(btn.disabled).toBe(true);
+    const out = c.kids.find((k) => k.id === 'nm-out')!;
+    expect(out.text()).toBe('Filing is off while Arbo is read-only — tell the office directly.');
+  });
+
+  it('cut: File it is off with the cut reason', async () => {
+    const c = await card('cut');
+    expect(c.kids.find((k) => k.id === 'nm-go')!.disabled).toBe(true);
+    expect(c.kids.find((k) => k.id === 'nm-out')!.text()).toBe('Filing is off while the office data link is cut on purpose — tell the office directly.');
+  });
+
+  it('live, simulation and an unanswered /health: File it stays on', async () => {
+    for (const links of ['live', 'simulation', 'unknown', null]) {
+      const c = await card(links);
+      expect(c.kids.find((k) => k.id === 'nm-go')!.disabled, String(links)).toBe(false);
+      expect(c.kids.find((k) => k.id === 'nm-out')!.text(), String(links)).toBe('');
+    }
+  });
+});
+
+// ═══ C3 — the near miss and the library name an off-roster code, never refuse it ═══
+describe('C3 — the near-miss and library answers name where the crew code stands', () => {
+  it('a filed near miss names an off-roster code and an unchecked roster', () => {
+    const nm = html.slice(html.indexOf('function renderNearMiss('), html.indexOf('function renderWhoAmI('));
+    expect(nm).toContain("res.roster === 'off'");
+    expect(nm).toContain('This crew code is off the roster — the office will see that.');
+    expect(nm).toContain('Arbo couldn’t check the roster just now.');
+  });
+
+  it('the library names them above the answers', () => {
+    const lib = html.slice(html.indexOf('async function libSearch('), html.indexOf('function libEntry('));
+    expect(lib).toContain("res.roster === 'off'");
+    expect(lib.indexOf("res.roster === 'off'")).toBeLessThan(lib.indexOf('for (const e of entries)'));
+  });
+});
+
+// ═══ C3 + D107 open item (g) — the address on a work-order card is a ≥44px target ═══
+describe('C3 — the card’s address link is a field-sized target, and still the one maps builder', () => {
+  it('the address link is at least 44px tall', () => {
+    expect(html).toMatch(/\.wo \.addr a\{[^}]*display:flex[^}]*min-height:44px/);
+  });
+
+  it('one maps builder still feeds both the address and Navigate', () => {
+    expect(html.match(/function crewMapsUrl\(/g)).toHaveLength(1);
+    expect(html.match(/google\.com\/maps/g)).toHaveLength(1);
   });
 });

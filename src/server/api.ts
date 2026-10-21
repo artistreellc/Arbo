@@ -92,7 +92,7 @@ import type { ScreenStatus } from '../permitting/screening.js';
 import type { ServiceCity } from '../lib/address.js';
 import type { PacketSourceRow as PacketSource } from '../db/repositories.js';
 import { crewMayStart, type PermitLifecycle } from '../permitting/permitRecord.js';
-import { READ_ONLY_LINE } from '../db/links.js';
+import { READ_ONLY_LINE, LinkCutError } from '../db/links.js';
 import { noteNotSaved } from '../db/notSaved.js';
 import { isOlderLead, leadAgeDays } from '../ops/leadAge.js';
 
@@ -289,6 +289,12 @@ export interface DataSource {
   fullRoster?(): Promise<Array<{ id: string; name: string; role: string; competencyLevel: number; active: boolean }>>;
   createCrewMember?(input: { name: string; role: string; competencyLevel: number; phone: string | null }): Promise<string>;
   deactivateCrewMember?(id: string): Promise<boolean>;
+  /**
+   * CREW_PLAN C3: one crew member by crew code — the name (only its first
+   * word ever reaches a phone) and whether they are on the roster. Null when
+   * no such person. A read on the crew link, readable under read-only (R32).
+   */
+  crewMember?(id: string): Promise<{ name: string; active: boolean } | null>;
   recordCertification?(input: { crewMemberId: string; type: string; issuedOn: string | null; expiresOn: string | null }): Promise<string>;
   recentNearMisses?(sinceDate: string): Promise<unknown[]>;
   /** §6M training loop. */
@@ -424,6 +430,13 @@ const OUTCOMES = new Set(['pending', 'won', 'lost', 'no_show']);
 
 const MONTH_FMT = new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric', timeZone: 'America/New_York' });
 
+/** CREW_PLAN C3: the given name's first word — "Martinez, Rudy" and "Rudy Martinez" both give "Rudy". */
+function firstNameOf(name: string): string {
+  const n = name.trim();
+  const comma = n.indexOf(',');
+  return (comma >= 0 ? n.slice(comma + 1) : n).trim().split(/\s+/)[0] ?? '';
+}
+
 /** §27: one warm, human line of property memory. */
 function formatHistory(h: ApiLeadInput['history']): string | null {
   if (!h) return null;
@@ -451,6 +464,35 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
   const readOnlyRefusal = (kind: string): ApiResult => {
     noteNotSaved(kind);
     return { status: 503, body: { error: 'read_only', line: READ_ONLY_LINE } };
+  };
+  // CREW_PLAN C3 (Q7): where a crew code stands on the roster — read on the
+  // crew link (readable under read-only), never assumed. 'unchecked' carries
+  // WHY (a gap word, link_cut, roster_unreadable), so a paid route can refuse
+  // by name and a near miss or a library answer can say it. Never throws.
+  type RosterStanding = { standing: 'on' | 'off' | 'unknown'; name: string } | { standing: 'unchecked'; why: string };
+  const rosterStanding = async (crewMemberId: string): Promise<RosterStanding> => {
+    if (!source.crewMember) return { standing: 'unchecked', why: gap(source.crewMember) ?? 'not_built' };
+    if (!UUID_RE.test(crewMemberId)) return { standing: 'unknown', name: '' };
+    let m: { name: string; active: boolean } | null;
+    try {
+      m = await source.crewMember(crewMemberId);
+    } catch (err) {
+      const why = err instanceof LinkCutError ? 'link_cut' : 'roster_unreadable';
+      console.error('[crew] roster read failed:', why); // the kind only — never a code or a name (§4.3)
+      return { standing: 'unchecked', why };
+    }
+    if (!m) return { standing: 'unknown', name: '' };
+    return { standing: m.active ? 'on' : 'off', name: m.name };
+  };
+  // Q7 on the PAID routes (the sign-off, the clock-in questions, their
+  // answers): off the roster is refused by name, and a roster that could not
+  // be read fails CLOSED — paid time is never written over an unchecked code.
+  const paidRosterRefusal = async (crewMemberId: string): Promise<ApiResult | null> => {
+    const r = await rosterStanding(crewMemberId);
+    if (r.standing === 'unchecked') return { status: 503, body: { error: r.why } };
+    if (r.standing === 'off') return { status: 403, body: { error: 'off_roster' } };
+    if (r.standing === 'unknown') return { status: 400, body: { error: 'unknown_crew' } };
+    return null;
   };
   return {
     /** GET /health — config versions + which integrations are wired. Never leaks values. */
@@ -1046,6 +1088,23 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
     },
 
     /**
+     * GET /api/crew/me?crewMemberId= — CREW_PLAN C3: who this crew code is,
+     * so the phone can say "On this phone: Rudy — Not you?". The given name's
+     * first word and nothing else: no surname, phone, role or level reaches a
+     * crew phone (§8C). Off the roster, unknown, and unreadable are each named;
+     * none of them is a pass (§1B).
+     */
+    async crewMe(crewMemberId: string): Promise<ApiResult> {
+      if (!source.ready() || !source.crewMember) return { status: 503, body: { error: gap(source.crewMember) } };
+      if (!UUID_RE.test(crewMemberId)) return { status: 400, body: { error: 'bad_crew_id' } };
+      const r = await rosterStanding(crewMemberId);
+      if (r.standing === 'unchecked') return { status: 503, body: { error: r.why } };
+      if (r.standing === 'unknown') return { status: 400, body: { error: 'unknown_crew' } };
+      if (r.standing === 'off') return { status: 403, body: { error: 'off_roster' } };
+      return { status: 200, body: { firstName: firstNameOf(r.name), active: true } };
+    },
+
+    /**
      * GET /api/crew/briefing — today's published tailgate briefing (§6M.8).
      * Standards are cited BY CLAUSE, never reproduced (§6U.3). 404 when the
      * office hasn't published one — the crew is told, never given a blank.
@@ -1088,6 +1147,10 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       if (!UUID_RE.test(content.id)) {
         return { status: 400, body: { error: 'bad_item_id' } };
       }
+      // C3 (Q7): paid time is written only for a code on the roster; an
+      // unreadable roster refuses by name (fail closed).
+      const offRoster = await paidRosterRefusal(crewMemberId);
+      if (offRoster) return offRoster;
       const gateState = {
         scrolledToBottom: state.scrolledToBottom === true,
         checkboxTicked: state.checkboxTicked === true,
@@ -1583,6 +1646,10 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       // crew member believes they filed a near miss that does not exist.
       if (!UUID_RE.test(filed.reportedBy)) return { status: 400, body: { error: 'bad_reporter_id' } };
       if (filed.jobId && !UUID_RE.test(filed.jobId)) return { status: 400, body: { error: 'bad_job_id' } };
+      // C3 (Q7): a near miss is NEVER refused over the roster — a report that
+      // waits on the office is a report that never happens. It is filed, and
+      // the answer names where the code stands ('off', or 'unchecked').
+      const roster = await rosterStanding(filed.reportedBy);
       let saved;
       try {
         saved = await source.fileNearMiss({
@@ -1626,7 +1693,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       }
       return {
         status: 200,
-        body: { id: saved.id, hazardCategory: filed.hazardCategory, blameless: true, lessonDraftId },
+        body: { id: saved.id, hazardCategory: filed.hazardCategory, blameless: true, lessonDraftId, roster: roster.standing },
       };
     },
 
@@ -1700,6 +1767,9 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       const ctx = ['clock_in_gate', 'clock_out_gate', 'friday_questionnaire', 'micro_lesson'].includes(context)
         ? (context as GateContext) : null;
       if (!ctx) return { status: 400, body: { error: 'bad_context' } };
+      // C3 (Q7): the questions are paid time — the same roster check as the answers.
+      const offRoster = await paidRosterRefusal(crewMemberId);
+      if (offRoster) return offRoster;
 
       const pool = await source.trainingPool();
       let profile: TrainingProfile = {};
@@ -1747,6 +1817,9 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       // item_ids is uuid[]: a non-UUID commits the PAID time and then fails
       // the event insert — the cycle-4 lesson, applied here before it repeats.
       if (itemIds.some((id) => !UUID_RE.test(id))) return { status: 400, body: { error: 'bad_item_id' } };
+      // C3 (Q7): no paid row for a code off the roster, or one nobody could check.
+      const offRoster = await paidRosterRefusal(crewMemberId);
+      if (offRoster) return offRoster;
 
       // Grade against the REAL key, server-side. `correct`/`answered`/
       // `topicScores` are deliberately NOT read from the request: a client
@@ -2077,7 +2150,10 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
         text: text || undefined,
         readerSkillLevel,
       });
-      return { status: 200, body: { ...result, skillKnown } };
+      // C3 (Q7): the library is never refused over the roster; it answers,
+      // and names where the code stands. No code at all is 'unchecked'.
+      const roster = crewMemberId ? (await rosterStanding(crewMemberId)).standing : 'unchecked';
+      return { status: 200, body: { ...result, skillKnown, roster } };
     },
 
     /**

@@ -75,6 +75,10 @@ function crewSource(
       onAck?.(input);
       return { trainingEventId: 'te1', timeEntryId: 'time1' };
     },
+    // Deliberately added (CREW_PLAN C3, D109): the sign-off is paid time, and
+    // Q7 refuses it unless the roster says the code is on it (fail closed with
+    // no lookup). These fixtures are about the gate, so the code is on it.
+    crewMember: async () => ({ name: 'SIM-Alder, Test', active: true }),
   };
 }
 
@@ -762,5 +766,175 @@ describe('C1 — a tailgate_brief row never enters the quiz pool or the graded i
       expect(body).not.toContain('Morning briefing');
       expect(body).not.toContain('Speed line');
     } finally { unmock(); }
+  });
+});
+
+// ═══ CREW_PLAN C3 (D109) — who a crew code is, and off-roster codes (Q7) ═══
+// Q7 default: an off-roster code is refused on the PAID routes (the sign-off,
+// the clock-in questions and their answers) with 403 off_roster, and refused
+// if the roster cannot be read — fail closed, named. The near miss and the
+// library are never refused over the roster; they file or answer and name
+// where the code stands. GET /api/crew/me is a read on the crew link.
+describe('C3 — GET /api/crew/me names the person on this phone, and nothing more', () => {
+  const ON = '00000000-0000-4000-8000-0000000000c1';
+  const OFF = '00000000-0000-4000-8000-0000000000c9';
+  const people: Record<string, { name: string; active: boolean }> = {
+    [ON]: { name: 'Martinez, Rudy', active: true },
+    [OFF]: { name: 'Gone Person', active: false },
+  };
+  const meSource = (over: Partial<DataSource> = {}): DataSource => ({
+    ready: () => true, stopsBetween: async () => [], newLeads: async () => [],
+    crewMember: async (id) => people[id] ?? null,
+    ...over,
+  });
+
+  it('on the roster: 200 with the first name only — no surname, no phone, no role', async () => {
+    const res = await createApi(meSource()).crewMe(ON);
+    expect(res).toEqual({ status: 200, body: { firstName: 'Rudy', active: true } });
+    expect(JSON.stringify(res.body)).not.toContain('Martinez');
+  });
+
+  it('a "First Last" name gives the first word', async () => {
+    const res = await createApi(meSource({ crewMember: async () => ({ name: '  Temo   Lopez ', active: true }) })).crewMe(ON);
+    expect(res.body).toEqual({ firstName: 'Temo', active: true });
+  });
+
+  it('off the roster: 403 off_roster; unknown: 400 unknown_crew; not a code: 400 bad_crew_id', async () => {
+    const api = createApi(meSource());
+    expect(await api.crewMe(OFF)).toEqual({ status: 403, body: { error: 'off_roster' } });
+    expect(await api.crewMe('11111111-1111-4111-8111-111111111111')).toEqual({ status: 400, body: { error: 'unknown_crew' } });
+    expect(await api.crewMe('Rudy')).toEqual({ status: 400, body: { error: 'bad_crew_id' } });
+  });
+
+  it('a roster that cannot be read is a named 503 — never a pass', async () => {
+    const res = await createApi(meSource({ crewMember: async () => { throw new Error('down'); } })).crewMe(ON);
+    expect(res).toEqual({ status: 503, body: { error: 'roster_unreadable' } });
+  });
+
+  it('a source with no roster lookup says which gap, and a cut database says db_not_configured', async () => {
+    const noLookup = meSource();
+    delete noLookup.crewMember;
+    expect((await createApi(noLookup).crewMe(ON)).body).toEqual({ error: 'not_built' });
+    expect((await createApi(noLookup, { dataLinksSim: true }).crewMe(ON)).body).toEqual({ error: 'not_simulated' });
+    expect((await createApi({ ...meSource(), ready: () => false }).crewMe(ON)).body).toEqual({ error: 'db_not_configured' });
+  });
+
+  it('the practice crew codes are UUID-shaped and obviously fake, and the practice roster answers', async () => {
+    const sim = createSimSource();
+    const roster = await sim.fullRoster!();
+    expect(roster.map((p) => p.id)).toEqual([
+      '00000000-0000-4000-8000-0000000000c1',
+      '00000000-0000-4000-8000-0000000000c2',
+      '00000000-0000-4000-8000-0000000000c3',
+    ]);
+    const res = await createApi(sim, { dataLinksSim: true }).crewMe('00000000-0000-4000-8000-0000000000c1');
+    expect(res).toEqual({ status: 200, body: { firstName: 'Test', active: true } });
+    expect((await sim.certifications!()).every((c) => roster.some((p) => p.id === c.crewMemberId))).toBe(true);
+  });
+});
+
+describe('C3 (Q7) — an off-roster code is refused on the paid routes; an unreadable roster fails closed', () => {
+  const ON = '00000000-0000-4000-8000-0000000000c1';
+  const OFF = '00000000-0000-4000-8000-0000000000c9';
+  const ITEM = '11111111-1111-4111-8111-111111111111';
+  const content = { id: '33333333-3333-3333-3333-333333333333', body: 'Watch the drop zone. Call every cut.', standardRefs: ['Z133 §8.1'] };
+  const passing = { scrolledToBottom: true, checkboxTicked: true, secondsOnScreen: 20 };
+  const times = { startedAtIso: '2026-10-21T10:00:00Z', completedAtIso: '2026-10-21T10:00:20Z' };
+  const paidSource = (crewMember: DataSource['crewMember'], writes: string[]): DataSource => ({
+    ready: () => true, stopsBetween: async () => [], newLeads: async () => [],
+    crewMember,
+    todaysBriefing: async () => content,
+    recordBriefingAck: async () => { writes.push('ack'); return { trainingEventId: 'te1', timeEntryId: 't1' }; },
+    trainingPool: async () => [{ id: ITEM, topic: 'Rigging', difficulty: 1, published: true, excludeFromScoring: false }],
+    trainingItems: async () => [{ id: ITEM, topic: 'Rigging', type: 'quiz_question', body: { prompt: 'SIM?', options: ['a', 'b'], answer: 0 } }],
+    recordGate: async () => { writes.push('gate'); return { trainingEventId: 'te2', timeEntryId: 't2' }; },
+  });
+  const roster = (id: string) => (id === ON ? { name: 'SIM-Alder, Test', active: true } : id === OFF ? { name: 'SIM-Gone, Test', active: false } : null);
+  const calls = (api: ReturnType<typeof createApi>, id: string) => [
+    api.ackBriefing({ crewMemberId: id, content, state: passing, ...times }),
+    api.crewQuiz(id, 'clock_in_gate'),
+    api.completeQuiz({ crewMemberId: id, context: 'clock_in_gate', itemIds: [ITEM], answers: { [ITEM]: 0 }, ...times }),
+  ];
+
+  it('off the roster: 403 off_roster on the sign-off, the questions and the answers — and nothing paid is written', async () => {
+    const writes: string[] = [];
+    const api = createApi(paidSource(async (id) => roster(id), writes));
+    for (const res of await Promise.all(calls(api, OFF))) expect(res).toEqual({ status: 403, body: { error: 'off_roster' } });
+    expect(writes).toEqual([]);
+  });
+
+  it('a code that matches nobody: 400 unknown_crew before anything is written', async () => {
+    const writes: string[] = [];
+    const api = createApi(paidSource(async (id) => roster(id), writes));
+    for (const res of await Promise.all(calls(api, '22222222-2222-4222-8222-222222222222'))) expect(res).toEqual({ status: 400, body: { error: 'unknown_crew' } });
+    expect(writes).toEqual([]);
+  });
+
+  it('a roster that cannot be read: 503 roster_unreadable — fail closed, never a pass, nothing written', async () => {
+    const writes: string[] = [];
+    const api = createApi(paidSource(async () => { throw new Error('down'); }, writes));
+    for (const res of await Promise.all(calls(api, ON))) expect(res).toEqual({ status: 503, body: { error: 'roster_unreadable' } });
+    expect(writes).toEqual([]);
+  });
+
+  it('a source with no roster lookup cannot check the roster, so it fails closed too', async () => {
+    const writes: string[] = [];
+    const src = paidSource(undefined, writes);
+    delete src.crewMember;
+    for (const res of await Promise.all(calls(createApi(src), ON))) expect(res).toEqual({ status: 503, body: { error: 'not_built' } });
+    expect(writes).toEqual([]);
+  });
+
+  it('on the roster: the paid routes run as before', async () => {
+    const writes: string[] = [];
+    const [ack, quiz, done] = await Promise.all(calls(createApi(paidSource(async (id) => roster(id), writes)), ON));
+    expect(ack).toMatchObject({ status: 200, body: { unlocked: true } });
+    expect(quiz!.status).toBe(200);
+    expect(done!.status).toBe(200);
+    expect(writes.sort()).toEqual(['ack', 'gate']);
+  });
+});
+
+describe('C3 (Q7) — the near miss and the library are never refused over the roster; they name it', () => {
+  const ON = '00000000-0000-4000-8000-0000000000c1';
+  const OFF = '00000000-0000-4000-8000-0000000000c9';
+  const roster = async (id: string) => (id === ON ? { name: 'SIM-Alder, Test', active: true } : id === OFF ? { name: 'SIM-Gone, Test', active: false } : null);
+  const src = (crewMember: DataSource['crewMember'], filed: string[]): DataSource => ({
+    ready: () => true, stopsBetween: async () => [], newLeads: async () => [],
+    crewMember,
+    fileNearMiss: async (i) => { filed.push(i.reportedBy); return { id: '44444444-4444-4444-8444-444444444444' }; },
+    referenceEntries: async () => [{
+      id: 'e1', techniqueName: 'SIM natural crotch rigging', skillLevel: 3, howTo: 'SIMULATED.', pros: [], cons: [],
+      wontWorkWhen: 'Included bark.', sourceLink: null, standardRefs: ['Z133 §8.1'], published: true,
+    }],
+  });
+
+  it('an off-roster code still files its near miss — and the answer says it is off the roster', async () => {
+    const filed: string[] = [];
+    const res = await createApi(src(roster, filed)).reportNearMiss({ reportedBy: OFF, description: 'Limb swung toward the chipper' });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ roster: 'off' });
+    expect(filed).toEqual([OFF]);
+    expect((await createApi(src(roster, [])).reportNearMiss({ reportedBy: ON, description: 'Limb swung' })).body).toMatchObject({ roster: 'on' });
+  });
+
+  it('a roster that cannot be read never stops a near miss — it files and says the roster was not checked', async () => {
+    const filed: string[] = [];
+    const res = await createApi(src(async () => { throw new Error('down'); }, filed)).reportNearMiss({ reportedBy: ON, description: 'Limb swung' });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ roster: 'unchecked' });
+    expect(filed).toEqual([ON]);
+  });
+
+  it('the library answers an off-roster code, and an unreadable roster, and names each', async () => {
+    const off = await createApi(src(roster, [])).crewReference('rigging', OFF);
+    expect(off.status).toBe(200);
+    expect(off.body).toMatchObject({ roster: 'off' });
+    expect((off.body as { entries: unknown[] }).entries).toHaveLength(1);
+    const down = await createApi(src(async () => { throw new Error('down'); }, [])).crewReference('rigging', ON);
+    expect(down.status).toBe(200);
+    expect(down.body).toMatchObject({ roster: 'unchecked' });
+    expect((await createApi(src(roster, [])).crewReference('rigging', ON)).body).toMatchObject({ roster: 'on' });
+    expect((await createApi(src(roster, [])).crewReference('rigging', '22222222-2222-4222-8222-222222222222')).body).toMatchObject({ roster: 'unknown' });
   });
 });
