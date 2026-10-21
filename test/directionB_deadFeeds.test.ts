@@ -187,7 +187,7 @@ function kit(fail: (typeof FAILS)[number]) {
     ${office ? `let AGENT_RUN = null; const NAV_DRAW = {}; const icon = () => document.createElement('svg'); const switchTab = () => {};
       const renderAssistant = () => {}, renderAgents = () => {}, renderMeasure = () => {}, renderPermits = () => {}, renderLearn = () => {};
       const themePref = () => 'auto', setTheme = () => {}, installCard = () => document.createElement('div'), location = {}, window = {};` : ''}
-    ${estimate ? `let EST_GEN = 0; let EST_BOOK = null; let PERMIT_CITY = 'Virginia Beach'; const openYard = () => {};
+    ${estimate ? `let EST_GEN = 0; let EST_BOOK = null; let PERMIT_CITY = 'Virginia Beach'; let PREP_LEAD = null; const openYard = () => {};
       const Option = function (t, val) { const o = document.createElement('option'); o.textContent = t; o.value = val; return o; };` : ''}
     ${[...new Set(consts)].map(constSrc).join('\n')}
     ${[...new Set([...helpers, ...targets])].map(fnSrc).join('\n')}

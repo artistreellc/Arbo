@@ -276,6 +276,10 @@ export function createLiveSource(): DataSource {
         history = new Map();
         historyFailed = true;
       }
+      // Direction B P18: the street rides in on the same embed as the city, but it is a read through the
+      // properties link (readable under readonly): while that link is cut, a lead with a property says so
+      // (streetCut) — never an empty street that reads as "none on file" (§1B). Never logged.
+      const streetOpen = linkOpen('properties');
       return rows.map((r) => {
         const permit = r.property ? permits.get(r.property.id) ?? null : null;
         const h = r.property ? history.get(r.property.id) ?? null : null;
@@ -292,6 +296,8 @@ export function createLiveSource(): DataSource {
           propertyId: r.property?.id ?? null,
           city: r.property?.city ?? null,
           zip: r.property?.zip ?? null,
+          street: r.property && streetOpen ? (typeof r.property.address === 'string' && r.property.address.trim()) || null : null,
+          ...(r.property && !streetOpen ? { streetCut: true } : {}),
           isFirstTimer: r.contact?.is_first_timer ?? null,
           permit: permit
             ? { screenStatus: permit.screen_status, inRpa: permit.in_rpa, status: permit.status }

@@ -140,6 +140,9 @@ const SIM_LEADS = ['lsa', 'callrail', 'homeadvisor', 'yelp', 'phone'].map((sourc
   propertyId: i === 4 ? null : `sim-prop-${(i % 3) + 1}`,
   city: ['Virginia Beach', 'Norfolk', 'Chesapeake', 'Portsmouth', 'Virginia Beach'][i]!,
   zip: null,
+  // Direction B P18: prep starts from the lead's address. Streets that do not exist; the third lead's
+  // property has no street on file (the "Street not on file" path), the fifth has no property at all.
+  street: (['101 Simulation Row', '202 Placeholder Way', null, '404 Practice Court', null] as Array<string | null>)[i] ?? null,
   isFirstTimer: true,
   permit: null,
   history: null,
