@@ -57,8 +57,12 @@ class FakeEl {
   constructor(readonly tag: string) {}
   get textContent(): string { return this.text + this.children.map((c) => c.textContent).join(' '); }
   set textContent(t: string) { this.text = t; this.children = []; }
-  appendChild(n: FakeEl) { this.children.push(n); return n; }
+  parent: FakeEl | null = null;
+  appendChild(n: FakeEl) { this.children.push(n); n.parent = this; return n; }
   replaceChildren() { this.children = []; }
+  // Direction B P3: a first draw says "Reading…", taken away once every read has landed.
+  hasChildNodes() { return this.children.length > 0 || this.text !== ''; }
+  remove() { if (this.parent) this.parent.children = this.parent.children.filter((c) => c !== this); this.parent = null; }
   addEventListener() {}
   setAttribute() {}
   all(): FakeEl[] { return [this, ...this.children.flatMap((c) => c.all())]; }
@@ -172,7 +176,7 @@ describe('a missing Quo texts webhook is named where the texts would show (revie
         '/api/webhooks/calls': { linkCut: true, wired: false, transcripts: [] }, '/api/review/backlog?all=1&limit=20': { conversations: [] },
       };
       const renderCalls = pageFn<() => Promise<void>>('renderCalls', {
-        ...deps, $: () => v, fmtWhen: () => '', api: async (p: string) => routes[p],
+        ...deps, $: () => v, fmtWhen: () => '', api: async (p: string) => routes[p], readingLine: () => el('div', 'reading', 'Reading…'), 
         studyPanel: async () => null, outreachPanel: async () => null, sonaPanel: async () => null, fillQuoSlots: () => Promise.resolve(),
         showKeywall: () => {}, LINKS_READY: Promise.resolve('sim'), state: (t: string, m: string) => el('div', 'state', t + ' ' + m), showSaveFail: () => {},
       });

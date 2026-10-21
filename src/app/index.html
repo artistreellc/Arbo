@@ -352,6 +352,8 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 .card.flash{animation:cardflash 1.8s var(--ease)}
 @keyframes cardflash{0%,40%{box-shadow:0 0 0 3px var(--emergency)}100%{box-shadow:none}}
 .storm-muted{color:var(--ink-3);font-size:13.5px;line-height:1.55;margin-bottom:12px;text-wrap:pretty}
+/* Direction B P3: what a read in flight looks like — a plain line, never an empty screen. */
+.reading{color:var(--ink-3);font-size:14px;font-weight:600;padding:14px 2px;margin-bottom:12px}
 /* A feed Arbo could not read (§1B) — its own row, never styled like a help tip.
    The dot follows FEED_TONE: amber filled = not set up, grey = cut or not simulated
    (a gap on purpose), hollow amber = couldn't read it (unknown, not danger). */
@@ -508,7 +510,7 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
   header{padding-left:32px;padding-right:32px}.hrow{max-width:1056px}
   .view.active{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
   .view > *{grid-column:auto}
-  .view .viewhead,.view .hero,.view .systems,.view .sect,.view .zip-run,.view .state,.view .panel-title,.view .storm,.view .storm-muted,.view .feed-state,.view .routebtn,.view .hudbtn,.view .hud,.view .grid-tiles{grid-column:1 / -1}
+  .view .viewhead,.view .hero,.view .systems,.view .sect,.view .zip-run,.view .state,.view .panel-title,.view .storm,.view .storm-muted,.view .feed-state,.view .reading,.view .routebtn,.view .hudbtn,.view .hud,.view .grid-tiles{grid-column:1 / -1}
   #view-today .hud{grid-template-columns:repeat(6,1fr)}
   #view-today .hud .wide{grid-column:span 2}
   #view-today .routebtn{justify-self:start;padding:0 24px}
@@ -875,6 +877,14 @@ function state(title, msg) {
   box.appendChild(el('b', '', title));
   box.appendChild(document.createTextNode(msg));
   return box;
+}
+// Direction B P3 (spec: "Loading screens say 'Reading…' instead of looking empty").
+// Shown where a read's content will land, on a screen's first draw only; the read
+// landing takes it away, and a read that fails puts the named feed in its place (§1B).
+function readingLine() {
+  const n = el('div', 'reading', 'Reading…');
+  n.setAttribute('role', 'status');
+  return n;
 }
 
 // ---------- Feed state: ONE wording for a read that failed (§1B) ----------
@@ -2686,17 +2696,21 @@ $('y-go').addEventListener('click', async () => {
 // ---------- Leads ----------
 async function renderLeads() {
   const v = $('view-leads');
-  v.replaceChildren();
+  // Direction B P3: the first draw says "Reading…" instead of a blank screen. A
+  // redraw (the minute timer, ↻) leaves the cards up while it reads, then swaps
+  // the new list in with one replaceChildren, so nothing blinks.
+  if (!v.hasChildNodes()) v.replaceChildren(readingLine());
+  const out = []; // the new list, put on screen in one go
   let data;
   try {
     data = await api('/api/leads?limit=50');
   } catch (e) {
-    if (e.code === 401) return showKeywall();
+    if (e.code === 401) { v.replaceChildren(); return showKeywall(); }
     // §1B: a lead feed Arbo could not read is NAMED, never headed "no leads".
     // The boot /health read decides whether db_not_configured means cut.
     await LINKS_READY;
     leadsTabBadge(e); // the tab says it too (R26)
-    v.appendChild(feedState(e, 'Leads', 'an empty inbox'));
+    v.replaceChildren(feedState(e, 'Leads', 'an empty inbox'));
     return;
   }
   leadsTabBadge(null, data.leads.filter((l) => l.isEmergency && l.status !== 'qualified').length); // the same count as emergencyLeads
@@ -2707,7 +2721,7 @@ async function renderLeads() {
   const notFed = 'Arbo doesn’t receive new leads yet — Sona’s are in Quo, and website and ad leads are in Gmail. This is not an empty inbox.';
   if (!data.leads.length) {
     // R4: Mike handles the leads — this screen promises no ingestion.
-    v.appendChild(practice ? state('No new leads', 'Nothing waiting right now.') : state('New leads are not in Arbo', notFed));
+    v.replaceChildren(practice ? state('No new leads', 'Nothing waiting right now.') : state('New leads are not in Arbo', notFed));
     return;
   }
   // R32: a lead older than 14 days (the server marks it `older`) is
@@ -2715,7 +2729,7 @@ async function renderLeads() {
   // date, and carries no alarm, no call-back label and no Call back button.
   // Whether anyone is contacted is Mike's call, never Arbo's.
   if (!data.leads.some((l) => !l.older)) {
-    v.appendChild(practice
+    out.push(practice
       ? state('No new leads', 'Nothing new waiting right now. Older leads are below, for the record.')
       : state('New leads are not in Arbo', notFed + ' Older rows from the database are below, for the record.'));
   }
@@ -2729,8 +2743,8 @@ async function renderLeads() {
   for (const lead of leads) {
     if (lead.older && !olderTitled) {
       olderTitled = true;
-      v.appendChild(el('div', 'panel-title', 'Older leads — more than 14 days old'));
-      v.appendChild(el('div', 'storm-muted', 'Shown for the record with the day each came in. Not new work, and nothing here asks you to call anyone.'));
+      out.push(el('div', 'panel-title', 'Older leads — more than 14 days old'));
+      out.push(el('div', 'storm-muted', 'Shown for the record with the day each came in. Not new work, and nothing here asks you to call anyone.'));
     }
     const c = el('div', 'card' + (lead.isEmergency ? ' emergency' : '') + (lead.needsCallback ? ' callback' : ''));
     c.id = 'lead-' + lead.id; // where Today's emergency card lands (openLead)
@@ -2864,8 +2878,9 @@ async function renderLeads() {
     row.appendChild(good);
     row.appendChild(mark('i-close', 'Spam', 'File as spam or wrong number', 'bad', 'spam'));
     c.appendChild(row);
-    v.appendChild(c);
+    out.push(c);
   }
+  v.replaceChildren(...out);
 }
 
 // ---------- Today's stops (R35) — read from the calendar, planned, one tap to Google Maps ----------
@@ -3206,6 +3221,7 @@ function estimatePrepPanel() {
 
 async function renderBook() {
   const v = $('view-book');
+  const first = !v.hasChildNodes(); // Direction B P3: readingLine() where the read lands, on a first draw only
   v.replaceChildren();
   // R26: the R25 desks' heading — the desk that owns this screen, then what it is for.
   const head = el('div', 'viewhead');
@@ -3217,9 +3233,10 @@ async function renderBook() {
   // links cut that fetch 503s and returns early, and anything below it
   // never renders in production (the talk-button lesson, again).
   v.appendChild(estimatePrepPanel());
+  const reading = first ? v.appendChild(readingLine()) : null;
   let data;
   try {
-    data = await api('/api/properties');
+    data = await api('/api/properties').finally(() => { if (reading) reading.remove(); });
   } catch (e) {
     if (e.code === 401) return showKeywall();
     // §1B: a Book Arbo could not read is NAMED, never headed "empty".
@@ -3353,22 +3370,29 @@ async function renderCalls() {
   const v = $('view-calls');
   v.style.minHeight = v.offsetHeight + 'px'; // a timed redraw must not collapse the page and throw the scroll to the top
   const fills = []; // every slot's fill; the height is let go once they have all landed
-  v.replaceChildren();
+  // Direction B P3: the first draw goes straight on screen, each slot filling as
+  // its read lands, under one "Reading…" card until they all have. A redraw (the
+  // minute timer, ↻) is drawn off screen and swapped in with one replaceChildren
+  // once every read has landed — the old page stays up meanwhile, so nothing blinks.
+  const first = !v.hasChildNodes();
+  const page = first ? v : el('div');
+  let reading = null;
+  if (first) { reading = el('div', 'slot'); reading.appendChild(readingLine()); v.appendChild(reading); }
   // R24 customer notes — every customer thread, read-only.
   const studyFull = el('div', 'slot');
-  v.appendChild(studyFull);
+  page.appendChild(studyFull);
   // R22 text outreach — the full list: who is ready, who was texted.
   const outreachFull = el('div', 'slot');
-  v.appendChild(outreachFull);
+  page.appendChild(outreachFull);
   // Sona via Quo — every call, with transcripts.
   const sonaCallsSlot = el('div', 'slot');
-  v.appendChild(sonaCallsSlot);
+  page.appendChild(sonaCallsSlot);
   // The three fill together, so a Quo that is not connected is ONE card here too, as on Today.
   fills.push(fillQuoSlots([studyPanel(60), outreachPanel(true), sonaPanel(20, true)], [studyFull, outreachFull, sonaCallsSlot]));
   // Texts + photos sent to the Arbo number (Mike, 2026-09-24). Receive only.
   // '.texts': the business-cell line hangs under the Arbo-line row's text (two peer lines).
   const txSlot = el('div', 'slot texts');
-  v.appendChild(txSlot);
+  page.appendChild(txSlot);
   fills.push((async () => {
     let t;
     try { t = await api('/api/webhooks/texts'); }
@@ -3429,7 +3453,7 @@ async function renderCalls() {
   // Notes from calls Mike ANSWERED — iPhone records + transcribes, the
   // Share-sheet Shortcut relays them here. Arbo cannot hear his cell.
   const cnSlot = el('div', 'slot');
-  v.appendChild(cnSlot);
+  page.appendChild(cnSlot);
   fills.push((async () => {
     let n;
     try { n = await api('/api/relay/call-notes'); }
@@ -3452,7 +3476,7 @@ async function renderCalls() {
   // Arbo's own receptionist line, one card: its title, the transcript status
   // line, the transcripts, then the call log.
   const ownSlot = el('div', 'slot');
-  v.appendChild(ownSlot);
+  page.appendChild(ownSlot);
   ownSlot.appendChild(el('div', 'panel-title', 'Arbo’s own line'));
   // R19: post-call transcripts pushed by ElevenLabs, when that link is up.
   const trSlot = el('div');
@@ -3492,7 +3516,11 @@ async function renderCalls() {
     }
   })());
   // The held height goes once every slot has landed, on every way out below.
-  const release = () => Promise.allSettled(fills).then(() => { v.style.minHeight = ''; });
+  const release = () => Promise.allSettled(fills).then(() => {
+    if (reading) reading.remove();
+    if (!first) v.replaceChildren(...page.childNodes);
+    v.style.minHeight = '';
+  });
   let data;
   try {
     data = await api('/api/review/backlog?all=1&limit=20');
@@ -3944,6 +3972,7 @@ function mixLine(mix) {
 }
 async function renderPerformance() {
   const v = $('view-perf');
+  const first = !v.hasChildNodes(); // Direction B P3: readingLine() where the read lands, on a first draw only
   v.replaceChildren();
   // R26: the R25 desks' heading, above the read so a dead feed keeps it.
   const head = el('div', 'viewhead');
@@ -3951,9 +3980,10 @@ async function renderPerformance() {
   head.appendChild(el('h1', '', 'Which areas & campaigns pay'));
   head.appendChild(el('p', '', 'Each area rated by revenue per crew-hour, and what each campaign cost per booked job.'));
   v.appendChild(head);
+  const reading = first ? v.appendChild(readingLine()) : null;
   let p;
   try {
-    p = await api('/api/performance');
+    p = await api('/api/performance').finally(() => { if (reading) reading.remove(); });
   } catch (e) {
     if (e.code === 401) return showKeywall();
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
@@ -5026,6 +5056,7 @@ let FU_GEN = 0;
 async function renderFollowUps() {
   const gen = ++FU_GEN;
   const v = $('view-followups');
+  const first = !v.hasChildNodes(); // Direction B P3: readingLine() where the read lands, on a first draw only
   v.replaceChildren();
   // R26: the R25 desks' heading. The Yard Boss desk is this screen's fleet & money part.
   const head = el('div', 'viewhead');
@@ -5093,10 +5124,11 @@ async function renderFollowUps() {
   const note = el('div', 'zip-run');
   note.appendChild(document.createTextNode('Arbo recommends — nothing sends without you.'));
   fuSlot.appendChild(note);
+  const reading = first ? fuSlot.appendChild(readingLine()) : null;
   // Only the recommended sends wait on this read; a failure darkens only them.
   let q;
   try {
-    q = await api('/api/followups');
+    q = await api('/api/followups').finally(() => { if (reading) reading.remove(); });
   } catch (e) {
     if (gen !== FU_GEN) return;
     if (e.code === 401) return showKeywall();
@@ -5902,6 +5934,7 @@ let PERMIT_GEN = 0;
 async function renderPermits() {
   const gen = ++PERMIT_GEN;
   const v = $('view-permits');
+  const first = !v.hasChildNodes(); // Direction B P3: readingLine() where the read lands, on a first draw only
   v.replaceChildren();
   const head = el('div', 'viewhead');
   head.appendChild(el('div', 'eyebrow', 'Permit Desk'));
@@ -5978,8 +6011,9 @@ async function renderPermits() {
   runCheck();
 
   // The facts, by topic.
+  const reading = first ? v.appendChild(readingLine()) : null;
   let db;
-  try { db = await api('/api/permits/db?city=' + encodeURIComponent(PERMIT_CITY)); } catch (e) {
+  try { db = await api('/api/permits/db?city=' + encodeURIComponent(PERMIT_CITY)).finally(() => { if (reading) reading.remove(); }); } catch (e) {
     if (gen !== PERMIT_GEN) return;
     if (e.code === 401) return showKeywall();
     v.appendChild(state('Permit base — ' + FEED_WORD[feedKind(e)], 'Arbo could not read its permit base right now. That is not the same as “no rules”.'));
@@ -6131,14 +6165,16 @@ let AGENT_GEN = 0;
 async function renderAgents() {
   const gen = ++AGENT_GEN;
   const v = $('view-agents');
+  const first = !v.hasChildNodes(); // Direction B P3: readingLine() where the read lands, on a first draw only
   v.replaceChildren();
   const head = el('div', 'viewhead');
   head.appendChild(el('div', 'eyebrow', 'The brain'));
   head.appendChild(el('h1', '', 'Eight desks, one rulebook'));
   head.appendChild(el('p', '', 'Each section of Arbo has an agent. They read and propose — you decide. None of them can send, spend, or touch the calendar.'));
   v.appendChild(head);
+  const reading = first ? v.appendChild(readingLine()) : null;
   let roster;
-  try { roster = await api('/api/agents/sections'); } catch (e) {
+  try { roster = await api('/api/agents/sections').finally(() => { if (reading) reading.remove(); }); } catch (e) {
     if (gen !== AGENT_GEN) return;
     if (e.code === 401) return showKeywall();
     v.appendChild(feedState(e, 'The agent roster', 'an empty roster'));
@@ -6418,14 +6454,16 @@ let LEARN_GEN = 0;
 async function renderLearn() {
   const gen = ++LEARN_GEN;
   const v = $('view-learn');
+  const first = !v.hasChildNodes(); // Direction B P3: readingLine() where the read lands, on a first draw only
   v.replaceChildren();
   const head = el('div', 'viewhead');
   head.appendChild(el('div', 'eyebrow', 'Training ground'));
   head.appendChild(el('h1', '', 'Teach the brain'));
   head.appendChild(el('p', '', 'Every problem a caller, a crew or a permit office can throw at a tree service — played against Arbo with made-up people. What it gets wrong becomes a lesson for you to approve. Nothing changes itself.'));
   v.appendChild(head);
+  const reading = first ? v.appendChild(readingLine()) : null;
   let cat, st;
-  try { [cat, st] = await Promise.all([api('/api/sim/catalog'), api('/api/sim/state')]); } catch (e) {
+  try { [cat, st] = await Promise.all([api('/api/sim/catalog'), api('/api/sim/state')]).finally(() => { if (reading) reading.remove(); }); } catch (e) {
     if (gen !== LEARN_GEN) return;
     if (e.code === 401) return showKeywall();
     v.appendChild(feedState(e, 'The training ground', 'an empty catalog'));
