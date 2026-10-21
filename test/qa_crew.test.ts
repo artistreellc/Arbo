@@ -83,7 +83,13 @@ describe('the work-order list never draws an unreadable or held-back day as empt
 
   it('a failed load is not an empty day, and promises no gesture the app lacks', () => {
     expect(html).not.toContain('Pull to refresh');
-    expect(fn('renderWork')).toContain("'state err', 'Could not load your work orders — that is not an empty day. Call the office.'");
+    // Deliberately updated (CREW_PLAN C1, D107): the failure box now also names WHY in
+    // crewWhy's words; it is still the warning box and still not an empty day.
+    const work = fn('renderWork');
+    expect(work).toContain("const s = el('div', 'state err');");
+    expect(work).toContain("s.appendChild(el('b', '', 'Could not load your work orders'));");
+    expect(work).toContain('const why = crewWhy(e);');
+    expect(work).toContain("s.appendChild(el('div', '', 'That is not an empty day — call the office.'));");
   });
 });
 

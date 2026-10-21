@@ -113,6 +113,9 @@ main{padding:16px;max-width:640px;margin:0 auto}
 .gate-status{font-size:13px;color:var(--muted);margin-top:8px;min-height:20px}
 /* A failed sign-off carries a stop-work order: it reads as one, not as helper text. */
 .gate-status.err{color:#FFD9A0;font-size:14px;font-weight:700;line-height:1.4;border-left:3px solid var(--warning);padding-left:10px}
+/* C1 (R32): read-only cannot save a sign-off. Said above GO before anyone presses, the stop-work order its own line. */
+.ro-note{margin-top:12px;color:#FFD9A0;font-size:14px;font-weight:600;line-height:1.4;border-left:3px solid var(--warning);padding-left:10px}
+.ro-note b{display:block;margin-top:4px;font-size:15px;font-weight:800}
 #gobtn{width:100%;min-height:60px;margin-top:14px;border:0;border-radius:var(--r-md);
   background:var(--surface-alt);color:var(--muted);border:1.5px solid var(--border);
   font-size:19px;font-weight:900;letter-spacing:.14em;cursor:not-allowed}
@@ -411,6 +414,16 @@ function renderGate(brief) {
   go.addEventListener('click', submitGate);
   box.appendChild(go);
   slot.appendChild(box);
+  // C1 (R32): read-only refuses the sign-off, so the crew is told before they
+  // press — one line above GO, then the stop-work order on its own bold line.
+  // The briefing above stays readable. Only an exact 'readonly' from /health.
+  LINKS_READY.then(() => {
+    if (LINKS !== 'readonly') return;
+    const ro = el('div', 'ro-note');
+    ro.appendChild(el('div', '', 'Arbo is read-only today — your sign-off can’t be saved on this phone.'));
+    ro.appendChild(el('b', '', 'Do not start work — call the office.'));
+    box.insertBefore(ro, go);
+  });
 
   // If the content is short the scroll event never fires — a body that needs
   // no scrolling counts as scrolled the moment it is on screen.
@@ -525,17 +538,34 @@ async function renderQuiz(context) {
   try {
     q = await api('/api/crew/quiz?context=' + ctx + '&crewMemberId=' + encodeURIComponent(CREW_ID));
   } catch (e) {
-    // Never let a broken quiz silently skip the gate — say what happened.
-    v.appendChild(el('div', 'state', e.code === 503
-      ? 'Cannot reach the office for today\'s questions. Not your fault \u2014 carry on.'
-      : 'Today\'s questions did not load. Tell the office; do not skip it quietly.'));
+    // Never let a broken quiz silently skip the gate — say what happened, and
+    // why (C1: crewWhy, the crew door's one wording for a failed read). A
+    // rejected crew code is said as one: the office did answer.
+    await LINKS_READY; // 'cut on purpose' vs 'not set up' needs /health's answer
+    const why = e.code === 400 ? 'the office did not recognise your crew code' : crewWhy(e);
+    const s = el('div', 'state err');
+    s.appendChild(el('b', '', 'Today’s questions did not load'));
+    s.appendChild(document.createTextNode(why.charAt(0).toUpperCase() + why.slice(1) + '.'));
+    s.appendChild(el('div', '', 'Not your fault — carry on, and tell the office; do not skip it quietly.'));
+    v.appendChild(s);
     return;
   }
+  // §1B: questions that could not be read wear the warning box, so they never
+  // look like the plain "none published" box below.
   if (!q.itemsLoaded) {
-    v.appendChild(el('div', 'state', 'Today\'s questions could not be loaded. This is not "no questions" \u2014 tell the office.'));
+    v.appendChild(el('div', 'state err', 'Today\'s questions could not be loaded. This is not "no questions" — tell the office.'));
     return;
   }
-  if (!q.items.length) return;
+  // C1: a pool with no quiz_question has nothing to ask — the office's gap,
+  // named over a read that succeeded, never a silent skip and never a pass.
+  if (!q.items.some((i) => i.type === 'quiz_question')) {
+    v.appendChild(el('div', 'panel-title', QUIZ_TITLE[ctx] || 'Questions'));
+    const s = el('div', 'state');
+    s.appendChild(el('b', '', 'The office hasn’t published any questions yet — nothing to answer today.'));
+    s.appendChild(document.createTextNode('That is the office’s gap, not a pass.'));
+    v.appendChild(s);
+    return;
+  }
 
   QUIZ.startedAt = new Date().toISOString();
   QUIZ.items = q.items;
@@ -607,10 +637,12 @@ async function submitQuiz() {
       },
     });
   } catch (e) {
+    await LINKS_READY; // 'cut on purpose' vs 'not set up' needs /health's answer
     go.disabled = false;
+    // C1: the reason, in crewWhy's words, instead of a bare retry.
     $('quiz').querySelector('.errline').textContent = e.code === 400
       ? 'That did not save \u2014 check your crew code with the office.'
-      : 'Could not record that \u2014 try once more.';
+      : 'Your answers were not saved (' + crewWhy(e) + ').' + ' Tell the office so your paid time is logged.';
     return;
   }
   QUIZ.done = true;
@@ -644,7 +676,15 @@ async function renderWork() {
   try {
     data = await api('/api/crew/workorders');
   } catch (e) {
-    v.appendChild(el('div', 'state err', 'Could not load your work orders — that is not an empty day. Call the office.'));
+    // §1B: an unreadable day is never an empty one. C1: the reason is named
+    // in crewWhy's words (the jobs link kept cut, read-only, the throttle…).
+    await LINKS_READY; // 'cut on purpose' vs 'not set up' needs /health's answer
+    const why = crewWhy(e);
+    const s = el('div', 'state err');
+    s.appendChild(el('b', '', 'Could not load your work orders'));
+    s.appendChild(document.createTextNode(why.charAt(0).toUpperCase() + why.slice(1) + '.'));
+    s.appendChild(el('div', '', 'That is not an empty day — call the office.'));
+    v.appendChild(s);
     return;
   }
   // R9 + §1B: the server holds back every row without a signed contract, and
@@ -731,9 +771,12 @@ function arrivalButton(jobId) {
       // The gaps matter more than the confirmation — show them first.
       for (const line of res.lines || []) out.appendChild(el('div', 'gapline', '\u26a0 ' + line));
       if (res.defensible) out.appendChild(el('div', 'okline', 'Photos on file \u2014 this record can back you up.'));
-    } catch {
+    } catch (e) {
+      // C1: the reason, in crewWhy's words, instead of a bare retry.
+      await LINKS_READY; // 'cut on purpose' vs 'not set up' needs /health's answer
       btn.disabled = false;
-      out.textContent = 'Could not log that. Try again.';
+      out.textContent = 'Arrival not logged (' + (e.code === 400 ? 'the office did not accept it' : crewWhy(e)) + ').'
+        + ' Tell the office what you found.';
     }
   });
   wrap.appendChild(btn);
@@ -771,10 +814,13 @@ function changeOrderButton(jobId) {
       btn.className = 'jobbtn done';
       out.appendChild(el('div', 'okline', 'Logged for the office to confirm before it goes on the bill.'));
     } catch (e) {
+      // C1: the reason, in crewWhy's words, instead of a bare retry.
+      await LINKS_READY; // 'cut on purpose' vs 'not set up' needs /health's answer
       btn.disabled = false;
       out.textContent = e.message === 'no_agreed_by'
         ? 'Needs the name of whoever agreed to it.'
-        : 'Could not record that. Try again.';
+        : 'Extra work not recorded (' + (e.code === 400 ? 'the office did not accept it' : crewWhy(e)) + ').'
+          + ' Tell the office what was agreed.';
     }
   });
   wrap.appendChild(btn);
@@ -948,9 +994,11 @@ function renderNearMiss() {
   card.appendChild(out);
   box.appendChild(card);
   // Never let a crew member type a whole safety report the page already knows
-  // cannot be filed. Exact 'cut' only; the click's catch stays the backstop.
+  // cannot be filed. Exact 'cut' or 'readonly' only (C1: read-only refuses the
+  // save; C5 rekeys this to crewWrites); the click's catch stays the backstop.
   LINKS_READY.then(() => {
     if (LINKS === 'cut') card.insertBefore(el('div', 'lib-warn', 'Filing is off while the office data link is cut on purpose — tell the office directly.'), ta);
+    else if (LINKS === 'readonly') card.insertBefore(el('div', 'lib-warn', 'Filing is off while Arbo is read-only — tell the office directly.'), ta);
   });
 
   btn.addEventListener('click', async () => {

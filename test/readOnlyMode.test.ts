@@ -739,3 +739,82 @@ describe('read-only: the app and the crew page say it plainly', () => {
     expect(crewWhy({ code: 503, message: 'db_not_configured' })).toBe('not set up on the server yet');
   });
 });
+
+// ═══ 6. CREW_PLAN C1 (D107) — the crew door says read-only before anyone acts ═══
+// Read-only refuses every crew write (sign-off, near miss). The page knows the
+// mode from /health, so it says so up front: a near miss is not typed into a
+// form that cannot file it, and the gate tells the crew their sign-off cannot
+// be saved — with the stop-work order on its own bold line.
+describe('read-only on the crew door (C1): warned before anyone types or signs', () => {
+  const crew = readFileSync(new URL('../src/app/crew.html', import.meta.url), 'utf8');
+
+  type N = { tag: string; className: string; textContent: string; kids: N[]; id: string };
+  const make = (tag: string, className = '', textContent = ''): N & Record<string, unknown> => {
+    const n = {
+      tag, className, textContent, kids: [] as N[], id: '', disabled: false, scrollHeight: 0, clientHeight: 0, scrollTop: 0,
+      classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+      appendChild(k: N) { n.kids.push(k); return k; },
+      prepend(k: N) { n.kids.unshift(k); },
+      insertBefore(k: N, ref: N) { const at = n.kids.indexOf(ref); if (at < 0) throw new Error('insertBefore: ref is not a child'); n.kids.splice(at, 0, k); return k; },
+      replaceChildren() { n.kids = []; },
+      addEventListener() {},
+      setAttribute(k: string, v: string) { if (k === 'id') n.id = v; },
+    };
+    return n;
+  };
+  const all = (n: N): N[] => n.kids.flatMap((k) => [k, ...all(k)]);
+
+  it('the near-miss card warns under readonly, above the box, in the plan’s words', async () => {
+    const box = make('div');
+    const ready = Promise.resolve();
+    const fn = /^function renderNearMiss\([\s\S]*?^\}$/m.exec(crew)![0];
+    new Function('$', 'el', 'document', 'LINKS_READY', 'LINKS', 'CREW_ID', 'api', `${fn}\nreturn renderNearMiss;`)(
+      () => box, make, { createElement: (t: string) => make(t) }, ready, 'readonly', 'x', () => {},
+    )();
+    await ready.then(() => {}); // the page's own .then was queued first, so it has run
+    const card = box.kids[1]!;
+    expect(card.kids.map((k) => k.className || k.tag)).toEqual(['why', 'lib-warn', 'textarea', 'button', 'div']);
+    expect(card.kids[1]!.textContent).toBe('Filing is off while Arbo is read-only — tell the office directly.');
+  });
+
+  // The gate's own block, run over stand-ins (as test/crewGateTimer.test.ts does).
+  const gate = async (links: string | null) => {
+    const slot = make('div');
+    const block = crew.slice(crew.indexOf('const GATE = {'), crew.indexOf('async function submitGate('));
+    const ready = Promise.resolve();
+    const page = new Function(
+      'PREVIEW', 'PREVIEW_WHY', 'document', '$', 'el', 'setInterval', 'submitGate', 'LINKS_READY', 'LINKS',
+      `${block}\nreturn { renderGate };`,
+    )(false, '', { querySelector: () => make('main'), createElement: (t: string) => make(t) },
+      (id: string) => (id === 'gate-slot' ? slot : all(slot).find((n) => n.id === id) ?? null), make, () => 1, () => {}, ready, links) as { renderGate: (b: unknown) => void };
+    page.renderGate({ id: 'SIM-brief', body: 'SIM briefing.\nHard hats on.', standardRefs: [], requiredSeconds: 10 });
+    await ready.then(() => {});
+    return slot.kids[0]!;
+  };
+  const RO_LINE = 'Arbo is read-only today — your sign-off can’t be saved on this phone.';
+  const ORDER = 'Do not start work — call the office.';
+
+  it('under readonly: one line directly above GO, then the stop-work order on its own bold line — and the briefing stays readable', async () => {
+    const box = await gate('readonly');
+    const go = box.kids.findIndex((k) => k.tag === 'button' && k.textContent === 'GO');
+    const note = box.kids.findIndex((k) => k.className === 'ro-note');
+    expect(note, box.kids.map((k) => k.className || k.tag).join(',')).toBeGreaterThan(-1);
+    expect(note).toBe(go - 1);
+    expect(box.kids[note]!.kids.map((k) => [k.tag, k.textContent])).toEqual([['div', RO_LINE], ['b', ORDER]]);
+    // The briefing is still on screen to read.
+    const body = all(box).find((n) => n.kids.some((k) => k.tag === 'p'))!;
+    expect(body.kids.map((k) => k.textContent)).toEqual(['SIM briefing.', 'Hard hats on.']);
+  });
+
+  it('live, simulation, cut and an unanswered /health: no read-only lines', async () => {
+    for (const links of ['live', 'simulation', 'cut', 'unknown', null]) {
+      const box = await gate(links);
+      expect(all(box).some((n) => n.className === 'ro-note'), String(links)).toBe(false);
+      expect(all(box).some((n) => n.textContent === ORDER), String(links)).toBe(false);
+    }
+  });
+
+  it('the bold line is styled as a line of its own', () => {
+    expect(crew).toMatch(/\.ro-note b\{[^}]*display:block/);
+  });
+});
