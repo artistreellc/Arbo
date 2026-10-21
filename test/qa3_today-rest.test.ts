@@ -37,6 +37,7 @@ class FakeEl {
   prepend(n: FakeEl) { this.children.unshift(n); }
   replaceChildren(...n: FakeEl[]) { this.text = ''; this.children = [...n]; }
   setAttribute(k: string, v: string) { this.attrs[k] = v; }
+  addEventListener() {} // Direction B P10: the hero's stats are buttons
   querySelector(tag: string): FakeEl | null {
     for (const c of this.children) {
       if (c.tag === tag) return c;

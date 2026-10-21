@@ -506,7 +506,8 @@ describe('R26 qa-x10 — Today: the place on screen and the emergencies count', 
     for (const label of ['jobs today', 'estimates today', 'coming due', 'agent runs', 'overdue', 'to bill']) hud.appendChild(el('div', 'tile', label));
     const tile = (n: unknown, label: string, cls: string) => { const t = el('div', 'tile ' + cls); t.appendChild(el('b', '', String(n))); t.appendChild(el('span', '', label)); return t; };
     const tileWhy = (t: N, why: string) => { if (t.querySelector('small')) return; t.appendChild(el('small', '', why)); };
-    const set = new Function('tile', 'tileWhy', 'hud', `${block}\nreturn setEmergencies;`)(tile, tileWhy, hud) as (half: string, val: unknown) => void;
+    // Direction B P10: the emergencies tile opens the first emergency card (goTile — not run here).
+    const set = new Function('tile', 'tileWhy', 'hud', 'goTile', `${block}\nreturn setEmergencies;`)(tile, tileWhy, hud, () => {}) as (half: string, val: unknown) => void;
     const first = () => hud.children[0]!;
     return { hud, tile, set, first };
   }

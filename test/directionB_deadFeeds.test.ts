@@ -252,6 +252,7 @@ describe('the dead-feed harness knows every panel in the page', () => {
     studyPanel: 'not seeded in P1; pinned in qa2_calls-cal-leads (joins with P12)',
     outreachPanel: 'not seeded in P1; pinned in outreach and qa2_today (joins with P12)',
     websiteFormsPanel: 'not seeded in P1; pinned in qa_today and webhooks (joins with P12)',
+    openPanel: 'P10 navigation, not a panel: it opens a screen and lands on one of its panels — no read of its own (directionB_todayTaps)',
   };
   it('every render* and *Panel function is covered or exempt with a reason — never both', () => {
     const names = [...html.matchAll(/^(?:async )?function (\w+)\(/gm)].map((m) => m[1]!).filter((n) => /^render[A-Z]/.test(n) || /Panel$/.test(n));
