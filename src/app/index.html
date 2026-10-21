@@ -644,6 +644,11 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 .prop-row{padding:12px 0 2px;border-top:1px solid var(--hairline);margin-top:10px}
 .prop-row .scope{margin-bottom:10px}
 .proposals .feed-state,.proposals .storm-muted{margin:10px 0 0}
+/* Direction B P14: on Office each proposal is one row — the desk and what it proposes, its button beside them — so the desks below stay near the top. */
+.office-props .prop-row{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:12px;align-items:center;padding:10px 0 8px;margin-top:8px}
+.office-props .prop-row .loop-kind,.office-props .prop-row .scope{grid-column:1}
+.office-props .prop-row .scope{margin-bottom:0;font-size:14px;line-height:1.4}
+.office-props .prop-row .minibtn{grid-column:2;grid-row:1 / span 2;padding:0 12px}
 .bigcheck{width:26px;height:26px;flex:none;accent-color:var(--forest)}
 /* ── Talk (R30) — Mike's voice line inside Arbo. The header button sits on
    every screen; the sheet is one huge Start/End, a status line, the last
@@ -6634,7 +6639,7 @@ function officeProposals() {
   else if (!ran) c.appendChild(el('div', 'storm', 'The run did not complete (' + run.error + '). No proposal is shown rather than a stale one.'));
   else {
     const short = run.reports.filter((r) => r.status !== 'ok').length;
-    for (const p of props) c.appendChild(proposalRow(p));
+    for (const p of props) c.appendChild(proposalRow(p, true));
     if (short) c.appendChild(el('div', 'feed-state unset', (props.length ? '' : 'No proposals — ') + plural(short, 'desk', 'desks') + ' couldn’t read everything (named on Agents)' + (props.length ? ' — there may be more.' : '.')));
     else if (!props.length) c.appendChild(el('div', 'storm-muted', 'No proposals from this run.'));
   }
@@ -7179,13 +7184,15 @@ function agentProposals(run, roster) {
     .flatMap((r) => (r.proposals || []).map((p) => ({ desk: names[r.agentId] || r.name, text: noRefs(p.text), kind: p.kind })));
 }
 // One proposal: the desk, what it proposes, and the screen where Mike acts on it (a kind with no screen stays text).
-function proposalRow(p) {
+// Direction B P14: on Office (short) the button says just the screen, "Fleet ›", and keeps "Open Fleet" as its name.
+function proposalRow(p, short) {
   const row = el('div', 'prop-row');
   row.appendChild(el('div', 'loop-kind', p.desk));
   row.appendChild(el('div', 'scope', p.text));
   const go = PROPOSAL_GO[p.kind];
   if (go) {
-    const b = el('button', 'minibtn', go[0]);
+    const b = el('button', 'minibtn', short ? VIEW_TITLES[go[1]] + ' ›' : go[0]);
+    if (short) b.setAttribute('aria-label', go[0].replace(/ →$/, ''));
     b.type = 'button';
     b.addEventListener('click', () => switchTab(go[1]));
     row.appendChild(b);
