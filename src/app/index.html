@@ -977,15 +977,18 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 </div>
 
 <nav aria-label="Sections">
+  <!-- Direction B P19 (R29 #1): the dock is Today · Leads · Calendar · Estimate · Office. Office is the More
+       button relabelled (its id kept). Calls & texts sits under Leads, Properties on file under Estimate,
+       Follow-ups and Numbers under Office (every surface within two taps, §9); their old buttons stay,
+       dock-hidden, so every existing link to them keeps working. -->
   <button id="tab-today" class="active"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-today"/></svg><span>Today</span></span></button>
-  <button id="tab-calls"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-calls"/></svg><span>Calls</span></span></button>
-  <button id="tab-cal"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-calendar"/></svg><span>Calendar</span></span></button>
   <button id="tab-leads"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-leads"/></svg><span>Leads</span></span></button>
-  <button id="tab-more"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-more"/></svg><span>More</span></span></button>
-  <!-- Book, Queue and Numbers live in More (every surface within two taps, §9);
-       their buttons stay so every existing link to them keeps working. -->
-  <button id="tab-book" class="dock-hidden"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-book"/></svg><span>Book</span></span></button>
-  <button id="tab-followups" class="dock-hidden"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-queue"/></svg><span>Queue</span></span></button>
+  <button id="tab-cal"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-calendar"/></svg><span>Calendar</span></span></button>
+  <button id="tab-estimate"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-tree"/></svg><span>Estimate</span></span></button>
+  <button id="tab-more"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-more"/></svg><span>Office</span></span></button>
+  <button id="tab-calls" class="dock-hidden"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-calls"/></svg><span>Calls &amp; texts</span></span></button>
+  <button id="tab-book" class="dock-hidden"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-book"/></svg><span>Properties on file</span></span></button>
+  <button id="tab-followups" class="dock-hidden"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-queue"/></svg><span>Follow-ups</span></span></button>
   <button id="tab-perf" class="dock-hidden"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-numbers"/></svg><span>Numbers</span></span></button>
 </nav>
 
@@ -2641,7 +2644,7 @@ async function fillAssistToday(slot) {
   if (!list) { slot.appendChild(el('div', 'feed-state unread', 'Assistant: couldn’t read what’s waiting. ' + RETRY)); return; }
   if (list.length) slot.appendChild(el('div', 'panel-title', 'Waiting for your OK'));
   if (!s) { if (!(st.reason && st.reason.code === 401)) slot.appendChild(feedLine(st.status === 'rejected' ? st.reason : null, 'Assistant status')); }
-  else if (s.state === 'error') slot.appendChild(el('div', 'feed-state unread', 'Assistant: ' + (s.reason ? String(s.reason).replace(/\.\s*$/, '') : 'something is wrong and Arbo didn’t say what') + '. Open More → Assistant.'));
+  else if (s.state === 'error') slot.appendChild(el('div', 'feed-state unread', 'Assistant: ' + (s.reason ? String(s.reason).replace(/\.\s*$/, '') : 'something is wrong and Arbo didn’t say what') + '. Open Office → Assistant.'));
   for (const a of list.slice(0, 4)) slot.appendChild(approvalRow(a));
   if (list.length > 4) {
     const more = el('button', 'hudbtn approw-all', 'All ' + list.length + ' waiting →');
@@ -2693,7 +2696,7 @@ function assistStateLine(s) {
 }
 const ASSIST_STATE = { ready: ['ON', 'good'], off: ['OFF', 'info'], not_set_up: ['NOT SET UP', 'watch'], error: ['ERROR', 'stop'] };
 
-// The desk (More → Assistant): is it on, what it asks first, what is waiting, what it did.
+// The desk (Office → Assistant): is it on, what it asks first, what is waiting, what it did.
 let ASSIST_GEN = 0;
 async function renderAssistant() {
   const gen = ++ASSIST_GEN;
@@ -6243,13 +6246,13 @@ async function renderFollowUps() {
   }
   if (gen !== FU_GEN) return;
   // The server drops storm and coming-due nudges it could not check, and says
-  // so. 'Queue clear' must never be drawn over a feed Arbo could not read.
+  // so. 'No follow-ups due' must never be drawn over a feed Arbo could not read.
   const unread = [];
   if (q.seasonalUnavailable) unread.push('storm nudges (weather feed unreadable)');
   if (q.growthUnavailable) unread.push('coming-due nudges (property records unreadable)');
   if (unread.length) fuSlot.appendChild(el('div', 'feed-state unread', 'Arbo could not check ' + unread.join(' or ') + '. This is not a claim that none are due.'));
   if (!q.due.length) {
-    fuSlot.appendChild(state(unread.length ? 'Nothing due from what Arbo could read' : 'Queue clear',
+    fuSlot.appendChild(state(unread.length ? 'Nothing due from what Arbo could read' : 'No follow-ups due',
       'Estimate follow-ups, review asks, and no-show saves land here when due.'));
   }
   for (const a of q.due) {
@@ -7161,9 +7164,8 @@ function renderMore() {
   });
   tile('i-agents', 'Agents', 'Eight desks, one brain', () => { switchTab('agents'); renderAgents(); });
   // Direction B P14: the four desks the Queue held, Numbers and Teach Arbo are Office's counted desk
-  // tiles above (OFFICE_DESKS; no two Office tiles share an icon). P15: Book, Permits and Measure live
-  // under Estimate now — one tile opens it until the dock gets its own Estimate tab (P19).
-  tile('i-tree', 'Estimate', 'Prep, permit rules, measure', () => switchTab('estimate'));
+  // tiles above (OFFICE_DESKS; no two Office tiles share an icon). P15/P19: Book, Permits and Measure live
+  // under Estimate, which has its own dock tab now — Office carries no tile for it.
   // R26: look only — the crew's page, on this app's key, and it cannot sign,
   // file or clock in. Same tab on purpose: an installed iPhone app keeps its
   // own saved data, so a new tab might not have the key.
@@ -7563,7 +7565,7 @@ const noRefs = (s) => s.replace(/^#\d+\s*/, '').replace(/\s*\((?:R\d+|§)[^)]*\)
 // A proposal opens the screen where Mike acts on it: [button, tab]. A kind with no screen stays plain text.
 // Direction B P13: the Queue's proposals open the desk that holds their panel.
 const PROPOSAL_GO = {
-  call_review: ['Open Calls →', 'calls'],
+  call_review: ['Open Calls & texts →', 'calls'],
   route_fix: ['Open the Calendar →', 'cal'], weather_hold_review: ['Open the Calendar →', 'cal'],
   decide_open_loops: ['Open Follow-ups →', 'followups'],
   collections_review: ['Open Money →', 'money'],
@@ -8081,9 +8083,9 @@ async function renderLearn() {
 const VIEW_TITLES = { learn: 'Teach Arbo', measure: 'Measure', agents: 'Agents', permits: 'Permit rules', today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Properties on file', estimate: 'Estimate', followups: 'Follow-ups', money: 'Money', fleet: 'Fleet', safety: 'Crew & safety', calls: 'Calls & texts', perf: 'Numbers', settings: 'Settings', more: 'Office', assistant: 'Assistant' };
 // Direction B P13: a link that names no screen of its own — #queue (never a link before) opens More, where the Queue's four desks sit.
 const VIEW_ALIAS = { queue: 'more' };
-// Direction B P13: which dock tab lights for each screen — one table (the plan's DOCK_OF), today's dock until P19.
-// Settings opens from the header gear and lights none.
-const DOCK_OF = { today: 'today', leads: 'leads', calls: 'calls', cal: 'cal', estimate: 'more', book: 'more', followups: 'more', money: 'more', fleet: 'more', safety: 'more', perf: 'more', more: 'more', permits: 'more', agents: 'more', measure: 'more', learn: 'more', assistant: 'more' };
+// Direction B P13/P19: which dock tab lights for each screen — one table, the plan's DOCK_OF (the dock is
+// Today · Leads · Calendar · Estimate · Office). Settings opens from the sliders button and lights none.
+const DOCK_OF = { today: 'today', leads: 'leads', calls: 'leads', cal: 'cal', estimate: 'estimate', book: 'estimate', permits: 'estimate', measure: 'estimate', more: 'more', followups: 'more', money: 'more', fleet: 'more', safety: 'more', perf: 'more', agents: 'more', learn: 'more', assistant: 'more' };
 
 // The line under ARBO. Today's hero already carries the date, so Today shows
 // the name alone; every screen says SIMULATION while the data is practice data.
@@ -8431,9 +8433,10 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && TAL
 // installed app has no browser bar, so every screen and every sheet is a step in
 // the phone's own history: the ‹ in the header, Android's back button and a
 // browser's back all walk the same steps. With no step behind (a reload, a
-// home-screen shortcut, the crew preview's way back) a More desk lands on More
-// and anything else on Today.
-const NAV_PARENT = { book: 'estimate', followups: 'more', money: 'more', fleet: 'more', safety: 'more', perf: 'more', permits: 'estimate', agents: 'more', measure: 'estimate', learn: 'more', assistant: 'more', settings: 'today', estimate: 'today' };
+// home-screen shortcut, the crew preview's way back) a screen lands on its hub —
+// an Office desk on Office, an Estimate tool on Estimate, Calls & texts on Leads
+// (Direction B P19) — and anything else on Today.
+const NAV_PARENT = { calls: 'leads', book: 'estimate', followups: 'more', money: 'more', fleet: 'more', safety: 'more', perf: 'more', permits: 'estimate', agents: 'more', measure: 'estimate', learn: 'more', assistant: 'more', settings: 'today', estimate: 'today' };
 const SHEETS = ['twin', 'yard', 'bd', 'talk', 'approval', 'photo', 'maps'];
 let NAV_QUIET = false; // true while a back step is drawn — drawing it must not add a new step
 function navPush(which) {
@@ -8455,6 +8458,17 @@ function navShowBack() {
 // A screen drawn by stepping back keeps what it showed (an agents run, a typed
 // ZIP); only one never drawn yet is drawn now. More is always redrawn, as its tab does.
 const NAV_DRAW = { more: () => renderMore(), settings: () => renderSettings(), permits: () => renderPermits(), agents: () => renderAgents(), measure: () => renderMeasure(), learn: () => renderLearn(), assistant: () => renderAssistant() };
+// Direction B P19: where a link lands — the home-screen shortcuts (/app#calls, /app#cal), crew.html's way back
+// (/app#more) and every #screen. An alias lands on its screen (#queue → Office); Settings (it opens from the
+// sliders button) and a hash that names no screen land on Today. Drawn the way a step back draws (navShow), so a
+// desk off the minute timer is drawn before it shows; the start is step zero, so Back from it lands on the
+// screen's parent (NAV_PARENT), or is hidden on Today.
+function startView(hash) {
+  const asked = String(hash || '').replace(/^#/, '');
+  const want = Object.prototype.hasOwnProperty.call(VIEW_ALIAS, asked) ? VIEW_ALIAS[asked] : asked;
+  if (want && want !== 'today' && want !== 'settings' && Object.prototype.hasOwnProperty.call(VIEW_TITLES, want)) navShow(want);
+  try { history.replaceState({ v: CUR_TAB, d: 0 }, '', '#' + CUR_TAB); } catch (e) { /* ignore */ }
+}
 function navShow(which) {
   NAV_QUIET = true;
   try {
@@ -8518,7 +8532,7 @@ if (STANDALONE) {
     if (dx > 70 && dy < 60 && !$('keywall').classList.contains('show')) navBack();
   }, { passive: true });
 }
-for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf']) {
+for (const t of ['today', 'leads', 'cal', 'estimate', 'book', 'followups', 'calls', 'perf']) {
   $('tab-' + t).addEventListener('click', () => switchTab(t));
 }
 $('tab-more').addEventListener('click', () => { renderMore(); switchTab('more'); });
@@ -8577,21 +8591,7 @@ setAppSub();
 LINKS_READY.then(setAppSub);
 netState();
 // Home-screen shortcuts open a section directly (/app#calls, /app#cal).
-{
-  const asked = (location.hash || '').slice(1);
-  const want = Object.prototype.hasOwnProperty.call(VIEW_ALIAS, asked) ? VIEW_ALIAS[asked] : asked; // Direction B P13: #queue → More
-  if (want && Object.prototype.hasOwnProperty.call(VIEW_TITLES, want) && want !== 'settings') {
-    if (want === 'more') renderMore();
-    if (want === 'permits') renderPermits();
-    if (want === 'agents') renderAgents();
-    if (want === 'measure') renderMeasure();
-    if (want === 'learn') renderLearn();
-    if (want === 'assistant') renderAssistant();
-    NAV_QUIET = true;
-    try { switchTab(want); } finally { NAV_QUIET = false; }
-  }
-  try { history.replaceState({ v: CUR_TAB, d: 0 }, '', '#' + CUR_TAB); } catch (e) { /* ignore */ }
-}
+startView(location.hash);
 refreshAll();
 setInterval(autoRefresh, 60000);
 // R35: a half-typed route-planner box holds the whole Calendar view (holdsTyping); today's stops keep their own minute.

@@ -114,7 +114,8 @@ export const RULEBOOK_INPUTS: ReadonlySet<string> = new Set([IN.guardrails, IN.l
 
 export const SECTION_AGENTS: readonly SectionAgentDef[] = [
   {
-    id: 'front-desk', name: 'Front Desk', section: 'Calls',
+    // R26: named by the screen it works on — Direction B P19 folded Calls into Leads as its Calls & texts segment.
+    id: 'front-desk', name: 'Front Desk', section: 'Leads › Calls & texts',
     roles: ['#1 Receptionist'],
     carries: ['reception/receptionist', 'reception/outputGuard'],
     reads: [IN.guardrails, IN.callBacklog],
@@ -141,7 +142,7 @@ export const SECTION_AGENTS: readonly SectionAgentDef[] = [
     model: 'claude-opus-5',
   },
   {
-    id: 'permit-desk', name: 'Permit Desk', section: 'Permits',
+    id: 'permit-desk', name: 'Permit Desk', section: 'Permit rules', // Direction B: Permits was renamed Permit rules (Mike's answer)
     roles: ['#4 Permitting & Site Intel', '#14 Legal & Codes'],
     carries: ['agents/permittingAgent', 'permitting/permitBoard', 'config/legal'],
     reads: [IN.permitScreens, IN.permitBoard, IN.legal],
@@ -154,7 +155,7 @@ export const SECTION_AGENTS: readonly SectionAgentDef[] = [
     model: 'claude-opus-5',
   },
   {
-    id: 'arborist', name: 'Arborist', section: 'Measure & Book',
+    id: 'arborist', name: 'Arborist', section: 'Estimate', // Direction B P19: Measure and the Book (Properties on file) sit under Estimate
     roles: ['#5 Master Arborist Knowledge', '#8 Vision & Labeling'],
     carries: ['reception/knowledgeBase', 'reference library (via the read-only drafts queue)'],
     reads: [IN.knowledge, IN.referenceDrafts, IN.photos],

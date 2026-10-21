@@ -11,7 +11,7 @@ Nothing on this list is flipped by a build; each is Mike's call (§3, R19).
 | Mike | Android | Chrome → `/app` → ⋮ → **Install app**. |
 | Crew | any | Open `/crew` → add to home screen the same way → enter their crew code, then the **crew door key**. |
 
-Mike's own look at the crew page is the **Crew** tile in More, or the
+Mike's own look at the crew page is the **Crew** tile in Office, or the
 **Crew preview** shortcut on the installed app's icon (press and hold). It is
 look-only: nothing there signs, files or clocks in (R26).
 
@@ -47,11 +47,11 @@ phone. How the door treats them now:
 ## 2. What to field-test (links still cut — nothing live is touched)
 
 - [ ] **Today**: hero, Day Ring and systems strip load on the truck's signal; with no signal the offline bar shows and nothing pretends to be current.
-- [ ] **Measure**: scan a real trunk with 3d Scanner App (free) or Polycam → export **point cloud** (PLY/LAS/XYZ) → More → Measure → open the file. Tape the trunk at 4.5 ft and compare DBH. Note any tree where Arbo's DBH is off by more than 2 in.
-- [ ] **Permits**: run the job check on three real addresses you already know the answer for, one per city. Anything wrong → tell Arbo; the fact gets corrected with its source.
-- [ ] **Agents**: More → Agents → Run all eight. Every desk should say LINK CUT for its database inputs — that is correct while the links are cut.
+- [ ] **Measure**: scan a real trunk with 3d Scanner App (free) or Polycam → export **point cloud** (PLY/LAS/XYZ) → Estimate → Measure a tree → open the file. Tape the trunk at 4.5 ft and compare DBH. Note any tree where Arbo's DBH is off by more than 2 in.
+- [ ] **Permit rules** (Estimate → Permit rules): run the job check on three real addresses you already know the answer for, one per city. Anything wrong → tell Arbo; the fact gets corrected with its source.
+- [ ] **Agents**: Office → Agents → Run all eight. Every desk should say LINK CUT for its database inputs — that is correct while the links are cut.
 - [ ] **Crew door**: one crew phone, the door key, the gated briefing (scroll + tick + timer).
-- [ ] **Night**: open the app after dark — it follows the phone; More → Appearance pins Day or Night.
+- [ ] **Night**: open the app after dark — it follows the phone; Office → Appearance pins Day or Night.
 - [ ] **Emergency wording (R26)**: read the 911 / Dominion lines in `src/policy/guardrails.json` (`emergency.safetyLines`, `emergency.alertLine`). They are Claude's draft; change any word.
 - [ ] **Brake hold (R26)**: file a practice breakdown that mentions brakes — the unit shows HELD, NOT SCHEDULABLE; only your key signs it back on.
 - [ ] **Storm law (R26)**: open Today once after the deploy. On a calm day it shows nothing. While NWS has a storm alert out and FEMA has no declaration, one muted line reminds you Governor declarations are not in any feed. A FEMA declaration counts for 30 days after its incident ends. If FEMA could not be read it says so by name — if that line shows on a normal day, the FEMA query needs a look.
@@ -166,7 +166,7 @@ Safari, and whether you heard the voice at all.
 
 After `ARBO_AGENT=live` and the deploy (§4), check in the app:
 
-- [ ] **More → Assistant → Status** reads **ON**. If it says the environment is
+- [ ] **Office → Assistant → Status** reads **ON**. If it says the environment is
       not Limited, or could not be read, nothing starts — fix Step 3 of
       `docs/ASSISTANT_SETUP.md` and it starts within a minute.
 - [ ] **A test text** to the business line from your own phone: a card appears
@@ -201,7 +201,7 @@ Reconnecting makes Google itself hold the line.
    assistant's own connection), Zapier and the rest are separate. This retires
    the old permission that could create calendar events. Gmail reading in Arbo
    pauses from here until step 4 — do the steps together.
-2. **In Arbo: More → Settings → Google → Open Google.** Google's screen will
+2. **In Arbo: the sliders button (Settings) → Google → Open Google.** Google's screen will
    list **exactly these three**:
    - *View your email messages and settings*
    - *See and download any calendar you can access using your Google Calendar*

@@ -352,12 +352,13 @@ describe('Properties on file (the Book, renamed): its list only — the prep for
   });
 });
 
-describe('Office, until the dock flips (P19): one Estimate tile where Book, Permits and Measure were', () => {
-  it('renderMore opens Estimate from one tile; the three old tiles are gone from it', () => {
+describe('Office once the dock flips (P19): Estimate is a dock tab, so Office carries none of its tiles', () => {
+  it('renderMore has no Estimate tile (until P19 it had one), and the three old tiles stay gone', () => {
     const more = fnSrc('renderMore');
-    expect(more).toContain("tile('i-tree', 'Estimate', ");
-    expect(more).toContain("switchTab('estimate')");
+    expect(more).not.toContain("tile('i-tree', 'Estimate', ");
     for (const gone of ["'Book'", "'Permits'", "'Measure'"]) expect(more, gone).not.toContain(gone);
+    // The Estimate tab opens it instead (the dock, P19).
+    expect(html).toContain('<button id="tab-estimate"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-tree"/></svg><span>Estimate</span></span></button>');
   });
 });
 

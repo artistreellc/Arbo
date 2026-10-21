@@ -942,7 +942,7 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
           ],
           ...(crew ? {} : {
             shortcuts: [
-              { name: 'Calls', url: '/app#calls' },
+              { name: 'Calls & texts', url: '/app#calls' }, // Direction B P19: named for its screen (Leads › Calls & texts); the URL is unchanged
               { name: 'Calendar', url: '/app#cal' },
               // R26 qa-x1: from Mike's phone it is the look-only preview, never the real door.
               { name: 'Crew preview', url: '/crew?preview=1' },

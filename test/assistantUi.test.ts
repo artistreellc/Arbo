@@ -656,7 +656,7 @@ describe('R28 — Today: "Waiting for your OK"', () => {
       await t.run();
       return t.slot.children.map((n) => n.className + ':' + n.textContent);
     };
-    expect(await said('done', 'Today’s office check is done — its report is in More → Assistant.')).toEqual(['storm-muted:Today’s office check is done — its report is in More → Assistant.']);
+    expect(await said('done', 'Today’s office check is done — its report is in Office → Assistant.')).toEqual(['storm-muted:Today’s office check is done — its report is in Office → Assistant.']);
     expect(await said('working', 'Today’s office check is running.')).toEqual(['storm-muted:Today’s office check is running.']);
     expect(await said('missed', 'Today’s office check did not run.')).toEqual(['feed-state unread:Today’s office check did not run.']);
     expect(await said('error', 'Today’s office check could not start.')).toEqual(['feed-state unread:Today’s office check could not start.']);
@@ -681,12 +681,12 @@ describe('R28 — Today: "Waiting for your OK"', () => {
     await t.run();
     expect(t.slot.children.map((n) => n.className + ':' + n.textContent)).toEqual([
       'panel-title:Waiting for your OK',
-      'feed-state unread:Assistant: Anthropic refused the API key. Open More → Assistant.',
+      'feed-state unread:Assistant: Anthropic refused the API key. Open Office → Assistant.', // Direction B P19: More is Office
       'approw:Ask 0',
     ]);
     const quiet = today({ ...err, reason: null }, { approvals: [] });
     await quiet.run();
-    expect(quiet.slot.children.map((n) => n.textContent)).toEqual(['Assistant: something is wrong and Arbo didn’t say what. Open More → Assistant.']);
+    expect(quiet.slot.children.map((n) => n.textContent)).toEqual(['Assistant: something is wrong and Arbo didn’t say what. Open Office → Assistant.']);
   });
 
   it('a newer read owns the card: a slow older one never draws over it', async () => {
@@ -915,7 +915,9 @@ describe('R28 — the desk in the shell: More tile, title, Back, ↻ and start-u
     expect(sw).toContain('DOCK_OF[which]');
     expect(pageConst<Record<string, string>>('DOCK_OF').assistant).toBe('more');
     expect(fnSrc('refreshActiveMoreView')).toContain('assistant: renderAssistant');
-    expect(html).toContain("    if (want === 'learn') renderLearn();\n    if (want === 'assistant') renderAssistant();\n");
+    // Direction B P19: a cold #assistant is drawn the way a step back draws it (startView → navShow → NAV_DRAW.assistant).
+    expect(html).toContain('startView(location.hash);');
+    expect(html).toMatch(/^function startView\(hash\) \{[\s\S]*?navShow\(want\);/m);
   });
 
   it('navBack closes the approval sheet before anything else', () => {

@@ -433,15 +433,15 @@ export class Assistant {
     if (d.lastOfficeDay !== day) return null;
     if (d.queue.some((q) => q.key === key)) return { day, state: 'queued', line: "Today's office check is waiting its turn to start." };
     const rec = d.sessions.find((x) => x.key === key);
-    if (!rec) return { day, state: 'error', line: "Today's office check could not start — see More → Assistant." };
+    if (!rec) return { day, state: 'error', line: "Today's office check could not start — see Office → Assistant." };
     if (rec.state === 'working') return { day, state: 'working', line: "Today's office check is running." };
-    if (rec.state === 'waiting') return { day, state: 'waiting', line: "Today's office check is waiting — on your OK, or paused at its budget. See More → Assistant." };
+    if (rec.state === 'waiting') return { day, state: 'waiting', line: "Today's office check is waiting — on your OK, or paused at its budget. See Office → Assistant." };
     if (rec.state === 'done') {
       const r = d.officeReport?.day === day ? d.officeReport : null;
-      if (!r) return { day, state: 'done', line: "Today's office check finished without a report — see More → Assistant." };
+      if (!r) return { day, state: 'done', line: "Today's office check finished without a report — see Office → Assistant." };
       return { day, state: 'done', line: "Today's office check is done. Its report:", report: { at: r.at, text: r.text } };
     }
-    return { day, state: 'error', line: "Today's office check stopped before it finished — see More → Assistant." };
+    return { day, state: 'error', line: "Today's office check stopped before it finished — see Office → Assistant." };
   }
 
   /** The 503 every assistant route answers when it cannot serve. */
