@@ -706,6 +706,7 @@ describe('R29 #4 review (D1) — the 911 line stays whenever someone may be hurt
     // Likewise never 911 before P5 (no injury trigger, no person-in-danger pattern) — and never a denial.
     'Two people are hurt, nobody else. The line is down.',
     'Nobody got hurt, a guy got shocked. Line is down.',
+    'No injuries, but I cut my hand pretty bad. The line is down.',
     "Nobody's hurt, my little one got zapped. The line is down.",
     'Hopefully nobody\'s hurt, the power line is down.',
     'If nobody is hurt, do I call Dominion? The line is down.',
