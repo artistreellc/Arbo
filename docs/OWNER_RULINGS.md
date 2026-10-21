@@ -1467,13 +1467,17 @@ What this changes (built so far: M0 and M1, D106; the plan is
    from OpenStreetMap: the phone asks it for the map squares in view.
 4. **Nothing is written or saved.** The map's answers are never cached or
    logged; the crew door never gets a map.
+5. **It keeps to today.** While Map is on screen, Today's stops read again on
+   the same minute Calendar's do, and when the app comes back — a map left open
+   overnight never shows yesterday's stops as today's (§1B; review, D106).
 
 Defaults Claude used where Mike did not say (Mike may change any) — the plan's
 questions, as built:
 - **Q1 Street map from OpenStreetMap:** yes. OSM sees which squares are viewed
   (down to street level), the phone's IP and Arbo's address — never a name,
-  an address or a ZIP. The map opens on the four cities and never zooms to a
-  pin by itself.
+  an address or a ZIP. The map opens on all four cities (zoomed out as far as
+  your phone needs for that) and never zooms to a pin by itself — only your
+  tap on *"show all"* does.
 - **Q2 TomTom map tiles instead:** no — kept as the fallback if OSM refuses.
 - **Q3 Exact pins for stops the planner skips** (before 4 PM, all day,
   ongoing): no — ZIP-area pins; TomTom is not sent those addresses.

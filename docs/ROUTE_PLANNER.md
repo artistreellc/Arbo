@@ -95,17 +95,26 @@ on a map (Maps wave A, D106; draft ruling R37).
 - **ZIP-area pin** (hollow) for every other stop with a ZIP: *"ZIP area — not
   the exact spot"*. Stops in one ZIP share one pin; tap it to see each one.
   A stop before 4 PM, all day or ongoing gets a ZIP-area pin with no number.
+- **Stops close together share one pin** (*"1·2"*) until you zoom in; tap it
+  to see each one, with how it was placed.
 - **Not on the map:** the line *"6 of 8 events on the map · 2 not on the
   map"* — tap it to see which, and why (no address, no ZIP, a PO box ZIP, a
   ZIP outside the four cities).
 - **Tap a pin** → the same *"Open in Google Maps?"* as Calendar. **Route the
-  whole day in Google Maps** sits under the map.
+  whole day in Google Maps** sits at the bottom of the map. If Arbo couldn't
+  read your calendar, that button says R35's line instead.
+- **The whole map fits the screen**: all four cities when it opens, the notes
+  (gaps, counts, **Key**) in a card at the top. A stop off the screen is
+  counted — *"1 stop is off this view — show all"*.
+- **It keeps to today:** while it's on screen it reads again every minute,
+  like Calendar, and when you come back to the app — yesterday's stops never
+  show as today's.
 - **Can't read your calendar** → R35's line, word for word, and no pins.
   **No TomTom key** → TomTom's own line, and ZIP-area pins only.
 - Your home and where the route starts and ends are not drawn.
 - The street map is OpenStreetMap: your phone asks it for the squares on
   screen (it sees which area, never a name or an address). If it doesn't load,
-  the map says so and the pins are still placed.
+  the map says so — and that the pins are still placed, when there are pins.
 
 **Not working yet:** ZIP-area pins. The build couldn't read the Census ZIP
 file, so until that table is filled (a build step, dated and tested), a stop
