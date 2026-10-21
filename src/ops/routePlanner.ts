@@ -214,7 +214,8 @@ export interface LivePlanDeps {
   nowIso?: () => string;
 }
 
-function addressOf(s: PlanStop): string {
+// Exported for the map (Maps wave A, M1): its TomTom peek uses the planner's own key.
+export function addressOf(s: PlanStop): string {
   if (s.address) return s.address; // R35: the event's location — never its title
   return `${s.label}, ${s.city ?? ''} VA ${s.zip}`.replace(/\s+/g, ' ').trim();
 }

@@ -186,6 +186,7 @@ import { planRouteBest, ROUTE_MAX_STOPS, type BestPlanDeps } from './ops/routePl
 import { fetchDriveMinutesMatrix } from './integrations/googleRoutes.js';
 import { createTomTomClient } from './integrations/tomtom.js';
 import { createTodayStops } from './ops/todayStops.js';
+import { buildMapToday } from './ops/mapToday.js';
 import { etInstant, etRfc3339 } from './lib/etDay.js';
 import { withinWorkingHours } from './ops/locationIntel.js';
 import type { Alerter } from './reception/receptionist.js';
@@ -1836,6 +1837,14 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
       // memory), planned by TomTom / Google / ZIP, for the Calendar tab.
       if (req.method === 'GET' && url.pathname === '/api/route/today') {
         return send(200, await todayStops.read());
+      }
+      // Maps wave A (M1): today's stops placed for the map — the same calendar read and plan
+      // memory as Calendar's (readRows). Exact pins only from TomTom's day memory (peek): the map
+      // asks TomTom nothing and sends no address anywhere new. Owner key only (the door above
+      // refuses the crew key); locked with no APP_ACCESS_KEY, like every route that holds places.
+      if (req.method === 'GET' && url.pathname === '/api/map/today') {
+        if (!env.appAccessKey) return send(401, { error: 'no_app_key', message: 'APP_ACCESS_KEY is not set — the map is locked until it is.' });
+        return send(200, buildMapToday(await todayStops.readRows(), { peek: (q) => (tomtomClient ? tomtomClient.peek(q) : undefined) }));
       }
       // R16: the route planner. R35: TomTom first when its key is set, then
       // live traffic via Google when a Maps key is configured, then ZIP
