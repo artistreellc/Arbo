@@ -3,6 +3,7 @@
 // found; none may come back. A failed read is worded through feedKind().
 import { describe, it, expect } from 'vitest';
 import { loadAppHtml, loadCrewHtml } from '../src/server/appPage.js';
+import { CALM, calmPhrases, bareNothingNeedsYou } from './support/pageCode.js';
 
 describe('no dead feed reads as an empty one', () => {
   const app = loadAppHtml();
@@ -17,15 +18,14 @@ describe('no dead feed reads as an empty one', () => {
     for (const w of ['cut on purpose', 'not in the practice data', 'not set up yet', 'couldn’t read it']) expect(app).toContain(w);
   });
   // Direction B P1: the calm phrases a hub must never draw — over a dead feed
-  // or over a desk Arbo did not read. Case as written: the page's comments
-  // quote them in lower case to say they are banned.
-  it.each(['All clear', 'Nothing holding', '0 new leads', 'you’re clear', "you're clear"])(
-    'the owner app never says %o', (p) => expect(app).not.toContain(p));
-  it('"Nothing needs you" is never said bare — only scoped to the mail Arbo read (M12)', () => {
+  // or over a desk Arbo did not read. Any case (review D3): read from what the
+  // page can put on screen, so a comment that quotes a banned phrase is not it.
+  it.each(CALM)('the owner app never says %o, in any case', (p) => expect(calmPhrases(app)).not.toContain(p));
+  it('"Nothing needs you" is never said bare — only the two scoped lines, once each, in the inbox panel (M12)', () => {
     // The two inbox lines name what was read ("in the inbox right now" draws only
-    // on a whole read; the other points at the gap above). Anything else is banned.
-    const bare = [...app.matchAll(/Nothing needs you(?! in the inbox right now\.| in the mail Arbo has read)/g)];
-    expect(bare.map((m) => app.slice(m.index!, m.index! + 60))).toEqual([]);
+    // on a whole read; the other points at the gap above). Anything else is banned,
+    // and so is either line anywhere but inboxIntentPanel (review D3).
+    expect(bareNothingNeedsYou(app)).toEqual([]);
   });
   it('R33: "ready to text" and "Send catch-up" appear only in outreachPanel’s sends-on branch', () => {
     const at = app.indexOf('async function outreachPanel(');
