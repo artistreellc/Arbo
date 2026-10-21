@@ -176,7 +176,7 @@ describe('a missing Quo texts webhook is named where the texts would show (revie
         '/api/webhooks/calls': { linkCut: true, wired: false, transcripts: [] }, '/api/review/backlog?all=1&limit=20': { conversations: [] },
       };
       const renderCalls = pageFn<() => Promise<void>>('renderCalls', {
-        ...deps, $: () => v, fmtWhen: () => '', api: async (p: string) => routes[p], readingLine: () => el('div', 'reading', 'Reading…'), 
+        ...deps, $: () => v, fmtWhen: () => '', api: async (p: string) => routes[p], readingLine: () => el('div', 'reading', 'Reading…'), tapCount: () => 0, keepsPage: () => false, TIMER_REDRAW: false, 
         studyPanel: async () => null, outreachPanel: async () => null, sonaPanel: async () => null, fillQuoSlots: () => Promise.resolve(),
         showKeywall: () => {}, LINKS_READY: Promise.resolve('sim'), state: (t: string, m: string) => el('div', 'state', t + ' ' + m), showSaveFail: () => {},
       });

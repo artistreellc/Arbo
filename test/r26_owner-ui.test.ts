@@ -578,7 +578,7 @@ describe('R26 — Leads flags a Spanish speaker and keeps the tab badge current'
     const badge = vi.fn();
     const reread = vi.fn(); // emergencyLeads: the re-read that re-badges the tab
     const render = pageFn<() => Promise<void>>('renderLeads', {
-      $: () => v, el, readingLine: () => el('div', 'reading', 'Reading…'), api: async () => { if (leads instanceof Error) throw leads; return { leads }; }, chip, fmtWhen: () => '',
+      $: () => v, el, readingLine: () => el('div', 'reading', 'Reading…'), tapCount: () => 0, keepsPage: () => false, TIMER_REDRAW: false, api: async () => { if (leads instanceof Error) throw leads; return { leads }; }, chip, fmtWhen: () => '',
       permitBadge: () => null, leadsTabBadge: badge, icon: (id: string) => el('svg', 'ico ' + id),
       showKeywall: () => {}, LINKS_READY: Promise.resolve('simulation'), state: (t: string) => el('div', 'state', t),
       feedState: (_e: unknown, w: string) => el('div', 'state', w), feedLine, showSaveFail: () => {}, emergencyLeads: reread,

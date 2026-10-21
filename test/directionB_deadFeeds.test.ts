@@ -129,9 +129,12 @@ function kit(fail: (typeof FAILS)[number]) {
   const helpers = ['state', 'feedKind', 'feedSays', 'feedLine', 'feedState', 'chip', 'badge', 'plural', 'fmtWhen', 'fmtTime', 'leadsTabBadge', 'permitChip', 'permitBadge', 'slipRuleLabel'];
   // P3 adds a "Reading…" helper; the harness lifts it when the page has it.
   if (/^function readingLine\(/m.test(html)) helpers.push('readingLine');
+  // The P3 review's tap guard (keepsPage) and what it reads; a read here is never tapped.
+  if (/^function keepsPage\(/m.test(html)) helpers.push('tapCount', 'keepsPage', 'holdsTyping');
   const targets = ['renderLeads', 'emergencyLeads', 'sonaPanel', 'renderSafety', 'renderFleetList', 'renderMoney', 'stormBanner', 'heroLoops'];
   const built = new Function('document', 'api', 'HERO', 'sysSet', 'showKeywall', 'linksIn', `
     let LINKS = linksIn;
+    let TIMER_REDRAW = false;
     const LINKS_READY = Promise.resolve(linksIn);
     ${consts.map(constSrc).join('\n')}
     ${[...helpers, ...targets].map(fnSrc).join('\n')}

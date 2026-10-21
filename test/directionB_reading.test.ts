@@ -86,9 +86,11 @@ function kit(target: string, inject: Record<string, unknown>, links = 'readonly'
     getElementById: (id: string) => { if (!ids.has(id)) { const n = new FNode('div'); n.id = id; ids.set(id, n); } return ids.get(id)!; },
   };
   const consts = ['$', 'el', 'FEED_WORD', 'Cap', 'FEED_TAG', 'FEED_SAYS', 'RETRY', 'TONE'];
-  const helpers = ['readingLine', 'state', 'feedKind', 'feedSays', 'feedLine', 'feedState', 'chip', 'badge', 'plural', 'fmtWhen', 'fmtTime', 'leadsTabBadge', 'permitChip', 'permitBadge'];
+  const helpers = ['readingLine', 'state', 'feedKind', 'feedSays', 'feedLine', 'feedState', 'chip', 'badge', 'plural', 'fmtWhen', 'fmtTime', 'leadsTabBadge', 'permitChip', 'permitBadge', 'tapCount', 'keepsPage'];
   const names = Object.keys(inject);
   const fn = new Function('document', 'linksIn', ...names, `
+    ${'TIMER_REDRAW' in inject ? '' : 'let TIMER_REDRAW = false;'}
+    ${'holdsTyping' in inject ? '' : fnSrc('holdsTyping')}
     let LINKS = linksIn;
     const LINKS_READY = Promise.resolve(linksIn);
     const PERMIT_STATE = {};
@@ -293,5 +295,169 @@ describe('"Reading…" where each desk\'s read lands, on a first draw', () => {
     expect(q.indexOf('const reading = first')).toBeGreaterThan(q.indexOf('fuSlot.appendChild(note);'));
     expect(q.indexOf('const reading = first')).toBeLessThan(q.indexOf("api('/api/followups')"));
     expect(q).toContain("api('/api/followups').finally(() => { if (reading) reading.remove(); })");
+  });
+});
+
+// ---------- review (UI 1): a tap while a redraw reads is never thrown away ----------
+// P3 left the old cards up, still tappable, while a redraw read — then swapped
+// in a list read BEFORE the tap: a spam Undo vanished (R23 says filing spam can
+// be undone), a "Good lead ✓" reverted on screen, a failed-save line went.
+// Now the swap waits: a tap on the page since the redraw began (counted by a
+// capture listener on the view), or — for the minute timer's redraw — a page
+// that holdsTyping when the read lands, keeps the page as Mike left it. The
+// next redraw brings it up to date. ↻ still redraws a held page; a first draw
+// always lands.
+/** What the page's capture listener does on a tap anywhere in the view. */
+const tap = (v: FNode) => { v.dataset.taps = String(Number(v.dataset.taps || 0) + 1); };
+
+describe('Leads: a tap on the old cards while a redraw reads keeps them (review UI 1)', () => {
+  const lead = { id: 'L1', name: 'SIM-Elm, Test', phone: '+17575550101', city: 'Norfolk', zip: '23503', createdAt: '2026-10-18T14:00:00Z', status: 'new',
+    isEmergency: false, needsCallback: false, isFirstTimer: true, quality: { priority: 'warm' }, permit: null, screenPending: false, permitUnreadable: false, history: null, historyUnreadable: false, details: null };
+  function mount(extra: Record<string, unknown> = {}) {
+    const reads: Array<Deferred<unknown>> = [];
+    const k = kit('renderLeads', {
+      api: () => { const d = deferred<unknown>(); reads.push(d); return d.promise; },
+      showKeywall: () => {}, icon: () => new FNode('svg'), showSaveFail: () => {}, ...extra,
+    }, 'simulation');
+    return { k, reads, v: k.$('view-leads') };
+  }
+  async function drawn(s: ReturnType<typeof mount>) {
+    const p = s.k.run();
+    s.reads[0]!.resolve({ leads: [lead] });
+    await p;
+    return s.v.children[0]!;
+  }
+
+  it.each([
+    ['a read that lands', (d: Deferred<unknown>) => d.resolve({ leads: [{ ...lead, id: 'L2' }] })],
+    ['a read that fails', (d: Deferred<unknown>) => d.reject(cut())],
+    ['a read that comes back empty', (d: Deferred<unknown>) => d.resolve({ leads: [] })],
+  ] as Array<[string, (d: Deferred<unknown>) => void]>)('tapped while it read, %s leaves the tapped cards on screen', async (_why, land) => {
+    const s = mount();
+    const old = await drawn(s);
+    const swaps = s.v.swaps;
+    const p = s.k.run();
+    tap(s.v); // Spam, Good lead, Undo — any tap on the old cards
+    land(s.reads[1]!);
+    await p;
+    expect(s.v.children[0]).toBe(old);
+    expect(s.v.swaps).toBe(swaps);
+  });
+
+  it('the minute timer\'s redraw keeps a page that is held when its read lands (a spam filed while it read: its Undo stays)', async () => {
+    let held = false;
+    const s = mount({ TIMER_REDRAW: true, holdsTyping: () => held });
+    const old = await drawn(s);
+    const p = s.k.run();
+    held = true; // the spam write came back and the Undo is on the card
+    s.reads[1]!.resolve({ leads: [{ ...lead, id: 'L2' }] });
+    await p;
+    expect(s.v.children[0]).toBe(old);
+  });
+
+  it('↻ (not the timer) still redraws a held page — "Undo stays about 2 minutes, or until you tap ↻"', async () => {
+    const s = mount({ holdsTyping: () => true });
+    await drawn(s);
+    const p = s.k.run();
+    s.reads[1]!.resolve({ leads: [{ ...lead, id: 'L2' }] });
+    await p;
+    expect(s.v.children.map((c) => c.id)).toEqual(['lead-L2']);
+  });
+
+  it('a tap that starts the redraw itself does not hold it, and no tap swaps as before', async () => {
+    const s = mount();
+    await drawn(s);
+    tap(s.v); // the tap's own handler then redraws (as Calls' "Don't text" does)
+    const p = s.k.run();
+    s.reads[1]!.resolve({ leads: [{ ...lead, id: 'L2' }] });
+    await p;
+    expect(s.v.children.map((c) => c.id)).toEqual(['lead-L2']);
+  });
+
+  it('a first draw always lands, tap or not', async () => {
+    const s = mount();
+    const p = s.k.run();
+    tap(s.v);
+    s.reads[0]!.resolve({ leads: [lead] });
+    await p;
+    expect(readings(s.v)).toBe(0);
+    expect(s.v.children[0]!.id).toBe('lead-L1');
+  });
+});
+
+describe('Calls: a tap on the old page while a redraw reads keeps it (review UI 1)', () => {
+  function mount(extra: Record<string, unknown> = {}) {
+    const reads = new Map<string, Array<Deferred<unknown>>>();
+    const pending = (key: string) => { const d = deferred<unknown>(); (reads.get(key) ?? reads.set(key, []).get(key)!).push(d); return d.promise; };
+    const k = kit('renderCalls', {
+      api: (path: string) => pending(path),
+      studyPanel: () => pending('study'), outreachPanel: () => pending('outreach'), sonaPanel: () => pending('sona'),
+      fillQuoSlots: (rs: Array<Promise<FNode | null>>, slots: FNode[]) => Promise.allSettled(rs).then((xs) => xs.forEach((x, i) => { if (x.status === 'fulfilled' && x.value) slots[i]!.appendChild(x.value); })),
+      showKeywall: () => {}, showSaveFail: () => {}, photoStrip: () => new FNode('div'), ...extra,
+    });
+    const settle = () => {
+      const answer: Record<string, unknown> = {
+        study: null, outreach: null, sona: null,
+        '/api/webhooks/texts': { linkCut: true, wired: false, texts: [] },
+        '/api/relay/call-notes': { notes: [] },
+        '/api/webhooks/calls': { linkCut: true, wired: false, transcripts: [] },
+        '/api/review/backlog?all=1&limit=20': { conversations: [] },
+      };
+      for (const [key, ds] of reads) { const d = ds.shift(); if (d) d.resolve(answer[key]); }
+    };
+    return { k, settle, v: k.$('view-calls') };
+  }
+  async function redraw(s: ReturnType<typeof mount>, during: () => void) {
+    const p1 = s.k.run();
+    s.settle();
+    await p1;
+    await flush();
+    const old = [...s.v.children];
+    const swaps = s.v.swaps;
+    const p2 = s.k.run();
+    during();
+    s.settle();
+    await p2;
+    await flush();
+    return { old, swaps };
+  }
+
+  it('tapped while it read (Mark reviewed, a transcript opened): the old page stays, and the held height lets go', async () => {
+    const s = mount();
+    const { old, swaps } = await redraw(s, () => tap(s.v));
+    expect(s.v.children).toEqual(old);
+    expect(s.v.swaps).toBe(swaps);
+    expect(s.v.style.minHeight).toBe('');
+  });
+
+  it('the minute timer\'s redraw keeps a page that is held when its reads land', async () => {
+    let held = false;
+    const s = mount({ TIMER_REDRAW: true, holdsTyping: () => held });
+    const { old } = await redraw(s, () => { held = true; });
+    expect(s.v.children).toEqual(old);
+  });
+
+  it('no tap: the redraw swaps in whole, as before', async () => {
+    const s = mount();
+    const { old, swaps } = await redraw(s, () => {});
+    expect(s.v.swaps).toBe(swaps + 1);
+    expect(s.v.children).not.toContain(old[0]);
+  });
+});
+
+describe('the page counts taps on Leads and Calls, and the minute timer marks its own redraws (review UI 1)', () => {
+  it('a capture listener on each view counts every tap before any button\'s own handler runs', () => {
+    expect(html).toMatch(/for \(const t of \['leads', 'calls'\]\) \$\('view-' \+ t\)\.addEventListener\('click', \(e\) => \{ e\.currentTarget\.dataset\.taps = String\(tapCount\(e\.currentTarget\) \+ 1\); \}, true\);/);
+  });
+  it('autoRefresh marks the redraws it starts, and lets go even if one throws', () => {
+    expect(fnSrc('autoRefresh')).toMatch(/TIMER_REDRAW = true;\n\s+try \{ for \(const t in TIMED\) if \(!holdsTyping\(\$\('view-' \+ t\)\)\) TIMED\[t\]\(\); \} finally \{ TIMER_REDRAW = false; \}/);
+  });
+  it('each redraw reads the mark and the tap count before its first await', () => {
+    for (const name of ['renderLeads', 'renderCalls']) {
+      const f = fnSrc(name);
+      const at = f.indexOf('const taps0 = tapCount(v), byTimer = TIMER_REDRAW;');
+      expect(at, name).toBeGreaterThan(-1);
+      expect(at, name).toBeLessThan(f.indexOf('await '));
+    }
   });
 });

@@ -2700,8 +2700,12 @@ async function renderLeads() {
   const v = $('view-leads');
   // Direction B P3: the first draw says "Reading…" instead of a blank screen. A
   // redraw (the minute timer, ↻) leaves the cards up while it reads, then swaps
-  // the new list in with one replaceChildren, so nothing blinks.
-  if (!v.hasChildNodes()) v.replaceChildren(readingLine());
+  // the new list in with one replaceChildren, so nothing blinks — unless Mike
+  // tapped the cards meanwhile (keepsPage): then they stay as he left them.
+  const first = !v.hasChildNodes();
+  const taps0 = tapCount(v), byTimer = TIMER_REDRAW;
+  const kept = () => !first && keepsPage(v, taps0, byTimer);
+  if (first) v.replaceChildren(readingLine());
   const out = []; // the new list, put on screen in one go
   let data;
   try {
@@ -2712,6 +2716,7 @@ async function renderLeads() {
     // The boot /health read decides whether db_not_configured means cut.
     await LINKS_READY;
     leadsTabBadge(e); // the tab says it too (R26)
+    if (kept()) return; // the tab names it now; the page says it on the next redraw
     v.replaceChildren(feedState(e, 'Leads', 'an empty inbox'));
     return;
   }
@@ -2722,6 +2727,7 @@ async function renderLeads() {
   const practice = (await LINKS_READY) === 'simulation';
   const notFed = 'Arbo doesn’t receive new leads yet — Sona’s are in Quo, and website and ad leads are in Gmail. This is not an empty inbox.';
   if (!data.leads.length) {
+    if (kept()) return;
     // R4: Mike handles the leads — this screen promises no ingestion.
     v.replaceChildren(practice ? state('No new leads', 'Nothing waiting right now.') : state('New leads are not in Arbo', notFed));
     return;
@@ -2882,6 +2888,7 @@ async function renderLeads() {
     c.appendChild(row);
     out.push(c);
   }
+  if (kept()) return;
   v.replaceChildren(...out);
 }
 
@@ -3377,6 +3384,7 @@ async function renderCalls() {
   // minute timer, ↻) is drawn off screen and swapped in with one replaceChildren
   // once every read has landed — the old page stays up meanwhile, so nothing blinks.
   const first = !v.hasChildNodes();
+  const taps0 = tapCount(v), byTimer = TIMER_REDRAW; // a tap meanwhile keeps the old page (keepsPage)
   const page = first ? v : el('div');
   let reading = null;
   if (first) { reading = el('div', 'slot'); reading.appendChild(readingLine()); v.appendChild(reading); }
@@ -3520,7 +3528,7 @@ async function renderCalls() {
   // The held height goes once every slot has landed, on every way out below.
   const release = () => Promise.allSettled(fills).then(() => {
     if (reading) reading.remove();
-    if (!first) v.replaceChildren(...page.childNodes);
+    if (!first && !keepsPage(v, taps0, byTimer)) v.replaceChildren(...page.childNodes);
     v.style.minHeight = '';
   });
   let data;
@@ -7025,13 +7033,27 @@ function holdsTyping(v) {
   if ([...v.querySelectorAll('.lead-filed')].some((n) => Date.now() - Number(n.dataset.at) < 120000)) return true;
   return [...v.querySelectorAll('input, textarea')].some((n) => n.value && !/^(checkbox|radio|file)$/.test(n.type));
 }
+// Direction B P3 review: Leads and Calls keep the old page up while a redraw
+// reads, so Mike can tap it meanwhile — a spam Undo, a "Good lead ✓", Mark
+// reviewed. The redraw's swap must not throw that tap away with a list read
+// before it. A capture listener counts every tap on the view (before the
+// button's own handler, so a tap that starts a redraw does not hold it).
+function tapCount(v) { return Number(v.dataset.taps || 0); }
+// At the swap: keep the page as Mike left it when he tapped it since the redraw
+// began, or — on the minute timer's redraw — when it now holds something
+// (holdsTyping: the spam he filed while it read). The next redraw brings it up
+// to date. ↻ still redraws a held page ("…or until you tap ↻"); a first draw always lands.
+function keepsPage(v, taps0, byTimer) { return tapCount(v) !== taps0 || (byTimer && holdsTyping(v)); }
+let TIMER_REDRAW = false; // true while autoRefresh starts its redraws; each reads it before its first await
 // The refresh Arbo does on its own: every minute, back on screen, back online.
 // Today always redraws (storm banner, schedule ring, loops); a screen holding
 // typed text waits for ↻. Settings is never on it, so a half-typed ZIP survives.
 function autoRefresh() {
   if (document.hidden || $('keywall').classList.contains('show')) return;
-  for (const t in TIMED) if (!holdsTyping($('view-' + t))) TIMED[t]();
+  TIMER_REDRAW = true;
+  try { for (const t in TIMED) if (!holdsTyping($('view-' + t))) TIMED[t](); } finally { TIMER_REDRAW = false; }
 }
+for (const t of ['leads', 'calls']) $('view-' + t).addEventListener('click', (e) => { e.currentTarget.dataset.taps = String(tapCount(e.currentTarget) + 1); }, true);
 $('refresh').addEventListener('click', () => {
   $('refresh').classList.remove('spin'); void $('refresh').offsetWidth; $('refresh').classList.add('spin');
   refreshAll();

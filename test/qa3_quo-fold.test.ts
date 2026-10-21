@@ -161,7 +161,7 @@ describe('item 5: Calls folds the same way Today does — one shared helper, no 
       throw new Error('unexpected read ' + path);
     };
     const renderCalls = pageFn<() => Promise<void>>('renderCalls', {
-      $: () => v, el, api, fillQuoSlots, readingLine: () => el('div', 'reading', 'Reading…'), 
+      $: () => v, el, api, fillQuoSlots, readingLine: () => el('div', 'reading', 'Reading…'), tapCount: () => 0, keepsPage: () => false, TIMER_REDRAW: false, 
       studyPanel: async () => panel('Where each customer stands', quoOff[0]),
       outreachPanel: async () => panel('Text outreach', quoOff[1]),
       sonaPanel: async () => panel('Sona calls (Quo)', quoOff[2]),
