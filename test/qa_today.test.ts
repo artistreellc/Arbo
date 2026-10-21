@@ -27,11 +27,14 @@ describe('Today: run order and the Yard check (T-order, T-hud, T-yard)', () => {
     expect(instr).toBeLessThan(briefFetch);
   });
 
-  it('the Yard check renders before the brief fetch, with the SVG icon, not a gear glyph', () => {
-    const yard = today.indexOf('yardBtn.addEventListener(\'click\', openYard)');
-    expect(yard).toBeGreaterThan(-1);
-    expect(yard).toBeLessThan(briefFetch);
-    expect(today).toContain("icon('i-numbers')");
+  // Direction B P15 (R29 #4): the Yard check moved from Today to Estimate. Its rule holds there: drawn before
+  // any read (a cut feed never hides it), with the SVG icon, never a gear glyph.
+  it('the Yard check renders before any read on Estimate, with the SVG icon, not a gear glyph — and Today has none', () => {
+    expect(today).not.toContain('openYard');
+    const est = html.slice(html.indexOf('async function renderEstimate()'), html.indexOf('\n}\n', html.indexOf('async function renderEstimate()')));
+    expect(est.indexOf('openYard()')).toBeGreaterThan(-1);
+    expect(est.indexOf('openYard()')).toBeLessThan(est.indexOf("api('/api/properties')"));
+    expect(html).toMatch(/key: 'yard', [^}]*icon: 'i-numbers'/);
     expect(html).not.toContain('⚙ Yard check');
   });
 

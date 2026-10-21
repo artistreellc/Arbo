@@ -120,6 +120,8 @@ type Panels = {
   renderMoneyView?: () => Promise<void>; renderFleetView?: () => Promise<void>; renderSafetyView?: () => Promise<void>; renderFollowUps?: () => Promise<void>;
   // Direction B P14: Office (view-more), its counted desk tiles and their reads.
   renderMore?: () => void;
+  // Direction B P15: Estimate, and Properties on file (the Book, renamed).
+  renderEstimate?: () => Promise<void>; renderBook?: () => Promise<void>;
 };
 /** The page's helpers and the panels under test, built together with one stand-in document. */
 function kit(fail: (typeof FAILS)[number]) {
@@ -167,6 +169,12 @@ function kit(fail: (typeof FAILS)[number]) {
     helpers.push('moneyCounts', 'lessonsWaiting', 'agentProposals', 'proposalRow', 'runAllEight');
     targets.push('officeDesk', 'officeProposals', 'officeHub', 'renderMore');
   }
+  // Direction B P15: Estimate (its tools and the prep form) and Properties on file.
+  const estimate = /^async function renderEstimate\(/m.test(html);
+  if (estimate) {
+    consts.push('VIEW_TITLES', 'ESTIMATE_TOOLS');
+    targets.push('estimatePrepPanel', 'renderEstimate', 'renderBook');
+  }
   const built = new Function('document', 'api', 'HERO', 'sysSet', 'showKeywall', 'linksIn', `
     let LINKS = linksIn;
     let TIMER_REDRAW = false;
@@ -179,6 +187,8 @@ function kit(fail: (typeof FAILS)[number]) {
     ${office ? `let AGENT_RUN = null; const NAV_DRAW = {}; const icon = () => document.createElement('svg'); const switchTab = () => {};
       const renderAssistant = () => {}, renderAgents = () => {}, renderMeasure = () => {}, renderPermits = () => {}, renderLearn = () => {};
       const themePref = () => 'auto', setTheme = () => {}, installCard = () => document.createElement('div'), location = {}, window = {};` : ''}
+    ${estimate ? `let EST_GEN = 0; let EST_BOOK = null; let PERMIT_CITY = 'Virginia Beach'; const openYard = () => {};
+      const Option = function (t, val) { const o = document.createElement('option'); o.textContent = t; o.value = val; return o; };` : ''}
     ${[...new Set(consts)].map(constSrc).join('\n')}
     ${[...new Set([...helpers, ...targets])].map(fnSrc).join('\n')}
     return { ${targets.join(', ')} };`)(
@@ -338,6 +348,34 @@ describe.each(FAILS)('a read that died: $kind', (fail) => {
       '/api/queue', '/api/reception/status', '/api/safety', '/api/sim/state']);
   });
 
+  // Direction B P15: Estimate — its head and prep form stand; Properties on file names its dead feed and opens nothing.
+  it('Estimate (P15): the head and the prep form stand, and Properties on file names its dead feed — never "0 on file"', async () => {
+    const k = kit(fail);
+    await k.renderEstimate!();
+    for (let i = 0; i < 6; i++) await flush();
+    const v = k.$('view-estimate');
+    expect(v.children[0]!.className).toBe('viewhead');
+    expect(v.textContent).toContain('Estimate prep');
+    const row = v.querySelectorAll('.est-tool').find((t) => t.dataset.tool === 'book')!;
+    expect(row.textContent).toContain('Not counted — ' + FEED_WORD[fail.kind]);
+    expect(row.textContent).not.toMatch(/\b0 (?:on file|coming due)/);
+    expect(row.getAttribute('aria-disabled')).toBe('true');
+    expect(v.textContent).not.toContain('Reading…');
+    expectNamed(v.textContent, fail.kind, 'Estimate');
+    expect(k.paths).toEqual(['/api/properties']);
+  });
+
+  it('Properties on file (P15, the Book): its head, then its dead feed named — never "No properties yet"', async () => {
+    const k = kit(fail);
+    await k.renderBook!();
+    const v = k.$('view-book');
+    expect(v.children[0]!.className).toBe('viewhead');
+    expect(v.children[0]!.textContent).toContain('Properties on file');
+    expectNamed(v.textContent, fail.kind, 'Properties on file');
+    expect(v.textContent).not.toContain('No properties yet');
+    expect(v.textContent).not.toContain('Reading…');
+  });
+
   it('Open loops (the hero stat): a dash and the feed tag, never 0 open', async () => {
     const k = kit(fail);
     k.heroLoops();
@@ -356,7 +394,8 @@ describe('the dead-feed harness knows every panel in the page', () => {
     'inboxIntentPanel', 'studyPanel', 'outreachPanel', 'websiteFormsPanel', // P12 joined the four Today panels
     'renderMoneyView', 'renderFleetView', 'renderSafetyView', 'renderFollowUps', // P13: the Queue's four desks …
     'renderRosterList', 'renderTrainingBoard', 'renderVetting', 'renderLibraryQueue', // … and the panels Crew & safety holds
-    'renderMore']; // P14: Office, its desks counted
+    'renderMore', // P14: Office, its desks counted
+    'renderEstimate', 'renderBook']; // P15: Estimate, and Properties on file (the Book)
   const EXEMPT: Record<string, string> = {
     renderToday: 'a page of panels; its dead-feed lines are pinned in qa_today, qa2_today and qa3_today-rest (emergencyLeads, stormBanner, heroLoops are covered above)',
     renderAssistant: 'R28 desk; its gaps are pinned in assistantUi',
@@ -364,7 +403,6 @@ describe('the dead-feed harness knows every panel in the page', () => {
     routePlannerPanel: 'R35 planner form — no read until a tap; B never edits it',
     renderCalendar: 'R2: the calendar is an iframe — Arbo reads nothing there itself (today\'s stops are renderTodayStops)',
     estimatePrepPanel: 'a form — reads only on Build; its failure line is pinned in estimatePrep',
-    renderBook: 'not seeded in P1; pinned in qa2_queue-numbers-book (joins with P15)',
     renderCalls: 'not seeded in P1; its Quo gaps are pinned in qa3_quo-fold and r33Review (joins with P16)',
     renderRoster: 'wrapper of renderRosterList',
     renderPerformance: 'not seeded in P1; pinned in qa2_queue-numbers-book',

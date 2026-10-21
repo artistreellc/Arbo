@@ -129,14 +129,18 @@ describe('the two new call questions (Mike, 2026-09-24)', () => {
   });
 });
 
-describe('Book-tab prep panel (source pins)', () => {
+describe('Estimate prep panel (source pins)', () => {
   const html = readFileSync(new URL('../src/app/index.html', import.meta.url), 'utf8');
 
+  // Direction B P15: the panel moved from the Book to Estimate — the rule moves with it.
   it('renders ABOVE the properties fetch — the links-cut early return must not hide it', () => {
-    const panel = html.indexOf('v.appendChild(estimatePrepPanel())');
-    const fetch = html.indexOf("data = await api('/api/properties')");
+    const est = html.slice(html.indexOf('async function renderEstimate()'));
+    const panel = est.indexOf('v.appendChild(estimatePrepPanel())');
+    const fetch = est.indexOf("p = await api('/api/properties')");
     expect(panel).toBeGreaterThan(-1);
+    expect(fetch).toBeGreaterThan(-1);
     expect(panel).toBeLessThan(fetch);
+    expect(html.slice(html.indexOf('async function renderBook()'), html.indexOf('// The twin sheet'))).not.toContain('estimatePrepPanel');
   });
 
   it('carries the no-price no-booking line and the honest failure line', () => {
