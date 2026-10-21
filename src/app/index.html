@@ -513,7 +513,7 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
   header{padding-left:32px;padding-right:32px}.hrow{max-width:1056px}
   .view.active{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
   .view > *{grid-column:auto}
-  .view .viewhead,.view .hero,.view .systems,.view .sect,.view .zip-run,.view .state,.view .panel-title,.view .storm,.view .storm-muted,.view .feed-state,.view .reading,.view .routebtn,.view .hudbtn,.view .hud,.view .grid-tiles{grid-column:1 / -1}
+  .view .viewhead,.view .hero,.view .systems,.view .sect,.view .zip-run,.view .state,.view .panel-title,.view .storm,.view .storm-muted,.view .feed-state,.view .reading,.view .routebtn,.view .hudbtn,.view .hud,.view .grid-tiles,.view .proposals{grid-column:1 / -1}
   #view-today .hud{grid-template-columns:repeat(6,1fr)}
   #view-today .hud .wide{grid-column:span 2}
   #view-today .routebtn{justify-self:start;padding:0 24px}
@@ -572,6 +572,11 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 .lesson-kind{display:flex;justify-content:space-between;gap:10px}.lesson-kind .n{white-space:nowrap;font-weight:600}
 .actbtn.alt{background:var(--card);color:var(--ink-1);border:1px solid var(--border);box-shadow:none}
 #view-agents .wide-btn + .feed-state{margin-top:14px}
+/* Direction B P6: the proposals list above the desk cards. */
+.proposals .who{margin-bottom:4px}
+.prop-row{padding:12px 0 2px;border-top:1px solid var(--hairline);margin-top:10px}
+.prop-row .scope{margin-bottom:10px}
+.proposals .feed-state,.proposals .storm-muted{margin:10px 0 0}
 .bigcheck{width:26px;height:26px;flex:none;accent-color:var(--forest)}
 /* ── Talk (R30) — Mike's voice line inside Arbo. The header button sits on
    every screen; the sheet is one huge Start/End, a status line, the last
@@ -6173,6 +6178,33 @@ const PROPOSAL_GO = {
   signback_review: ['Open the Queue →', 'followups'],
   area_review: ['Open Numbers →', 'perf'],
 };
+// Direction B P6 (spec: "Agents lists its proposals at the top"): every desk's
+// proposals in one list, in the roster's order, each with the desk that made it.
+// With no roster (Office's card) the run's own order. A desk the roster does not
+// name is still listed, last — a proposal is never dropped.
+function agentProposals(run, roster) {
+  if (!run || !Array.isArray(run.reports)) return [];
+  const ids = (roster || []).map((a) => a.id);
+  const at = (r) => { const i = ids.indexOf(r.agentId); return i < 0 ? ids.length : i; };
+  const names = {};
+  for (const a of roster || []) names[a.id] = a.name;
+  return run.reports.slice().sort((a, b) => at(a) - at(b))
+    .flatMap((r) => (r.proposals || []).map((p) => ({ desk: names[r.agentId] || r.name, text: noRefs(p.text), kind: p.kind })));
+}
+// One proposal: the desk, what it proposes, and the screen where Mike acts on it (a kind with no screen stays text).
+function proposalRow(p) {
+  const row = el('div', 'prop-row');
+  row.appendChild(el('div', 'loop-kind', p.desk));
+  row.appendChild(el('div', 'scope', p.text));
+  const go = PROPOSAL_GO[p.kind];
+  if (go) {
+    const b = el('button', 'minibtn', go[0]);
+    b.type = 'button';
+    b.addEventListener('click', () => switchTab(go[1]));
+    row.appendChild(b);
+  }
+  return row;
+}
 let AGENT_RUN = null;
 
 let AGENT_GEN = 0;
@@ -6221,6 +6253,21 @@ async function renderAgents() {
     // The cut is said once here, not on every row (the switches live in Settings).
     if (AGENT_RUN.reports.some((r) => r.inputs.some((i) => i.state === 'cut'))) v.appendChild(el('div', 'feed-state cut', 'Data links are cut on purpose until each one is checked — rows marked CUT were not read.'));
   }
+  // Direction B P6: every proposal above the first desk card; the stale line and a
+  // run that did not complete sit above it. No run is never "no proposals", and a
+  // bare "none" only when every desk on the roster read fully (§1B).
+  const ran = !!(AGENT_RUN && AGENT_RUN.reports);
+  const props = agentProposals(AGENT_RUN, roster.agents);
+  const short = ran ? roster.agents.filter((a) => !reports[a.id] || reports[a.id].status !== 'ok').length : 0;
+  const pbox = el('div', 'card proposals');
+  pbox.appendChild(el('div', 'who', props.length ? 'Proposals for you (' + props.length + ')' : 'Proposals for you'));
+  if (!ran) pbox.appendChild(el('div', 'storm-muted', AGENT_RUN ? 'Run all eight again — proposals show here after a run that completes.' : 'Run all eight first — their proposals show here.'));
+  else if (props.length) {
+    for (const p of props) pbox.appendChild(proposalRow(p));
+    if (short) pbox.appendChild(el('div', 'feed-state unset', plural(short, 'desk', 'desks') + ' couldn’t read everything (named below) — there may be more.'));
+  } else if (short) pbox.appendChild(el('div', 'feed-state unset', 'No proposals — ' + plural(short, 'desk', 'desks') + ' couldn’t read everything (named below).'));
+  else pbox.appendChild(el('div', 'storm-muted', 'No proposals from this run.'));
+  v.appendChild(pbox);
   for (const a of roster.agents) {
     const c = el('div', 'card agent');
     const top = el('div', 'agent-top');
