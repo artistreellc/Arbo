@@ -344,7 +344,8 @@ describe.each(FAILS)('a read that died: $kind', (fail) => {
       expect(t.textContent.toLowerCase(), t.dataset.desk).toContain(FEED_WORD[fail.kind].toLowerCase());
       expect(t.textContent, t.dataset.desk).not.toContain('Reading…');
     }
-    expect(v.querySelector('h1')!.textContent).toBe('No desk could be read · 6 ' + (fail.kind === 'unread' ? 'couldn’t be read' : 'off'));
+    // P14 review: "could not be read" only of reads that failed; desks off on purpose or not set up were not counted (§1B).
+    expect(v.querySelector('h1')!.textContent).toBe(fail.kind === 'unread' ? 'No desk could be read · 6 couldn’t be read' : 'No desk counted · 6 off');
     expect([...new Set(k.paths)].sort()).toEqual(['/api/assistant/approvals', '/api/fleet/units', '/api/followups', '/api/money', '/api/performance',
       '/api/queue', '/api/reception/status', '/api/safety', '/api/sim/state']);
   });

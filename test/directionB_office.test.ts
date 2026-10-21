@@ -111,6 +111,8 @@ const ZERO: Record<string, Answer> = {
 
 const CONSTS = ['$', 'el', 'FEED_WORD', 'Cap', 'FEED_TAG', 'FEED_SAYS', 'RETRY', 'TONE', 'FEEDS_SAID', 'FEEDS_OPEN', 'FEEDS_BOX', 'FEEDS_GEN',
   'VIEW_TITLES', 'DESK_LINE', 'OFFICE_DESKS', 'PROPOSAL_GO', 'noRefs'];
+// P14 review: where each proposal lands (absent before the review round — the kit lifts it when the page has it).
+if (/^const PROPOSAL_AT = /m.test(html)) CONSTS.push('PROPOSAL_AT');
 const HELPERS = ['readingLine', 'plural', 'fmtWhen', 'chip', 'badge', 'feedKind', 'feedsCard', 'agentProposals', 'proposalRow', 'moneyCounts', 'lessonsWaiting',
   'runAllEight', 'officeRunAge', 'officeDesk', 'officeProposals', 'officeHub', 'renderMore', 'dollars'];
 
@@ -121,8 +123,10 @@ function kit(answers: Record<string, Answer>, opts: { links?: string; run?: unkn
     createElement: (t: string) => new FNode(t),
     createTextNode: (t: string) => { const n = new FNode('#text'); n.textContent = t; return n; },
     getElementById: (id: string) => { if (!ids.has(id)) { const n = new FNode('div'); n.id = id; ids.set(id, n); } return ids.get(id)!; },
+    querySelector: (sel: string) => { queried.push(sel); return null; },
   };
   const went: string[] = [];
+  const queried: string[] = []; // what a proposal's landing looked for (openPanel's find)
   const asked: Array<{ path: string; method: string }> = [];
   const api = async (path: string, o?: { method?: string }) => {
     asked.push({ path, method: (o && o.method) || 'GET' });
@@ -136,7 +140,7 @@ function kit(answers: Record<string, Answer>, opts: { links?: string; run?: unkn
     let LINKS = linksIn;
     const LINKS_READY = Promise.resolve(linksIn);
     let AGENT_RUN = runIn;
-    const { renderAssistant, renderAgents, renderLearn, renderMeasure, renderPermits, themePref, setTheme, installCard, location, window, NAV_DRAW } = stubs;
+    const { renderAssistant, renderAgents, renderLearn, renderMeasure, renderPermits, themePref, setTheme, installCard, location, window, NAV_DRAW, openPanel } = stubs;
     ${CONSTS.map(constSrc).join('\n')}
     ${HELPERS.concat(opts.extra ?? []).map(fnSrc).join('\n')}
     return { renderMore, moneyCounts, getRun: () => AGENT_RUN, setRun: (r) => { AGENT_RUN = r; }, call: (n, ...a) => eval(n)(...a) };`)(
@@ -146,6 +150,8 @@ function kit(answers: Record<string, Answer>, opts: { links?: string; run?: unkn
       renderAssistant: () => went.push('draw:assistant'), renderAgents: () => went.push('draw:agents'), renderLearn: () => went.push('draw:learn'),
       renderMeasure: () => {}, renderPermits: () => {}, themePref: () => 'auto', setTheme: () => {}, installCard: () => new FNode('div'),
       location: {}, window: { open: () => {} }, NAV_DRAW: { learn: () => went.push('draw:learn') },
+      // openPanel switches to the screen and looks for the panel while it draws: the stand-in records both.
+      openPanel: (view: string, target?: unknown) => { went.push(view); if (typeof target === 'function') target(); else if (target) queried.push('#' + target); },
     },
   ) as { renderMore: () => void; moneyCounts: (m: unknown) => Record<string, number>; getRun: () => unknown; setRun: (r: unknown) => void;
     call: (name: string, ...args: unknown[]) => unknown };
@@ -153,7 +159,7 @@ function kit(answers: Record<string, Answer>, opts: { links?: string; run?: unkn
   const tiles = () => v().querySelectorAll('.otile');
   const tile = (desk: string) => tiles().find((t) => t.dataset.desk === desk)!;
   const h1 = () => v().querySelector('h1')!;
-  return { ...built, v, tiles, tile, h1, went, asked };
+  return { ...built, v, tiles, tile, h1, went, asked, queried };
 }
 
 describe('Office replaces More (P14): the title, the desk lines, one table of desks', () => {
@@ -188,7 +194,8 @@ describe('Office: the head, then the proposals, then the desks (P14)', () => {
     expect(k.tiles()).toHaveLength(6);
     for (const t of k.tiles()) {
       expect(t.textContent, t.dataset.desk).toContain('Reading…');
-      expect(t.getAttribute('aria-disabled'), t.dataset.desk).toBe('true');
+      // P14 review: a tile is a door while its count reads (a tap was dropped before); only a failed read makes it inert.
+      expect(t.getAttribute('aria-disabled'), t.dataset.desk).toBe('false');
     }
     // the desk line sits above the title on every tile
     expect(k.tile('money').querySelector('.odesk')!.textContent).toBe('Yard Boss');
@@ -256,7 +263,8 @@ describe('Office: the head, then the proposals, then the desks (P14)', () => {
     const none = kit(Object.fromEntries(Object.keys(FULL).map((p) => [p, p.startsWith('/api/assistant') || p.startsWith('/api/reception') ? FULL[p] : cut()])));
     none.renderMore();
     await flush();
-    expect(none.h1().textContent).toBe('No desk could be read · 6 off');
+    // P14 review: desks cut on purpose were not "could not be read" — they were not counted (§1B keeps the two apart).
+    expect(none.h1().textContent).toBe('No desk counted · 6 off');
   });
 
   it('recommended sends waiting make Follow-ups amber; sends Arbo couldn’t read keep the head from reading calm', async () => {
@@ -290,12 +298,14 @@ describe('Office: the head, then the proposals, then the desks (P14)', () => {
     expect(t).not.toMatch(/\b0 recommended/);
   });
 
-  it('every desk tile opens its own screen — only once its read has landed', async () => {
-    const pending = kit({ ...FULL, '/api/queue': () => new Promise(() => {}) });
+  it('every desk tile opens its own screen — at once, while its count still reads (P14 review: More’s tile did)', async () => {
+    const pending = kit({ ...FULL, '/api/queue': () => new Promise(() => {}), '/api/money': () => new Promise(() => {}) });
     pending.renderMore();
     await flush();
+    expect(pending.tile('money').textContent).toContain('Reading…');
     await pending.tile('followups').click();
-    expect(pending.went).toEqual([]);
+    await pending.tile('money').click();
+    expect(pending.went).toEqual(['followups', 'money']);
     const k = kit(FULL);
     k.renderMore();
     await flush();
@@ -335,7 +345,9 @@ describe('Office: the head, then the proposals, then the desks (P14)', () => {
     // Appearance and Install stay on Office (the plan's Q4 default); Settings keeps its one door, the gear.
     expect(k.v().textContent).toContain('Appearance');
     expect(k.v().textContent).toContain('Install');
-    expect(k.v().textContent).toContain('Settings open from the gear at the top.');
+    // P14 review: the header button Mike sees is the sliders icon (i-settings), not a gear.
+    expect(k.v().textContent).toContain('Settings open from the sliders button at the top.');
+    expect(k.v().textContent).not.toContain('gear');
   });
 });
 
@@ -544,5 +556,94 @@ describe('Office review: Numbers says the ad spend Arbo reads (the plan: "ad spe
     await flush();
     expect(said(k)).toContain('Ads: not set up yet');
     expect(k.v().querySelector('.feeds')!.textContent).toContain('Ads — not set up yet');
+  });
+});
+
+describe('Office review: the UI findings', () => {
+  const ago = (min: number) => new Date(Date.now() - min * 60000).toISOString();
+  const rep = (agentId: string, name: string, proposals: Array<{ kind: string; text: string }>) =>
+    ({ agentId, name, status: 'ok', inputs: [], findings: [], proposals });
+
+  it('each proposal lands on its panel, not the top of its screen: the held unit, the DOWN unit, the loops, the money, the library, the rated areas', async () => {
+    const run = { ranAt: ago(1), reports: [
+      rep('yard-boss', 'Yard Boss', [{ kind: 'signback_review', text: 'Sign it back on.' }, { kind: 'parts_review', text: 'Decide the repair.' }]),
+      rep('chief-of-staff', 'Chief of Staff', [{ kind: 'decide_open_loops', text: 'Decide 2 loops.' }]),
+      rep('arborist', 'Arborist', [{ kind: 'vet_reference', text: 'Vet 1 library draft.' }]),
+    ] };
+    const k = kit(FULL, { run });
+    k.renderMore();
+    await flush();
+    for (const r of k.v().children[1]!.querySelectorAll('.prop-row')) await r.querySelector('button')!.click();
+    expect(k.went).toEqual(['fleet', 'fleet', 'followups', 'safety']);
+    expect(k.queried).toEqual(['#view-fleet [data-unit][data-status="held"]', '#view-fleet [data-unit][data-status="down"]', '#queue-loops', '#safety-library']);
+    const at = constVal<Record<string, string>>('PROPOSAL_AT');
+    expect(at.collections_review).toBe('#queue-money');
+    expect(at.area_review).toBe('#perf-rated');
+    expect(at.fix_credentials).toBe('#queue-safety');
+    // every place a proposal lands is one the page draws
+    expect(html).toContain("c.dataset.status = u.status;");
+    expect(html).toContain("loopsSlot.id = 'queue-loops'");
+    expect(html).toContain("['queue-money', renderMoney]");
+    expect(html).toContain("['queue-safety', renderSafety]");
+    expect(html).toContain("['safety-library', renderLibraryDesk]");
+    expect(html).toContain("rated.id = 'perf-rated'");
+    const go = constVal<Record<string, [string, string]>>('PROPOSAL_GO');
+    for (const kind of Object.keys(at)) expect(go, kind).toHaveProperty(kind);
+  });
+
+  it('Office lists four proposals at most: past four, the first three and the rest counted, one tap from Agents', async () => {
+    const five = { ranAt: ago(1), reports: [rep('yard-boss', 'Yard Boss', ['a', 'b', 'c', 'd', 'e'].map((x) => ({ kind: 'signback_review', text: 'Proposal ' + x + '.' })))] };
+    const k = kit(FULL, { run: five });
+    k.renderMore();
+    await flush();
+    const card = k.v().children[1]!;
+    expect(card.textContent).toContain('Proposals for you (5)');
+    const rows = card.querySelectorAll('.prop-row');
+    expect(rows.map((r) => r.querySelector('.scope')?.textContent ?? r.textContent)).toEqual(['Proposal a.', 'Proposal b.', 'Proposal c.', '2 more proposals — every one is on AgentsAgents ›']);
+    const more = rows[3]!.querySelector('button')!;
+    expect(more.getAttribute('aria-label')).toBe('Open Agents');
+    await more.click();
+    expect(k.went).toEqual(['agents', 'draw:agents']);
+    const four = kit(FULL, { run: { ranAt: ago(1), reports: [rep('yard-boss', 'Yard Boss', ['a', 'b', 'c', 'd'].map((x) => ({ kind: 'signback_review', text: 'Proposal ' + x + '.' })))] } });
+    four.renderMore();
+    await flush();
+    expect(four.v().children[1]!.querySelectorAll('.prop-row').map((r) => r.querySelector('.scope')!.textContent)).toEqual(['Proposal a.', 'Proposal b.', 'Proposal c.', 'Proposal d.']);
+  });
+
+  it('a proposal row is the desk in front of its words, two lines at most, a tap opening them whole — so a run leaves the desks on the first screen', async () => {
+    const k = kit(FULL, { run: { ranAt: ago(1), reports: [rep('yard-boss', 'Yard Boss', [{ kind: 'signback_review', text: 'Sign it back on.' }])] } });
+    k.renderMore();
+    await flush();
+    const w = k.v().children[1]!.querySelector('.prop-words')!;
+    expect(w.has('clamp')).toBe(true);
+    expect(w.children.map((c) => c.className)).toEqual(['loop-kind', 'scope']);
+    await w.click();
+    expect(w.has('open')).toBe(true);
+    const css = html.slice(0, html.indexOf('</style>'));
+    expect(css).toMatch(/\n\.clamp\{display:-webkit-box;-webkit-line-clamp:2;/);
+    expect(css).toContain('.office-props .prop-words .loop-kind{display:inline;');
+    expect(css).toContain('.office-props .prop-words .scope{display:inline;');
+    // the head carries no help line: the eyebrow and the count, then the proposals
+    expect(k.v().children[0]!.children.map((c) => c.tag)).toEqual(['div', 'h1']);
+    // the tile's icon sits beside its desk line, not on a row of its own
+    expect(css).toMatch(/\n\.otile \.ico\{position:absolute;/);
+  });
+
+  it('the head says "could not be read" only of reads that failed; desks off on purpose are "not counted"', async () => {
+    const offOrDead = (dead: string[]) => Object.fromEntries(Object.keys(FULL).map((p) => [p,
+      p.startsWith('/api/assistant') || p.startsWith('/api/reception') ? FULL[p] : dead.includes(p) ? new TypeError('Failed to fetch') : cut()]));
+    const allDead = kit(offOrDead(Object.keys(FULL)));
+    allDead.renderMore();
+    await flush();
+    expect(allDead.h1().textContent).toBe('No desk could be read · 6 couldn’t be read');
+    const mixed = kit(offOrDead(['/api/queue', '/api/fleet/units']));
+    mixed.renderMore();
+    await flush();
+    expect(mixed.h1().textContent).toBe('No desk counted · 2 couldn’t be read · 4 off');
+    // a desk counted in part (Follow-ups' loops, its sends cut) is Arbo's read, never "not counted"
+    const part = kit({ ...offOrDead([]), '/api/queue': { open: [] } });
+    part.renderMore();
+    await flush();
+    expect(part.h1().textContent).toBe('No desk Arbo read needs you · 5 off');
   });
 });
