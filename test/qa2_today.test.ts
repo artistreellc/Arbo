@@ -258,9 +258,10 @@ describe('T3: the tile grid stands on its own feeds', () => {
   });
 
   it('to bill never counts the job with no agreed figure, and never reads a calm 0 over it', () => {
-    expect(today).toContain('const nb = (m.blocked || []).length;');
-    expect(today).toContain("setTile(billTile, m.drafts.length, (m.drafts.length || nb) ? 'warn' : 'ok-t');");
-    expect(today).toContain("if (nb) billTile.appendChild(el('small', '', '+' + nb + ' no agreed figure'));");
+    // Direction B P14: counted through moneyCounts (shared with Office's Money tile) — the same three rules.
+    expect(html).toContain('noFigure: (m.blocked || []).length');
+    expect(today).toContain("setTile(billTile, mc.bill, (mc.bill || mc.noFigure) ? 'warn' : 'ok-t');");
+    expect(today).toContain("if (mc.noFigure) billTile.appendChild(el('small', '', '+' + mc.noFigure + ' no agreed figure'));");
   });
 });
 

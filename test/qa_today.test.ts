@@ -68,13 +68,18 @@ describe('Today: the tiles (T-hud, T-money)', () => {
   });
 
   it('overdue is past-due invoices only; unbilled work is its own tile; an undatable one is named', () => {
-    expect(today).toContain('m.collections.length + (m.suppressed || []).length');
-    expect(today).not.toContain('m.collections.length + m.drafts.length');
+    // Direction B P14: the counts live in moneyCounts, which Office's Money tile reads too, so the two agree.
+    const counts = html.slice(html.indexOf('function moneyCounts('), html.indexOf('\n}', html.indexOf('function moneyCounts(')));
+    expect(counts).toContain('over: m.collections.length + (m.suppressed || []).length');
+    expect(counts).toContain('bill: m.drafts.length');
+    expect(counts).toContain('noFigure: (m.blocked || []).length');
+    expect(counts).not.toContain('m.collections.length + m.drafts.length');
+    expect(counts).not.toContain('m.drafts.length + (m.blocked || []).length');
+    expect(today).toContain('const mc = moneyCounts(m);');
     expect(today).toContain("tile('–', 'to bill')");
     // To bill counts drafts; a job with no agreed figure is named beside it and keeps the tile amber.
-    expect(today).toContain('setTile(billTile, m.drafts.length, (m.drafts.length || nb) ? \'warn\' : \'ok-t\');');
-    expect(today).toContain("billTile.appendChild(el('small', '', '+' + nb + ' no agreed figure'))");
-    expect(today).not.toContain('m.drafts.length + (m.blocked || []).length');
+    expect(today).toContain("setTile(billTile, mc.bill, (mc.bill || mc.noFigure) ? 'warn' : 'ok-t');");
+    expect(today).toContain("billTile.appendChild(el('small', '', '+' + mc.noFigure + ' no agreed figure'))");
     expect(today).toContain(' can’t tell');
   });
 

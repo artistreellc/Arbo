@@ -706,6 +706,27 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
   font-size:12px;font-weight:700;line-height:22px;text-align:center;font-variant-numeric:tabular-nums}
 /* A 320px phone: three columns of tiles fit only with a little less padding and title — "Assistant" is the longest word. */
 @media (max-width:359px){.gtile{padding:12px 9px}.gtile b{font-size:15px}.tile{padding:12px 8px 10px}.tile span{letter-spacing:.02em}}
+/* Direction B P14: Office's desk tiles — two across, each a door to its screen, its R26 desk name above its
+   title; red where something stops the day, amber where it waits on Mike. A dashed tile opens nothing (§1B). */
+.office-desks{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:2px 0 8px}
+.otile{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;min-height:132px;padding:13px 13px 12px;border:1px solid var(--hairline);border-radius:var(--r-lg);background:var(--card);box-shadow:var(--shadow-card);color:var(--ink-1);font:inherit;text-align:left;overflow:hidden;cursor:pointer}
+.otile::after{content:'';position:absolute;left:0;right:0;top:0;height:3px;background:var(--forest);opacity:.18}
+.otile.hot::after{background:var(--emergency);opacity:.7}.otile.warn::after{background:var(--gold-5);opacity:.7}
+.otile .ico{width:24px;height:24px;color:var(--forest);margin-bottom:5px}
+.otile .cue{position:absolute;top:12px;right:12px;font-style:normal;font-size:20px;line-height:1;color:var(--ink-3)}
+.otile[aria-disabled="true"]{cursor:default}.otile[aria-disabled="true"] .cue{display:none}
+.otile[aria-disabled="false"]:active{transform:scale(.975)}
+.otile .odesk{font-size:12px;font-weight:650;letter-spacing:.02em;color:var(--gold-6)}
+.otile .otitle{font-family:var(--serif);font-size:19px;font-weight:600;line-height:1.15;color:var(--ink-1)}
+.otile .ocount{margin-top:6px;font-size:14.5px;font-weight:600;line-height:1.2;color:var(--ink-2)}
+.otile .ocount b{font-family:var(--serif);font-variant-numeric:tabular-nums;font-size:28px;font-weight:600;color:var(--ink-1);vertical-align:-2px}
+.otile.hot .ocount b{color:var(--emergency)}.otile.warn .ocount b{color:var(--warning)}.otile.gap .ocount b{color:var(--ink-3)}
+.otile small{display:block;margin-top:3px;font-size:12.5px;line-height:1.3;color:var(--ink-3)}
+.otile .ogap{color:var(--ink-2)}
+.otile .reading{padding:8px 0 0;margin:0;font-size:13px}
+.otile.gap{border-style:dashed;border-color:var(--border);background:transparent;box-shadow:none}.otile.gap::after{display:none}
+.office-gear{margin-top:12px}
+.viewhead h1 .h1-gap{font-family:var(--sans);font-size:15px;font-weight:600;letter-spacing:0;color:var(--ink-3);font-variation-settings:normal}
 /* The state line drops under its chip when they cannot share a row, so a variable name never breaks mid-word. */
 .asst-state{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;font-size:15px;font-weight:600;color:var(--ink-1);margin-bottom:10px}
 .asst-state .badge{flex:none}
@@ -2868,18 +2889,17 @@ async function renderToday() {
     return null;
   }).catch((e) => (e.code === 401 ? null : LINKS_READY.then(() => { tileWhy(agentTile, FEED_TAG[feedKind(e)]); return feedKind(e); }))));
   feeds.note('Overdue and to bill', owedTile, api('/api/money').then((m) => {
+    // Direction B P14: counted through moneyCounts, as Office's Money tile is, so the two always agree.
     // Overdue is past-due invoices, the legal gate's held ones included —
     // still owed, just never nudged. Unbilled work is its own tile, and an
     // invoice Arbo cannot date is named, never counted as either.
-    const over = m.collections.length + (m.suppressed || []).length;
-    const unk = (m.unknown || []).length;
-    setTile(owedTile, over, over ? 'hot' : (unk ? 'warn' : 'ok-t'));
-    if (unk) owedTile.appendChild(el('small', '', '+' + unk + ' can’t tell'));
+    const mc = moneyCounts(m);
+    setTile(owedTile, mc.over, mc.over ? 'hot' : (mc.unk ? 'warn' : 'ok-t'));
+    if (mc.unk) owedTile.appendChild(el('small', '', '+' + mc.unk + ' can’t tell'));
     // To bill counts the drafts Arbo can bill; a finished job with no agreed
     // figure is named beside it and keeps the tile amber — never a calm 0.
-    const nb = (m.blocked || []).length;
-    setTile(billTile, m.drafts.length, (m.drafts.length || nb) ? 'warn' : 'ok-t');
-    if (nb) billTile.appendChild(el('small', '', '+' + nb + ' no agreed figure'));
+    setTile(billTile, mc.bill, (mc.bill || mc.noFigure) ? 'warn' : 'ok-t');
+    if (mc.noFigure) billTile.appendChild(el('small', '', '+' + mc.noFigure + ' no agreed figure'));
     goTile(owedTile, () => openPanel(DESK_VIEW.money, 'queue-money'));
     goTile(billTile, () => openPanel(DESK_VIEW.money, 'queue-money'));
     return null;
@@ -4946,6 +4966,14 @@ function money(n) {
 }
 // Whole dollars for rates on the Numbers screen; money() above keeps cents for invoices.
 function dollars(n) { return '$' + Math.round(n).toLocaleString('en-US'); }
+// Direction B P14: what /api/money counts, in one place — Today's overdue and to-bill tiles and
+// Office's Money tile read it through this, so the two never disagree. Overdue is past-due
+// invoices plus the legal gate's held ones (still owed, just never nudged); to bill is the drafts
+// Arbo can bill. An invoice Arbo cannot date (unk) and a finished job with no agreed figure
+// (noFigure) are counted apart, never as either.
+function moneyCounts(m) {
+  return { over: m.collections.length + (m.suppressed || []).length, unk: (m.unknown || []).length, bill: m.drafts.length, noFigure: (m.blocked || []).length };
+}
 async function renderMoney(slot) {
   slot.replaceChildren();
   let m;
@@ -5574,7 +5602,8 @@ $('bd-go').addEventListener('click', async () => {
 // none of the others down. "Reading…" sits under the panels on a first draw until all have read. A
 // newer draw owns the screen (DESK_GEN); an older one's panels fill slots no longer on it.
 // The slot ids are where Today's taps, Before you roll and the agents' proposals land (DESK_VIEW).
-const DESK_LINE = { followups: 'Chief of Staff', money: 'Yard Boss', fleet: 'Yard Boss', safety: 'Crew Chief', perf: 'Analyst' };
+// Direction B P14: Office's desk tiles read their small line here too — Teach Arbo's is "Learn" (the plan's table).
+const DESK_LINE = { followups: 'Chief of Staff', money: 'Yard Boss', fleet: 'Yard Boss', safety: 'Crew Chief', perf: 'Analyst', learn: 'Learn' };
 const DESK_GEN = {};
 async function deskView(view, sub, panels) {
   const gen = DESK_GEN[view] = (DESK_GEN[view] || 0) + 1;
@@ -6347,15 +6376,180 @@ function heroLoops() {
   }));
 }
 
-// ---------- More: every surface within two taps (§9) ----------
+// ---------- More: every surface within two taps (§9) — Office since Direction B P14 ----------
+// R29 #1: "Office (replaces More and Queue)". Every surface is still within two taps (§9). Its view id stays 'more' (the links, the
+// crew preview's way back, NAV_DRAW); its title is Office (VIEW_TITLES). Top to bottom: the head; the
+// agents' proposals, each opening the screen where Mike acts on it; one counted tile per desk
+// (OFFICE_DESKS, the mockup's order); then the rest of Arbo. A desk tile says "Reading…" until its own
+// read lands. A read that failed is a dashed tile with the feed word and no digit, and opens nothing;
+// the feeds card counts it too (§1B). The head counts the desks that need Mike (red or amber) and
+// never reads calm over a desk Arbo did not read.
+// need: one of the four jobs the Queue held (the head counts those). side: a second line the tile
+// may name as a gap — Follow-ups' recommended sends (a read of their own); Numbers' ad spend, which
+// no feed in Arbo reads yet (the plan's "Ads: not set up yet").
+const OFFICE_DESKS = [{ view: 'followups', icon: 'i-queue', need: true, side: 'Recommended sends' }, { view: 'money', icon: 'i-flag', need: true }, { view: 'fleet', icon: 'i-truck', need: true }, { view: 'safety', icon: 'i-cone', need: true }, { view: 'perf', icon: 'i-numbers', side: 'Ads' }, { view: 'learn', icon: 'i-learn' }];
+// One desk tile's words, from the same read its screen makes: { n, what, sub, side, tone }. n and
+// what are the count ("2", "overdue"); sub is the line under it; side is the FEED_WORD kind the row's
+// second line names, or null; tone is 'hot' (red: it stops the day), 'warn' (amber: it waits on
+// Mike) or 'ok' on the four job desks, '' on Numbers and Teach Arbo. A count read that failed rejects
+// with its error, and a body without the list it should carry is a read that failed — never a 0 (§1B).
+async function officeDesk(view) {
+  const lists = (o, keys) => { if (!o || keys.some((k) => !Array.isArray(o[k]))) throw new Error('unreadable'); return o; };
+  if (view === 'followups') {
+    // The recommended sends are read beside the loops; one failing never takes the other down.
+    const sends = api('/api/followups').then((d) => ({ v: lists(d, ['due']) }), (e) => ({ e: e }));
+    const q = lists(await api('/api/queue'), ['open']);
+    const s = await sends;
+    const n = q.open.length;
+    // Open loops and recommended sends both wait on Mike: either makes the desk amber.
+    const out = { n: n, what: n === 1 ? 'open loop' : 'open loops', sub: '', side: null, tone: n || (s.v && s.v.due.length) ? 'warn' : 'ok' };
+    // R33: Arbo sends nothing — Mike texts them himself, from the Quo app.
+    if (s.v) out.sub = plural(s.v.due.length, 'recommended send') + ' — to text from the Quo app' + (s.v.seasonalUnavailable || s.v.growthUnavailable ? ' · some couldn’t be checked' : '');
+    else if (!(s.e && s.e.code === 401)) { await LINKS_READY; out.side = feedKind(s.e); }
+    return out;
+  }
+  if (view === 'money') {
+    const c = moneyCounts(lists(await api('/api/money'), ['collections', 'drafts']));
+    return { n: c.over, what: 'overdue', side: null, tone: c.over ? 'hot' : c.bill || c.noFigure || c.unk ? 'warn' : 'ok',
+      sub: [c.bill + ' to bill', c.noFigure ? c.noFigure + ' no agreed figure' : '', c.unk ? c.unk + ' can’t tell' : ''].filter(Boolean).join(' · ') };
+  }
+  if (view === 'fleet') {
+    const u = lists(await api('/api/fleet/units'), ['units']).units;
+    const off = u.filter((x) => x.status === 'held' || x.status === 'down').length;
+    const look = u.filter((x) => x.status === 'maintenance').length;
+    const up = u.filter((x) => x.status === 'up').length;
+    return { n: off, what: 'held or down', side: null, tone: off ? 'hot' : look ? 'warn' : 'ok',
+      sub: !u.length ? 'No units on file' : plural(up, 'unit') + ' up' + (look ? ' · ' + look + (look === 1 ? ' needs' : ' need') + ' attention' : '') };
+  }
+  if (view === 'safety') {
+    const s = lists(await api('/api/safety'), ['aerialBlocked', 'blindSpots', 'certProblems']);
+    const n = s.aerialBlocked.length;
+    const due = s.certProblems.filter((f) => typeof f.daysUntil === 'number' && f.daysUntil >= 0 && f.daysUntil <= 30).length;
+    const rest = s.certProblems.length - due; // lapsed, missing or undated: named, never folded into "due"
+    const blind = s.blindSpots.length;
+    return { n: n, what: 'no aerial', side: null, tone: n ? 'hot' : blind || s.certProblems.length ? 'warn' : 'ok',
+      sub: [plural(due, 'cert') + ' due in 30 days', rest ? rest + ' more ' + (rest === 1 ? 'needs' : 'need') + ' a look' : '', blind ? '⚠ ' + blind + ' can’t see' : ''].filter(Boolean).join(' · ') };
+  }
+  if (view === 'perf') {
+    const p = lists(await api('/api/performance'), ['areas']);
+    const n = p.areas.filter((a) => a.verdict !== 'not_enough_data').length;
+    return { n: n, what: n === 1 ? 'area rated' : 'areas rated', sub: '', side: 'unset', tone: '' };
+  }
+  // Teach Arbo: the lessons waiting for Mike's answer, as Learn lists them.
+  const st = await api('/api/sim/state');
+  if (!st || !st.lessons) throw new Error('unreadable');
+  return { n: lessonsWaiting(st).length, what: 'to approve', side: null, tone: '',
+    sub: st.report && st.report.ranAt ? 'Last check ' + fmtWhen(st.report.ranAt) : 'No check run yet' };
+}
+// Office's proposals card: P6's list (agentProposals, in the run's own order), each row opening the
+// screen where Mike acts on it (PROPOSAL_GO). No run this launch is said, with the same read-only run
+// (runAllEight — Agents' one send). A run over 15 minutes old says so above its list. A run that did
+// not complete, or where a desk couldn't read everything, never reads as "no proposals" (P6).
+function officeProposals() {
+  const run = AGENT_RUN;
+  const ran = !!(run && run.reports);
+  const ranAt = ran ? run.ranAt : null;
+  const stale = !!ranAt && Date.now() - Date.parse(ranAt) > 15 * 60 * 1000;
+  const props = agentProposals(run);
+  const c = el('div', 'card proposals office-props');
+  c.appendChild(el('div', 'loop-kind', 'Agents' + (ranAt ? ' · ran ' + fmtWhen(ranAt) : '')));
+  c.appendChild(el('div', 'who', props.length ? 'Proposals for you (' + props.length + ')' : 'Proposals for you'));
+  if (stale) c.appendChild(el('div', 'feed-state unset', 'Ran ' + fmtWhen(ranAt) + ' — over 15 minutes old. Run again for a current read.'));
+  if (!run) c.appendChild(el('div', 'storm-muted', 'Not run since Arbo started. A run only looks.'));
+  else if (!ran) c.appendChild(el('div', 'storm', 'The run did not complete (' + run.error + '). No proposal is shown rather than a stale one.'));
+  else {
+    const short = run.reports.filter((r) => r.status !== 'ok').length;
+    for (const p of props) c.appendChild(proposalRow(p));
+    if (short) c.appendChild(el('div', 'feed-state unset', (props.length ? '' : 'No proposals — ') + plural(short, 'desk', 'desks') + ' couldn’t read everything (named on Agents)' + (props.length ? ' — there may be more.' : '.')));
+    else if (!props.length) c.appendChild(el('div', 'storm-muted', 'No proposals from this run.'));
+  }
+  if (!ran || stale) {
+    const b = el('button', 'actbtn wide-btn', ran ? 'Run all eight again' : 'Run all eight');
+    b.type = 'button';
+    b.addEventListener('click', async () => {
+      b.disabled = true; b.textContent = 'Running the eight desks…';
+      await runAllEight();
+      renderMore();
+    });
+    c.appendChild(b);
+  }
+  return c;
+}
+// Office's head, proposals and desk tiles, drawn into v before any read lands; returns its feeds
+// card (renderMore places it). A desk tile opens its screen only once its read has landed; a newer
+// draw owns the feeds card, and an older draw's late reads fill tiles no longer on screen.
+function officeHub(v) {
+  const head = el('div', 'viewhead');
+  head.appendChild(el('div', 'eyebrow', 'The back office'));
+  const h1 = head.appendChild(el('h1', '', VIEW_TITLES.more));
+  head.appendChild(el('p', '', 'Tap a desk to land on its work.'));
+  v.appendChild(head);
+  v.appendChild(officeProposals());
+  const feeds = feedsCard('more');
+  const grid = v.appendChild(el('div', 'office-desks'));
+  const runs = OFFICE_DESKS.map((d) => {
+    const t = grid.appendChild(el('button', 'otile'));
+    t.type = 'button';
+    t.dataset.desk = d.view;
+    t.setAttribute('aria-disabled', 'true'); // until its read lands; a dashed tile stays this way
+    t.appendChild(icon(d.icon));
+    const cue = t.appendChild(el('i', 'cue', '›'));
+    cue.setAttribute('aria-hidden', 'true');
+    t.appendChild(el('span', 'odesk', DESK_LINE[d.view]));
+    t.appendChild(el('span', 'otitle', VIEW_TITLES[d.view]));
+    const reading = t.appendChild(readingLine());
+    let go = false;
+    // As its old More tile did: switch, and a desk off the minute timer (Teach Arbo) is drawn fresh.
+    t.addEventListener('click', () => { if (!go) return; switchTab(d.view); if (NAV_DRAW[d.view]) NAV_DRAW[d.view](); });
+    const count = (n) => { const c = el('span', 'ocount'); c.appendChild(el('b', '', n)); return c; };
+    const done = officeDesk(d.view).then((r) => {
+      const c = count(String(r.n));
+      c.appendChild(document.createTextNode(' ' + r.what));
+      reading.replaceWith(c);
+      // Each part keeps its count with its words, and the dot travels with the part after it — a line never ends on "·" or a bare number.
+      if (r.sub) t.appendChild(el('small', '', r.sub.split(' · ').map((x) => x.replace(/^(\S+) /, '$1\u00a0')).join(' ·\u00a0')));
+      if (r.side) t.appendChild(el('small', 'ogap', d.side + ': ' + FEED_WORD[r.side]));
+      if (r.tone) t.classList.add(r.tone);
+      t.setAttribute('aria-disabled', 'false');
+      t.setAttribute('aria-label', VIEW_TITLES[d.view] + ': ' + r.n + ' ' + r.what + (r.sub ? '. ' + r.sub : ''));
+      go = true;
+      return { d: d, tone: r.tone, side: r.side };
+    }, async (e) => {
+      if (e && e.code === 401) { reading.remove(); return { d: d, key: true }; } // the key wall owns the screen
+      await LINKS_READY; // whether db_not_configured means "cut" depends on the links
+      const k = feedKind(e);
+      reading.replaceWith(count('–'));
+      t.appendChild(el('small', '', Cap(FEED_WORD[k])));
+      t.classList.add('gap');
+      t.setAttribute('aria-label', VIEW_TITLES[d.view] + ': ' + FEED_WORD[k] + ' — not a zero');
+      return { d: d, kind: k };
+    });
+    // The card counts a desk Arbo couldn't read (and a second line's gap), names it, and leaves it in place.
+    feeds.note(VIEW_TITLES[d.view], t, done.then((r) => r.kind || null));
+    if (d.side) feeds.note(d.side, t, done.then((r) => r.side || null));
+    return done;
+  });
+  Promise.all(runs).then((rs) => {
+    if (rs.some((r) => r.key)) return;
+    const jobs = rs.filter((r) => r.d.need);
+    const need = jobs.filter((r) => r.tone === 'hot' || r.tone === 'warn').length;
+    // A desk is read whole only when its second read landed too: no calm line over recommended sends Arbo couldn't read.
+    const read = jobs.filter((r) => !r.kind && !r.side).length;
+    const unread = rs.filter((r) => r.kind === 'unread').length;
+    const off = rs.filter((r) => r.kind && r.kind !== 'unread').length;
+    h1.textContent = need ? plural(need, 'desk needs you', 'desks need you')
+      : read === jobs.length ? 'No desk needs you right now' : read ? 'No desk Arbo read needs you' : 'No desk could be read';
+    const gaps = [unread ? unread + ' couldn’t be read' : '', off ? off + ' off' : ''].filter(Boolean).join(' · ');
+    if (gaps) h1.appendChild(el('span', 'h1-gap', ' · ' + gaps));
+  });
+  return feeds;
+}
 function renderMore() {
   const v = $('view-more');
   v.replaceChildren();
-  const head = el('div', 'viewhead');
-  head.appendChild(el('div', 'eyebrow', 'Arbo'));
-  head.appendChild(el('h1', '', 'Everything else'));
-  head.appendChild(el('p', '', 'The rest of Arbo, one tap away.'));
-  v.appendChild(head);
+  // Direction B P14: Office — the head, the agents' proposals and the counted desks, then the rest of Arbo.
+  const feeds = officeHub(v);
+  v.appendChild(el('div', 'panel-title', 'Also here'));
   const grid = el('div', 'grid-tiles');
   const tile = (ic, title, note, go) => {
     const b = el('button', 'gtile');
@@ -6385,17 +6579,11 @@ function renderMore() {
     asst.querySelector('small').textContent = m === 'assistant_off' ? 'Switched off' : m === 'assistant_not_set_up' ? 'Not set up yet' : 'Couldn’t read what’s waiting';
   });
   tile('i-agents', 'Agents', 'Eight desks, one brain', () => { switchTab('agents'); renderAgents(); });
-  tile('i-learn', 'Learn', 'Train the brain', () => { switchTab('learn'); renderLearn(); });
+  // Direction B P14: the four desks the Queue held, Numbers and Teach Arbo are Office's counted desk
+  // tiles above (OFFICE_DESKS; no two Office tiles share an icon). Measure, Permits and Book stay here until P15.
   tile('i-lidar', 'Measure', 'LiDAR scan → DBH', () => { switchTab('measure'); renderMeasure(); });
   tile('i-permit', 'Permits', '4 cities, sourced', () => { switchTab('permits'); renderPermits(); });
   tile('i-book', 'Book', 'Estimates & prep', () => switchTab('book'));
-  // Direction B P13: the Queue split by the job it holds (R29 #1) — four desks, four tiles. Review: no two
-  // tiles share an icon — Fleet is a truck, Crew & safety a safety cone (the Assistant keeps the shield).
-  tile('i-queue', 'Follow-ups', 'Loops & sends', () => switchTab('followups'));
-  tile('i-flag', 'Money', 'Owed & to bill', () => switchTab('money'));
-  tile('i-truck', 'Fleet', 'Units & holds', () => switchTab('fleet'));
-  tile('i-cone', 'Crew & safety', 'Certs & training', () => switchTab('safety'));
-  tile('i-numbers', 'Numbers', 'Which areas & ads pay', () => switchTab('perf'));
   // R26: look only — the crew's page, on this app's key, and it cannot sign,
   // file or clock in. Same tab on purpose: an installed iPhone app keeps its
   // own saved data, so a new tab might not have the key.
@@ -6410,8 +6598,11 @@ function renderMore() {
     talk.disabled = true;
     talk.querySelector('small').textContent = 'Off while Sona answers calls';
   }).catch(() => {});
-  // Settings opens from the header button on every screen — no second door here.
   v.appendChild(grid);
+  // Settings opens from the header button on every screen — no second door here; this line only points to it.
+  v.appendChild(el('div', 'storm-muted office-gear', 'Settings open from the gear at the top.'));
+  // Direction B P14: Office's feeds card — every desk Arbo couldn't read, counted and named (each stays in its place).
+  v.appendChild(feeds.el);
 
   v.appendChild(el('div', 'panel-title', 'Appearance'));
   const seg = el('div', 'chips');
@@ -6828,6 +7019,13 @@ function proposalRow(p) {
   return row;
 }
 let AGENT_RUN = null;
+// The eight desks' read-only run (R25) — its one send, from Agents or Office (Direction B P14).
+// A run that fails is kept as { error }, so each screen says it did not complete — never a stale result.
+async function runAllEight() {
+  try { AGENT_RUN = await api('/api/agents/sections/run', { method: 'POST' }); }
+  catch (e) { AGENT_RUN = { error: e.message || 'error' }; }
+  return AGENT_RUN;
+}
 
 let AGENT_GEN = 0;
 async function renderAgents() {
@@ -6871,8 +7069,7 @@ async function renderAgents() {
     : el('div', 'feed-state unset', 'AI off — plain counts only, no AI key yet.'));
   runBtn.addEventListener('click', async () => {
     runBtn.disabled = true; runBtn.textContent = 'Running the eight desks…';
-    try { AGENT_RUN = await api('/api/agents/sections/run', { method: 'POST' }); }
-    catch (e) { AGENT_RUN = { error: e.message || 'error' }; }
+    await runAllEight();
     renderAgents();
   });
   if (AGENT_RUN && AGENT_RUN.error) v.appendChild(el('div', 'storm', 'The run did not complete (' + AGENT_RUN.error + '). No desk result is shown rather than a stale one.'));
@@ -7140,6 +7337,11 @@ function lessonLabel(k) {
 // Rule breaks before missed behaviours, then most scenarios — the harness's
 // order, applied here too so a book saved before it still reads that way.
 const lessonTier = (l) => (l.rule.startsWith('behaviour:') ? 1 : 0);
+// The lessons waiting for Mike's answer, from /api/sim/state — Learn's list and Office's Teach Arbo
+// count read them here, so the two agree (Direction B P14). A desk with no handler is not a lesson.
+function lessonsWaiting(st) {
+  return (st.lessons.lessons || []).filter(l => l.status === 'proposed' && !l.rule.startsWith('unhandled:'));
+}
 let LEARN_POLL = null;
 
 let LEARN_GEN = 0;
@@ -7220,7 +7422,7 @@ async function renderLearn() {
 
   // A desk with no handler is not a lesson — nothing to approve (an older
   // book may still hold one). By desk above names those as "can't answer yet".
-  const lessons = (st.lessons.lessons || []).filter(l => l.status === 'proposed' && !l.rule.startsWith('unhandled:'))
+  const lessons = lessonsWaiting(st)
     .sort((a, b) => lessonTier(a) - lessonTier(b) || b.scenarioIds.length - a.scenarioIds.length);
   v.appendChild(el('div', 'panel-title', 'Lessons waiting for you'));
   if (st.lessons.where === 'memory') v.appendChild(el('div', 'storm-muted', 'No storage disk — lessons are held in memory and clear on the next deploy.'));
@@ -7276,7 +7478,7 @@ async function renderLearn() {
   }
 }
 
-const VIEW_TITLES = { learn: 'Learn', measure: 'Measure', agents: 'Agents', permits: 'Permits', today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Book', followups: 'Follow-ups', money: 'Money', fleet: 'Fleet', safety: 'Crew & safety', calls: 'Calls', perf: 'Numbers', settings: 'Settings', more: 'More', assistant: 'Assistant' };
+const VIEW_TITLES = { learn: 'Teach Arbo', measure: 'Measure', agents: 'Agents', permits: 'Permits', today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Book', followups: 'Follow-ups', money: 'Money', fleet: 'Fleet', safety: 'Crew & safety', calls: 'Calls', perf: 'Numbers', settings: 'Settings', more: 'Office', assistant: 'Assistant' };
 // Direction B P13: a link that names no screen of its own — #queue (never a link before) opens More, where the Queue's four desks sit.
 const VIEW_ALIAS = { queue: 'more' };
 // Direction B P13: which dock tab lights for each screen — one table (the plan's DOCK_OF), today's dock until P19.
