@@ -136,3 +136,10 @@ export function sends(html: string): string[] {
   for (const m of page.markup.matchAll(/<form\b[^>]*>/gi)) if (/\b(method|action)\s*=/i.test(m[0])) out.push('form post');
   return out.sort();
 }
+
+/** Every string a page's code holds (a lookup key included), with the function it sits in — comments are not code. */
+export function codeStrings(html: string): Array<{ text: string; fn: string }> {
+  const out: Array<{ text: string; fn: string }> = [];
+  for (const sf of read(html).scripts) walk(sf, (n) => { if (isText(n)) out.push({ text: n.text, fn: enclosingFunction(n) }); });
+  return out;
+}
