@@ -102,6 +102,8 @@ function kit(q: unknown, refuse: 'none' | 'read' | 'write' = 'none', store = sto
     createElement: (t: string) => new N(t),
     createTextNode: (t: string) => { const n = new N('#text'); n.textContent = t; return n; },
     getElementById: (id: string) => { if (!ids.has(id)) { const n = new N('div'); n.id = id; ids.set(id, n); } return ids.get(id)!; },
+    // What is on screen: everything under the page's own elements (a panel not put in one is not on screen).
+    querySelectorAll: (sel: string) => [...ids.values()].flatMap((n) => n.querySelectorAll(sel)),
   };
   let quoNow = q;
   const posts: string[] = [];
@@ -334,5 +336,47 @@ describe('review round: Call back handles every call from that customer that ask
     await callBack(panel, 'H3').click();
     expect(k.sonaHandled()).toEqual({});
     expect(panel.all().find((n) => n.dataset.sonaCall === 'H3')!.querySelectorAll('.sona-handled')).toHaveLength(0);
+  });
+});
+
+describe('review round: a Call back clears the flag on every screen at the tap, not only on the one tapped (UI #3)', () => {
+  const rows = (p: N) => p.all().filter((n) => n.has('sliplink')).map((r) => r.textContent.split(' · ')[0]);
+  const handled = (p: N, id: string) => p.all().find((n) => n.dataset.sonaCall === id)!.querySelectorAll('.sona-handled').length;
+
+  it('Call back on Calls & texts: Today\'s own flag box drops that caller and Today\'s card says Handled — no redraw', async () => {
+    const k = kit(quo([call('H1', HAZEL, { slips: [SLIP] }), call('O1', OAK, { slips: [SLIP] })]));
+    const today = await k.sonaPanel(3, false);
+    const calls = await k.sonaPanel(20, true);
+    k.$('view-today').appendChild(today);
+    k.$('view-calls').appendChild(calls);
+    expect(rows(today)).toEqual(['SIM-Hazel, Test', 'SIM-Oak, Test']);
+    await callBack(calls, 'H1').click();
+    expect(rows(today)).toEqual(['SIM-Oak, Test']);
+    expect(handled(today, 'H1')).toBe(1);
+    expect(handled(today, 'O1')).toBe(0);
+    expect(handled(calls, 'H1')).toBe(1);
+  });
+
+  it('Call back on Today: Calls & texts\' card says Handled at the tap too', async () => {
+    const k = kit(quo([call('H1', HAZEL, { slips: [SLIP] }), call('O1', OAK, { slips: [SLIP] })]));
+    const today = await k.sonaPanel(3, false);
+    const calls = await k.sonaPanel(20, true);
+    k.$('view-today').appendChild(today);
+    k.$('view-calls').appendChild(calls);
+    await callBack(today, 'O1').click();
+    expect(handled(calls, 'O1')).toBe(1);
+    expect(handled(calls, 'H1')).toBe(0);
+    expect(rows(today)).toEqual(['SIM-Hazel, Test']);
+  });
+
+  it('a Call back on another customer changes no other screen', async () => {
+    const k = kit(quo([call('H1', HAZEL, { slips: [SLIP] }), call('O9', OAK, { hold: 'not_requested' })]));
+    const today = await k.sonaPanel(3, false);
+    const calls = await k.sonaPanel(20, true);
+    k.$('view-today').appendChild(today);
+    k.$('view-calls').appendChild(calls);
+    await callBack(calls, 'O9').click();
+    expect(rows(today)).toEqual(['SIM-Hazel, Test']);
+    expect(handled(today, 'H1')).toBe(0);
   });
 });

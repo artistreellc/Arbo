@@ -1903,6 +1903,9 @@ function sonaCalledBack(c, calls) {
     localStorage.setItem(SONA_DONE_KEY, JSON.stringify(m));
   } catch (e) { return false; }
   renderLeadsHead();
+  // Every Sona panel on screen — Today's and Calls & texts', not only the one tapped — drops that caller's flags
+  // and says Handled now, so two screens never disagree until the minute redraw.
+  for (const p of document.querySelectorAll('.sona-panel')) if (p.sonaCalledBack) p.sonaCalledBack();
   return true;
 }
 
@@ -1963,7 +1966,7 @@ async function sonaPanel(limit, withTranscripts) {
     w.dataset.feedName = 'Sona calls';
     return w;
   }
-  const wrap = el('div');
+  const wrap = el('div', 'sona-panel'); // P17 review: found on screen by a Call back on another screen (sonaCalledBack)
   wrap.appendChild(el('div', 'panel-title', 'Sona calls (Quo)'));
   const st = d.status;
   if (st.registration.state === 'not_configured') {
@@ -2015,6 +2018,7 @@ async function sonaPanel(limit, withTranscripts) {
     }
     for (const k of cards) if (sonaNeedsYou(k.c) && now[k.c.callId] && !k.card.querySelector('.sona-handled')) k.card.insertBefore(handledLine(now[k.c.callId]), k.actions);
   };
+  wrap.sonaCalledBack = calledBack;
   const rec = st.quoRecord || {};
   if (rec.error) {
     wrap.appendChild(el('div', 'storm', 'Arbo could not read Sona\u2019s calls from Quo (' + rec.error + ') \u2014 calls the webhook missed are not being learned. That doesn\u2019t mean no calls came in.'));
