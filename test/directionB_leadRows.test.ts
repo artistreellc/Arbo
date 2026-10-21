@@ -136,8 +136,9 @@ describe('Leads: compact rows with a round call button (P8)', () => {
     const { cards } = await draw([lead()]);
     const row = cards[0]!.children.find((n) => n.has('actions'))!;
     const btns = row.children.filter((n) => n.tag === 'button');
-    expect(btns.map((b) => b.text())).toEqual(['Good lead', 'Spam']);
-    expect(btns.map((b) => b.attrs['aria-label'])).toEqual(['Mark as a good lead', 'File as spam or wrong number']);
+    // Direction B P18: "Prep estimate ›" joins the row after the pair (it files nothing; tested in directionB_prepFromLead).
+    expect(btns.map((b) => b.text())).toEqual(['Good lead', 'Spam', 'Prep estimate ›']);
+    expect(btns.slice(0, 2).map((b) => b.attrs['aria-label'])).toEqual(['Mark as a good lead', 'File as spam or wrong number']);
     expect(row.all().some((n) => n.has('callbtn'))).toBe(false);
   });
 

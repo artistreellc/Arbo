@@ -120,6 +120,16 @@ export interface ApiLead {
   needsCallback: boolean;
   city: string | null;
   zip: string | null;
+  /**
+   * Direction B P18: the street of the lead's property, so an estimate prep starts from the lead's
+   * address. null when there is no property or no street on file — or when it could not be read,
+   * which streetUnreadable / streetCut then name (§1B). A customer's detail on Mike's own screen
+   * (R17): the page keeps it in memory only, never in the URL, history or storage, and no log says it.
+   */
+  street: string | null;
+  streetUnreadable?: true;
+  /** The properties link is cut on purpose, so the street was not read — said as "cut", never as none on file. */
+  streetCut?: true;
   isFirstTimer: boolean | null;
   quality: LeadQualityResult;
   /** Latest permit screen for the lead's property, when one is on file. */
@@ -382,6 +392,12 @@ export interface ApiLeadInput {
   propertyId: string | null;
   city: string | null;
   zip: string | null;
+  /** Direction B P18: the property's street; null when none on file (or not read — the two flags below say which). */
+  street?: string | null;
+  /** The street read failed for this lead's property — unknown, not "none on file" (§1B). */
+  streetUnreadable?: boolean;
+  /** The properties link is CUT on purpose, so the street was not read. */
+  streetCut?: boolean;
   isFirstTimer: boolean | null;
   /** Latest permit track for the lead's property; null when none on file. */
   permit: ApiPermitFlag | null;
@@ -507,6 +523,10 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
           ...(older && r.isEmergency ? { filedAsEmergency: true as const } : {}),
           city: r.city,
           zip: r.zip,
+          // Direction B P18: prep starts from the lead's address. A street that was not read is named, never a blank.
+          street: r.streetUnreadable || r.streetCut ? null : r.street ?? null,
+          ...(r.streetUnreadable === true ? { streetUnreadable: true as const } : {}),
+          ...(r.streetCut === true && r.streetUnreadable !== true ? { streetCut: true as const } : {}),
           isFirstTimer: r.isFirstTimer,
           ...(q['language'] === 'es' ? { language: 'es' as const } : {}),
           quality: scoreLead({

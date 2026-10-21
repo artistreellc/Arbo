@@ -258,6 +258,7 @@ describe('the prep sheet, row by row, in the server’s words (P15)', () => {
     const card = k.estimatePrepPanel();
     const input = card.all().find((n) => n.tag === 'input' && n.id === 'ep-address')!;
     input.value = '1 Simulation Row';
+    card.all().find((n) => n.tag === 'select' && n.id === 'ep-city')!.value = 'Norfolk'; // a real select starts on its first city; the stand-in starts empty
     const go = card.all().find((n) => n.tag === 'button' && n.textContent === 'Build prep sheet')!;
     await go.click();
     await flush();

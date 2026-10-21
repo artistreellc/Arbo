@@ -742,6 +742,12 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 .est-tool .reading{padding:2px 0 0;margin:0;font-size:13px}
 .prep-cityzip{display:grid;grid-template-columns:1fr 112px;gap:10px}
 @media (max-width:359px){.prep-cityzip{grid-template-columns:1fr}}
+/* Direction B P18: the lead a prep came from, and the lead row's way in. */
+.prep-from{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 12px;padding:2px 2px 2px 14px;border-radius:var(--r-pill);background:color-mix(in srgb,var(--forest) 10%,var(--card));color:var(--forest);font-size:14px;font-weight:700}
+.prep-x{flex:none;min-width:44px;min-height:44px;border:0;border-radius:var(--r-pill);background:none;color:var(--forest);font-size:22px;line-height:1;cursor:pointer}
+.field + .storm-muted,.field + .feed-state,.prep-cityzip + .storm-muted{margin-top:-4px}
+/* A line of its own under Good lead / Spam: the pair already fills a 390 px row (three across squeezed "Good lead" onto two lines). */
+.minibtn.prep-lead{flex:1 1 100%;min-height:44px;font-size:13.5px;color:var(--forest);border-color:var(--hairline)}
 .verdict .prep-lab{margin:14px 0 2px}.verdict .prep-lab:first-child{margin-top:0}
 .verdict .prep-jc{margin-top:10px}
 .verdict .feed-state .prep-again{display:block;margin-top:8px}
@@ -3431,6 +3437,14 @@ async function renderLeads() {
     if (lead.status === 'qualified') goodDone(good);
     row.appendChild(good);
     row.appendChild(mark('i-close', 'Spam', 'File as spam or wrong number', 'bad', 'spam'));
+    // Direction B P18: prep an estimate from this lead — Estimate opens prefilled, the lead handed over in
+    // memory (never the URL or storage). An older lead is not new work (R32), so it gets none.
+    if (!lead.older) {
+      const prep = el('button', 'minibtn prep-lead', 'Prep estimate ›');
+      prep.type = 'button';
+      prep.addEventListener('click', () => prepFromLead(lead));
+      row.appendChild(prep);
+    }
     c.appendChild(row);
     out.push(c);
   }
@@ -3772,6 +3786,18 @@ async function renderEstimate() {
   can(true);
 }
 
+// ---------- Prep an estimate from a lead (Direction B P18; spec: "prep starts from a lead's address") ----------
+// The lead is handed to Estimate in memory: its id and what the prep needs (name, street, city, ZIP,
+// what they said) — never the phone, and never through the URL hash, history.state, storage or a log,
+// because an address is a customer's detail. Estimate is drawn fresh with it; × on its pill clears it.
+let PREP_LEAD = null;
+function prepFromLead(lead) {
+  PREP_LEAD = { id: lead.id, name: lead.name || null, street: lead.street || null, streetUnreadable: !!lead.streetUnreadable, streetCut: !!lead.streetCut,
+    city: lead.city || null, zip: lead.zip || null, details: lead.details || null, focused: false };
+  switchTab('estimate');
+  renderEstimate();
+}
+
 // ---------- The Book (§6/#36: every property, tap into its twin) ----------
 // ---------- Estimate prep (Mike 2026-09-24: know the property before the drive) ----------
 function estimatePrepPanel() {
@@ -3787,25 +3813,68 @@ function estimatePrepPanel() {
     w.appendChild(l); w.appendChild(node); return w;
   };
   const addr = el('input'); addr.type = 'text'; addr.placeholder = '123 Oak St';
+  // Direction B P18: a lead handed over in memory (PREP_LEAD) fills what it has; what it lacks is said, never guessed.
+  const lead = PREP_LEAD;
+  const cities = ['Virginia Beach', 'Norfolk', 'Chesapeake', 'Portsmouth'];
   const citySel = el('select');
-  for (const c of ['Virginia Beach', 'Norfolk', 'Chesapeake', 'Portsmouth']) citySel.appendChild(new Option(c, c));
+  if (lead && !lead.city) citySel.appendChild(new Option('Choose the city', '')); // never a default that looks like the lead's
+  for (const c of cities) citySel.appendChild(new Option(c, c));
+  // A city outside the four stays as the lead said it — the server flags it (R1: flag, never bin).
+  if (lead && lead.city && !cities.includes(lead.city)) citySel.appendChild(new Option(lead.city, lead.city));
   const zip = el('input'); zip.type = 'text'; zip.placeholder = '23452'; zip.inputMode = 'numeric';
   const jobSel = el('select');
   for (const [val, lab] of [['removal', 'Removal'], ['pruning', 'Pruning / trimming'], ['stump', 'Stump grinding'], ['land_clearing', 'Land clearing'], ['other', 'Other']]) {
     jobSel.appendChild(new Option(lab, val));
   }
   const notes = el('textarea'); notes.placeholder = 'Access notes from the call — fenced backyard, tight gate, dogs…';
+  const said = []; // the lines that say what the lead lacks — × takes them away with the pill
+  let streetLine = null;
+  if (lead) {
+    const pill = el('div', 'prep-from');
+    pill.appendChild(el('span', '', 'From ' + (lead.name || 'the caller') + '’s lead'));
+    const x = el('button', 'prep-x', '×');
+    x.type = 'button';
+    x.setAttribute('aria-label', 'Clear the lead');
+    x.addEventListener('click', () => {
+      PREP_LEAD = null;
+      addr.value = ''; zip.value = ''; notes.value = '';
+      addr.placeholder = '123 Oak St';
+      citySel.value = 'Virginia Beach';
+      pill.remove();
+      for (const n of said) n.remove();
+    });
+    pill.appendChild(x);
+    card.appendChild(pill);
+    addr.value = lead.street || '';
+    citySel.value = lead.city || '';
+    zip.value = lead.zip || '';
+    notes.value = lead.details || '';
+    if (!lead.street) {
+      // §1B: a street Arbo could not read is named; one not on file is said — the box is focused, once, to type it.
+      const gap = lead.streetUnreadable ? 'unread' : lead.streetCut ? 'cut' : null;
+      addr.placeholder = gap ? 'Type the street' : 'Street not on file';
+      streetLine = el('div', gap ? 'feed-state ' + gap : 'storm-muted', gap ? 'Street: ' + FEED_WORD[gap] + ' — type it in.' : 'Street not on file — type it in.');
+      said.push(streetLine);
+      if (!lead.focused) { lead.focused = true; setTimeout(() => addr.focus(), 0); }
+    }
+  }
   card.appendChild(f('Address', addr));
+  if (streetLine) card.appendChild(streetLine);
   // Direction B P15: City and ZIP share a row, so Estimate's tools sit a field higher (a narrow phone stacks them).
   const cz = card.appendChild(el('div', 'prep-cityzip'));
   cz.appendChild(f('City', citySel));
   cz.appendChild(f('ZIP', zip));
+  if (lead && !lead.city) {
+    const n = card.appendChild(el('div', 'storm-muted', 'City not on file — choose one.'));
+    said.push(n);
+  }
   card.appendChild(f('Job type', jobSel));
   card.appendChild(f('Access notes', notes));
   const go = el('button', 'actbtn', 'Build prep sheet');
   const out = el('div');
   go.onclick = async () => {
     if (!addr.value.trim()) { out.replaceChildren(el('div', 'errline', 'Address is required.')); return; }
+    if (!citySel.value) { out.replaceChildren(el('div', 'errline', 'Choose the city.')); return; }
     go.disabled = true; go.textContent = 'Screening…';
     out.replaceChildren();
     let s;
