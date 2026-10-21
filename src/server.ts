@@ -182,8 +182,11 @@ import { CallMemory, CallRecordStore } from './reception/callMemory.js';
 import { createRefreshTokenProvider } from './integrations/googleOAuth.js';
 import { LEAD_CHANNELS, channelIsOff, setChannelOff } from './reception/leadMail.js';
 import { getTodayWorkZip, setTodayWorkZip, getLiveWorkZip, setLivePingZip, setLocationEnabled, isLocationEnabled, liveLocationState } from './reception/routingHint.js';
-import { planRouteLive } from './ops/routePlanner.js';
+import { planRouteBest, type BestPlanDeps } from './ops/routePlanner.js';
 import { fetchDriveMinutesMatrix } from './integrations/googleRoutes.js';
+import { createTomTomClient } from './integrations/tomtom.js';
+import { createTodayStops } from './ops/todayStops.js';
+import { etInstant, etRfc3339 } from './lib/etDay.js';
 import { withinWorkingHours } from './ops/locationIntel.js';
 import type { Alerter } from './reception/receptionist.js';
 import { loadAppHtml, loadCrewHtml, loadTalkHtml, loadTalkWidgetJs } from './server/appPage.js';
@@ -809,6 +812,48 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
     // when that link is open, so a cut link is a named boot state, not a
     // swallowed per-turn failure.
     ...(hasDb() && linkOpen('calls') ? { logTurn: (key: string, turn: Parameters<typeof appendConversationTurn>[2]) => appendConversationTurn(key, 'voice', turn) } : {}),
+  });
+
+  // ═══ R35 (Mike, 2026-10-20: "and for a route planner intergrate tomtom"):
+  // the route engines, in Mike's order — TomTom when TOMTOM_API_KEY is set,
+  // else Google Routes (R16), else ZIP estimates; the plan names which. The
+  // TomTom key stays on this server: it rides only in TomTom's request URL,
+  // never to the phone, a log or an error (src/integrations/tomtom.ts). ═══
+  const tomtomClient = env.tomtom.apiKey ? createTomTomClient(env.tomtom.apiKey) : null;
+  const routeEngines = (departAt: (startMin: number) => string | undefined): BestPlanDeps => ({
+    tomtom: tomtomClient
+      ? { geocode: (q) => tomtomClient.geocode(q), route: (points, o) => tomtomClient.route(points, o), departAt }
+      : null,
+    google: {
+      apiKey: env.google.mapsApiKey ?? null,
+      fetchMatrix: (addrs, key, dep) => fetchDriveMinutesMatrix(addrs, key, (u, i) => fetch(u, i), dep),
+      nowIso: () => new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+    },
+  });
+  // Today's stops read Google Calendar 'primary' with listEvents — a GET — on
+  // a reader of their own: the R18 writer above is not built while Google is
+  // read-only (R33). Built once, on the first read with a Google sign-in, so
+  // its access token is reused; nothing it reads is saved (R24, R33 #3).
+  let calendarReader: ReturnType<typeof createGoogleCalendarApi> | null = null;
+  const todayStops = createTodayStops({
+    now: () => new Date(),
+    practice: () => dataLinksSim(),
+    calendar: () => {
+      if (!calendarReader) {
+        const creds = googleCredsNow();
+        if (!creds) return null;
+        calendarReader = createGoogleCalendarApi(createRefreshTokenProvider(creds));
+      }
+      const reader = calendarReader;
+      return (calendarId, timeMinIso, timeMaxIso) => reader.listEvents(calendarId, timeMinIso, timeMaxIso);
+    },
+    anchors: () => ({ startZip: getLiveWorkZip(Date.now()) ?? getTodayWorkZip(), homeZip: env.ownerHomeZip ?? null }),
+    // A run's departure is its window's start on the plan's day — or TomTom's "now" once that has passed.
+    plan: (input, day) => planRouteBest(input, routeEngines((startMin) => {
+      const at = etInstant(day, startMin);
+      return at.getTime() > Date.now() + 60_000 ? etRfc3339(at) : undefined;
+    })),
+    tomtomSet: tomtomClient !== null,
   });
 
   return async (req: IncomingMessage, res: ServerResponse) => {
@@ -1761,8 +1806,14 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
         console.error(`[settings] location ${body.on ? 'ON' : 'OFF'}`);
         return send(200, { enabled: isLocationEnabled() });
       }
-      // R16: the route planner. Live traffic via Google when a Maps key is
-      // configured; ZIP estimates otherwise — the plan itself names its mode.
+      // R35: today's stops — today's Google Calendar events (read only, in
+      // memory), planned by TomTom / Google / ZIP, for the Calendar tab.
+      if (req.method === 'GET' && url.pathname === '/api/route/today') {
+        return send(200, await todayStops.read());
+      }
+      // R16: the route planner. R35: TomTom first when its key is set, then
+      // live traffic via Google when a Maps key is configured, then ZIP
+      // estimates — the plan itself names its engine and mode.
       if (req.method === 'POST' && url.pathname === '/api/route/plan') {
         const body = (await readJson(req)) as { stops?: unknown; day?: unknown; slotMinutes?: unknown };
         const day = body.day === 'saturday' || body.day === 'weekday' ? body.day : null;
@@ -1775,7 +1826,7 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
           }
           stops.push({ label: s.label.trim(), zip: s.zip, ...(typeof s.city === 'string' && s.city.trim() !== '' ? { city: s.city.trim() } : {}) });
         }
-        const plan = await planRouteLive(
+        const plan = await planRouteBest(
           {
             stops,
             day,
@@ -1783,11 +1834,8 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
             startZip: getLiveWorkZip(Date.now()) ?? getTodayWorkZip(),
             homeZip: env.ownerHomeZip ?? null,
           },
-          {
-            apiKey: env.google.mapsApiKey ?? null,
-            fetchMatrix: (addrs, key, dep) => fetchDriveMinutesMatrix(addrs, key, (u, i) => fetch(u, i), dep),
-            nowIso: () => new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-          },
+          // The typed planner names no date, so TomTom departs in five minutes, as Google does.
+          routeEngines(() => etRfc3339(new Date(Date.now() + 5 * 60 * 1000))),
         );
         return send(200, plan);
       }

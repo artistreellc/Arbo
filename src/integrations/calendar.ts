@@ -74,6 +74,8 @@ export interface CalendarEvent {
   endIso: string;
   colorId?: string;
   zip?: string;
+  /** The event's location as typed on the calendar — R35's Today's stops read it (in memory only). */
+  location?: string;
 }
 
 export interface CalendarApi {
@@ -143,6 +145,7 @@ interface GoogleEvent {
   id: string;
   summary?: string;
   colorId?: string;
+  location?: string;
   start?: { dateTime?: string; date?: string };
   end?: { dateTime?: string; date?: string };
   extendedProperties?: { private?: Record<string, string> };
@@ -156,5 +159,6 @@ function fromGoogle(e: GoogleEvent): CalendarEvent {
     endIso: e.end?.dateTime ?? e.end?.date ?? '',
     colorId: e.colorId,
     zip: e.extendedProperties?.private?.zip || undefined,
+    location: e.location || undefined,
   };
 }

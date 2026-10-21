@@ -488,6 +488,12 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 .cal-ev .who{font-family:var(--serif);font-size:16.5px;font-weight:600;line-height:1.3}
 .cal-ev .where{font-size:13.5px;color:var(--ink-3);margin-top:2px;overflow:hidden;text-overflow:ellipsis}
 .cal-ev .gcal{color:var(--forest);font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap}
+/* R35: today's stops (a stop with an address is a button that asks before Google Maps) and the Maps sheet. */
+button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer;min-height:44px}
+.cal-ev .gcal{align-self:center}
+.maps-who{font-family:var(--serif);font-size:19px;font-weight:600;color:var(--ink-1);line-height:1.3;margin:0 2px 6px;overflow-wrap:anywhere}
+.maps-stop{font-size:14px;color:var(--ink-2);padding:8px 0;border-bottom:1px solid var(--hairline);overflow-wrap:anywhere}
+#maps .routebtn{margin-top:14px}
 
 /* ── Offline + toast ─────────────────────────────────────────────────── */
 #offline{display:none;position:sticky;top:0;z-index:25;margin:0 -16px 10px;padding:10px 16px;background:var(--warning-bg);color:color-mix(in srgb,var(--warning) 75%,var(--ink-1));font-size:13.5px;font-weight:600;border-bottom:1px solid color-mix(in srgb,var(--warning) 30%,transparent)}
@@ -777,6 +783,15 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
   <div id="photo-state" class="storm-muted" role="status"></div>
   <div class="photo-stage"><img id="photo-img" alt="Photo from Quo, full screen" hidden></div>
   <p class="photo-foot">View-only: the photo stays in Quo. Arbo shows it while this screen is open and keeps no copy. Pinch to zoom.</p>
+</div>
+
+<!-- R35: a tap on one of today's stops (Calendar tab) asks first, then hands the address to Google Maps. -->
+<div id="maps" class="sheet">
+  <div class="sheet-head">
+    <button id="maps-close" aria-label="Close"><svg class="hico" aria-hidden="true"><use href="#i-close"/></svg></button>
+    <div class="brand">GOOGLE MAPS</div>
+  </div>
+  <div id="maps-body"></div>
 </div>
 
 <nav aria-label="Sections">
@@ -2853,6 +2868,122 @@ async function renderLeads() {
   }
 }
 
+// ---------- Today's stops (R35) — read from the calendar, planned, one tap to Google Maps ----------
+// Mike, 2026-10-20: "so its automated and when i select a name in my schedule it
+// asks if i want to open google maps and its pre loaded". The server reads today's
+// Google Calendar (read-only, nothing saved) and plans it — TomTom, else Google,
+// else ZIP estimates, and the line says which. A tap asks first; no address goes
+// into a Google Maps link until that tap. The calendar frame below stays as it is (R2).
+function clock12(s) {
+  if (!/^\d{1,2}:\d{2}$/.test(s)) return s;
+  const [h, m] = s.split(':').map(Number);
+  return ((h + 11) % 12 + 1) + ':' + String(m).padStart(2, '0') + (h < 12 ? ' AM' : ' PM');
+}
+// Google's documented directions link (no key): the last address is where it goes, the rest are stops on the way.
+function mapsDirUrl(addrs) {
+  const via = addrs.slice(0, -1);
+  return 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(addrs[addrs.length - 1]) +
+    (via.length ? '&waypoints=' + via.map(encodeURIComponent).join('%7C') : '') + '&travelmode=driving';
+}
+const MAPS_STOPS_PER_LINK = 4; // Google Maps on a phone takes up to 3 stops on the way, then the last one
+function mapsLinks(addrs) {
+  const out = [];
+  for (let i = 0; i < addrs.length; i += MAPS_STOPS_PER_LINK) out.push(mapsDirUrl(addrs.slice(i, i + MAPS_STOPS_PER_LINK)));
+  return out;
+}
+function openMapsStop(s) {
+  const yes = el('a', 'routebtn', 'Yes — open Google Maps');
+  yes.href = mapsDirUrl([s.address]);
+  yes.target = '_blank';
+  yes.rel = 'noopener';
+  const no = el('button', 'minibtn wide-btn', 'No');
+  no.type = 'button';
+  no.addEventListener('click', () => closeSheet('maps'));
+  $('maps-body').replaceChildren(el('div', 'panel-title', 'Open in Google Maps?'), el('div', 'maps-who', s.title || 'No title'), el('div', 'storm-muted', s.address), yes, no);
+  $('maps').classList.add('show'); sheetOpened('maps');
+}
+function openMapsDay(d) {
+  const byId = new Map(d.stops.map((s) => [s.id, s]));
+  const list = d.plan.order.map((id) => byId.get(id)).filter((s) => s && s.address);
+  const links = mapsLinks(list.map((s) => s.address));
+  const how = (d.plan.engine ? 'Today’s ' + plural(list.length, 'stop') + ' in the planned order.' : 'Today’s ' + plural(list.length, 'stop') + ' in calendar order.') +
+    (links.length > 1 ? ' Google Maps on a phone takes 3 stops on the way plus the last one, so the day is split into ' + links.length + ' parts — open the next part when you reach the end of one.' : '');
+  const out = [el('div', 'panel-title', 'Open in Google Maps?'), el('div', 'storm-muted', how)];
+  list.forEach((s, i) => out.push(el('div', 'maps-stop', (i + 1) + '. ' + (s.title || 'No title') + ' — ' + s.address)));
+  links.forEach((u, i) => {
+    const from = i * MAPS_STOPS_PER_LINK + 1;
+    const to = Math.min(list.length, from + MAPS_STOPS_PER_LINK - 1);
+    const a = el('a', 'routebtn', links.length > 1 ? 'Yes — part ' + (i + 1) + ': ' + (from === to ? 'stop ' + from : 'stops ' + from + '–' + to) : 'Yes — open Google Maps');
+    a.href = u;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    out.push(a);
+  });
+  const no = el('button', 'minibtn wide-btn', 'No');
+  no.type = 'button';
+  no.addEventListener('click', () => closeSheet('maps'));
+  out.push(no);
+  $('maps-body').replaceChildren(...out);
+  $('maps').classList.add('show'); sheetOpened('maps');
+}
+// One row per event: its own booked time, the title, the city; the plan's suggestion under it.
+function todayStopRow(s) {
+  const row = el(s.address ? 'button' : 'div', 'cal-ev');
+  row.appendChild(el('div', 't', s.allDay ? 'All day' : s.time ? clock12(s.time) : ''));
+  const body = el('div', 'body');
+  body.appendChild(el('div', 'who', s.title || 'No title'));
+  // The city when Arbo can name it; otherwise the address as typed, never a guess.
+  body.appendChild(el('div', 'where', s.address ? (s.city || s.address) : 'No address on the event'));
+  if (s.plan) body.appendChild(el('div', 'where', 'Plan: stop ' + s.plan.order + ' · about ' + clock12(s.plan.start)));
+  else if (s.why && s.why !== 'No address on the event') body.appendChild(el('div', 'where', s.why));
+  row.appendChild(body);
+  if (s.address) {
+    row.type = 'button';
+    row.appendChild(el('span', 'gcal', 'Maps ›'));
+    row.addEventListener('click', () => openMapsStop(s));
+  }
+  return row;
+}
+// How the plan line reads: a live plan is a plain note; estimates and gaps wear the feed-state dot.
+const PLAN_LINE_CLASS = { live: 'storm-muted', estimate: 'feed-state unset', estimate_failed: 'feed-state unread', none: 'feed-state cut', practice: 'feed-state sim' };
+let TODAY_SEQ = 0; // a slow answer never draws over a newer one
+async function renderTodayStops() {
+  const box = $('today-stops');
+  if (!box) return;
+  const seq = ++TODAY_SEQ;
+  let d;
+  try { d = await api('/api/route/today'); }
+  catch (e) {
+    if (e.code === 401 || seq !== TODAY_SEQ) return;
+    box.replaceChildren(el('div', 'panel-title', 'Today’s stops'), feedLine(e, 'Today’s stops', 'This is not an empty day.'));
+    return;
+  }
+  if (seq !== TODAY_SEQ) return;
+  const out = [el('div', 'panel-title', 'Today’s stops')];
+  if (d.practice) out.push(el('div', 'feed-state sim', 'Practice stops — SIM names on streets that do not exist. TomTom and Google are not asked in practice mode; your real calendar is below.'));
+  const tomtomLine = d.tomtom && d.tomtom.line ? el('div', 'feed-state ' + (d.tomtom.state === 'failed' ? 'unread' : 'unset'), d.tomtom.line) : null;
+  if (d.state !== 'ok' && d.state !== 'practice') {
+    out.push(el('div', 'feed-state ' + (d.state === 'google_not_connected' ? 'unset' : 'unread'), d.line));
+    if (tomtomLine) out.push(tomtomLine);
+  } else if (!d.stops.length) {
+    out.push(el('div', 'storm-muted', 'Nothing on your Google Calendar today.'));
+    if (tomtomLine) out.push(tomtomLine);
+  } else {
+    if (d.plan) out.push(el('div', PLAN_LINE_CLASS[d.plan.kind] || 'feed-state unread', d.plan.line));
+    if (tomtomLine) out.push(tomtomLine);
+    if (d.plan && d.plan.note) out.push(el('div', 'storm-muted', d.plan.note));
+    if (d.plan) for (const w of d.plan.warnings) out.push(el('div', 'late', '⚠ ' + w.replace(/\b\d{1,2}:\d{2}\b/g, clock12)));
+    for (const s of d.stops) out.push(todayStopRow(s));
+    if (d.plan && d.plan.order.length) {
+      const all = el('button', 'hudbtn', 'Route the whole day in Google Maps');
+      all.type = 'button';
+      all.addEventListener('click', () => openMapsDay(d));
+      out.push(all);
+    }
+  }
+  box.replaceChildren(...out);
+}
+
 // ---------- Route planner (R16) — lives with the calendar (Mike, 2026-09-21) ----------
 function routePlannerPanel(v) {
   v.appendChild(el('div', 'panel-title', 'Route planner'));
@@ -2905,9 +3036,13 @@ function routePlannerPanel(v) {
     const t12 = (s) => { if (!/^\d{1,2}:\d{2}$/.test(s)) return s; const [h, m] = s.split(':').map(Number); return ((h + 11) % 12 + 1) + ':' + String(m).padStart(2, '0') + (h < 12 ? ' AM' : ' PM'); };
     // Live traffic is a plain note. ZIP estimates name why there is no traffic
     // read: a Maps call that failed, or no Maps key set up on the server.
-    pout.appendChild(plan.mode === 'live_traffic'
+    // R35: TomTom's plan says TomTom; when TomTom did not plan it, its own line says why (not set up, or failed).
+    pout.appendChild(plan.mode === 'tomtom_traffic'
+      ? el('div', 'storm-muted', 'TomTom live traffic \u00b7 ' + plan.note)
+      : plan.mode === 'live_traffic'
       ? el('div', 'storm-muted', 'Live traffic \u00b7 ' + plan.note)
       : el('div', 'feed-state ' + (/Maps call failed/.test(plan.note) ? 'unread' : 'unset'), 'ZIP estimates \u00b7 ' + plan.note));
+    if (plan.tomtom && plan.tomtom.line) pout.appendChild(el('div', 'feed-state ' + (plan.tomtom.state === 'failed' ? 'unread' : 'unset'), plan.tomtom.line));
     // A plan warning is amber; the red callout stays for a plan that failed.
     for (const w of plan.warnings) pout.appendChild(el('div', 'late', '\u26a0 ' + w.replace(/\b\d{1,2}:\d{2}\b/g, t12)));
     // One row per visit: its start time in the chip column, then the stop.
@@ -2948,8 +3083,12 @@ function gcalEmbedUrl() {
 }
 function renderCalendar() {
   const v = $('view-cal');
-  if (v.querySelector('#gcal-frame')) return; // don't reload on every refresh tick
+  if (v.querySelector('#gcal-frame')) { renderTodayStops(); return; } // the frame never reloads on a refresh tick; today's stops do
   v.replaceChildren();
+  // R35: today's stops sit above the calendar in a box of their own, so they refresh without touching the frame (R2).
+  const stops = el('div');
+  stops.id = 'today-stops';
+  v.appendChild(stops);
   const head = el('div', 'cal-src', '\u25CF Google Calendar \u2014 Art-is-Tree');
   v.appendChild(head);
   // In practice mode every other screen is fake; this frame is still Mike's
@@ -2978,6 +3117,7 @@ function renderCalendar() {
   // R16 (Mike): the planner belongs with the calendar — plan the run, then
   // put it on the real Google Calendar with the button above.
   routePlannerPanel(v);
+  renderTodayStops();
 }
 
 // ---------- The Book (§6/#36: every property, tap into its twin) ----------
@@ -6727,7 +6867,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && TAL
 // home-screen shortcut, the crew preview's way back) a More desk lands on More
 // and anything else on Today.
 const NAV_PARENT = { book: 'more', followups: 'more', perf: 'more', permits: 'more', agents: 'more', measure: 'more', learn: 'more', assistant: 'more', settings: 'today' };
-const SHEETS = ['twin', 'yard', 'bd', 'talk', 'approval', 'photo'];
+const SHEETS = ['twin', 'yard', 'bd', 'talk', 'approval', 'photo', 'maps'];
 let NAV_QUIET = false; // true while a back step is drawn — drawing it must not add a new step
 function navPush(which) {
   if (NAV_QUIET) return;
@@ -6790,6 +6930,7 @@ window.addEventListener('popstate', (ev) => {
 });
 $('back-btn').addEventListener('click', navBack);
 $('photo-close').addEventListener('click', () => closeSheet('photo'));
+$('maps-close').addEventListener('click', () => closeSheet('maps'));
 $('photo-img').addEventListener('error', () => { if ($('photo-img').getAttribute('src')) photoViewFailed(); });
 // iPhone (Mike, 2026-10-20: "this is for iphone"): a home-screen app gets no
 // swipe-back from iOS, so a swipe right that starts at the left edge steps
@@ -6867,6 +7008,8 @@ netState();
 }
 refreshAll();
 setInterval(autoRefresh, 60000);
+// R35: a half-typed route-planner box holds the whole Calendar view (holdsTyping); today's stops keep their own minute.
+setInterval(() => { if (!document.hidden && !$('keywall').classList.contains('show') && holdsTyping($('view-cal'))) renderTodayStops(); }, 60000);
 document.addEventListener('visibilitychange', autoRefresh);
 </script>
 </body>
