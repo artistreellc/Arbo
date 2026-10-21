@@ -76,6 +76,42 @@ describe('permitVerdict: the pinned one-line result', () => {
     }
   });
 
+  // Review (b-wave-1b, correctness 1 / UI 5): the pin picked one chip by colour, so
+  // PERMIT LIKELY lost a tie to REVIEW NEEDED (both amber) and lost outright to any
+  // CALL FIRST or TICKET REQUIRED — the permit word itself was dropped. The
+  // strongest permit word is always on the pin; the call-aheads sit beside it.
+  it('the strongest permit word is always pinned, beside any CALL FIRST or TICKET REQUIRED (every answer, every city)', () => {
+    const ORDER = ['PERMIT LIKELY', 'REVIEW NEEDED', 'NO OVERLAY–VERIFY'];
+    const tri = [true, false, 'unknown'] as const;
+    const bool = [true, false];
+    let likely = 0;
+    for (const city of ['Virginia Beach', 'Norfolk', 'Chesapeake', 'Portsmouth'] as const) {
+      for (const rpa of tri) for (const pl of tri) for (const row of tri) for (const hist of tri)
+        for (const stump of bool) for (const haul of bool) for (const burn of bool) {
+          const items = jobChecklist({ city, inRpa: rpa, nearPowerLines: pl, inRightOfWay: row, historicDistrict: hist, stumpGrinding: stump, haulingDebris: haul, burning: burn });
+          const labels = permitVerdict(items, city).chips.map(([l]) => l);
+          const word = ORDER.find((w) => items.some((i) => i.status === w));
+          if (word) expect(labels, `${city} ${JSON.stringify({ rpa, pl, row, hist, stump, haul, burn })}`).toContain(PERMIT_STATUS[word]![0]);
+          if (word === 'PERMIT LIKELY') { likely++; expect(labels).not.toContain(PERMIT_STATUS['REVIEW NEEDED']![0]); }
+          for (const s of ['CALL FIRST', 'TICKET REQUIRED']) if (items.some((i) => i.status === s)) expect(labels).toContain(s);
+        }
+    }
+    expect(likely, 'the sweep reaches PERMIT LIKELY answers').toBeGreaterThan(0);
+  });
+
+  it('the review\'s three Virginia Beach cases pin PERMIT LIKELY (the page\'s own starting answers, then one changed)', () => {
+    const START: Omit<JobInput, 'city'> = { inRpa: 'unknown', nearPowerLines: 'unknown', inRightOfWay: 'unknown', historicDistrict: 'unknown', stumpGrinding: false, haulingDebris: false, burning: false };
+    const vb = (o: Partial<JobInput>) => { const items = jobChecklist({ city: 'Virginia Beach', ...START, ...o }); return permitVerdict(items, 'Virginia Beach').chips; };
+    expect(vb({ inRpa: true })[0]).toEqual(['PERMIT LIKELY', 'watch']);
+    expect(vb({ inRpa: true }).map(([l]) => l)).not.toContain('PERMIT: REVIEW NEEDED');
+    const stump = vb({ inRpa: true, stumpGrinding: true });
+    expect(stump).toContainEqual(['TICKET REQUIRED', 'stop']);
+    expect(stump).toContainEqual(['PERMIT LIKELY', 'watch']);
+    const power = vb({ inRpa: true, nearPowerLines: true });
+    expect(power[0]).toEqual(['CALL FIRST', 'alarm']);
+    expect(power).toContainEqual(['PERMIT LIKELY', 'watch']);
+  });
+
   it('no steps back is never a calm verdict: it says the check gave no answer', () => {
     const v = permitVerdict([], 'Portsmouth');
     expect(v.chips).toEqual([]);
