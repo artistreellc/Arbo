@@ -134,3 +134,50 @@ describe('small text: a 12 px floor, higher contrast on the hero (P2)', () => {
     for (const prop of uses) expect(['background', 'box-shadow'], prop).toContain(prop);
   });
 });
+
+// ---------- review (UI 2, UI 3): larger text must not cut what it says ----------
+describe('the header date is shown whole or not at all — never "WED, OCT 2…" (review UI 2)', () => {
+  // P2's 11.5 px cut the day off the date on every non-Today screen at 390
+  // ("Wed, Oct 21 · Art-is-Tree" read "WED, OCT 2…" — another day). The date
+  // is now one atomic piece (inline-block): a row too narrow for it hides it
+  // whole behind the ellipsis. The Back screens' row is spaced tighter so the
+  // whole date fits at 390 again.
+  type Sub = { textContent: string; parts: Array<string | { className: string; textContent: string }>; replaceChildren: (...xs: Sub['parts']) => void };
+  const line = (LINKS: string | null, CUR_TAB: string) => {
+    const sub: Sub = {
+      textContent: '', parts: [],
+      replaceChildren(...xs) { this.parts = xs; this.textContent = xs.map((x) => (typeof x === 'string' ? x : x.textContent)).join(''); },
+    };
+    pageFn<() => void>('setAppSub', { $: () => sub, el, LINKS, CUR_TAB, APPSUB_DATE: 'Sun, Oct 18' })();
+    return sub;
+  };
+
+  it('on a dated screen the date is its own .sub-date piece, and the words are unchanged', () => {
+    for (const [links, words] of [['cut', 'Sun, Oct 18 · Art-is-Tree'], ['live', 'Sun, Oct 18 · Art-is-Tree'], ['simulation', 'SIMULATION · Sun, Oct 18']] as const) {
+      const sub = line(links, 'calls');
+      expect(sub.textContent, links).toBe(words);
+      const date = sub.parts.filter((x) => typeof x !== 'string');
+      expect(date, links).toHaveLength(1);
+      expect(date[0], links).toMatchObject({ className: 'sub-date', textContent: 'Sun, Oct 18' });
+    }
+  });
+
+  it('the date piece is atomic (inline-block), so an ellipsis takes it whole — and never the row\'s first box, which a browser clips instead', () => {
+    expect(css).toContain(".brand small .sub-date{display:inline-block}#appsub::before{content:'';display:inline-block}");
+  });
+
+  it('the Back screens\' row is spaced .06em (was .14em), so the whole date fits at 390', () => {
+    expect(css).toContain('.brand.has-back > span{min-width:0}.brand.has-back small{letter-spacing:.06em}');
+  });
+});
+
+describe('at 320 px a tile\'s one-word label is never clipped (review UI 3)', () => {
+  // P2's 12 px made "ESTIMATES" (Today) and "SCENARIOS" (Learn) wider than a
+  // third of a 320 px screen; the tile hides overflow, so the S was cut. Under
+  // 360 px the tiles keep 12 px and three across, with less side padding and
+  // tracking — the same narrow-screen rule the More grid already has.
+  it('the narrow-screen rule trims the tile\'s padding and the label\'s tracking — not its size', () => {
+    expect(css).toContain('@media (max-width:359px){.gtile{padding:12px 9px}.gtile b{font-size:15px}.tile{padding:12px 8px 10px}.tile span{letter-spacing:.02em}}');
+  });
+});
+

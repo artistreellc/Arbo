@@ -266,9 +266,14 @@ describe('refresh', () => {
 
 describe('the header', () => {
   it('Today drops the duplicate date; every other tab keeps it; simulation says so everywhere', () => {
-    const sub = { textContent: '' };
+    // A stand-in for the subline: the date is its own piece (review UI 2), so it takes replaceChildren too.
+    const sub = {
+      textContent: '',
+      replaceChildren(...xs: Array<string | { textContent: string }>) { this.textContent = xs.map((x) => (typeof x === 'string' ? x : x.textContent)).join(''); },
+    };
+    const el = (_tag: string, _cls: string, text: string) => ({ textContent: text });
     const line = (LINKS: string | null, CUR_TAB: string) => {
-      pageFn<() => void>('setAppSub', { $: () => sub, LINKS, CUR_TAB, APPSUB_DATE: 'Sun, Oct 18' })();
+      pageFn<() => void>('setAppSub', { $: () => sub, el, LINKS, CUR_TAB, APPSUB_DATE: 'Sun, Oct 18' })();
       return sub.textContent;
     };
     expect(line(null, 'today')).toBe('Art-is-Tree');

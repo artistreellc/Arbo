@@ -161,7 +161,10 @@ header.scrolled{border-bottom-color:var(--hairline)}
 .brand .micon{width:26px;height:26px}
 .brand > span{display:flex;flex-direction:column;line-height:1}
 .brand small{font-family:var(--sans);font-size:11.5px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:var(--gold-6);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.brand.has-back > span{min-width:0}.brand.has-back small{letter-spacing:.14em}
+.brand.has-back > span{min-width:0}.brand.has-back small{letter-spacing:.06em}
+/* The date is one atomic piece: a row too narrow for it loses it whole to the ellipsis, never "WED, OCT 2…" (another day).
+   The empty piece before it keeps the date from being the row's first box — a first box is clipped, not ellipsed. */
+.brand small .sub-date{display:inline-block}#appsub::before{content:'';display:inline-block}
 #dateline{display:none}
 .hbtns{display:flex;gap:8px}
 #refresh,#settings-btn,#back-btn,.iconbtn{
@@ -628,7 +631,7 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 .gtile .count{position:absolute;top:10px;right:10px;min-width:22px;height:22px;padding:0 6px;border-radius:var(--r-pill);background:var(--gold-5);color:#221A02;
   font-size:12px;font-weight:700;line-height:22px;text-align:center;font-variant-numeric:tabular-nums}
 /* A 320px phone: three columns of tiles fit only with a little less padding and title — "Assistant" is the longest word. */
-@media (max-width:359px){.gtile{padding:12px 9px}.gtile b{font-size:15px}}
+@media (max-width:359px){.gtile{padding:12px 9px}.gtile b{font-size:15px}.tile{padding:12px 8px 10px}.tile span{letter-spacing:.02em}}
 /* The state line drops under its chip when they cannot share a row, so a variable name never breaks mid-word. */
 .asst-state{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;font-size:15px;font-weight:600;color:var(--ink-1);margin-bottom:10px}
 .asst-state .badge{flex:none}
@@ -6605,7 +6608,11 @@ const APPSUB_DATE = new Date().toLocaleDateString([], { weekday: 'short', month:
 let CUR_TAB = 'today';
 function setAppSub() {
   const sim = LINKS === 'simulation' ? 'SIMULATION · ' : '';
-  $('appsub').textContent = CUR_TAB === 'today' ? sim + 'Art-is-Tree' : sim ? sim + APPSUB_DATE : APPSUB_DATE + ' · Art-is-Tree';
+  if (CUR_TAB === 'today') { $('appsub').textContent = sim + 'Art-is-Tree'; return; }
+  // The date in its own atomic piece (.sub-date): shown whole or not at all.
+  const date = el('span', 'sub-date', APPSUB_DATE);
+  if (sim) $('appsub').replaceChildren(sim, date);
+  else $('appsub').replaceChildren(date, ' · Art-is-Tree');
 }
 
 function switchTab(which) {
