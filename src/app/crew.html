@@ -752,11 +752,14 @@ async function renderWork() {
     } else addr.textContent = place;
     c.appendChild(addr);
     // A tap opens Maps straight away: no "are you sure" sheet on the crew door (D107).
-    // R26: a new control, so in the preview it is drawn switched off (the card says why).
+    // R26: a new control, so in the preview it is drawn switched off, with the
+    // preview's reason directly under it (review UI 2, D107) — it is the one
+    // control on the card that is off because of the preview.
     const go = url && !PREVIEW;
     const nav = el(go ? 'a' : 'button', 'navbtn', 'Navigate');
     if (go) { nav.href = url; nav.target = '_blank'; nav.rel = 'noopener'; } else nav.disabled = true;
     c.appendChild(nav);
+    if (PREVIEW) c.appendChild(el('div', 'preview-why', PREVIEW_WHY));
     if (!url) c.appendChild(el('div', 'jobwhy', 'No street on file — ask the office for the address.'));
     if (wo.scope) c.appendChild(el('div', 'scope', wo.scope));
     for (const h of wo.hazards || []) {
@@ -774,9 +777,9 @@ async function renderWork() {
     // switched off with why — on the crew phone and in the preview alike.
     c.appendChild(arrivalButton());
     c.appendChild(changeOrderButton());
+    // Their reason is the same on the crew phone and in the preview, so it is
+    // the one beside them; the preview's own line sits under Navigate above.
     c.appendChild(el('div', 'jobwhy', 'No job record yet — tell the office what you found.'));
-    // R26: in the preview the card also carries the preview's own reason.
-    if (PREVIEW) c.appendChild(el('div', 'preview-why', PREVIEW_WHY));
     v.appendChild(c);
   }
 }
