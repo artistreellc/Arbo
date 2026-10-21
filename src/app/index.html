@@ -2803,7 +2803,7 @@ async function renderToday() {
       for (const o of q.open.slice(0, 3)) loopsPanel.appendChild(loopCard(o));
       if (q.open.length > 3) {
         const more = el('button', 'hudbtn', 'All ' + q.open.length + ' open loops →');
-        more.addEventListener('click', () => switchTab('followups'));
+        more.addEventListener('click', () => openPanel(DESK_VIEW.loops, 'queue-loops')); // where the hero's loops stat goes (P13 review)
         loopsPanel.appendChild(more);
       }
     }
