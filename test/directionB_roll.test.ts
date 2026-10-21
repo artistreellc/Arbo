@@ -144,6 +144,17 @@ describe('Before you roll (P11)', () => {
     expect(k.box.textContent).not.toContain('Nothing to check');
   });
 
+  // Review (b-wave-2, correctness 2): the blind-spot row's target had no guard — pointed at
+  // Follow-ups, every test stayed green. It lands on Crew & safety's board, where the blind
+  // spot is named (DESK_VIEW.safety, the queue-safety slot), as the aerial row does.
+  it('a tap on the "⚠ CANNOT SEE" row lands on the Crew & safety board (queue-safety)', async () => {
+    const k = kit({ safety: async () => ({ ...SAFE_OK, blindSpots: ['Crew roster — nobody is on it yet'] }), fleet: async () => FLEET_OK, leads: { list: [] }, storm: { alerts: 0, events: [] } });
+    await flush();
+    const [r] = rows(k.box);
+    r!.click();
+    expect(k.opened).toEqual([['safety', 'queue-safety']]);
+  });
+
   it('real items and blind spots side by side: N counts the items only', async () => {
     const k = kit({
       safety: async () => ({ ...SAFE_OK, blindSpots: ['Near misses — not in the practice data'] }),
