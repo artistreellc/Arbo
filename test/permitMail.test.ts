@@ -68,6 +68,12 @@ describe('subject address extraction', () => {
     expect(extractSubjectAddress('4404 South Mockupter Dr')).toBe('4404 South Mockupter Dr');
   });
 
+  it('keeps a street name that is itself a street-type word (SIM street, no such road)', () => {
+    // "Terrace" is also in the street-type list. The capture must run on to
+    // the real suffix — a street-name group that may be empty stops at the name.
+    expect(extractSubjectAddress('RE: 606 Terrace Rd')).toBe('606 Terrace Rd');
+  });
+
   it('returns null when no address is present', () => {
     expect(extractSubjectAddress('PPR')).toBeNull();
   });

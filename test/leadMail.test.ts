@@ -212,7 +212,7 @@ Potential Customer sent you a message
 1000 works if possible
 Name is Sim Willow
 4202 Sandbox Ave
-757-555-0142
+757-555-0144
 
 To connect with this customer
 
@@ -305,7 +305,7 @@ describe('Google LSA (§5A #12) — the sender address the old rule never matche
 
   it('extracts the hand-typed name, phone, and street', () => {
     expect(r.lead.name).toBe('Sim Willow');
-    expect(r.lead.phone).toBe('757-555-0142');
+    expect(r.lead.phone).toBe('757-555-0144');
     expect(r.lead.address).toBe('4202 Sandbox Ave');
   });
 

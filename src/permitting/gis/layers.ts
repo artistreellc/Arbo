@@ -56,8 +56,10 @@
 // VERIFICATION PROCEDURE (per endpoint, ~5 min at deploy where egress is open):
 //   1. GET  <url>?f=json  — confirm it's the expected layer (name, polygon
 //      geometry, supportsQuery).
-//   2. Query a KNOWN-RPA point (e.g. 4303 Withheld Drive, Norfolk — the real
-//      CBPA violation case) → expect count > 0 on that city's RPA layer.
+//   2. Query a KNOWN-RPA point (e.g. the real Norfolk CBPA violation case —
+//      its address is withheld from this repo as customer PII, so get it from
+//      Mike; "4303 Withheld Drive" in code and tests is a stand-in, not the
+//      case address) → expect count > 0 on that city's RPA layer.
 //   3. Query a clearly inland point → expect count = 0.
 //   4. Flip status to 'live', set lastVerified, commit. (Review loop §13
 //      re-checks these dates like the city rulesets.)
@@ -100,9 +102,11 @@ export const RPA_PROXIMITY_PROBE_METERS = 300;
 //      candidate URL pointed there and was corrected during verification.)
 //   2. Coverage: distinct LOCALITY values include "Virginia Beach city",
 //      "Norfolk city", "Chesapeake city", "Portsmouth city".
-//   3. Known-RPA case: 4303 Withheld Dr, Norfolk (Census-geocoded to
-//      -76.28012, 36.85012) — 1 hit at the 300 m probe (see
-//      RPA_PROXIMITY_PROBE_METERS for the tiering evidence).
+//   3. Known-RPA case: the real Norfolk CBPA violation property, Census-
+//      geocoded — 1 hit at the 300 m probe (see RPA_PROXIMITY_PROBE_METERS
+//      for the tiering evidence). Its address and geocoded point are withheld
+//      from this repo (customer PII); "4303 Withheld Dr" and the point in
+//      test/gis.test.ts are stand-ins, not the verified location.
 //   4. Inland control: 0 hits at 300 m.
 const DEQ_CBPA: Omit<GisLayer, 'meaning'> = {
   kind: 'CBPA_RPA',
