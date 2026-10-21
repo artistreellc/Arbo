@@ -78,7 +78,7 @@ go to T-Mobile voicemail until the two optional codes are dialed.
   the call card for you to book."* and shows it, when the caller gave one.
   A caller who gave no time gets *"… The caller gave no time — call them to
   set one."* instead.
-  State on `GET /api/quo` and the Today / Calls screens.
+  State on `GET /api/quo`, on Today and on Leads › Calls & texts.
   *R26:* the code guard now also flags a promised day or time ("we'll be
   there Tuesday") — expect more SONA BROKE A RULE cards for dates, which is
   the rule working, not a new fault.

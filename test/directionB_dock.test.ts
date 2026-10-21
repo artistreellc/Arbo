@@ -274,3 +274,29 @@ describe('the words that named the old screens move with them (ruling strings st
     expect(es).not.toContain('More → Appearance');
   });
 });
+
+// Direction B wave 3b review: the words and the room the dock flip left behind.
+describe('review round: the dock at 320, PHONE_SETUP\'s screen names, a long name on a card', () => {
+  const css = html.slice(0, html.indexOf('</style>'));
+
+  it('on a 320 px phone the dock gives its five labels room — the buttons take the gutter and the gaps, the 12 px label stays (UI #6: "Calendar Estimate" read as one)', () => {
+    const narrow = /@media \(max-width:359px\)\{nav\{([^}]*)\}nav button\{([^}]*)\}\}/.exec(css);
+    expect(narrow, 'a narrow-phone rule for the dock').toBeTruthy();
+    expect(narrow![1]).toBe('left:8px;right:8px;padding:8px 4px;gap:0');
+    expect(narrow![2]).toBe('letter-spacing:0'); // never under the P2 12 px floor
+    // Still five even buttons, each a 56 px tall target, labels never cut (the rule above, unchanged).
+    expect(css).toMatch(/nav button\{flex:1 1 0;min-width:0;min-height:56px;/);
+  });
+
+  it('PHONE_SETUP.md names the screens Sona\'s state shows on now (Today, Leads › Calls & texts)', () => {
+    const doc = readFileSync(new URL('../docs/PHONE_SETUP.md', import.meta.url), 'utf8');
+    expect(doc).not.toMatch(/Today \/ Calls screens/);
+    expect(doc).toContain('State on `GET /api/quo`, on Today and on Leads › Calls & texts.');
+  });
+
+  it('a long unbroken name on any card\'s top row wraps instead of pushing the page sideways (Today\'s emergency card at 320)', () => {
+    expect(css).toMatch(/\n\.card \.toprow \.who\{min-width:0;overflow-wrap:anywhere\}/);
+    // …and the row that names a person in a red box (Before you roll, Sona's flag): a button whose text could not wrap.
+    expect(css).toMatch(/\n\.sliplink\{overflow-wrap:anywhere\}/);
+  });
+});

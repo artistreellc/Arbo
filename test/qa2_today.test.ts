@@ -328,7 +328,8 @@ describe('T5: one cause, one card, plain words', () => {
     expect(fold).toContain('bs.every((b) => b && b.dataset.quoOff)');
     expect(fold).toContain("el('div', 'panel-title', 'Quo')");
     // Direction B P16: the body is one builder, quoOffLine (the Leads head says the same words in the flag's place).
-    expect(fold).toContain('q.appendChild(quoOffLine(links));');
+    // Wave 3b review: Calls & texts passes saidAbove (the Leads head says the words); Today does not, so it says them here.
+    expect(fold).toContain("q.appendChild(saidAbove ? el('div', 'storm-muted', 'Shown in its own place on this screen.') : quoOffLine(links));");
     const words = src('quoOffLine');
     expect(words).toContain("el('div', 'feed-state unset', 'Quo isn’t connected to Arbo yet — Arbo can’t read your customer threads, can’t text anyone, and Sona’s calls aren’t reaching Arbo. That doesn’t mean there are no customer threads or Sona calls.')");
     expect(words.match(/That doesn’t mean/g)).toHaveLength(1);

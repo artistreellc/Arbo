@@ -69,7 +69,8 @@ const FOLD_BODY = 'Quo isn’t connected to Arbo yet — Arbo can’t read your 
 describe('items 1–3: the folded Quo card keeps its title on one line and names what is not zero', () => {
   it('the title is one short word, like Inbox and Website forms — the explanation stays in the body', () => {
     const fold = src('fillQuoSlots');
-    expect(fold).toContain('q.appendChild(quoOffLine(links));'); // Direction B P16: the body's one builder
+    // Direction B P16: the body's one builder; wave 3b review: on Calls & texts the head says it, so the card points there.
+    expect(fold).toContain("q.appendChild(saidAbove ? el('div', 'storm-muted', 'Shown in its own place on this screen.') : quoOffLine(links));");
     expect(fold).toContain("q.appendChild(el('div', 'panel-title', 'Quo'));");
     // The long title that wrapped at 390px and squeezed the gold rule to a stub is gone everywhere.
     expect(html).not.toContain('Quo — customers, texts and Sona’s calls');
@@ -136,7 +137,8 @@ describe('item 5: Calls folds the same way Today does — one shared helper, no 
     const calls = src('renderCalls');
     // Direction B P12: Today hands the fold its feeds card's place; P16: Calls & texts too — Sona's calls first (the mockup).
     expect(today).toContain('fillQuoSlots([studyPanel(5), outreachPanel(false), sonaPanel(3, false)], [studySlot, outreachSlot, sonaSlot], feeds.place);');
-    expect(calls).toContain('fills.push(fillQuoSlots([sonaPanel(20, true), studyPanel(60), outreachPanel(true)], [sonaCallsSlot, studyFull, outreachFull], feeds.place));');
+    // Wave 3b review: Calls & texts passes saidAbove — the Leads head says the fold's words there.
+    expect(calls).toContain('fills.push(fillQuoSlots([sonaPanel(20, true), studyPanel(60), outreachPanel(true)], [sonaCallsSlot, studyFull, outreachFull], feeds.place, true));');
     for (const [name, s] of [['renderToday', today], ['renderCalls', calls]] as const) {
       expect(s.match(/fillQuoSlots\(/g), name).toHaveLength(1);
       expect(s, name).not.toContain('dataset.quoOff');
@@ -200,7 +202,8 @@ describe('item 5: Calls folds the same way Today does — one shared helper, no 
     expect(titles(q)).toEqual([[], [], []]);
     const quo = s.card.children.filter((c) => c.children[0]?.textContent === 'Quo'); // (Arbo's own line, cut, folds in beside it)
     expect(quo).toHaveLength(1);
-    expect(quo[0]!.children[1]!.textContent).toBe(FOLD_BODY);
+    // Wave 3b review (UI #7): the Leads head above says FOLD_BODY (directionB_leadsHub); the card names Quo and points there.
+    expect(quo[0]!.children[1]!.textContent).toBe('Shown in its own place on this screen.');
     expect(s.v.textContent).not.toContain('Waiting on Quo');
     expect(s.v.style.minHeight).toBe(''); // the held height still lets go once the fold has landed
   });
@@ -214,5 +217,24 @@ describe('item 5: Calls folds the same way Today does — one shared helper, no 
     await mixed.renderCalls();
     await flush();
     expect(titles(quoSlots(mixed.v))).toEqual([['Sona calls (Quo)'], ['Where each customer stands'], ['Text outreach']]);
+  });
+});
+
+// Direction B wave 3b review (UI #7): on Calls & texts the Leads head already says the fold's words where Sona's
+// flag goes, so the screen's feeds card names Quo and points there — the paragraph is said once on the screen.
+describe('review round: Calls & texts says "Quo isn’t connected" once', () => {
+  const fillSaidAbove = pageFn<(reads: Promise<FakeEl | null>[], slots: FakeEl[], place: undefined, saidAbove: boolean) => Promise<void>>('fillQuoSlots', { el, LINKS_READY: Promise.resolve('live'), quoOffLine });
+  it('said above: the folded card is titled Quo, off as not set up, and points to its place — not the paragraph again', async () => {
+    const s = slots();
+    await fillSaidAbove([Promise.resolve(panel('Where each customer stands', true)), Promise.resolve(panel('Text outreach', true)), Promise.resolve(panel('Sona calls (Quo)', true))], s, undefined, true);
+    const card = s[0]!.children[0]!;
+    expect(card.dataset.off).toBe('unset');
+    expect(card.dataset.feedName).toBe('Quo');
+    expect(card.textContent).not.toContain('Quo isn’t connected');
+    expect(card.children.map((c) => c.textContent)).toEqual(['Quo', 'Shown in its own place on this screen.']);
+  });
+  it('Calls & texts passes it (the head carries the words); Today does not (no head there)', () => {
+    expect(src('renderCalls')).toContain('fills.push(fillQuoSlots([sonaPanel(20, true), studyPanel(60), outreachPanel(true)], [sonaCallsSlot, studyFull, outreachFull], feeds.place, true));');
+    expect(src('renderToday')).toContain('fillQuoSlots([studyPanel(5), outreachPanel(false), sonaPanel(3, false)], [studySlot, outreachSlot, sonaSlot], feeds.place);');
   });
 });
