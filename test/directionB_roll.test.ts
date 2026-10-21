@@ -58,7 +58,7 @@ const cut = () => Object.assign(new Error('link_cut'), { code: 503 });
 const unset = () => Object.assign(new Error('db_not_configured'), { code: 503 });
 const unread = () => new TypeError('Failed to fetch');
 
-type Reads = { safety: () => Promise<unknown>; fleet: () => Promise<unknown>; leads: unknown; storm: unknown; stormAgain?: unknown; links?: string };
+type Reads = { safety: () => Promise<unknown>; fleet: () => Promise<unknown>; leads: unknown; storm: unknown; stormAgain?: unknown; links?: string; note?: (name: string, where: unknown, kind: Promise<unknown>) => void };
 const SAFE_OK = { aerialBlocked: [], blindSpots: [], certProblems: [], nearMisses: [] };
 const FLEET_OK = { units: [{ id: 'u1', name: 'Unit 1', status: 'up', schedulable: true }], down: 0, held: 0 };
 
@@ -97,8 +97,8 @@ function kit(r: Reads, keep: { box?: unknown; gen?: number } = {}) {
     return { beforeYouRoll, setStorm: (v) => { STORM_READ = v; } };`)(
     document, api, (view: string, target: unknown) => opened.push([view, target]),
     () => { stormCalls++; return Promise.resolve(stormCard); }, r.links ?? 'readonly', null, HERO, keep,
-  ) as { beforeYouRoll: (emgP: Promise<unknown>, stormP: Promise<unknown>) => N; setStorm: (v: unknown) => void };
-  const box = build.beforeYouRoll(Promise.resolve(r.leads), Promise.resolve(r.storm));
+  ) as { beforeYouRoll: (emgP: Promise<unknown>, stormP: Promise<unknown>, note?: unknown) => N; setStorm: (v: unknown) => void };
+  const box = build.beforeYouRoll(Promise.resolve(r.leads), Promise.resolve(r.storm), r.note);
   /** Today's minute redraw: Before you roll is asked again, with these reads. */
   const again = (r2: Reads, emgP: Promise<unknown> = Promise.resolve(r2.leads), stormP: Promise<unknown> = Promise.resolve(r2.storm)) => { cur = r2; return build.beforeYouRoll(emgP, stormP); };
   return { box, opened, paths, stormCalls: () => stormCalls, setStorm: build.setStorm, again, heroGo, setStormCard: (c: N | null) => { stormCard = c; } };
@@ -153,6 +153,23 @@ describe('Before you roll (P11)', () => {
     const [r] = rows(k.box);
     r!.click();
     expect(k.opened).toEqual([['safety', 'queue-safety']]);
+  });
+
+  // P12 review (UI finding 3): Today's feeds card counts the feeds Before you roll shows off. Crew &
+  // safety and Fleet are read only here, so the card is handed them — never Emergency leads or the
+  // weather, which are Today's own reads and counted there. Each comes to its kind, or null when it read.
+  it('hands Crew & safety and Fleet to the feeds card\'s note — each its kind, or null when it read; a 401 is no feed off', async () => {
+    const noted: Array<[string, unknown]> = [];
+    const note = (name: string, where: unknown, kind: Promise<unknown>) => { noted.push([name, where]); return kind.then((k) => { noted.push([name + '=', k]); }); };
+    const k = kit({ safety: () => Promise.reject(cut()), fleet: async () => FLEET_OK, leads: { gap: cut() }, storm: { error: unread() }, note });
+    await flush();
+    expect(noted.filter(([n]) => !n.endsWith('='))).toEqual([['Crew & safety', k.box], ['Fleet', k.box]]);
+    expect(Object.fromEntries(noted.filter(([n]) => n.endsWith('=')))).toEqual({ 'Crew & safety=': 'cut', 'Fleet=': null });
+    const k2: Array<[string, unknown]> = [];
+    kit({ safety: () => Promise.reject(Object.assign(new Error('unauthorized'), { code: 401 })), fleet: () => Promise.reject(unset()), leads: null, storm: { alerts: 0, events: [] },
+      note: (name, _w, kind) => kind.then((x) => { k2.push([name, x]); }) });
+    await flush();
+    expect(Object.fromEntries(k2)).toEqual({ 'Crew & safety': null, Fleet: 'unset' });
   });
 
   it('real items and blind spots side by side: N counts the items only', async () => {
@@ -365,7 +382,8 @@ describe('Before you roll sits under the hero and starts before the brief await 
   });
 
   it('it is handed the emergency read and the weather outcome Today already has — the weather is read once', () => {
-    expect(today).toMatch(/beforeYouRoll\(emgP, alerting\.then\(\(\) => STORM_READ\)\)/);
+    // P12 review: and the feeds card's note, so Crew & safety and Fleet are counted there too.
+    expect(today).toMatch(/beforeYouRoll\(emgP, alerting\.then\(\(\) => STORM_READ\), feeds\.note\)/);
     expect(html.split("api('/api/storm')").length - 1).toBe(1);
     expect(html.split("api('/api/leads?limit=50')").length - 1).toBe(2); // Leads and emergencyLeads — Before you roll adds none
     expect(fnSrc('beforeYouRoll')).not.toContain("api('/api/leads");

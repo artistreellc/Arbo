@@ -60,12 +60,16 @@ class N {
   click() { for (const f of this.on.click ?? []) f(); }
   all(): N[] { return [this, ...this.children.flatMap((c) => c.all())]; }
   querySelector(sel: string): N | null { return this.all().slice(1).find((n) => (sel.startsWith('.') ? n.has(sel.slice(1)) : n.tag === sel)) ?? null; }
+  // The document's order, for the card's list (P12 review): a node is on the page when its root is a 'document'.
+  private root(): N { return this.parent ? this.parent.root() : this; }
+  get isConnected() { return this.root().tag === 'document'; }
+  compareDocumentPosition(o: N) { const all = this.root().all(); return all.indexOf(o) > all.indexOf(this) ? 4 : 2; }
 }
 const el = (tag: string, cls?: string, text?: string) => { const n = new N(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
 const flush = async () => { for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0)); };
 
 // ---------- the helper, lifted with the page's own words ----------
-type Card = { el: N; place: (slot: N, x: unknown) => Promise<void> };
+type Card = { el: N; place: (slot: N, x: unknown) => Promise<void>; note: (name: string, where: N, kind: unknown) => Promise<void> };
 /** The page's feedsCard with its tables; `state` carries the per-screen memory across draws (a redraw is a second call). */
 function build() {
   const make = new Function('el', 'document', `
@@ -285,9 +289,119 @@ describe('feedsCard: what folds, what stays, what counts (P12)', () => {
   });
 });
 
+// ---------- UI review of b-wave-2: the card's count, its list's words and order, its headline at 320 ----------
+describe('feedsCard after the UI review (P12): every feed the screen shows off, said once, in the screen\'s order', () => {
+  // Finding 3: "N feeds off" read as a total, but the hero's dashes, Before you roll's lines and the
+  // tiles named feeds off that the card never counted. A screen hands those reads to note(): counted,
+  // named, and left where they show — never moved, never a second line on the screen.
+  it('note(): a read shown off in its own place is counted and named — "Shown in its own place" — and nothing moves', async () => {
+    const { feedsCard } = build();
+    const f = feedsCard('t');
+    const tile = el('div', 'tile');
+    tile.appendChild(el('b', '', '–'));
+    f.note('Overdue and to bill', tile, Promise.resolve('cut'));
+    f.note('Agent runs', el('div'), Promise.resolve(null)); // it read: not counted
+    await flush();
+    expect(head(f.el)!.textContent).toBe('1 feed off: 1 cut on purpose');
+    expect(list(f.el)!.textContent).toContain('Overdue and to bill — cut on purpose');
+    expect(list(f.el)!.textContent).toContain('Shown in its own place on this screen.');
+    expect(list(f.el)!.textContent).not.toContain('Agent runs');
+    expect(tile.children.map((c) => c.textContent)).toEqual(['–']);
+  });
+
+  it('note(): in flight it is "Reading…", never counted as working; the same feed noted twice counts once', async () => {
+    const { feedsCard } = build();
+    const f = feedsCard('t');
+    let land!: (k: string) => void;
+    f.note('Weather alerts', el('div'), new Promise<string>((r) => { land = r; }));
+    await flush();
+    expect(reading(f.el)).toHaveLength(1);
+    expect(f.el.textContent).not.toMatch(/\b0 feeds?\b/);
+    f.note('Weather alerts', el('div'), Promise.resolve('unread'));
+    land('unread');
+    await flush();
+    expect(head(f.el)!.textContent).toBe('1 feed off: 1 couldn’t read');
+    expect(reading(f.el)).toHaveLength(0);
+  });
+
+  it('a note that throws or names no kind counts nothing, and the card still settles', async () => {
+    const { feedsCard } = build();
+    const f = feedsCard('t');
+    f.note('A', el('div'), Promise.reject(new Error('boom')));
+    f.note('B', el('div'), Promise.resolve('nonsense'));
+    await flush();
+    expect(f.el.hidden).toBe(true);
+    expect(reading(f.el)).toHaveLength(0);
+  });
+
+  // Finding 4: "Emergency leads — cut on purpose" over "Emergency leads: cut on purpose. That doesn't
+  // mean there are none." said the name and state twice. A folded line that already opens with
+  // "Name: state word" is the item's name line; no second one above it.
+  it('a folded line that already says "Name: state word" is not named twice; one that doesn\'t gets the name line', async () => {
+    const { feedsCard, FEED_WORD } = build();
+    const f = feedsCard('t');
+    const line = el('div', 'feed-state cut', 'Emergency leads: ' + FEED_WORD.cut + '. That doesn’t mean there are none.');
+    line.dataset.off = 'cut'; line.dataset.feedName = 'Emergency leads';
+    const loc = el('div');
+    loc.appendChild(el('div', 'panel-title', 'Location tracking'));
+    loc.appendChild(el('div', 'feed-state cut', 'Location tracking: ' + FEED_WORD.cut + '. No check-ins are being recorded.'));
+    loc.dataset.off = 'cut'; loc.dataset.feedName = 'Location tracking';
+    const quo = el('div');
+    quo.appendChild(el('div', 'panel-title', 'Quo'));
+    quo.appendChild(el('div', 'feed-state unset', 'Quo isn’t connected to Arbo yet.'));
+    quo.dataset.off = 'unset'; quo.dataset.feedName = 'Quo';
+    for (const n of [line, loc, quo]) f.place(el('div'), n);
+    await flush();
+    const names = list(f.el)!.all().filter((n) => n.has('feeds-name')).map((n) => n.textContent);
+    expect(names).toEqual(['Quo — not set up yet']);
+    // Every feed is still named with its state word, once.
+    const items = list(f.el)!.children.map((c) => c.all().filter((n) => !n.has('panel-title')).map((n) => n.children.length ? '' : n.textContent).join(''));
+    expect(items).toEqual([
+      'Emergency leads: cut on purpose. That doesn’t mean there are none.',
+      'Location tracking: cut on purpose. No check-ins are being recorded.',
+      'Quo — not set up yetQuo isn’t connected to Arbo yet.',
+    ]);
+  });
+
+  // Finding 5: the list followed the order the reads were handed over (Storm price law first), not
+  // the screen's. It follows where each shows, top to bottom; two in one place keep their handed order.
+  it('the open list follows the screen top to bottom, whatever order the reads were handed over', async () => {
+    const { feedsCard } = build();
+    const f = feedsCard('t');
+    const doc = el('document');
+    const view = doc.appendChild(el('div'));
+    const hero = view.appendChild(el('div'));
+    const emg = view.appendChild(el('div'));
+    const law = view.appendChild(el('div'));
+    const day = view.appendChild(el('div'));
+    f.place(law, wrapper('Storm price law', 'unread'));
+    f.place(emg, wrapper('Emergency leads', 'cut'));
+    f.place(day, wrapper('Schedule', 'cut', true));
+    f.note('Open loops', hero, Promise.resolve('cut'));
+    f.note('Weather alerts', hero, Promise.resolve('unread'));
+    await flush();
+    const order = list(f.el)!.children.map((c) => c.textContent.split(/ — |:/)[0]);
+    expect(order).toEqual(['Open loops', 'Weather alerts', 'Emergency leads', 'Storm price law', 'Schedule']);
+  });
+
+  // Finding 7: at 320 the closed headline broke "…, 4 / not in the practice data, 1 / couldn’t read".
+  // Each count stays with its words: one unbreakable piece per count, the line breaks between them.
+  it('the headline keeps each count with its words — one unbreakable piece each — and reads the same', async () => {
+    const { feedsCard } = build();
+    const f = feedsCard('t');
+    for (const [n, k] of [['A', 'cut'], ['B', 'sim'], ['C', 'sim'], ['D', 'unread']] as const) f.place(el('div'), wrapper(n, k));
+    await flush();
+    const said = head(f.el)!.all().find((n) => n.has('feed-state'))!;
+    expect(said.textContent).toBe('4 feeds off: 1 cut on purpose, 2 not in the practice data, 1 couldn’t read');
+    expect(said.children.filter((c) => c.has('fh')).map((c) => c.textContent)).toEqual(['4 feeds off:', '1 cut on purpose,', '2 not in the practice data,', '1 couldn’t read']);
+    expect(html).toMatch(/\.feeds-head \.fh\{white-space:nowrap\}/);
+  });
+});
+
 // ---------- each panel marks the wrapper that only reports a dead feed ----------
 const fail = (code: number | undefined, message: string) => Object.assign(new Error(message), { code });
 const FEED_WORD = new Function(`${constSrc('FEED_WORD')}\nreturn FEED_WORD;`)() as Record<string, string>;
+const FEED_TAG_T = new Function(`${constSrc('FEED_TAG')}\nreturn FEED_TAG;`)() as Record<string, string>;
 /** The page's own feedKind against a LINKS value. */
 const feedKindFor = (links: string) => new Function('LINKS', `${fnSrc('feedKind')}\nreturn feedKind;`)(links) as (e: unknown) => string;
 function panel<T>(name: string, links: string, api: (p: string) => Promise<unknown>, extra: Record<string, unknown> = {}): T {
@@ -494,5 +608,37 @@ describe('Today hands every panel slot to its feeds card (P12, source pins)', ()
 
   it('Today stays free of <details> (a timed screen)', () => {
     expect(today).not.toContain("'details'");
+  });
+
+  // UI review of b-wave-2, finding 3: the hero's dashes, Before you roll's lines and the tiles named feeds
+  // off the card never counted — so "N feeds off" undercounted what the screen showed. Each of those reads
+  // is noted on the card (counted, named, left where it shows), before the brief await like everything here.
+  it('every read Today shows off in a place of its own is noted on the card — before the brief await', () => {
+    for (const want of [
+      "feeds.note('Open loops', v.firstChild, heroLoops());",
+      "feeds.note('Weather alerts', v.firstChild, alerting.then(",
+      'rollSlot.appendChild(beforeYouRoll(emgP, alerting.then(() => STORM_READ), feeds.note));',
+      "feeds.note('Coming due', dueTile, api('/api/properties')",
+      "feeds.note('Agent runs', agentTile, api('/api/agents/runs?limit=5')",
+      "feeds.note('Overdue and to bill', owedTile, api('/api/money')",
+    ]) {
+      expect(today, want).toContain(want);
+      expect(today.indexOf(want), want).toBeLessThan(brief);
+    }
+    // A dead tile names its gap in the word the card uses: worded once the links are known.
+    for (const t of ['dueTile', 'agentTile', 'owedTile']) {
+      const at = today.indexOf('tileWhy(' + t + ', FEED_TAG[feedKind(e)])');
+      expect(today.slice(at - 140, at), t).toContain('LINKS_READY.then(() => {');
+    }
+  });
+
+  it('heroLoops hands back what its read came to: null when it read, its kind when it did not (a 401 is the key wall\'s)', async () => {
+    const run = async (api: () => Promise<unknown>) => new Function('api', 'HERO', 'LINKS_READY', 'feedKind', 'FEED_TAG', 'sysSet', 'plural', 'openPanel', 'DESK_VIEW',
+      `${fnSrc('heroLoops')}\nreturn heroLoops;`)(api, null, Promise.resolve('readonly'), feedKindFor('readonly'), FEED_TAG_T, () => {}, (n: number, w: string) => n + ' ' + w, () => {}, {})() as Promise<unknown>;
+    expect(await run(async () => ({ open: [] }))).toBeNull();
+    expect(await run(() => Promise.reject(fail(503, 'link_cut')))).toBe('cut');
+    expect(await run(() => Promise.reject(fail(503, 'db_not_configured')))).toBe('unset');
+    expect(await run(() => Promise.reject(new TypeError('Failed to fetch')))).toBe('unread');
+    expect(await run(() => Promise.reject(fail(401, 'unauthorized')))).toBeNull();
   });
 });
