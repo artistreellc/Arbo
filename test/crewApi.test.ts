@@ -203,8 +203,26 @@ describe('crew work orders (§6F) — the API cannot leak admin data', () => {
     expect(body.notWorkOrders).toBe(1);
   });
 
-  it('the practice data has no contract list, so its crew day is flagged unreadable', async () => {
+  // Deliberately rewritten (CREW_PLAN C2, D107): the practice data now files a
+  // contract for one SIM job and not the other, so the practice crew day draws
+  // one work-order card AND the named held line. Its meaning is kept: R9 still
+  // decides per job, and an unreadable contract list still dispatches nothing —
+  // that case moved to a stub source over the same practice day.
+  it('the practice data files one SIM job and holds the other: one work order, one held, read — not unreadable', async () => {
     const res = await createApi(createSimSource(), { dataLinksSim: true }).crewWorkOrders('');
+    expect(res.status).toBe(200);
+    const body = res.body as { workOrders: Array<{ jobId: string }>; contractLookupFailed: boolean; notWorkOrders: number };
+    expect(body.contractLookupFailed).toBe(false);
+    expect(body.workOrders.map((w) => w.jobId)).toEqual(['sim-job-1']);
+    expect(body.notWorkOrders).toBe(1);
+  });
+
+  it('the same practice day with an unreadable contract list is flagged unreadable and dispatches nothing', async () => {
+    const unreadable: DataSource = {
+      ...createSimSource(),
+      jobsWithFiledContract: async () => { throw new Error('SIMULATED contract list unreadable'); },
+    };
+    const res = await createApi(unreadable, { dataLinksSim: true }).crewWorkOrders('');
     expect(res.status).toBe(200);
     const body = res.body as { workOrders: unknown[]; contractLookupFailed: boolean; notWorkOrders: number };
     expect(body.contractLookupFailed).toBe(true);

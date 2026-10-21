@@ -139,6 +139,13 @@ main{padding:16px;max-width:640px;margin:0 auto}
 .jobbtn{width:100%;min-height:52px;border-radius:var(--r-md);border:1.5px solid var(--border);
   background:var(--surface-alt);color:var(--ink);font-size:15px;font-weight:800;cursor:pointer}
 .jobbtn.done{border-color:var(--ok);color:var(--ok)}
+/* C2: Navigate — Google Maps directions, opened straight from a tap. The card's one primary action. */
+.navbtn{display:flex;align-items:center;justify-content:center;width:100%;min-height:52px;margin-top:10px;border:0;border-radius:var(--r-md);
+  background:var(--go);color:#fff;font-size:17px;font-weight:800;letter-spacing:.04em;text-decoration:none;cursor:pointer;
+  box-shadow:0 8px 22px -8px rgba(0,0,0,.8),inset 0 1px 0 rgba(255,255,255,.12)}
+button.navbtn:disabled{background:var(--surface-alt);color:var(--muted);border:1.5px solid var(--border);box-shadow:none;cursor:not-allowed}
+/* C2: why a job action is off, on the crew phone as in the preview. */
+.jobwhy{font-size:14px;font-weight:700;color:var(--warning);line-height:1.4;margin-top:8px}
 .jobout{margin-top:8px}
 .gapline{font-size:14px;font-weight:700;color:var(--warning);line-height:1.4;margin-top:6px}
 .okline{font-size:14px;color:var(--muted);line-height:1.4;margin-top:6px}
@@ -167,7 +174,8 @@ main{padding:16px;max-width:640px;margin:0 auto}
 .hz.power{background:#2A0E0C;border-color:var(--emergency);color:#FFB3AE}
 .permit{background:#10261E;border:1.5px solid var(--forest);color:#BFE5D3;border-radius:var(--r-md);
   padding:10px 12px;margin-top:10px;font-size:14px;font-weight:700}
-.photos{font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+/* C2 (D107): the photo line is a whole sentence now, so it reads in sentence case, not caps. */
+.photos{font-size:14px;font-weight:700;line-height:1.4;
   color:var(--muted);margin-top:10px}
 .locked-note{text-align:center;padding:36px 20px;color:var(--muted);font-size:16px;
   background:var(--surface);border:1px dashed var(--border);border-radius:var(--r-lg)}
@@ -717,115 +725,141 @@ async function renderWork() {
     top.appendChild(left);
     top.appendChild(el('div', 'when', fmtTime(wo.timeIso)));
     c.appendChild(top);
+    // C2: the address and Navigate both come from the one maps builder. A stop
+    // with no street is never routed to the bare city: Navigate is off, and says why.
+    const url = crewMapsUrl(wo.address, wo.city);
+    const place = (wo.address || 'Street not on file') + (wo.city ? ', ' + wo.city : '');
     const addr = el('div', 'addr');
-    const a = el('a', '', wo.address + (wo.city ? ', ' + wo.city : ''));
-    a.href = 'https://maps.google.com/?q=' + encodeURIComponent(wo.address + ', ' + wo.city + ', VA');
-    a.target = '_blank'; a.rel = 'noopener';
-    addr.appendChild(a);
+    if (url) {
+      const a = el('a', '', place);
+      a.href = url; a.target = '_blank'; a.rel = 'noopener';
+      addr.appendChild(a);
+    } else addr.textContent = place;
     c.appendChild(addr);
+    // A tap opens Maps straight away: no "are you sure" sheet on the crew door (D107).
+    // R26: a new control, so in the preview it is drawn switched off (the card says why).
+    const go = url && !PREVIEW;
+    const nav = el(go ? 'a' : 'button', 'navbtn', 'Navigate');
+    if (go) { nav.href = url; nav.target = '_blank'; nav.rel = 'noopener'; } else nav.disabled = true;
+    c.appendChild(nav);
+    if (!url) c.appendChild(el('div', 'jobwhy', 'No street on file — ask the office for the address.'));
     if (wo.scope) c.appendChild(el('div', 'scope', wo.scope));
     for (const h of wo.hazards || []) {
       c.appendChild(el('div', 'hz' + (h.indexOf('POWER') === 0 ? ' power' : ''), '⚠ ' + h));
     }
     if (wo.permitNote) c.appendChild(el('div', 'permit', wo.permitNote));
     if (wo.requiresBeforeAfterPhotos) {
-      c.appendChild(el('div', 'photos', '\ud83d\udcf7 Before + after photos required to close this job'));
+      // C2 (D107, Q9): the law still rides every card, without promising a
+      // close flow or a camera the app does not have yet.
+      c.appendChild(el('div', 'photos', '📷 Before + after photos are required — the app can’t take them yet; ask the office how to send them.'));
     }
     // §6 arrival record + change order. On the job card, because that is where
-    // the crew is standing when both things need doing.
-    c.appendChild(arrivalButton(wo.jobId));
-    c.appendChild(changeOrderButton(wo.jobId));
-    // R26: in the preview both stay on the card, switched off, with why.
+    // the crew is standing when both things need doing. C2: both need a real job
+    // record (CREW_PLAN fact 9) and none reaches a crew phone yet, so both are
+    // switched off with why — on the crew phone and in the preview alike.
+    c.appendChild(arrivalButton());
+    c.appendChild(changeOrderButton());
+    c.appendChild(el('div', 'jobwhy', 'No job record yet — tell the office what you found.'));
+    // R26: in the preview the card also carries the preview's own reason.
     if (PREVIEW) c.appendChild(el('div', 'preview-why', PREVIEW_WHY));
     v.appendChild(c);
   }
 }
 
+// ---- Navigate (C2, D107). The crew door's ONE Google Maps builder: driving
+// directions to the stop, used by the address link and the Navigate button
+// alike. A tap opens Maps straight away; the owner side asks "Open in Google
+// Maps?" first (R35), the crew door does not (CREW_PLAN Q10). With no street
+// it builds nothing: a route to the bare city is not a route to the job.
+function crewMapsUrl(address, city) {
+  const street = String(address || '').trim();
+  if (!street) return '';
+  const dest = [street, String(city || '').trim(), 'VA'].filter(Boolean).join(', ');
+  return 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(dest) + '&travelmode=driving';
+}
+
 // ---- Arrival record (§6). The defence against "your crew did that". The
 // response tells the crew how strong the record is while they can still fix it.
-function arrivalButton(jobId) {
+// C2 (D107): the record needs a real job row (site_condition_record.job_id
+// references job, CREW_PLAN fact 9) and no job record reaches a crew phone
+// yet, so the button is drawn switched off, nothing is wired to it, and the
+// card says why. The form gets built when real jobs exist; it will call
+// sendArrival below, which nothing calls until then.
+function arrivalButton() {
   const wrap = el('div', 'jobaction');
-  const btn = el('button', 'jobbtn', '\ud83d\udcf7 Log arrival condition');
-  const out = el('div', 'jobout');
-  if (PREVIEW) btn.disabled = true; // R26: off in the preview (the card says why)
-  btn.addEventListener('click', async () => {
-    const notes = prompt('What did the site look like on arrival? Anything already damaged?');
-    if (notes === null) return;
-    btn.disabled = true;
-    try {
-      const res = await api('/api/crew/arrival', {
-        method: 'POST',
-        body: {
-          jobId,
-          arrivalIso: new Date().toISOString(),
-          // Photo refs come from the photo flow; an empty list is honest here
-          // and the server will say the record is weak because of it.
-          photoFiles: [],
-          preexistingNotes: notes.trim(),
-          documentedBy: CREW_ID,
-        },
-      });
-      out.replaceChildren();
-      btn.textContent = 'Arrival logged';
-      btn.className = 'jobbtn done';
-      // The gaps matter more than the confirmation — show them first.
-      for (const line of res.lines || []) out.appendChild(el('div', 'gapline', '\u26a0 ' + line));
-      if (res.defensible) out.appendChild(el('div', 'okline', 'Photos on file \u2014 this record can back you up.'));
-    } catch (e) {
-      // C1: the reason, in crewWhy's words, instead of a bare retry.
-      await LINKS_READY; // 'cut on purpose' vs 'not set up' needs /health's answer
-      btn.disabled = false;
-      out.textContent = 'Arrival not logged (' + (e.code === 400 ? 'the office did not accept it' : crewWhy(e)) + ').'
-        + ' Tell the office what you found.';
-    }
-  });
+  const btn = el('button', 'jobbtn', '📷 Log arrival condition');
+  btn.disabled = true;
   wrap.appendChild(btn);
-  wrap.appendChild(out);
   return wrap;
+}
+async function sendArrival(jobId, notes, btn, out) {
+  btn.disabled = true;
+  try {
+    const res = await api('/api/crew/arrival', {
+      method: 'POST',
+      body: {
+        jobId,
+        arrivalIso: new Date().toISOString(),
+        // Photo refs come from the photo flow; an empty list is honest here
+        // and the server will say the record is weak because of it.
+        photoFiles: [],
+        preexistingNotes: notes.trim(),
+        documentedBy: CREW_ID,
+      },
+    });
+    out.replaceChildren();
+    btn.textContent = 'Arrival logged';
+    btn.className = 'jobbtn done';
+    // The gaps matter more than the confirmation — show them first.
+    for (const line of res.lines || []) out.appendChild(el('div', 'gapline', '⚠ ' + line));
+    if (res.defensible) out.appendChild(el('div', 'okline', 'Photos on file — this record can back you up.'));
+  } catch (e) {
+    // C1: the reason, in crewWhy's words, instead of a bare retry.
+    await LINKS_READY; // 'cut on purpose' vs 'not set up' needs /health's answer
+    btn.disabled = false;
+    out.textContent = 'Arrival not logged (' + (e.code === 400 ? 'the office did not accept it' : crewWhy(e)) + ').'
+      + ' Tell the office what you found.';
+  }
 }
 
 // ---- Change order (§3/§4.5). The crew records what the CUSTOMER agreed to.
 // Arbo never fills in the number and never records assent with nobody named.
-function changeOrderButton(jobId) {
+// C2 (D107): it needs a real job record too, so it is switched off the same
+// way; the form to come calls sendChangeOrder, which nothing calls until then.
+function changeOrderButton() {
   const wrap = el('div', 'jobaction');
   const btn = el('button', 'jobbtn', '+ Extra work agreed');
-  const out = el('div', 'jobout');
-  if (PREVIEW) btn.disabled = true; // R26: off in the preview (the card says why)
-  btn.addEventListener('click', async () => {
-    const description = prompt('What extra work did the customer agree to?');
-    if (description === null || !description.trim()) return;
-    const agreedBy = prompt('Who agreed to it? (name)');
-    if (agreedBy === null) return;
-    btn.disabled = true;
-    out.replaceChildren();
-    try {
-      // The crew records THAT it was agreed and WHO agreed. No figures on this
-      // surface at all (§8C): the office fills the number in and approves.
-      await api('/api/crew/change-order', {
-        method: 'POST',
-        body: {
-          jobId,
-          description: description.trim(),
-          agreedBy: agreedBy.trim(),
-          agreedAtIso: new Date().toISOString(),
-        },
-      });
-      btn.textContent = 'Recorded \u2014 office will confirm';
-      btn.className = 'jobbtn done';
-      out.appendChild(el('div', 'okline', 'Logged for the office to confirm before it goes on the bill.'));
-    } catch (e) {
-      // C1: the reason, in crewWhy's words, instead of a bare retry.
-      await LINKS_READY; // 'cut on purpose' vs 'not set up' needs /health's answer
-      btn.disabled = false;
-      out.textContent = e.message === 'no_agreed_by'
-        ? 'Needs the name of whoever agreed to it.'
-        : 'Extra work not recorded (' + (e.code === 400 ? 'the office did not accept it' : crewWhy(e)) + ').'
-          + ' Tell the office what was agreed.';
-    }
-  });
+  btn.disabled = true;
   wrap.appendChild(btn);
-  wrap.appendChild(out);
   return wrap;
+}
+async function sendChangeOrder(jobId, description, agreedBy, btn, out) {
+  btn.disabled = true;
+  out.replaceChildren();
+  try {
+    // The crew records THAT it was agreed and WHO agreed. No figures on this
+    // surface at all (§8C): the office fills the number in and approves.
+    await api('/api/crew/change-order', {
+      method: 'POST',
+      body: {
+        jobId,
+        description: description.trim(),
+        agreedBy: agreedBy.trim(),
+        agreedAtIso: new Date().toISOString(),
+      },
+    });
+    btn.textContent = 'Recorded — office will confirm';
+    btn.className = 'jobbtn done';
+    out.appendChild(el('div', 'okline', 'Logged for the office to confirm before it goes on the bill.'));
+  } catch (e) {
+    // C1: the reason, in crewWhy's words, instead of a bare retry.
+    await LINKS_READY; // 'cut on purpose' vs 'not set up' needs /health's answer
+    btn.disabled = false;
+    out.textContent = e.message === 'no_agreed_by'
+      ? 'Needs the name of whoever agreed to it.'
+      : 'Extra work not recorded (' + (e.code === 400 ? 'the office did not accept it' : crewWhy(e)) + ').'
+        + ' Tell the office what was agreed.';
+  }
 }
 
 // ---- Reference library (§6U). "How do I do X", answered under the tree.

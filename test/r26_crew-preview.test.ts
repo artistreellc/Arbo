@@ -178,9 +178,11 @@ describe('R26 crew preview — work orders render read-only', () => {
     const prompt = () => { throw new Error('a switched-off button must not ask anything'); };
     const arrivalButton = pageFn<(id: string) => FakeNode>(crew, 'arrivalButton', { el, api, CREW_ID: '', PREVIEW: preview, prompt });
     const changeOrderButton = pageFn<(id: string) => FakeNode>(crew, 'changeOrderButton', { el, api, PREVIEW: preview, prompt });
+    // C2 (D107): the card's address link and Navigate come from the page's one maps builder.
+    const crewMapsUrl = pageFn<(a: string, c: string) => string>(crew, 'crewMapsUrl');
     await pageFn<() => Promise<void>>(crew, 'renderWork', {
       $: () => work, el, GATE: { unlocked }, PREVIEW: preview, PREVIEW_WHY: WHY, api, fmtTime: () => '9:00 AM',
-      arrivalButton, changeOrderButton, document: fakeDocument(),
+      arrivalButton, changeOrderButton, crewMapsUrl, document: fakeDocument(),
     })();
     return { work, asked };
   };
@@ -191,10 +193,13 @@ describe('R26 crew preview — work orders render read-only', () => {
     const card = work.kids.find((k) => k.className === 'wo')!;
     expect(card).toBeDefined();
     const buttons = card.all().filter((n) => n.tag === 'button');
-    expect(buttons.map((b) => b.textContent)).toEqual(['📷 Log arrival condition', '+ Extra work agreed']);
+    // C2 (D107): Navigate is a new control, so in the preview it too is drawn as a switched-off button.
+    expect(buttons.map((b) => b.textContent)).toEqual(['Navigate', '📷 Log arrival condition', '+ Extra work agreed']);
     expect(buttons.every((b) => b.disabled)).toBe(true);
     const why = card.kids.filter((k) => k.className === 'preview-why');
     expect(why.map((k) => k.textContent)).toEqual([WHY]);
+    // C2 (D107): what the crew sees too — why the job buttons are off on their phone.
+    expect(card.kids.filter((k) => k.className === 'jobwhy').map((k) => k.textContent)).toEqual(['No job record yet — tell the office what you found.']);
     // The card still shows the crew everything else it shows them.
     expect(card.all().some((n) => n.className === 'hz power')).toBe(true);
     expect(card.all().some((n) => n.className === 'photos')).toBe(true);
@@ -206,10 +211,19 @@ describe('R26 crew preview — work orders render read-only', () => {
     expect(work.kids.map((k) => k.className)).toEqual(['locked-note']);
   });
 
-  it('on a crew phone after the briefing the job buttons are live and carry no preview line', async () => {
-    const { work } = await render(false, true);
+  // Deliberately rewritten (CREW_PLAN C2, D107): arrival and extra work need a
+  // real job record (site_condition_record.job_id references job), and none
+  // reaches a crew phone yet — so on the crew phone too both buttons are off,
+  // with the job-record reason instead of a prompt(). The meaning kept: the
+  // preview's line is the preview's alone, and a crew phone never shows it.
+  it('on a crew phone after the briefing the job buttons are off for want of a job record, and carry no preview line', async () => {
+    const { work, asked } = await render(false, true);
+    expect(asked).toEqual([['/api/crew/workorders', undefined]]);
     const card = work.kids.find((k) => k.className === 'wo')!;
-    expect(card.all().filter((n) => n.tag === 'button').every((b) => !b.disabled)).toBe(true);
+    const buttons = card.all().filter((n) => n.tag === 'button');
+    expect(buttons.map((b) => b.textContent)).toEqual(['📷 Log arrival condition', '+ Extra work agreed']);
+    expect(buttons.every((b) => b.disabled)).toBe(true);
+    expect(card.kids.filter((k) => k.className === 'jobwhy').map((k) => k.textContent)).toEqual(['No job record yet — tell the office what you found.']);
     expect(card.all().some((n) => n.className === 'preview-why')).toBe(false);
   });
 });

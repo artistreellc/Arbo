@@ -178,8 +178,18 @@ describe('Talk tools — read-only, and a feed it could not read is NAMED (§1B)
     // A lapsed aerial-rescue card keeps a climber on the ground — by name.
     expect(update).toMatch(/Crew who can't go aerial: [1-9]\d*\./);
     expect(update).toMatch(/\n- SIM-Alder, Test: aerial rescue \(expired\)/);
-    // The practice data has no contract file: an unreadable day, never an empty one.
-    expect(update).toContain('Work orders: Arbo could not read the contract file, so nothing is dispatched as a work order. That is not an empty day — it is an unreadable one.');
+    // Deliberately updated (CREW_PLAN C2, D107): the practice data now files a
+    // contract for one SIM job and holds the other, so Talk counts one work
+    // order and names the held job. The unreadable contract file — still an
+    // unreadable day, never an empty one — is said over the same practice day
+    // with the contract read stubbed to fail.
+    expect(update).toContain('Work orders with a signed contract today: 1.');
+    expect(update).toMatch(/- Work order 1: Virginia Beach, .* — PERMIT LIKELY; POWER LINES\./);
+    expect(update).toContain('1 scheduled job has no signed contract on file, so it is not a work order.');
+    const unreadable = (await createTalkTools(simReads({
+      workOrders: async () => ({ status: 200, body: { date: '2026-10-21', workOrders: [], notWorkOrders: 2, contractLookupFailed: true } }),
+    })).run('arbo_update')).text;
+    expect(unreadable).toContain('Work orders: Arbo could not read the contract file, so nothing is dispatched as a work order. That is not an empty day — it is an unreadable one.');
     expect(update).toContain("Today's stops in Arbo's bookings, in route order: 2 — 2 jobs and 0 estimates.");
     expect(update).toMatch(/- Stop 1: job in Virginia Beach, .*, SIM-Alder, Test — POWER LINES\./);
     // Customer phone numbers and street addresses never reach the brain.
