@@ -193,7 +193,7 @@ describe('Back retraces every tab tapped, in order (Direction B P1)', () => {
     const drawn: string[] = [];
     const navDrawLine = oneLine('NAV_DRAW');
     const renders = [...new Set([...navDrawLine.matchAll(/\b(render[A-Z]\w*)\(/g)].map((m) => m[1]!))];
-    const core = new Function('$', 'history', 'window', 'setAppSub', 'talkEnd', 'photoLetGo', ...renders, `
+    const core = new Function('$', 'history', 'window', 'setAppSub', 'talkEnd', 'photoLetGo', 'fitTitle', ...renders, `
       let CUR_TAB = 'today'; let NAV_QUIET = false; const TALK = { on: false }; let PHOTO_OPEN = null;
       ${oneLine('VIEW_TITLES')}
       ${oneLine('DOCK_OF')}
@@ -203,7 +203,7 @@ describe('Back retraces every tab tapped, in order (Direction B P1)', () => {
       ${['switchTab', 'navPush', 'navShowBack', 'navShow', 'navBack', 'sheetOpened', 'closeSheet'].map(fnText).join('\n')}
       ${pop}
       return { switchTab, navBack, sheetOpened, tab: () => CUR_TAB };`)(
-      $, history, window, () => {}, () => {}, () => {}, ...renders.map((r) => () => drawn.push(r)),
+      $, history, window, () => {}, () => {}, () => {}, () => {} /* fitTitle (P13 review) */, ...renders.map((r) => () => drawn.push(r)),
     ) as { switchTab: (w: string) => void; navBack: () => void; sheetOpened: (id: string) => void; tab: () => string };
     history.replaceState({ v: 'today', d: 0 }, '', '#today'); // the boot step
     const openSheet = (id: string) => { $(id)!.classList.add!('show'); core.sheetOpened(id); };
