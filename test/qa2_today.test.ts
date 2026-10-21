@@ -325,7 +325,8 @@ describe('T5: one cause, one card, plain words', () => {
     expect(fold).toContain("el('div', 'panel-title', 'Quo')");
     expect(fold).toContain("el('div', 'feed-state unset', 'Quo isn’t connected to Arbo yet — Arbo can’t read your customer threads, can’t text anyone, and Sona’s calls aren’t reaching Arbo. That doesn’t mean there are no customer threads or Sona calls.')");
     expect(fold.match(/That doesn’t mean/g)).toHaveLength(1);
-    expect(today).toContain('fillQuoSlots([studyPanel(5), outreachPanel(false), sonaPanel(3, false)], [studySlot, outreachSlot, sonaSlot]);');
+    // Direction B P12: Today hands the fold its feeds card's place (the one Quo card folds into it when off).
+    expect(today).toContain('fillQuoSlots([studyPanel(5), outreachPanel(false), sonaPanel(3, false)], [studySlot, outreachSlot, sonaSlot], feeds.place);');
     // The slots are placed before any read, in a fixed order.
     const slots = ['const studySlot', 'const outreachSlot', 'const sonaSlot'].map((x) => today.indexOf(x));
     expect(slots).toEqual([...slots].sort((a, b) => a - b));
@@ -363,7 +364,8 @@ describe('T6: the Yard check says what it is for; the calendar way out sits in t
     expect(caught).toContain("const sc = feedState(e, 'Schedule', 'an empty day');");
     expect(caught).toContain("calBtn.prepend(icon('i-calendar'));");
     expect(caught).toContain("calBtn.style.margin = '14px 0 0';");
-    expect(caught.indexOf('sc.appendChild(calBtn);')).toBeLessThan(caught.indexOf('day.appendChild(sc);'));
+    // Direction B P12: the card reaches the day through the feeds card's place (kept in the day, counted on the card).
+    expect(caught.indexOf('sc.appendChild(calBtn);')).toBeLessThan(caught.indexOf('schedDone(sc);'));
     expect(caught).not.toContain('day.appendChild(calBtn)');
     expect(caught).toContain('Open the Calendar tab');
   });

@@ -415,3 +415,84 @@ describe('fillQuoSlots hands its answers to the screen\'s place, when it has one
     expect(slots.map((s) => s.children)).toEqual([[a], [], [c]]);
   });
 });
+
+// ---------- P12, Today: every slot a panel fills goes through the card ----------
+describe('Today hands every panel slot to its feeds card (P12, source pins)', () => {
+  const today = fnSrc('renderToday');
+  const brief = today.indexOf("api('/api/brief?from=");
+  const caught = today.slice(brief, today.indexOf('const s = brief.summary;'));
+
+  it('one card for Today, made before anything is handed to it and before the brief await', () => {
+    const made = today.indexOf("const feeds = feedsCard('today');");
+    expect(made).toBeGreaterThan(-1);
+    expect(made).toBeLessThan(today.indexOf('feeds.place('));
+    expect(made).toBeLessThan(brief);
+  });
+
+  it('every panel slot is handed to place — and before the brief await, which ends Today early in production', () => {
+    for (const want of [
+      'feeds.place(emgSlot, ',
+      'feeds.place(lawSlot, stormLawFlag(alerting));',
+      'feeds.place(locSlot, locationStrip()',
+      'feeds.place(recSlot, receptionStrip());',
+      'feeds.place(inboxSlot, inboxIntentPanel());',
+      'fillQuoSlots([studyPanel(5), outreachPanel(false), sonaPanel(3, false)], [studySlot, outreachSlot, sonaSlot], feeds.place);',
+      'feeds.place(formsSlot, websiteFormsPanel());',
+      'feeds.place(day, ',
+    ]) {
+      expect(today, want).toContain(want);
+      expect(today.indexOf(want), want).toBeLessThan(brief);
+    }
+    // No slot is filled straight from a read any more.
+    expect(today).not.toMatch(/\.then\(\(b\) => \{ if \(b\) \w+\.appendChild\(b\); \}\)/);
+    expect(today).not.toContain('emgSlot.appendChild(feedLine(');
+    expect(today).not.toContain('day.appendChild(sc)');
+  });
+
+  it('the slots that never carry a dead-feed wrapper keep their own way — named here so a new one is a choice', () => {
+    // The storm alarm (its gap is the hero's '–'), Before you roll (names its own gaps),
+    // the assistant's slot (R28: fillAssistToday fills it, quiet when off or not set up), the R32 line.
+    expect(today).toContain('const alerting = stormBanner().then((b) => { if (b) stormSlot.appendChild(b); return !!b; });');
+    expect(today).toContain('rollSlot.appendChild(beforeYouRoll(');
+    expect(today).toContain('fillAssistToday(assistSlot);');
+    expect(today).toContain("if (LINKS === 'readonly') roSlot.appendChild(el('div', 'storm-muted', 'Read-only: Arbo is reading your real records and saving nothing. Anything that would save says so.'));");
+  });
+
+  it('the card sits under the day and its instruments, above the notices it folds — hero, Before you roll and the day come first', () => {
+    const at = (s: string) => { const i = today.indexOf(s); expect(i, s).toBeGreaterThan(-1); return i; };
+    expect(at('v.appendChild(rollSlot);')).toBeLessThan(at('v.appendChild(day);'));
+    expect(at('v.appendChild(instr);')).toBeLessThan(at('v.appendChild(feeds.el);'));
+    expect(at('v.appendChild(feeds.el);')).toBeLessThan(at('v.appendChild(locSlot);'));
+  });
+
+  it('the schedule card stays in the day (data-keep), counted on the card; its place is taken before the brief is read', () => {
+    expect(today.indexOf('feeds.place(day, new Promise((res) => { schedDone = res; }));')).toBeGreaterThan(-1);
+    expect(today.indexOf('feeds.place(day, new Promise((res) => { schedDone = res; }));')).toBeLessThan(brief);
+    expect(caught).toContain("const sc = feedState(e, 'Schedule', 'an empty day');");
+    expect(caught).toContain('sc.dataset.off = k;');
+    expect(caught).toContain("sc.dataset.feedName = 'Schedule';");
+    expect(caught).toContain("sc.dataset.keep = '1';");
+    expect(caught.indexOf('sc.appendChild(calBtn);')).toBeLessThan(caught.indexOf('schedDone(sc);'));
+  });
+
+  it('every way out of the brief read settles the schedule\'s place, so the card never reads forever', () => {
+    expect(caught).toContain('if (e.code === 401) { schedDone(null); return showKeywall(); }');
+    const s = today.indexOf('const s = brief.summary;');
+    expect(today.slice(s - 40, s)).toContain('schedDone(null);');
+    expect(today.match(/schedDone\(/g)).toHaveLength(3);
+  });
+
+  it('the emergency leads gap goes through the card, marked and named; the tile still names the gap', () => {
+    const at = today.indexOf('feeds.place(emgSlot, ');
+    const block = today.slice(at, today.indexOf('}));', at));
+    expect(block).toContain("const n = feedLine(r.gap, 'Emergency leads', 'That doesn’t mean there are none.');");
+    expect(block).toContain('n.dataset.off = feedKind(r.gap);');
+    expect(block).toContain("n.dataset.feedName = 'Emergency leads';");
+    expect(at).toBeLessThan(today.indexOf('emergencyLeads().then('));
+    expect(today).toContain("setEmergencies('leads', FEED_TAG[feedKind(r.gap)]);");
+  });
+
+  it('Today stays free of <details> (a timed screen)', () => {
+    expect(today).not.toContain("'details'");
+  });
+});
