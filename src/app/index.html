@@ -6214,21 +6214,28 @@ const PERMIT_ANS = { inRpa: 'unknown', nearPowerLines: 'unknown', inRightOfWay: 
 // and a no-break space keeps "§" on the same line as its section number.
 const nb = (s) => String(s).replace(/(\d)-(?=\d)/g, '$1-\u2060').replace(/§\s+/g, '§\u00a0');
 // Direction B P9 (spec: "Permits folds down … with the result pinned"): the job
-// check's result on one line — the strongest chip (alarm > stop > watch > info)
-// in the permit words, CALL FIRST and TICKET REQUIRED kept on it, then
-// "N steps · city". No steps back is never a calm line: it is not an answer.
+// check's result on one line, then "N steps · city". It always carries the
+// strongest permit word the steps hold (PERMIT LIKELY > REVIEW NEEDED > NO
+// OVERLAY), with every CALL FIRST and TICKET REQUIRED beside it, the loudest
+// chip first (alarm > stop > watch > info; the permit word wins a tie). Review
+// (b-wave-1b): one chip picked by colour let a tie or a louder call-ahead drop
+// PERMIT LIKELY off the pin. No steps back is never a calm line: it is not an answer.
 function permitVerdict(items, city) {
   if (!items.length) return { chips: [], line: 'No steps came back — that is not an answer. Check with the city.' };
   const rank = ['alarm', 'stop', 'watch', 'good', 'info'];
+  const strength = { 'PERMIT LIKELY': 0, 'REVIEW NEEDED': 1, 'NO OVERLAY–VERIFY': 2 }; // the permit words, strongest first (keys only: the labels live in PERMIT_STATE)
   // The chip each result card wears (checkCard): CALL FIRST is the alarm only on the power-line step.
-  const look = (it) => { const st = PERMIT_STATUS[it.status] || [it.status, 'watch']; return [st[0], it.status === 'CALL FIRST' && !it.safety ? 'watch' : st[1]]; };
-  const best = items.map(look).reduce((a, b) => (rank.indexOf(b[1]) < rank.indexOf(a[1]) ? b : a));
-  const chips = [best];
+  const look = (it) => { const st = PERMIT_STATUS[it.status]; return [st[0], it.status === 'CALL FIRST' && !it.safety ? 'watch' : st[1]]; };
+  const word = items.map((it) => it.status).filter((st) => st in strength).sort((a, b) => strength[a] - strength[b])[0];
+  const chips = word ? [look({ status: word })] : [];
   for (const it of items) {
     if (it.status !== 'CALL FIRST' && it.status !== 'TICKET REQUIRED') continue;
     const c = look(it);
-    if (!chips.some((x) => x[0] === c[0])) chips.push(c);
+    const had = chips.find((x) => x[0] === c[0]);
+    if (!had) chips.push(c);
+    else if (rank.indexOf(c[1]) < rank.indexOf(had[1])) had[1] = c[1]; // the power-line CALL FIRST keeps its alarm
   }
+  chips.sort((a, b) => rank.indexOf(a[1]) - rank.indexOf(b[1])); // stable: the permit word stays first among equals
   return { chips, line: plural(items.length, 'step') + ' · ' + city };
 }
 // Direction B P9: one rule topic, folded. The summary names it, counts its rules and
