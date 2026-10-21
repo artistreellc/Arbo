@@ -1887,6 +1887,14 @@ export async function createLessonDraftFromNearMiss(input: {
   return { id };
 }
 
+/**
+ * The training_item types a crew member may be asked or graded on (CREW_PLAN
+ * C1, fact 17). The table also holds tailgate_brief and reference_entry rows:
+ * unfiltered, a published briefing would join the quiz pool and the training
+ * board's topics, and a phone could send a briefing id back to be "graded".
+ */
+const GATE_ITEM_TYPES = ['quiz_question', 'lesson'];
+
 /** Published, vetted items — the only pool a crew member may be asked from. */
 export async function publishedTrainingItems(): Promise<Array<{
   id: string; topic: string; difficulty: number; published: boolean; excludeFromScoring: boolean;
@@ -1894,7 +1902,8 @@ export async function publishedTrainingItems(): Promise<Array<{
   const db = getDb();
   const res = await db.from('training_item')
     .select('id, topic, difficulty, published, exclude_from_scoring')
-    .eq('published', true);
+    .eq('published', true)
+    .in('type', GATE_ITEM_TYPES);
   if (res.error) throw res.error;
   return (res.data ?? []).map((r) => ({
     id: r.id as string,
@@ -1978,7 +1987,8 @@ export async function trainingItemsByIds(ids: string[]): Promise<Array<{
   const res = await db.from('training_item')
     .select('id, topic, type, body')
     .in('id', ids)
-    .eq('published', true);
+    .eq('published', true)
+    .in('type', GATE_ITEM_TYPES);
   if (res.error) throw res.error;
   return (res.data ?? []).map((r) => ({
     id: r.id as string,

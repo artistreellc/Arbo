@@ -108,7 +108,9 @@ describe('the crew door (§8C.1) — one app, two doors', () => {
   });
 
   it('prompts the before/after photo law on every job (§1B)', () => {
-    expect(html).toContain('Before + after photos required');
+    // Deliberately updated (CREW_PLAN C2, D107, Q9): the law still rides every
+    // card, now without promising a close flow the app does not have.
+    expect(html).toContain('Before + after photos are required');
   });
 
   it('cites standards by clause, never reproducing text (§6U.3)', () => {
@@ -282,7 +284,11 @@ describe('arrival record + change order on the job card (§6)', () => {
 
   it('the crew records THAT work was agreed and WHO agreed — never a figure (§8C)', () => {
     expect(html).toContain("'/api/crew/change-order'");
-    expect(html).toContain('Who agreed to it?');
+    // Deliberately updated (CREW_PLAN C2, D107): the prompt() that asked "Who agreed
+    // to it?" is gone; the sender kept for the form still carries who agreed, and
+    // still names a missing name.
+    expect(html).toContain('agreedBy: agreedBy.trim(),');
+    expect(html).toContain('Needs the name of whoever agreed to it.');
     // No money crosses onto this surface at all. The office fills it in.
     expect(html).not.toMatch(/amount/i);
     expect(html).toContain('office fills the number in');
@@ -294,5 +300,330 @@ describe('arrival record + change order on the job card (§6)', () => {
 
   it('keeps field-sized targets on the new job actions', () => {
     expect(html).toMatch(/\.jobbtn\{[^}]*min-height:52px/);
+  });
+});
+
+// ═══ CREW_PLAN C1 (D107) — name every failure on the crew door (§1B) ═══════
+// Production runs ARBO_DATA_LINKS=readonly with the jobs link kept cut, so the
+// crew door's failure lines are the lines a crew member actually reads. Every
+// catch words its failure through crewWhy (the crew door's one vocabulary for
+// a failed read), and the quiz names an empty pool instead of vanishing.
+// vitest has no DOM: the page's own functions run over small stand-ins.
+describe('C1 — the five catches name their failure through crewWhy', () => {
+  /** One top-level function (closing "}" alone on its line). */
+  const src = (name: string): string => {
+    const m = new RegExp(`^(?:async )?function ${name}\\([\\s\\S]*?^\\}$`, 'm').exec(html);
+    if (!m) throw new Error(`no function ${name} in the page`);
+    return m[0];
+  };
+
+  // C2 (D107) moved the arrival and extra-work catches out of the (now switched-off)
+  // buttons into sendArrival / sendChangeOrder, kept for the forms to come; the
+  // pin follows them there with the same meaning.
+  it('renderWork, submitQuiz, renderQuiz, sendArrival and sendChangeOrder wait for /health, then call crewWhy — no bare retry left', () => {
+    for (const name of ['renderWork', 'submitQuiz', 'renderQuiz', 'sendArrival', 'sendChangeOrder']) {
+      const s = src(name);
+      expect(s, name).toContain('await LINKS_READY');
+      expect(s, name).toContain('crewWhy(');
+      expect(s, name).not.toContain('Try again.');
+      expect(s, name).not.toContain('try once more');
+      // A catch that drops the error cannot name it.
+      expect(s, name).not.toMatch(/catch \{/);
+    }
+  });
+});
+
+/** Just enough DOM for the quiz and the work-order list. */
+class Node1 {
+  kids: Node1[] = [];
+  listeners: Record<string, () => unknown> = {};
+  disabled = false;
+  id = '';
+  href = '';
+  target = '';
+  rel = '';
+  constructor(public tag: string, public className = '', public textContent = '') {}
+  appendChild(k: Node1): Node1 { this.kids.push(k); return k; }
+  replaceChildren(): void { this.kids = []; }
+  addEventListener(type: string, fn: () => unknown): void { this.listeners[type] = fn; }
+  setAttribute(): void {}
+  querySelector(sel: string): Node1 | null { return this.all().find((n) => '.' + n.className === sel) ?? null; }
+  all(): Node1[] { return this.kids.flatMap((k) => [k, ...k.all()]); }
+  /** Everything a crew member would read in this node, in order. */
+  text(): string { return [this.textContent, ...this.kids.map((k) => k.text())].filter(Boolean).join(' '); }
+}
+const el1 = (tag: string, cls?: string, text?: string): Node1 => new Node1(tag, cls ?? '', text ?? '');
+const doc1 = { createElement: (t: string) => new Node1(t), createTextNode: (t: string) => new Node1('#text', '', t), querySelector: () => new Node1('main') };
+const lift = <T,>(name: string, deps: Record<string, unknown>): T => {
+  const m = new RegExp(`^(?:async )?function ${name}\\([\\s\\S]*?^\\}$`, 'm').exec(html);
+  if (!m) throw new Error(`no function ${name} in the page`);
+  return new Function(...Object.keys(deps), `${m[0]}\nreturn ${name};`)(...Object.values(deps)) as T;
+};
+const crewWhyAt = (links: string | null) => lift<(e: unknown) => string>('crewWhy', { LINKS: links });
+const refused = (code: number, message: string) => async () => { throw Object.assign(new Error(message), { code }); };
+
+describe('C1 — the clock-in question names an empty pool and a failed read', () => {
+  const quiz = async (answer: () => Promise<unknown>, links: string | null = 'readonly') => {
+    const v = new Node1('div');
+    const renderQuiz = lift<(ctx?: string) => Promise<void>>('renderQuiz', {
+      $: (id: string) => (id === 'quiz' ? v : v.all().find((n) => n.id === id) ?? null),
+      el: el1, document: doc1, api: answer, GATE: { unlocked: true }, QUIZ: { done: false, items: [], answers: {} },
+      QUIZ_TITLE: { clock_in_gate: 'Question before you roll', friday_questionnaire: 'Friday check' },
+      isFridayEt: () => false, CREW_ID: 'x', submitQuiz: () => {}, LINKS_READY: Promise.resolve(), crewWhy: crewWhyAt(links),
+    });
+    await renderQuiz();
+    return v;
+  };
+  const NAMED_EMPTY = 'The office hasn’t published any questions yet — nothing to answer today.';
+  const GAP = 'That is the office’s gap, not a pass.';
+  const lesson = { id: 'l1', topic: 'Drop zones', type: 'lesson', prompt: 'SIM lesson', options: [], readOnly: true };
+  const question = { id: 'q1', topic: 'Rigging', type: 'quiz_question', prompt: 'SIM question?', options: ['A', 'B'], readOnly: false };
+
+  it('an empty pool draws the named line — never a silent skip — and offers nothing to submit', async () => {
+    const v = await quiz(async () => ({ itemsLoaded: true, items: [], shortfall: 1 }));
+    expect(v.text()).toContain(NAMED_EMPTY);
+    expect(v.text()).toContain(GAP);
+    expect(v.all().some((n) => n.id === 'quiz-go')).toBe(false);
+  });
+
+  it('a pool with no quiz_question (a lesson only) draws the same named line', async () => {
+    const v = await quiz(async () => ({ itemsLoaded: true, items: [lesson], shortfall: 0 }));
+    expect(v.text()).toContain(NAMED_EMPTY);
+    expect(v.all().some((n) => n.id === 'quiz-go')).toBe(false);
+  });
+
+  it('a pool with a question still asks it (the named line is only for a pool with none)', async () => {
+    const v = await quiz(async () => ({ itemsLoaded: true, items: [question], shortfall: 0 }));
+    expect(v.text()).not.toContain(NAMED_EMPTY);
+    expect(v.text()).toContain('SIM question?');
+    expect(v.all().some((n) => n.id === 'quiz-go')).toBe(true);
+  });
+
+  it('a failed load gives crewWhy’s reason in the warning box and still says carry on', async () => {
+    const v = await quiz(refused(503, 'read_only'));
+    const box = v.all().find((n) => n.className === 'state err')!;
+    expect(box, 'a failed read wears the warning box, not the empty one').toBeDefined();
+    expect(box.text()).toContain('Arbo is read-only right now — it can look but not save, so nothing was written');
+    expect(box.text()).toContain('carry on');
+    expect(v.text()).not.toContain(NAMED_EMPTY);
+  });
+
+  // Review D2 (D107): the route answered, but the questions themselves could not
+  // be read (itemsLoaded false). §1B: that is never "none published" — it wears
+  // the warning box and says it could not be loaded, and nothing is asked.
+  it('questions the server could not read are named in the warning box — never "none published"', async () => {
+    const v = await quiz(async () => ({ itemsLoaded: false, items: [], shortfall: 1 }));
+    const box = v.all().find((n) => n.className === 'state err')!;
+    expect(box, 'an unread pool wears the warning box, not the empty one').toBeDefined();
+    expect(box.text()).toContain('could not be loaded');
+    expect(box.text()).toContain('This is not "no questions"');
+    expect(v.text()).not.toContain(NAMED_EMPTY);
+    expect(v.text()).not.toContain(GAP);
+    expect(v.all().some((n) => n.id === 'quiz-go')).toBe(false);
+  });
+
+  it('a rejected crew code is said as one — never "the office didn’t answer"', async () => {
+    const v = await quiz(refused(400, 'bad_crew_id'));
+    expect(v.text()).toMatch(/the office did not recognise your crew code/i);
+    expect(v.text()).not.toMatch(/didn’t answer/i);
+  });
+
+  it('answers that did not save name why, and never invite a bare retry', async () => {
+    const quizNode = new Node1('div');
+    quizNode.appendChild(el1('div', 'errline', ''));
+    const go = new Node1('button');
+    const submitQuiz = lift<() => Promise<void>>('submitQuiz', {
+      $: (id: string) => (id === 'quiz' ? quizNode : go), el: el1, api: refused(503, 'read_only'), CREW_ID: 'x',
+      QUIZ: { context: 'clock_in_gate', items: [question], answers: { q1: 0 }, startedAt: '' },
+      LINKS_READY: Promise.resolve(), crewWhy: crewWhyAt('readonly'),
+    });
+    await submitQuiz();
+    const line = quizNode.querySelector('.errline')!.textContent;
+    expect(line).toContain('Arbo is read-only right now');
+    expect(line).not.toMatch(/try once more|Try again/);
+  });
+});
+
+describe('C1 — the work-order list: a failed read is named; "Nothing scheduled" only over a read that succeeded', () => {
+  const work = async (answer: () => Promise<unknown>, links: string | null = 'readonly') => {
+    const v = new Node1('div');
+    const renderWork = lift<() => Promise<void>>('renderWork', {
+      $: () => v, el: el1, document: doc1, api: answer, GATE: { unlocked: true }, PREVIEW: false, PREVIEW_WHY: '',
+      fmtTime: () => '9:00 AM', arrivalButton: () => el1('div'), changeOrderButton: () => el1('div'),
+      crewMapsUrl: () => 'https://www.google.com/maps/dir/?api=1&destination=x',
+      LINKS_READY: Promise.resolve(), crewWhy: crewWhyAt(links),
+    });
+    await renderWork();
+    return v;
+  };
+
+  it('the jobs link kept cut (read-only) is named in the warning box, and is not an empty day', async () => {
+    const v = await work(refused(503, 'link_cut'));
+    const box = v.all().find((n) => n.className === 'state err')!;
+    expect(box).toBeDefined();
+    expect(box.text()).toContain('Could not load your work orders');
+    expect(box.text()).toContain('The office data link is cut on purpose.');
+    expect(box.text()).toContain('That is not an empty day — call the office.');
+    expect(v.text()).not.toContain('Nothing scheduled');
+  });
+
+  it('a 429 names the wait, not "the office didn’t answer"', async () => {
+    const v = await work(refused(429, 'too_many_attempts'));
+    expect(v.text()).toContain('Too many wrong door keys from this connection');
+  });
+
+  it('"Nothing scheduled" is drawn only after a read that answered with nothing held', async () => {
+    expect((await work(async () => ({ workOrders: [], notWorkOrders: 0, contractLookupFailed: false }))).text()).toContain('Nothing scheduled');
+    for (const answer of [
+      refused(503, 'read_only'), refused(500, 'error'), refused(0, 'Failed to fetch'),
+      async () => ({ workOrders: [], notWorkOrders: 2, contractLookupFailed: true }),
+      async () => ({ workOrders: [], notWorkOrders: 1, contractLookupFailed: false }),
+    ]) expect((await work(answer)).text()).not.toContain('Nothing scheduled');
+  });
+});
+
+// ═══ CREW_PLAN C2 (D107) — Navigate, no prompt(), the job actions off with why ═══
+describe('C2 — one maps builder, one Navigate per card, opened straight from a tap', () => {
+  const crewMapsUrl = (a: string, c: string) => lift<(a: string, c: string) => string>('crewMapsUrl', {})(a, c);
+  const WO = (n: number, over: Record<string, unknown> = {}) => ({
+    jobId: `sim-job-${n}`, routeOrder: n, address: `${n}01 Simulation Row`, city: 'Virginia Beach', timeIso: '2026-10-21T13:00:00Z',
+    scope: 'SIMULATED — remove leaning pine', hazards: [], permitNote: null, photoRefs: [], briefingId: null, requiresBeforeAfterPhotos: true, ...over,
+  });
+  const render = async (orders: unknown[], preview = false, held = 0) => {
+    const v = new Node1('div');
+    const deps = { el: el1, PREVIEW: preview, api: async () => { throw new Error('a switched-off job action must not send'); }, CREW_ID: 'x' };
+    await lift<() => Promise<void>>('renderWork', {
+      $: () => v, el: el1, document: doc1, GATE: { unlocked: !preview }, PREVIEW: preview, PREVIEW_WHY: 'Off in the preview — nothing here signs, files or clocks in.',
+      api: async () => ({ workOrders: orders, notWorkOrders: held, contractLookupFailed: false }), fmtTime: () => '9:00 AM',
+      arrivalButton: lift('arrivalButton', deps), changeOrderButton: lift('changeOrderButton', deps), crewMapsUrl,
+      LINKS_READY: Promise.resolve(), crewWhy: crewWhyAt('simulation'),
+    })();
+    return v;
+  };
+
+  it('builds Google Maps directions in the maps/dir/?api=1&destination= shape — and never routes a stop with no street to the bare city', () => {
+    expect(crewMapsUrl('101 Simulation Row', 'Virginia Beach'))
+      .toBe('https://www.google.com/maps/dir/?api=1&destination=101%20Simulation%20Row%2C%20Virginia%20Beach%2C%20VA&travelmode=driving');
+    expect(crewMapsUrl('202 Placeholder Way', '')).toBe('https://www.google.com/maps/dir/?api=1&destination=202%20Placeholder%20Way%2C%20VA&travelmode=driving');
+    expect(crewMapsUrl('', 'Norfolk')).toBe('');
+    expect(crewMapsUrl('  ', 'Norfolk')).toBe('');
+  });
+
+  it('the page has exactly one maps builder, and the old place-search link is gone', () => {
+    expect(html.match(/function crewMapsUrl\(/g)).toHaveLength(1);
+    expect(html.match(/google\.com\/maps/g)).toHaveLength(1);
+    expect(html).not.toContain('maps.google.com');
+  });
+
+  it('every card carries exactly one Navigate, a link straight to Maps, and the address opens the same place', async () => {
+    const v = await render([WO(1), WO(2, { city: 'Norfolk' })]);
+    const cards = v.kids.filter((k) => k.className === 'wo');
+    expect(cards).toHaveLength(2);
+    for (const [i, card] of cards.entries()) {
+      const navs = card.all().filter((n) => n.className === 'navbtn');
+      expect(navs, `card ${i + 1}`).toHaveLength(1);
+      const nav = navs[0]!;
+      expect(nav.tag).toBe('a');
+      expect(nav.textContent).toBe('Navigate');
+      expect(nav.href).toBe(crewMapsUrl(`${i + 1}01 Simulation Row`, i === 0 ? 'Virginia Beach' : 'Norfolk'));
+      expect(nav.target).toBe('_blank');
+      expect(nav.rel).toBe('noopener');
+      const addr = card.all().find((n) => n.tag === 'a' && n.className === '')!;
+      expect(addr.href).toBe(nav.href);
+    }
+  });
+
+  it('a stop with no street gets no route: Navigate is off and says why', async () => {
+    const v = await render([WO(1, { address: '' })]);
+    const card = v.kids.find((k) => k.className === 'wo')!;
+    const nav = card.all().find((n) => n.className === 'navbtn')!;
+    expect(nav.tag).toBe('button');
+    expect(nav.disabled).toBe(true);
+    expect(card.text()).toContain('No street on file — ask the office for the address.');
+    expect(card.all().some((n) => n.tag === 'a')).toBe(false);
+  });
+
+  it('R26: in the preview Navigate is drawn but off, and the card carries the preview’s reason', async () => {
+    const v = await render([WO(1)], true);
+    const card = v.kids.find((k) => k.className === 'wo')!;
+    const nav = card.all().find((n) => n.className === 'navbtn')!;
+    expect(nav.tag).toBe('button');
+    expect(nav.disabled).toBe(true);
+    expect(nav.href).toBe('');
+    expect(card.kids.filter((k) => k.className === 'preview-why').map((k) => k.textContent)).toEqual(['Off in the preview — nothing here signs, files or clocks in.']);
+  });
+
+  // UI review 2 (D107): the card's one preview line sat at the bottom of the
+  // card, 417–457 px below the switched-off Navigate. R26: a control off in the
+  // preview has PREVIEW_WHY beside it — Navigate is the one control on the card
+  // that is off BECAUSE of the preview (the job buttons are off on the crew
+  // phone too, and keep their own reason beside them).
+  it('R26: in the preview the card’s preview line sits directly under Navigate — with or without a street', async () => {
+    for (const over of [{}, { address: '' }]) {
+      const v = await render([WO(1, over)], true);
+      const card = v.kids.find((k) => k.className === 'wo')!;
+      const at = card.kids.findIndex((k) => k.className === 'navbtn');
+      expect(at, 'Navigate is a direct child of the card').toBeGreaterThan(-1);
+      expect(card.kids[at + 1]!.className, JSON.stringify(over)).toBe('preview-why');
+      expect(card.kids.filter((k) => k.className === 'preview-why')).toHaveLength(1);
+      // The job buttons keep the job-record reason beside them.
+      const jobs = card.kids.findIndex((k) => k.className === 'jobaction');
+      expect(card.kids.slice(jobs).map((k) => k.className)).toEqual(['jobaction', 'jobaction', 'jobwhy']);
+    }
+    const phone = await render([WO(1)], false);
+    expect(phone.all().some((n) => n.className === 'preview-why')).toBe(false);
+  });
+
+  it('no sheet and no dialog: the page never asks "Open in Google Maps?" and calls no prompt(), confirm() or alert()', () => {
+    expect(html).not.toContain('Open in Google Maps?');
+    expect(html).not.toMatch(/\b(prompt|confirm|alert)\(/);
+  });
+
+  it('Navigate is a field-sized target', () => {
+    expect(html).toMatch(/\.navbtn\{[^}]*min-height:52px/);
+  });
+});
+
+describe('C2 — arrival and extra work are off until real job records exist, with the reason, on the phone and in the preview', () => {
+  const crewMapsUrl = (a: string, c: string) => lift<(a: string, c: string) => string>('crewMapsUrl', {})(a, c);
+  const REASON = 'No job record yet — tell the office what you found.';
+  const WHY = 'Off in the preview — nothing here signs, files or clocks in.';
+  const wo = { jobId: 'sim-job-1', routeOrder: 1, address: '101 Simulation Row', city: 'Virginia Beach', timeIso: null, scope: null, hazards: [], permitNote: null, photoRefs: [], briefingId: null, requiresBeforeAfterPhotos: true };
+  const card = async (preview: boolean) => {
+    const v = new Node1('div');
+    let sent = 0;
+    const deps = { el: el1, PREVIEW: preview, api: async () => { sent += 1; return {}; }, CREW_ID: 'x' };
+    await lift<() => Promise<void>>('renderWork', {
+      $: () => v, el: el1, document: doc1, GATE: { unlocked: !preview }, PREVIEW: preview, PREVIEW_WHY: WHY,
+      api: async () => ({ workOrders: [wo], notWorkOrders: 0, contractLookupFailed: false }), fmtTime: () => '',
+      arrivalButton: lift('arrivalButton', deps), changeOrderButton: lift('changeOrderButton', deps), crewMapsUrl,
+      LINKS_READY: Promise.resolve(), crewWhy: crewWhyAt('simulation'),
+    })();
+    return { c: v.kids.find((k) => k.className === 'wo')!, sent: () => sent };
+  };
+
+  for (const preview of [false, true]) {
+    it(`${preview ? 'preview' : 'crew phone'}: both buttons off, the reason once on the card${preview ? ', and the preview line' : ''}`, async () => {
+      const { c, sent } = await card(preview);
+      const jobs = c.all().filter((n) => n.className === 'jobbtn');
+      expect(jobs.map((b) => b.textContent)).toEqual(['📷 Log arrival condition', '+ Extra work agreed']);
+      expect(jobs.every((b) => b.disabled)).toBe(true);
+      // Nothing is wired to a tap: a switched-off button cannot send.
+      expect(jobs.every((b) => Object.keys(b.listeners).length === 0)).toBe(true);
+      expect(c.kids.filter((k) => k.className === 'jobwhy').map((k) => k.textContent)).toEqual([REASON]);
+      expect(c.kids.filter((k) => k.className === 'preview-why').map((k) => k.textContent)).toEqual(preview ? [WHY] : []);
+      expect(sent()).toBe(0);
+    });
+  }
+
+  it('the senders stay for the forms to come, and nothing calls them while the buttons are off', () => {
+    for (const name of ['sendArrival', 'sendChangeOrder']) {
+      expect(html.match(new RegExp(`\\b${name}\\(`, 'g')), name).toHaveLength(1); // its definition, nothing else
+    }
+  });
+
+  it('the photo line promises no close flow the app lacks', () => {
+    expect(html).toContain('Before + after photos are required — the app can’t take them yet; ask the office how to send them.');
+    expect(html).not.toContain('required to close this job');
   });
 });

@@ -1,6 +1,6 @@
 # Crew door: tightening plan
 
-**Status:** plan only. Nothing is built. Drafted read-only on 2026-10-21 against main `e4a6415`, after Direction B, R35 TomTom and audit wave 1. Live row counts were not re-checked. They come from `docs/DATA_LINKS.md` (2026-09-24) and GO_LIVE. Nobody checked whether `CREW_ACCESS_KEY` is set on production, because Railway can't be reached from here.
+**Status:** C1 and C2 built and review-fixed (D107, review round), not deployed. C3 and C4 are next; C5–C8 wait on Q0 and Mike's rulings. The plan was drafted read-only on 2026-10-21 against main `e4a6415`, after Direction B, R35 TomTom and audit wave 1. Live row counts were not re-checked. They come from `docs/DATA_LINKS.md` (2026-09-24) and GO_LIVE. Nobody checked whether `CREW_ACCESS_KEY` is set on production, because Railway can't be reached from here.
 
 **Goal (Mike, 2026-10-20):** *"the map, the crew section, everythimg else really needs to start tightening up"*. For launch Mike said *"I use it daily first"*, and the date is October 2026. That reads as Mike using the app daily himself before the crews do. So October's crew scope is C1–C4 plus his preview, unless he says crews go live this month (Q0). If they do, a crew member's day goes like this: open `/crew` at the yard, read and sign today's briefing, see today's confirmed jobs, tap Navigate.
 
