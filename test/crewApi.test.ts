@@ -40,7 +40,7 @@
 
   Remember the marker: SLOW::ARBO
 */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createApi, type DataSource, type CrewJobSource } from '../src/server/api.js';
 import { createSimSource } from '../src/dev/simSource.js';
 
@@ -675,5 +675,74 @@ describe('fleet + campaign registries (§6E/§6D) — the last read-only tables'
     expect((await dead.createEquipmentUnit({ name: 'A', kind: 'b', vinOrSerial: 'c' })).status).toBe(503);
     expect((await dead.addEquipmentPart(UUID, { partNumber: 'x' })).status).toBe(503);
     expect((await dead.createCampaign({ type: 'flyer' })).status).toBe(503);
+  });
+});
+
+// ═══ CREW_PLAN C1 (D107), fact 17 — the quiz pool holds questions and lessons only ═══
+// training_item also holds tailgate_brief and reference_entry rows. Unfiltered,
+// a published briefing would join the clock-in pool (a crew member "asked" the
+// briefing as a question) and the training board's topics. The repository is
+// run against a stand-in for the Supabase client that applies the filters the
+// way PostgREST would, so a missing filter lets the briefing back in.
+describe('C1 — a tailgate_brief row never enters the quiz pool or the graded items', () => {
+  type Row = { id: string; type: string; topic: string; difficulty: number; published: boolean; exclude_from_scoring: boolean; body: unknown };
+  const ROWS: Row[] = [
+    { id: 'q1', type: 'quiz_question', topic: 'Rigging', difficulty: 2, published: true, exclude_from_scoring: false, body: { prompt: 'SIM?', options: ['a', 'b'], answer: 0 } },
+    { id: 'l1', type: 'lesson', topic: 'Drop zones', difficulty: 1, published: true, exclude_from_scoring: true, body: { text: 'SIM lesson' } },
+    { id: 'b1', type: 'tailgate_brief', topic: 'Morning briefing', difficulty: 1, published: true, exclude_from_scoring: false, body: { text: 'SIM briefing' } },
+    { id: 'r1', type: 'reference_entry', topic: 'Speed line', difficulty: 3, published: true, exclude_from_scoring: false, body: {} },
+    { id: 'q2', type: 'quiz_question', topic: 'Chipper', difficulty: 1, published: false, exclude_from_scoring: false, body: {} },
+  ];
+
+  async function repoOver(rows: Row[]) {
+    const db = {
+      from(table: string) {
+        expect(table).toBe('training_item');
+        const keep: Array<(r: Row) => boolean> = [];
+        const answer = () => ({ data: rows.filter((r) => keep.every((k) => k(r))), error: null });
+        const b = {
+          select() { return b; },
+          eq(col: keyof Row, v: unknown) { keep.push((r) => r[col] === v); return b; },
+          in(col: keyof Row, vs: unknown[]) { keep.push((r) => vs.includes(r[col])); return b; },
+          then(ok: (v: unknown) => unknown, bad?: (e: unknown) => unknown) { return Promise.resolve(answer()).then(ok, bad); },
+        };
+        return b;
+      },
+    };
+    vi.resetModules();
+    vi.doMock('../src/db/client.js', () => ({ getDb: () => db }));
+    return import('../src/db/repositories.js');
+  }
+  const unmock = () => { vi.doUnmock('../src/db/client.js'); vi.resetModules(); };
+
+  it('publishedTrainingItems: published quiz questions and lessons — never a briefing or a reference entry', async () => {
+    try {
+      const repo = await repoOver(ROWS);
+      expect((await repo.publishedTrainingItems()).map((i) => i.id).sort()).toEqual(['l1', 'q1']);
+    } finally { unmock(); }
+  });
+
+  it('trainingItemsByIds: a briefing id sent back by a phone is not graded', async () => {
+    try {
+      const repo = await repoOver(ROWS);
+      expect((await repo.trainingItemsByIds(['q1', 'b1', 'r1'])).map((i) => i.id)).toEqual(['q1']);
+    } finally { unmock(); }
+  });
+
+  it('so the training board counts topics from questions and lessons only', async () => {
+    try {
+      const repo = await repoOver(ROWS);
+      const api = createApi({
+        ready: () => true, stopsBetween: async () => [], newLeads: async () => [],
+        // One crew member never asked anything: every pool topic is untested for him.
+        crewProfiles: async () => [{ id: 'SIM-crew', name: 'SIM-Alder, Test', role: 'climber', scores: {} }],
+        trainingPool: () => repo.publishedTrainingItems(),
+      });
+      const body = JSON.stringify((await api.trainingBoard()).body);
+      expect(body).toContain('Rigging');
+      expect(body).toContain('Drop zones');
+      expect(body).not.toContain('Morning briefing');
+      expect(body).not.toContain('Speed line');
+    } finally { unmock(); }
   });
 });

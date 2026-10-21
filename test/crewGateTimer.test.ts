@@ -32,13 +32,14 @@ function harness() {
   const slot = make('div');
   byId.set('gate-slot', slot);
   const block = html.slice(html.indexOf('const GATE = {'), html.indexOf('async function submitGate('));
+  // C1 (D107): renderGate reads /health's answer (LINKS) to say read-only above GO; this harness is not read-only.
   const run = new Function(
-    'PREVIEW', 'PREVIEW_WHY', 'document', '$', 'el', 'setInterval', 'submitGate',
+    'PREVIEW', 'PREVIEW_WHY', 'document', '$', 'el', 'setInterval', 'submitGate', 'LINKS_READY', 'LINKS',
     `${block}\nreturn { GATE, renderGate, secondsOnScreen, refreshGate };`,
   );
   const page = run(
     false, '', { querySelector: () => make('main'), createElement: (t: string) => make(t) },
-    (id: string) => byId.get(id) ?? null, make, () => 1, () => {},
+    (id: string) => byId.get(id) ?? null, make, () => 1, () => {}, Promise.resolve(), 'live',
   ) as { GATE: Record<string, unknown>; renderGate: (b: unknown) => void; secondsOnScreen: () => number; refreshGate: () => void };
   return { ...page, byId };
 }

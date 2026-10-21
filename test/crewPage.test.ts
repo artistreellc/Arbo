@@ -296,3 +296,165 @@ describe('arrival record + change order on the job card (§6)', () => {
     expect(html).toMatch(/\.jobbtn\{[^}]*min-height:52px/);
   });
 });
+
+// ═══ CREW_PLAN C1 (D107) — name every failure on the crew door (§1B) ═══════
+// Production runs ARBO_DATA_LINKS=readonly with the jobs link kept cut, so the
+// crew door's failure lines are the lines a crew member actually reads. Every
+// catch words its failure through crewWhy (the crew door's one vocabulary for
+// a failed read), and the quiz names an empty pool instead of vanishing.
+// vitest has no DOM: the page's own functions run over small stand-ins.
+describe('C1 — the five catches name their failure through crewWhy', () => {
+  /** One top-level function (closing "}" alone on its line). */
+  const src = (name: string): string => {
+    const m = new RegExp(`^(?:async )?function ${name}\\([\\s\\S]*?^\\}$`, 'm').exec(html);
+    if (!m) throw new Error(`no function ${name} in the page`);
+    return m[0];
+  };
+
+  it('renderWork, submitQuiz, renderQuiz, arrivalButton and changeOrderButton wait for /health, then call crewWhy — no bare retry left', () => {
+    for (const name of ['renderWork', 'submitQuiz', 'renderQuiz', 'arrivalButton', 'changeOrderButton']) {
+      const s = src(name);
+      expect(s, name).toContain('await LINKS_READY');
+      expect(s, name).toContain('crewWhy(');
+      expect(s, name).not.toContain('Try again.');
+      expect(s, name).not.toContain('try once more');
+      // A catch that drops the error cannot name it.
+      expect(s, name).not.toMatch(/catch \{/);
+    }
+  });
+});
+
+/** Just enough DOM for the quiz and the work-order list. */
+class Node1 {
+  kids: Node1[] = [];
+  listeners: Record<string, () => unknown> = {};
+  disabled = false;
+  id = '';
+  href = '';
+  target = '';
+  rel = '';
+  constructor(public tag: string, public className = '', public textContent = '') {}
+  appendChild(k: Node1): Node1 { this.kids.push(k); return k; }
+  replaceChildren(): void { this.kids = []; }
+  addEventListener(type: string, fn: () => unknown): void { this.listeners[type] = fn; }
+  setAttribute(): void {}
+  querySelector(sel: string): Node1 | null { return this.all().find((n) => '.' + n.className === sel) ?? null; }
+  all(): Node1[] { return this.kids.flatMap((k) => [k, ...k.all()]); }
+  /** Everything a crew member would read in this node, in order. */
+  text(): string { return [this.textContent, ...this.kids.map((k) => k.text())].filter(Boolean).join(' '); }
+}
+const el1 = (tag: string, cls?: string, text?: string): Node1 => new Node1(tag, cls ?? '', text ?? '');
+const doc1 = { createElement: (t: string) => new Node1(t), createTextNode: (t: string) => new Node1('#text', '', t), querySelector: () => new Node1('main') };
+const lift = <T,>(name: string, deps: Record<string, unknown>): T => {
+  const m = new RegExp(`^(?:async )?function ${name}\\([\\s\\S]*?^\\}$`, 'm').exec(html);
+  if (!m) throw new Error(`no function ${name} in the page`);
+  return new Function(...Object.keys(deps), `${m[0]}\nreturn ${name};`)(...Object.values(deps)) as T;
+};
+const crewWhyAt = (links: string | null) => lift<(e: unknown) => string>('crewWhy', { LINKS: links });
+const refused = (code: number, message: string) => async () => { throw Object.assign(new Error(message), { code }); };
+
+describe('C1 — the clock-in question names an empty pool and a failed read', () => {
+  const quiz = async (answer: () => Promise<unknown>, links: string | null = 'readonly') => {
+    const v = new Node1('div');
+    const renderQuiz = lift<(ctx?: string) => Promise<void>>('renderQuiz', {
+      $: (id: string) => (id === 'quiz' ? v : v.all().find((n) => n.id === id) ?? null),
+      el: el1, document: doc1, api: answer, GATE: { unlocked: true }, QUIZ: { done: false, items: [], answers: {} },
+      QUIZ_TITLE: { clock_in_gate: 'Question before you roll', friday_questionnaire: 'Friday check' },
+      isFridayEt: () => false, CREW_ID: 'x', submitQuiz: () => {}, LINKS_READY: Promise.resolve(), crewWhy: crewWhyAt(links),
+    });
+    await renderQuiz();
+    return v;
+  };
+  const NAMED_EMPTY = 'The office hasn’t published any questions yet — nothing to answer today.';
+  const GAP = 'That is the office’s gap, not a pass.';
+  const lesson = { id: 'l1', topic: 'Drop zones', type: 'lesson', prompt: 'SIM lesson', options: [], readOnly: true };
+  const question = { id: 'q1', topic: 'Rigging', type: 'quiz_question', prompt: 'SIM question?', options: ['A', 'B'], readOnly: false };
+
+  it('an empty pool draws the named line — never a silent skip — and offers nothing to submit', async () => {
+    const v = await quiz(async () => ({ itemsLoaded: true, items: [], shortfall: 1 }));
+    expect(v.text()).toContain(NAMED_EMPTY);
+    expect(v.text()).toContain(GAP);
+    expect(v.all().some((n) => n.id === 'quiz-go')).toBe(false);
+  });
+
+  it('a pool with no quiz_question (a lesson only) draws the same named line', async () => {
+    const v = await quiz(async () => ({ itemsLoaded: true, items: [lesson], shortfall: 0 }));
+    expect(v.text()).toContain(NAMED_EMPTY);
+    expect(v.all().some((n) => n.id === 'quiz-go')).toBe(false);
+  });
+
+  it('a pool with a question still asks it (the named line is only for a pool with none)', async () => {
+    const v = await quiz(async () => ({ itemsLoaded: true, items: [question], shortfall: 0 }));
+    expect(v.text()).not.toContain(NAMED_EMPTY);
+    expect(v.text()).toContain('SIM question?');
+    expect(v.all().some((n) => n.id === 'quiz-go')).toBe(true);
+  });
+
+  it('a failed load gives crewWhy’s reason in the warning box and still says carry on', async () => {
+    const v = await quiz(refused(503, 'read_only'));
+    const box = v.all().find((n) => n.className === 'state err')!;
+    expect(box, 'a failed read wears the warning box, not the empty one').toBeDefined();
+    expect(box.text()).toContain('Arbo is read-only right now — it can look but not save, so nothing was written');
+    expect(box.text()).toContain('carry on');
+    expect(v.text()).not.toContain(NAMED_EMPTY);
+  });
+
+  it('a rejected crew code is said as one — never "the office didn’t answer"', async () => {
+    const v = await quiz(refused(400, 'bad_crew_id'));
+    expect(v.text()).toMatch(/the office did not recognise your crew code/i);
+    expect(v.text()).not.toMatch(/didn’t answer/i);
+  });
+
+  it('answers that did not save name why, and never invite a bare retry', async () => {
+    const quizNode = new Node1('div');
+    quizNode.appendChild(el1('div', 'errline', ''));
+    const go = new Node1('button');
+    const submitQuiz = lift<() => Promise<void>>('submitQuiz', {
+      $: (id: string) => (id === 'quiz' ? quizNode : go), el: el1, api: refused(503, 'read_only'), CREW_ID: 'x',
+      QUIZ: { context: 'clock_in_gate', items: [question], answers: { q1: 0 }, startedAt: '' },
+      LINKS_READY: Promise.resolve(), crewWhy: crewWhyAt('readonly'),
+    });
+    await submitQuiz();
+    const line = quizNode.querySelector('.errline')!.textContent;
+    expect(line).toContain('Arbo is read-only right now');
+    expect(line).not.toMatch(/try once more|Try again/);
+  });
+});
+
+describe('C1 — the work-order list: a failed read is named; "Nothing scheduled" only over a read that succeeded', () => {
+  const work = async (answer: () => Promise<unknown>, links: string | null = 'readonly') => {
+    const v = new Node1('div');
+    const renderWork = lift<() => Promise<void>>('renderWork', {
+      $: () => v, el: el1, document: doc1, api: answer, GATE: { unlocked: true }, PREVIEW: false, PREVIEW_WHY: '',
+      fmtTime: () => '9:00 AM', arrivalButton: () => el1('div'), changeOrderButton: () => el1('div'),
+      crewMapsUrl: () => 'https://www.google.com/maps/dir/?api=1&destination=x',
+      LINKS_READY: Promise.resolve(), crewWhy: crewWhyAt(links),
+    });
+    await renderWork();
+    return v;
+  };
+
+  it('the jobs link kept cut (read-only) is named in the warning box, and is not an empty day', async () => {
+    const v = await work(refused(503, 'link_cut'));
+    const box = v.all().find((n) => n.className === 'state err')!;
+    expect(box).toBeDefined();
+    expect(box.text()).toContain('Could not load your work orders');
+    expect(box.text()).toContain('The office data link is cut on purpose.');
+    expect(box.text()).toContain('That is not an empty day — call the office.');
+    expect(v.text()).not.toContain('Nothing scheduled');
+  });
+
+  it('a 429 names the wait, not "the office didn’t answer"', async () => {
+    const v = await work(refused(429, 'too_many_attempts'));
+    expect(v.text()).toContain('Too many wrong door keys from this connection');
+  });
+
+  it('"Nothing scheduled" is drawn only after a read that answered with nothing held', async () => {
+    expect((await work(async () => ({ workOrders: [], notWorkOrders: 0, contractLookupFailed: false }))).text()).toContain('Nothing scheduled');
+    for (const answer of [
+      refused(503, 'read_only'), refused(500, 'error'), refused(0, 'Failed to fetch'),
+      async () => ({ workOrders: [], notWorkOrders: 2, contractLookupFailed: true }),
+      async () => ({ workOrders: [], notWorkOrders: 1, contractLookupFailed: false }),
+    ]) expect((await work(answer)).text()).not.toContain('Nothing scheduled');
+  });
+});
