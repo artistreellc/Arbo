@@ -70,6 +70,8 @@ class FNode {
   getAttribute(k: string): string | null { return this.attrs[k] ?? null; }
   addEventListener(): void {}
   get isConnected(): boolean { return true; }
+  // The feeds card lists its feeds in the screen's order (P12 review): 4 when o follows this node.
+  compareDocumentPosition(o: FNode): number { const top = (n: FNode): FNode => (n.parent ? top(n.parent) : n); const all = top(this).all(); return all.indexOf(o) > all.indexOf(this) ? 4 : 2; }
   all(): FNode[] { return [this, ...this.children.flatMap((c) => c.all())]; }
   private match(sel: string): (n: FNode) => boolean {
     const cls = /^(?::scope > )?\.([\w-]+)$/.exec(sel);
@@ -268,7 +270,8 @@ describe.each(FAILS)('a read that died: $kind', (fail) => {
     for (let i = 0; i < 8; i++) await flush();
     const said = { cut: 'cut on purpose', sim: 'not in the practice data', unset: 'not set up', unread: 'couldn’t read' }[fail.kind];
     expect(card.el.textContent).toContain('5 feeds off: 5 ' + said);
-    for (const n of ['Inbox', 'Website forms', 'Customer notes', 'Text outreach', 'Sona calls']) expect(card.el.textContent).toContain(n + ' — ' + FEED_WORD[fail.kind]);
+    // Every feed named with its state word — "Name — word" over its folded words, or its own line "Name: word…" (P12 review: never both).
+    for (const n of ['Inbox', 'Website forms', 'Customer notes', 'Text outreach', 'Sona calls']) expect(card.el.textContent).toMatch(new RegExp(n + '(?: — |: )' + FEED_WORD[fail.kind]));
     expectNamed(card.el.textContent, fail.kind, 'the feeds card');
     // Folded (cut, not simulated, not set up): their slots are empty. Unread: each stays where it would show.
     expect(slots.every((s) => s.children.length === (fail.kind === 'unread' ? 1 : 0))).toBe(true);

@@ -377,6 +377,7 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 .feeds[hidden],.feeds-list[hidden]{display:none}
 .feeds-head{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:48px;border:0;background:none;padding:6px 0;font:inherit;text-align:left;color:var(--ink-2)}
 .feeds-head .feed-state{margin:0;font-size:14.5px}
+.feeds-head .fh{white-space:nowrap} /* a count stays with its words on a 320 px phone */
 .feeds-head::after{content:'';flex:none;width:8px;height:8px;border-right:2px solid var(--forest);border-bottom:2px solid var(--forest);transform:rotate(45deg);margin:0 6px 4px 0;transition:transform .2s}
 .feeds-head[aria-expanded="true"]::after{transform:rotate(-135deg);margin-bottom:-4px}
 .feeds-list{border-top:1px solid var(--hairline);padding:2px 0 6px}
@@ -1003,12 +1004,15 @@ function showSaveFail(box, e) { const n = box.querySelector(':scope > .save-err'
 //  · one Arbo couldn't read (data-off = unread), or one kept in its place (data-keep: a partial
 //    read rides with it, or the schedule card), stays where it would show — and is counted too;
 //  · anything else goes to its slot, as it always did.
+// A read the screen shows off in a place of its own — the hero's '–', a Before you roll line, a tile —
+// is handed to note(name, where, kind) (P12 review: "N feeds off" read as a total, so it must be one):
+// counted and named, and left where it shows. The same feed noted twice counts once.
 // The card counts only the reads its screen hands it — never /health/feeds (two sources could
 // disagree) — and a read still in flight is "Reading…", never counted as working. It opens with a
 // button (aria-expanded), never a <details>: its screens redraw every minute, and an open <details>
 // holds the redraw (holdsTyping). Open stays open through a redraw (this launch only), and a redraw
 // keeps the last card up until its own reads land (P11's swap). Nothing off and nothing reading:
-// no card at all — never a calm line.
+// no card at all — never a calm line. The list runs in the screen's order, top to bottom.
 const FEEDS_SAID = { cut: 'cut on purpose', sim: 'not in the practice data', unset: 'not set up', unread: 'couldn’t read' }; // the headline's words (the spec's), in its order
 const FEEDS_OPEN = {}; // per screen: the card is open
 const FEEDS_BOX = {}; // per screen: its one card, kept across redraws
@@ -1018,9 +1022,13 @@ function feedsCard(key) {
   const box = FEEDS_BOX[key] || el('div', 'card feeds');
   FEEDS_BOX[key] = box;
   const first = !box.dataset.drawn; // only a first draw shows readingLine(); a redraw waits for its reads, then swaps
-  const got = []; // { at, kind, name, node } — node only when it folds into the card
+  const got = []; // { at, kind, name, node, slot } — node only when it folds into the card; slot: where it shows
   let waiting = 0;
   let order = 0;
+  // The screen's order: where each shows, top to bottom (4: the other follows it in the document);
+  // two in one place, or one not on the page, keep the order they were handed over.
+  const before = (a, b) => (a.slot === b.slot || !a.slot || !b.slot || !a.slot.isConnected || !b.slot.isConnected
+    ? a.at - b.at : a.slot.compareDocumentPosition(b.slot) & 4 ? -1 : 1);
   const draw = () => {
     if (gen !== FEEDS_GEN[key] || (!first && waiting)) return;
     if (!waiting) box.dataset.drawn = '1';
@@ -1028,19 +1036,28 @@ function feedsCard(key) {
     box.hidden = false;
     const out = [];
     if (got.length) {
-      const feeds = got.slice().sort((a, b) => a.at - b.at); // the screen's order, never the order the reads landed
+      const feeds = got.slice().sort(before); // the screen's order, never the order the reads landed
       const n = {};
       for (const f of feeds) n[f.kind] = (n[f.kind] || 0) + 1;
       const worst = n.unread ? 'unread' : n.unset ? 'unset' : n.sim ? 'sim' : 'cut';
       const btn = el('button', 'feeds-head');
       btn.type = 'button';
-      btn.appendChild(el('span', 'feed-state ' + worst, plural(feeds.length, 'feed') + ' off: ' + Object.keys(FEEDS_SAID).filter((k) => n[k]).map((k) => n[k] + ' ' + FEEDS_SAID[k]).join(', ')));
+      // Each count stays with its words (.fh never breaks inside); a narrow phone breaks between them.
+      const parts = [plural(feeds.length, 'feed') + ' off:'].concat(Object.keys(FEEDS_SAID).filter((k) => n[k]).map((k) => n[k] + ' ' + FEEDS_SAID[k]));
+      const said = el('span', 'feed-state ' + worst);
+      parts.forEach((t, i) => {
+        if (i) said.appendChild(document.createTextNode(' '));
+        said.appendChild(el('span', 'fh', t + (i && i < parts.length - 1 ? ',' : '')));
+      });
+      btn.appendChild(said);
       const list = el('div', 'feeds-list');
       list.id = 'feeds-' + key;
       // Every feed by name, with its state word — the folded wrapper's own words under it, or where to find it.
+      // A folded line that already opens "Name: state word" is its own name line (never said twice).
       for (const f of feeds) {
         const item = el('div', 'feeds-item');
-        item.appendChild(el('div', 'feeds-name', f.name + ' — ' + FEED_WORD[f.kind]));
+        const own = f.node && (f.node.classList.contains('feed-state') ? f.node : f.node.querySelector('.feed-state'));
+        if (!own || !own.textContent.startsWith(f.name + ': ' + FEED_WORD[f.kind])) item.appendChild(el('div', 'feeds-name', f.name + ' — ' + FEED_WORD[f.kind]));
         item.appendChild(f.node || el('div', 'storm-muted', 'Shown in its own place on this screen.'));
         list.appendChild(item);
       }
@@ -1062,13 +1079,23 @@ function feedsCard(key) {
       const kind = node.dataset && node.dataset.off;
       if (Object.prototype.hasOwnProperty.call(FEEDS_SAID, kind)) {
         const stays = kind === 'unread' || node.dataset.keep === '1';
-        got.push({ at: at, kind: kind, name: node.dataset.feedName || 'A feed', node: stays ? null : node });
+        got.push({ at: at, kind: kind, name: node.dataset.feedName || 'A feed', node: stays ? null : node, slot: slot });
         if (!stays) return;
       }
       slot.appendChild(node);
     }).catch(() => { /* a panel that threw places nothing, as before */ }).finally(() => { waiting--; draw(); });
   };
-  return { el: box, place: place };
+  // where: the element it shows off in (for the order); kind: what the read came to — a FEEDS_SAID kind, or null when it read.
+  const note = (name, where, kind) => {
+    const at = order++;
+    waiting++;
+    draw();
+    return Promise.resolve(kind).then((k) => {
+      if (!Object.prototype.hasOwnProperty.call(FEEDS_SAID, k) || got.some((f) => f.name === name)) return;
+      got.push({ at: at, kind: k, name: name, node: null, slot: where });
+    }).catch(() => { /* a read that threw is named where it shows, as before */ }).finally(() => { waiting--; draw(); });
+  };
+  return { el: box, place: place, note: note };
 }
 
 // ONE status -> colour table. Every chip says what it means with one of five tones (alarm > stop > watch > good > info).
@@ -2570,7 +2597,7 @@ const ROLL_ROWS = { safety: 'Crew & safety', fleet: 'Fleet', leads: 'Emergency l
 // land (P3's swap); only a first draw says "Reading…". The newest draw owns the card.
 let ROLL_BOX = null;
 let ROLL_GEN = 0;
-function beforeYouRoll(emgP, stormP) {
+function beforeYouRoll(emgP, stormP, note) {
   const gen = ++ROLL_GEN;
   const box = ROLL_BOX || el('div', 'card roll');
   ROLL_BOX = box;
@@ -2586,6 +2613,10 @@ function beforeYouRoll(emgP, stormP) {
     leads: emgP.then((r) => (!r ? null : r.gap ? { e: r.gap } : { v: r.list }), (e) => ({ e: e })),
     weather: stormP.then((o) => (!o ? { e: null } : o.error ? { e: o.error } : { v: o }), (e) => ({ e: e })),
   };
+  // Direction B P12 review: Crew & safety and Fleet are read here and only here, so Today's feeds card is
+  // handed them (note) and counts them too — each its kind, or null when it read; a 401 is the key wall's.
+  // Emergency leads and the weather are Today's own reads, counted there.
+  if (note) for (const k of ['safety', 'fleet']) note(ROLL_ROWS[k], box, got[k].then((r) => ('e' in r && !(r.e && r.e.code === 401) ? LINKS_READY.then(() => feedKind(r.e)) : null)));
   const names = (a) => (a.length === 1 ? a[0] : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]);
   const draw = () => {
     if (gen !== ROLL_GEN) return; // a newer redraw owns the card
@@ -2722,7 +2753,9 @@ async function renderToday() {
   const roSlot = el('div', 'slot plain');
   v.appendChild(roSlot);
   LINKS_READY.then(() => { if (LINKS === 'readonly') roSlot.appendChild(el('div', 'storm-muted', 'Read-only: Arbo is reading your real records and saving nothing. Anything that would save says so.')); });
-  heroLoops();
+  // Direction B P12 review: a read Today shows off in a place of its own — the hero's '–', Before you roll,
+  // a tile — is noted on the feeds card too (counted, named, left where it shows), so "N feeds off" is a total.
+  feeds.note('Open loops', v.firstChild, heroLoops());
   const stormSlot = el('div', 'slot plain');
   stormSlot.id = 'today-storm'; // where the hero's weather alerts land (Direction B P10)
   v.appendChild(stormSlot);
@@ -2730,6 +2763,9 @@ async function renderToday() {
   const alerting = stormBanner().then((b) => { if (b) stormSlot.appendChild(b); return !!b; });
   // Direction B P10: weather alerts above 0 open the storm card; a real 0 stays inert (a fact, not a gap).
   alerting.then((on) => { if (on && HERO) HERO.go('alerts', () => openPanel('today', 'today-storm')); });
+  // The hero's weather stat names a weather read that failed; the card counts it (a 401 is the key wall's).
+  feeds.note('Weather alerts', v.firstChild, alerting.then(() => (!STORM_READ ? 'unread' : !STORM_READ.error || STORM_READ.error.code === 401 ? null
+    : LINKS_READY.then(() => feedKind(STORM_READ.error)))));
   // R26: an EMERGENCY lead sits right under the storm alert and above the run,
   // then the owner's storm price-law flag. Their places are set before any read;
   // the leads read starts below, once the tiles it counts into exist. The alarm
@@ -2810,20 +2846,24 @@ async function renderToday() {
       }
     }
   }).catch(() => {});
-  api('/api/properties').then((p) => {
+  // Direction B P12 review: each tile's read comes to its kind for the feeds card (null when it read), and a
+  // dead tile is worded once the links are known — the same word the card uses (never "cut" for "not set up").
+  feeds.note('Coming due', dueTile, api('/api/properties').then((p) => {
     // A dead forecast feed stays '\u2013' \u2014 null is not zero (\u00a71B honesty).
     if (Array.isArray(p.comingDue)) {
       setTile(dueTile, p.comingDue.length, p.comingDue.length ? 'warn' : 'ok-t');
       goTile(dueTile, () => openPanel('book'));
     } else tileWhy(dueTile, 'forecast unreadable');
-  }).catch((e) => { if (e.code !== 401) tileWhy(dueTile, FEED_TAG[feedKind(e)]); });
-  api('/api/agents/runs?limit=5').then((r) => {
+    return Array.isArray(p.comingDue) ? null : 'unread'; // a body without its list is a read that failed
+  }).catch((e) => (e.code === 401 ? null : LINKS_READY.then(() => { tileWhy(dueTile, FEED_TAG[feedKind(e)]); return feedKind(e); }))));
+  feeds.note('Agent runs', agentTile, api('/api/agents/runs?limit=5').then((r) => {
     setTile(agentTile, r.runs.length, r.runs.some(x => x.status === 'error') ? 'warn' : 'ok-t');
     goTile(agentTile, () => openPanel('agents'));
     // R32: these runs live in memory and were not saved — the tile says so.
     if (r.runLog === 'not_saved_read_only') tileWhy(agentTile, 'not saved — read-only');
-  }).catch((e) => { if (e.code !== 401) tileWhy(agentTile, FEED_TAG[feedKind(e)]); });
-  api('/api/money').then((m) => {
+    return null;
+  }).catch((e) => (e.code === 401 ? null : LINKS_READY.then(() => { tileWhy(agentTile, FEED_TAG[feedKind(e)]); return feedKind(e); }))));
+  feeds.note('Overdue and to bill', owedTile, api('/api/money').then((m) => {
     // Overdue is past-due invoices, the legal gate's held ones included —
     // still owed, just never nudged. Unbilled work is its own tile, and an
     // invoice Arbo cannot date is named, never counted as either.
@@ -2838,11 +2878,15 @@ async function renderToday() {
     if (nb) billTile.appendChild(el('small', '', '+' + nb + ' no agreed figure'));
     goTile(owedTile, () => openPanel(DESK_VIEW.money, 'queue-money'));
     goTile(billTile, () => openPanel(DESK_VIEW.money, 'queue-money'));
+    return null;
   }).catch((e) => {
-    if (e.code === 401) return;
-    tileWhy(owedTile, FEED_TAG[feedKind(e)]);
-    tileWhy(billTile, FEED_TAG[feedKind(e)]);
-  });
+    if (e.code === 401) return null;
+    return LINKS_READY.then(() => {
+      tileWhy(owedTile, FEED_TAG[feedKind(e)]);
+      tileWhy(billTile, FEED_TAG[feedKind(e)]);
+      return feedKind(e);
+    });
+  }));
   // Direction B P11: the emergency read below, handed to Before you roll — never a second read.
   let emgDone;
   const emgP = new Promise((res) => { emgDone = res; });
@@ -2897,7 +2941,7 @@ async function renderToday() {
       emgSlot.appendChild(more);
     }
   });
-  rollSlot.appendChild(beforeYouRoll(emgP, alerting.then(() => STORM_READ)));
+  rollSlot.appendChild(beforeYouRoll(emgP, alerting.then(() => STORM_READ), feeds.note));
   const locSlot = el('div', 'slot plain');
   v.appendChild(locSlot);
   // A failed read gets a titled card (data-feed) where it stays; the live ON/OFF strip stays plain.
@@ -6276,7 +6320,8 @@ function sysSet(key, level, text) { if (SYS) SYS(key, level, text); }
 // Loops for the hero — its own read, so the hero fills even when the
 // schedule feed is cut and the brief returns early.
 function heroLoops() {
-  api('/api/queue').then((q) => {
+  // Direction B P12 review: hands back what the read came to, for Today's feeds card — null when it read.
+  return api('/api/queue').then((q) => {
     const n = q.open.length;
     const urgent = q.open.some(o => o.severity === 'urgent');
     if (HERO) {
@@ -6286,6 +6331,7 @@ function heroLoops() {
       HERO.go('loops', () => openPanel(DESK_VIEW.loops, 'queue-loops'));
     }
     sysSet('loops', urgent ? 'down' : n ? 'warn' : 'ok', n + ' open');
+    return null;
   }).catch((e) => LINKS_READY.then(() => {
     // The server says which gap it is — cut, not simulated, not set up, or
     // unreadable — and the hero subline says it in that one word.
@@ -6293,6 +6339,7 @@ function heroLoops() {
     const why = FEED_TAG[k];
     if (HERO) { HERO.ring('loops', null); HERO.legend('loops', '–'); HERO.stat('loops', '–', '', 'loops ' + why); }
     sysSet('loops', k === 'unread' ? 'down' : 'warn', why);
+    return e.code === 401 ? null : k;
   }));
 }
 
