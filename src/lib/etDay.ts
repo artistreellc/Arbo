@@ -79,16 +79,21 @@ export function etDateOffset(now: Date, days: number): string {
   return ET_DATE.format(new Date(now.getTime() + days * 86400_000));
 }
 
+/** ET midnight starting the given Y-M-D, as a UTC instant (Date.UTC rolls d+1 into the next month). */
+function etMidnightUtc(y: number, m: number, d: number): Date {
+  const naiveMidnightUtc = Date.UTC(y, m - 1, d, 0, 0, 0);
+  return new Date(naiveMidnightUtc - etOffsetMs(new Date(naiveMidnightUtc)));
+}
+
 /**
  * The UTC instants bounding one ET calendar day (DST-correct: the offset is
- * sampled at the target day, not at "now").
+ * sampled at the target day, not at "now"). The end is the NEXT ET midnight,
+ * so a clock-change day is 23 or 25 hours — never a fixed 24 that cuts off
+ * 11pm–midnight in November or reaches into Monday in March (R35 review).
  */
 export function etDayWindow(dayLabel: string): { startUtc: Date; endUtc: Date; dayLabel: string } {
   const [y, m, d] = dayLabel.split('-').map(Number);
-  const naiveMidnightUtc = Date.UTC(y!, m! - 1, d!, 0, 0, 0);
-  const offset = etOffsetMs(new Date(naiveMidnightUtc));
-  const startUtc = new Date(naiveMidnightUtc - offset);
-  return { startUtc, endUtc: new Date(startUtc.getTime() + 86400_000), dayLabel };
+  return { startUtc: etMidnightUtc(y!, m!, d!), endUtc: etMidnightUtc(y!, m!, d! + 1), dayLabel };
 }
 
 /** Tomorrow in Hampton Roads, as a UTC window. */
@@ -117,4 +122,46 @@ export function etWeekStart(now = new Date()): Date {
 export function isEtFriday(now = new Date()): boolean {
   return new Intl.DateTimeFormat('en-US', { timeZone: ET, weekday: 'short' })
     .format(now) === 'Fri';
+}
+
+/**
+ * The weekday in Hampton Roads ('Mon' … 'Sun') — R35's route rules switch on
+ * it (weekday, Saturday, Sunday), and 9pm Friday ET is already Saturday in UTC.
+ */
+export function etWeekday(now = new Date()): string {
+  return new Intl.DateTimeFormat('en-US', { timeZone: ET, weekday: 'short' }).format(now);
+}
+
+const ET_HM = new Intl.DateTimeFormat('en-US', {
+  timeZone: ET, hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+
+/** An instant's ET wall-clock time as "HH:MM" (24-hour, midnight "00:00"). */
+export function etHourMinute(at: Date): string {
+  const p = ET_HM.formatToParts(at);
+  const h = p.find((x) => x.type === 'hour')?.value ?? '00';
+  const m = p.find((x) => x.type === 'minute')?.value ?? '00';
+  return `${h}:${m}`;
+}
+
+/**
+ * The instant of a wall-clock time on an ET calendar day ("2026-10-21", 960 →
+ * 4pm ET that day). The offset is sampled at that day and time, so a summer
+ * and a winter 4pm land an hour apart in UTC, as they should.
+ */
+export function etInstant(dayLabel: string, minutesIntoDay: number): Date {
+  const [y, m, d] = dayLabel.split('-').map(Number);
+  const naive = Date.UTC(y!, m! - 1, d!, 0, minutesIntoDay, 0);
+  return new Date(naive - etOffsetMs(new Date(naive)));
+}
+
+/** An instant as RFC 3339 in ET with its offset, e.g. "2026-10-21T16:00:00-04:00". */
+export function etRfc3339(at: Date): string {
+  // Whole minutes: etOffsetMs drops the instant's milliseconds, which would
+  // otherwise leak into the offset as a fraction of a minute.
+  const offset = Math.round(etOffsetMs(at) / 60000) * 60000; // negative: ET is behind UTC
+  const wall = new Date(at.getTime() + offset).toISOString().slice(0, 19);
+  const abs = Math.abs(offset) / 60000;
+  const sign = offset < 0 ? '-' : '+';
+  return `${wall}${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`;
 }

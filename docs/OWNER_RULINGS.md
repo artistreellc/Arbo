@@ -1254,6 +1254,165 @@ sends; data links stay cut.
 (`GET /api/quo/media/<id>`), `src/dev/simQuoTexts.ts`, `src/app/sim-quo-photo.png`,
 `src/app/index.html` (thumbnails, the `#photo` sheet), `test/quoPhotos.test.ts`.
 
+## R35 — TomTom plans the day; tap a stop to open Google Maps (Mike, 2026-10-20)
+
+**DRAFT — Claude wrote this from Mike's words; Mike confirms or corrects it.**
+
+Mike, verbatim, in order: *"and for a route planner intergrate tomtom"*, then
+*"so its automated and when i select a name in my schedule it asks if i want
+to open google maps and its pre loaded or we just use the calender feture
+alreasy esists"*. Earlier, on keys: *"why dont you build and then i add
+later"*. And: *"Connect Google as a read only"* (R33).
+
+Settled in conversation: TomTom does the route planning; it is automated (the
+day's stops come from his schedule, not typed); tapping a name in the day's
+schedule asks "Open in Google Maps?" and opens Google Maps with that address
+already loaded; the calendar frame stays (R2).
+
+What this changes:
+1. **Today's stops, on the Calendar tab, ABOVE the Google Calendar frame**
+   (which stays exactly as it was — R2). Every event on today's calendar is
+   listed with its own booked time, its title and its city. A tap on one with
+   an address opens a sheet — *"Open in Google Maps?"*, the name and the
+   address — and **Yes** is a plain link that opens Google Maps with that
+   address loaded. **Route the whole day** opens the planned order. No address
+   goes into a link until the tap. The sheet closes like every other sheet: X,
+   No, Back, the phone's back and the iPhone edge swipe.
+2. **Read only, in memory (R24; R33 #3).** Arbo READS today's events from
+   Google Calendar `primary` (listEvents, a GET, on the `calendar.readonly`
+   permission R33 already asks for — no new permission). Nothing is saved
+   anywhere, and no calendar event is ever created, edited, moved or deleted.
+3. **TomTom plans it — built dormant.** With `TOMTOM_API_KEY` on Railway,
+   TomTom picks the order (its "best order" routing, live traffic, departing
+   at the run's start). The engine order is **TomTom → Google Maps live
+   traffic (R16) → ZIP estimates**, and the plan always says which one made
+   it. No key: *"TomTom not set up — add TOMTOM_API_KEY in Railway."* TomTom
+   set but failing: named by a fixed code — e.g. *"TomTom couldn't plan it
+   (TomTom HTTP 403) — planned by Google Maps instead. Check TOMTOM_API_KEY in
+   Railway, and that the key is switched on for Search and Routing."* The typed
+   route planner under the calendar uses the same order. Steps:
+   `docs/ROUTE_PLANNER.md`.
+4. **R16 is law inside TomTom.** 20 minutes on site; weekday estimates from
+   4pm; Saturdays Norfolk, Chesapeake and Portsmouth in the morning from 8 and
+   Virginia Beach after 12; each run's first visit starts at its window's
+   start. TomTom only orders the stops INSIDE a run — it can never move a stop
+   into another run. Each run is its own TomTom call. Saturday's split uses the
+   ZIP's own city, so a Norfolk address on Virginia Beach Blvd is Norfolk.
+   **Once the run has started** (weekdays 4 PM, Saturdays 8 AM) the day's plan
+   **holds** — the phone moving mid-run never re-plans the stops already
+   driven; only a change to today's events re-plans it.
+5. **§1B.** A calendar Arbo could not read is named — *"Couldn't read your
+   calendar — Google sign-in needs reconnecting (Settings → Reconnect
+   Google). This is not an empty day."* (and its siblings: not connected,
+   refused, couldn't read just now) — never "nothing on the calendar today".
+   An event with no location says *"No address on the event"* and has no Maps
+   button.
+6. **The TomTom key never leaves the server** — not to the phone, not in a
+   link, not in a log, not in an error (TomTom puts the key in its request
+   address, so no TomTom address or raw error is ever repeated). The Google
+   live-traffic note now names its failures by fixed codes too.
+
+Defaults Claude used where Mike did not say (Mike may change any):
+- **Which calendar:** `primary` — the main calendar of the Google account
+  Arbo's sign-in uses — is assumed to be the same calendar as the frame
+  (`artistreeofvirginia@gmail.com`).
+- **Today** is the America/New_York day (the server runs on UTC).
+- **What gets planned:** a timed event whose location carries a ZIP (23xxx).
+  An all-day event, an event with no location, and a location with no ZIP are
+  listed with why, and left out of the plan (a location with no ZIP stays
+  out even with TomTom set — the fallbacks need the ZIP, so add it on the
+  event). An address TomTom cannot place is listed, left out, and named.
+  **A weekday event booked before 4 PM** is listed at its own time —
+  *"Booked before 4 PM — not in the after-4 run"* — and left out of the
+  after-4 run (weekday mornings are crew time, OPS_CONVENTIONS); its Maps
+  button still works. A timed event that **started
+  on an earlier day** (a two-day job) reads *"Ongoing"* and is not routed.
+  "Route the whole day" names every stop with an address that is not in the
+  route, and why.
+- **City:** the ZIP's own city when the ZIP is one of the four; otherwise the
+  city named last in the address (a city comes after the street).
+- **Start and end** (TomTom fixes both ends): start = the R16 anchor (the
+  office phone's live ZIP, then Settings' work ZIP for today, then
+  `OWNER_HOME_ZIP`); end = `OWNER_HOME_ZIP` when set (OPS_CONVENTIONS:
+  estimate routes "start and end at Mike's home"). No ZIP at all: the run
+  starts at its first stop. Saturday's afternoon run starts where the morning
+  ended. Only ZIPs are sent for the ends — never an address.
+- **Drive time** shown is the drive BETWEEN stops inside each run (not the
+  drive to the first stop, not the drive home).
+- **Booked times stand.** Each row shows the event's own time; the plan's
+  order and times are a suggestion under it. A Saturday booking R16 would plan
+  in the other run (a Virginia Beach stop before noon, a non-Virginia-Beach
+  stop after noon) is warned about, never moved.
+- **Traffic:** a run still ahead is timed with TomTom's traffic *forecast*
+  for its start; a run already under way with TomTom's live traffic — the
+  note says which.
+- **Car routing.** Truck routing waits on real numbers: the truck profile is
+  empty (*"Mike: give the bucket truck and chipper dimensions"*).
+- **Google Maps on a phone** takes 3 stops on the way plus the last one, so a
+  longer day is split into parts of 4 and the sheet says so. Google Maps
+  starts from the phone's own location.
+- **Cost and quiet:** a good calendar read is reused for a minute; until the
+  run starts an unchanged day is re-planned every 15 minutes or when the
+  start ZIP changes, then the plan holds; addresses TomTom placed are kept in
+  memory for the day (at most 200). A failed read or a failed plan is never
+  held — ↻ asks again at once, so while TomTom is failing an open Calendar
+  tab asks it about once a minute. One plan takes at most 25 stops
+  (TomTom's own limit is 150): the typed planner refuses more, and a calendar
+  day with more is planned without TomTom and says so. Logs carry counts and
+  codes only.
+- **Today** is the ET day even on a clock change (23 or 25 hours). That fix is
+  in the shared day helper, so the crew work orders and the Talk brief read
+  the whole day on those two Sundays too.
+- **Practice mode** (`ARBO_DATA_LINKS=sim`): SIM stops (SIM- names, 555-01xx,
+  streets that do not exist), ZIP estimates only — TomTom and Google are not
+  asked.
+- TomTom's Search v2 and Routing v1, as documented today.
+
+Open — Mike's call:
+1. **Truck and chipper dimensions** (height, width, length, weight, axles) —
+   until then TomTom routes a car and can't avoid low bridges or weight limits.
+2. **Sunday.** R16 has no Sunday rule, so Sunday stops are listed in calendar
+   order and nothing is planned. Plan Sundays like a weekday, like a Saturday,
+   or not at all?
+3. **Start and end:** home, the yard, or where you are? Built: the R16 anchor
+   to home. Should Saturday's morning run end at home, or head for Virginia
+   Beach?
+4. **Optimise, or keep the booked order?** Built: TomTom suggests an order and
+   the booked times stand. Or keep the booked order and only fill in drive
+   times?
+5. **Privacy page — before the key goes in.** `/privacy` says Google user data
+   is never transferred to third parties "except the service providers that
+   operate the system (hosting and AI processing)". With the key set, today's
+   event locations go to TomTom (and, as before, to Google Maps) exactly as
+   typed — a name or phone number typed into a location goes too. That page
+   needs a line for mapping — Mike's call; it was not edited.
+6. **TomTom Orbis.** TomTom recommends its newer Orbis maps for new work; this
+   build uses the long-standing Search v2 and Routing v1.
+7. **Which events are route stops?** R16 is written about estimates. Built:
+   on a weekday only events booked at 4 PM or later go in the run (a crew job
+   at 8:30 does not); on Saturday every timed event with an address does.
+   Should Arbo tell an estimate from a job some other way (a word in the
+   title, the colour), and should a weekday estimate booked at 3:30 join the
+   after-4 run?
+8. **Mid-run changes.** Built: once the run starts the plan holds, and only a
+   change to today's events re-plans it (from the start of the run, including
+   stops already driven). Should a mid-run re-plan skip the stops already
+   done?
+
+What did NOT move: calendar edits never (R18 holds stay paused by R33); email
+never; §3 — nothing imported, nothing saved; R4 — sweeps read-only; never
+price, diagnose or promise a date; logs counts-and-ids (§4.3); the `/api` door
+needs `APP_ACCESS_KEY`; deploys stay manual.
+
+*Carried by:* `src/integrations/tomtom.ts`, `src/ops/routePlanner.ts` (the
+TomTom layer and `planRouteBest`), `src/ops/todayStops.ts`,
+`src/dev/simTodayStops.ts`, `src/integrations/calendar.ts` (`location`),
+`src/lib/etDay.ts`, `src/env.ts` (`TOMTOM_API_KEY`), `src/server.ts`
+(`GET /api/route/today`, `POST /api/route/plan`), `src/app/index.html`
+(Today's stops, the `#maps` sheet), `docs/ROUTE_PLANNER.md`,
+`test/tomtom.test.ts`, `test/routeTomTom.test.ts`, `test/todayStops.test.ts`,
+`test/todayStopsUi.test.ts`, `test/routeDayReview.test.ts` (the review fixes).
+
 ## R36 — One number: Arbo works through the Quo number (Mike, 2026-10-21)
 
 Mike, verbatim: *"Does Arbo have its own number? Cause we're just going to use

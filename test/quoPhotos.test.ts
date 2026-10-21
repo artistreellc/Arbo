@@ -692,7 +692,7 @@ describe('the page: a thumbnail per photo, a named line for everything else', ()
   });
 
   it('is a sheet in the SHEETS walk: X, Back, the phone’s back and the edge swipe all close it', () => {
-    expect(html).toContain("const SHEETS = ['twin', 'yard', 'bd', 'talk', 'approval', 'photo'];"); // R28's approval sheet sits beside it (merged)
+    expect(html).toContain("const SHEETS = ['twin', 'yard', 'bd', 'talk', 'approval', 'photo', 'maps'];"); // R28's approval sheet and R35's maps sheet sit beside it (merged)
     expect(html).toContain("$('photo').classList.add('show'); sheetOpened('photo');");
     expect(html).toContain("$('photo-close').addEventListener('click', () => closeSheet('photo'));");
     expect(html).toContain('<div id="photo" class="sheet">');

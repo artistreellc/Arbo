@@ -150,6 +150,14 @@ export const env = {
     gmailOauthClientSecret: get('GMAIL_OAUTH_CLIENT_SECRET'),
     gmailOauthRefreshToken: get('GMAIL_OAUTH_REFRESH_TOKEN'),
   },
+  // R35 (Mike, 2026-10-20: "and for a route planner intergrate tomtom"): the
+  // TomTom key, beside the Google Maps key. SERVER-SIDE ONLY — it rides in
+  // TomTom's request URL, so it is never sent to the phone, never logged, and
+  // never repeated in an error (src/integrations/tomtom.ts). Unset = TomTom is
+  // named as not set up and the planner uses Google, then ZIP estimates.
+  tomtom: {
+    apiKey: get('TOMTOM_API_KEY'),
+  },
   ownerAlertPhone: get('OWNER_ALERT_PHONE'),
   // R15: home ZIP only — never the address, never in config, never in a prompt.
   ownerHomeZip: get('OWNER_HOME_ZIP'),
@@ -226,6 +234,7 @@ export function integrationStatus(): Record<string, boolean> {
     twilio: Boolean(env.twilio.accountSid && env.twilio.authToken && env.twilio.phoneNumber),
     google: Boolean(env.google.clientEmail && env.google.privateKey),
     googleMaps: Boolean(env.google.mapsApiKey),
+    tomtom: Boolean(env.tomtom.apiKey),
     gmailInbox: Boolean(env.google.gmailOauthClientId && env.google.gmailOauthClientSecret && env.google.gmailOauthRefreshToken),
     ownerAlerts: Boolean(env.ownerAlertPhone),
     bouncie: Boolean(env.bouncie.clientId && env.bouncie.clientSecret),
