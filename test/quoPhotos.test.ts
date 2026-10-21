@@ -714,7 +714,7 @@ describe('the page: a thumbnail per photo, a named line for everything else', ()
     expect(study).toContain("plural(n.mediaNotShown, 'more attachment') + ' on record — open Quo to see them.'");
     // Today and Calls both render the study panel.
     expect(html).toContain('fillQuoSlots([studyPanel(5), outreachPanel(false), sonaPanel(3, false)]');
-    expect(html).toContain('fillQuoSlots([studyPanel(60), outreachPanel(true), sonaPanel(20, true)]');
+    expect(html).toContain('fillQuoSlots([sonaPanel(20, true), studyPanel(60), outreachPanel(true)]'); // Direction B P16: Sona's calls first (the mockup)
   });
 
   it('the study card: a strip for a customer who sent photos, none for one who did not, and the overflow named', async () => {

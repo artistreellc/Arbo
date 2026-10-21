@@ -134,8 +134,16 @@ describe('Calls: a transcripts or call-notes read that failed is named, never an
       fillQuoSlots: () => Promise.resolve(),
       showKeywall: keywall, LINKS_READY: Promise.resolve('simulation'),
       state: (t: string, m: string) => el('div', 'state', t + ' ' + m),
-      feedLine, showSaveFail: () => {},
+      feedLine, showSaveFail: () => {}, feedKind,
+      // Direction B P16: Calls & texts' feeds card, a stand-in with the page's fold rule (off on purpose or not set up
+      // goes INTO the card; one that could not be read stays in its slot) — the card itself: directionB_feeds.
+      feedsCard: () => ({
+        el: card,
+        place: (slot: Node, x: unknown) => Promise.resolve(x as Node | null).then((n) => { if (n) (['cut', 'sim', 'unset'].includes(n.dataset.off ?? '') ? card : slot).appendChild(n); }),
+        note: () => Promise.resolve(),
+      }),
     });
+    const card = el('div', 'card feeds');
     const slotTitled = (t: string) => v.children.find((n) => n.children[0]?.textContent === t);
     return { v, renderCalls, keywall, slotTitled };
   }
@@ -259,7 +267,7 @@ describe('Leads: a spam Undo holds the minute timer for about 2 minutes, not for
     const ran: string[] = [];
     const TIMED = { today: () => ran.push('today'), leads: () => ran.push('leads') };
     const views: Record<string, unknown> = { 'view-today': el('div'), 'view-leads': s.v, keywall: el('div') };
-    const tick = pageFn<() => void>('autoRefresh', { document: { hidden: false }, $: (id: string) => views[id], TIMED, holdsTyping });
+    const tick = pageFn<() => void>('autoRefresh', { document: { hidden: false }, $: (id: string) => views[id], TIMED, holdsTyping, renderLeadsHead: () => {} /* P16: the Leads head, its own tests */ });
     vi.setSystemTime(t0 + 60000);
     tick();
     expect(ran).toEqual(['today']); // a minute in: the Undo is still on offer

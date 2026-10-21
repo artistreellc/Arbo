@@ -477,6 +477,8 @@ describe('the app says it', () => {
     plural: (n: number, one: string, many?: string) => n + ' ' + (n === 1 ? one : many || one + 's'), fmtTime: () => '',
     renderCalls: () => {}, renderToday: () => {}, slipRuleLabel: (r: string) => r, openSonaCall: () => {},
     document: { createElement: (t: string) => el(t) },
+    // Direction B P16: the red flag's one builder, the page's own (Today's panel calls it).
+    sonaSlipBox: (d: unknown) => pageFn<(d: unknown) => unknown>('sonaSlipBox', { el, plural: (n: number, one: string, many?: string) => n + ' ' + (n === 1 ? one : many || one + 's'), fmtTime: () => '', slipRuleLabel: (r: string) => r, openSonaCall: () => {} })(d),
   };
   const outreachStatus = {
     wired: true, fromNumber: LINE, autoFollowUps: false, readOnly: true, template: { ok: true, text: 'Art-is-Tree. Reply STOP to opt out.', problems: [] },

@@ -403,12 +403,14 @@ describe('R26 qa-x10 — the red alarm card links to the lead', () => {
   });
 
   // openLead on a stand-in Leads view: `onScreen` = the lead's card is there before any redraw.
+  const filters: string[] = [];
   function opener(filedAgo: number | null, onScreen: boolean) {
     const order: string[] = [];
     const view = leadsView(filedAgo);
     const target = el('div');
     let drawn = onScreen;
     const go = pageFn<(id: string) => Promise<void>>('openLead', {
+      leadsFilter: (f: string) => filters.push(f), // Direction B P16: a lead Mike is sent to is never hidden by a filter chip
       switchTab: (t: string) => order.push('tab:' + t),
       renderLeads: async () => { order.push('render'); drawn = true; },
       holdsTyping,
@@ -420,7 +422,9 @@ describe('R26 qa-x10 — the red alarm card links to the lead', () => {
 
   it('openLead goes to Leads, redraws it, then scrolls to that lead', async () => {
     const { go, order, target } = opener(null, true);
+    filters.length = 0;
     await go('E1');
+    expect(filters).toEqual(['all']); // Direction B P16: the filter goes back to All first
     expect(order).toEqual(['tab:leads', 'render', 'find:lead-E1']);
     expect(target.scrolled).toEqual([{ behavior: 'smooth', block: 'center' }]);
   });
@@ -591,6 +595,8 @@ describe('R26 — Leads flags a Spanish speaker and keeps the tab badge current'
       permitBadge: () => null, leadsTabBadge: badge, icon: (id: string) => el('svg', 'ico ' + id),
       showKeywall: () => {}, LINKS_READY: Promise.resolve('simulation'), state: (t: string) => el('div', 'state', t),
       feedState: (_e: unknown, w: string) => el('div', 'state', w), feedLine, showSaveFail: () => {}, emergencyLeads: reread,
+      // Direction B P16: New leads' feeds card (its own tests: directionB_feeds, directionB_leadsHub).
+      feedsCard: () => ({ el: el('div', 'card feeds'), place: () => Promise.resolve(), note: () => Promise.resolve() }), feedKind: () => 'cut',
     });
     await render();
     return { v, badge, reread };
@@ -640,7 +646,9 @@ describe('R26 — Leads flags a Spanish speaker and keeps the tab badge current'
     const err = fail(503, 'link_cut');
     const { v, badge } = await mount(err);
     expect(badge).toHaveBeenCalledWith(err);
-    expect(v.children[0]!.textContent).toBe('Leads');
+    // Direction B P16: New leads' feeds card counts it, above; the named state stays where the list would be.
+    expect(v.children.map((n) => n.className)).toEqual(['card feeds', 'state']);
+    expect(v.children[1]!.textContent).toBe('Leads');
   });
 
   it('SPANISH SPEAKER is an identity tag in the tone word list', () => {

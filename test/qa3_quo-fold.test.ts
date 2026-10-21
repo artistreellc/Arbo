@@ -57,8 +57,10 @@ const panel = (title: string, quoOff: boolean): FakeEl => {
   if (quoOff) w.dataset.quoOff = '1';
   return w;
 };
-const fillQuoSlots = pageFn<(reads: Promise<FakeEl | null>[], slots: FakeEl[]) => Promise<void>>('fillQuoSlots', { el, LINKS_READY: Promise.resolve('live') });
-const fillQuoSlotsSim = pageFn<(reads: Promise<FakeEl | null>[], slots: FakeEl[]) => Promise<void>>('fillQuoSlots', { el, LINKS_READY: Promise.resolve('simulation'), Cap: (s: string) => s.charAt(0).toUpperCase() + s.slice(1), FEED_WORD: { sim: 'not in the practice data' } });
+// Direction B P16: the fold's line is one builder, quoOffLine — the fold and the Leads head say it the same way.
+const quoOffLine = pageFn<(links: string) => FakeEl>('quoOffLine', { el, Cap: (s: string) => s.charAt(0).toUpperCase() + s.slice(1), FEED_WORD: { sim: 'not in the practice data' } });
+const fillQuoSlots = pageFn<(reads: Promise<FakeEl | null>[], slots: FakeEl[]) => Promise<void>>('fillQuoSlots', { el, LINKS_READY: Promise.resolve('live'), quoOffLine });
+const fillQuoSlotsSim = pageFn<(reads: Promise<FakeEl | null>[], slots: FakeEl[]) => Promise<void>>('fillQuoSlots', { el, LINKS_READY: Promise.resolve('simulation'), quoOffLine });
 const slots = () => [el('div', 'slot'), el('div', 'slot'), el('div', 'slot')];
 const titles = (s: FakeEl[]) => s.map((x) => x.children.map((c) => c.children[0]?.textContent ?? ''));
 
@@ -67,6 +69,7 @@ const FOLD_BODY = 'Quo isn’t connected to Arbo yet — Arbo can’t read your 
 describe('items 1–3: the folded Quo card keeps its title on one line and names what is not zero', () => {
   it('the title is one short word, like Inbox and Website forms — the explanation stays in the body', () => {
     const fold = src('fillQuoSlots');
+    expect(fold).toContain('q.appendChild(quoOffLine(links));'); // Direction B P16: the body's one builder
     expect(fold).toContain("q.appendChild(el('div', 'panel-title', 'Quo'));");
     // The long title that wrapped at 390px and squeezed the gold rule to a stub is gone everywhere.
     expect(html).not.toContain('Quo — customers, texts and Sona’s calls');
@@ -74,7 +77,7 @@ describe('items 1–3: the folded Quo card keeps its title on one line and names
   });
 
   it('the last sentence says exactly what is not zero, once — never a bare "there are none"', () => {
-    const fold = src('fillQuoSlots');
+    const fold = src('quoOffLine'); // Direction B P16: the fold's words, one builder (the Leads head says them too)
     expect(fold).toContain(`el('div', 'feed-state unset', '${FOLD_BODY}')`);
     expect(fold.match(/That doesn’t mean/g)).toHaveLength(1);
     expect(fold).not.toContain('there are none');
@@ -131,9 +134,9 @@ describe('item 5: Calls folds the same way Today does — one shared helper, no 
   it('source: Today and Calls each call fillQuoSlots once; neither carries an inline fold of its own', () => {
     const today = src('renderToday');
     const calls = src('renderCalls');
-    // Direction B P12: Today hands the fold its feeds card's place; Calls has no card yet (P16) and appends.
+    // Direction B P12: Today hands the fold its feeds card's place; P16: Calls & texts too — Sona's calls first (the mockup).
     expect(today).toContain('fillQuoSlots([studyPanel(5), outreachPanel(false), sonaPanel(3, false)], [studySlot, outreachSlot, sonaSlot], feeds.place);');
-    expect(calls).toContain('fills.push(fillQuoSlots([studyPanel(60), outreachPanel(true), sonaPanel(20, true)], [studyFull, outreachFull, sonaCallsSlot]));');
+    expect(calls).toContain('fills.push(fillQuoSlots([sonaPanel(20, true), studyPanel(60), outreachPanel(true)], [sonaCallsSlot, studyFull, outreachFull], feeds.place));');
     for (const [name, s] of [['renderToday', today], ['renderCalls', calls]] as const) {
       expect(s.match(/fillQuoSlots\(/g), name).toHaveLength(1);
       expect(s, name).not.toContain('dataset.quoOff');
@@ -145,8 +148,8 @@ describe('item 5: Calls folds the same way Today does — one shared helper, no 
     expect(calls).not.toContain('studyPanel(60).then');
     expect(calls).not.toContain('outreachPanel(true).then');
     expect(calls).not.toContain('sonaPanel(20, true).then');
-    // The three slots are placed before the read, in Today's order.
-    const at = ['const studyFull', 'const outreachFull', 'const sonaCallsSlot'].map((x) => calls.indexOf(x));
+    // The three slots are placed before the read — Sona's calls first on Calls & texts (Direction B P16, the mockup).
+    const at = ['const sonaCallsSlot', 'const studyFull', 'const outreachFull'].map((x) => calls.indexOf(x));
     expect(at).toEqual([...at].sort((a, b) => a - b));
     expect(at[2]).toBeLessThan(calls.indexOf('fillQuoSlots('));
   });
@@ -161,8 +164,16 @@ describe('item 5: Calls folds the same way Today does — one shared helper, no 
       if (path === '/api/review/backlog?all=1&limit=20') return { conversations: [] };
       throw new Error('unexpected read ' + path);
     };
+    // Direction B P16: Calls & texts' feeds card, as a stand-in with the page's fold rule (a feed off on purpose or not
+    // set up goes INTO the card; anything else to its slot) — the card itself is pinned in directionB_feeds.
+    const card = el('div', 'card feeds');
+    const feedsCard = () => ({
+      el: card,
+      place: (slot: FakeEl, x: unknown) => Promise.resolve(x as FakeEl | null).then((n) => { if (n) (['cut', 'sim', 'unset'].includes(n.dataset.off ?? '') ? card : slot).appendChild(n); }),
+      note: () => Promise.resolve(),
+    });
     const renderCalls = pageFn<() => Promise<void>>('renderCalls', {
-      $: () => v, el, api, fillQuoSlots, readingLine: () => el('div', 'reading', 'Reading…'), tapCount: () => 0, keepsPage: () => false, TIMER_REDRAW: false, 
+      $: () => v, el, api, fillQuoSlots, readingLine: () => el('div', 'reading', 'Reading…'), tapCount: () => 0, keepsPage: () => false, TIMER_REDRAW: false, feedsCard, feedKind: () => 'cut', 
       studyPanel: async () => panel('Where each customer stands', quoOff[0]),
       outreachPanel: async () => panel('Text outreach', quoOff[1]),
       sonaPanel: async () => panel('Sona calls (Quo)', quoOff[2]),
@@ -172,32 +183,36 @@ describe('item 5: Calls folds the same way Today does — one shared helper, no 
       state: (t: string, m: string) => el('div', 'state', t + ' ' + m),
       feedLine: (_e: unknown, what: string) => el('div', 'feed-state sim', what),
     });
-    return { v, renderCalls };
+    return { v, renderCalls, card };
   }
   const flush = () => new Promise((r) => setTimeout(r, 0));
-  /** The Quo slots are the first three on the Calls screen. */
-  const quoSlots = (v: FakeEl) => v.children.slice(0, 3);
+  /** The Quo slots: Sona's calls first, then (past the feeds card's place) the study and outreach — Direction B P16. */
+  const quoSlots = (v: FakeEl) => [v.children[0]!, v.children[2]!, v.children[3]!];
 
+  // Direction B P16: the one "Quo" card is a feed not set up — it goes into Calls & texts' feeds card (named there,
+  // its words intact; the Leads head says them above the segments), and the three slots stay empty.
   it('run: Quo not connected → Calls shows ONE "Quo" card, not three saying the same thing', async () => {
     const s = mountCalls([true, true, true]);
     await s.renderCalls();
     await flush();
     const q = quoSlots(s.v);
     expect(q.every((x) => x.className === 'slot')).toBe(true);
-    expect(titles(q)).toEqual([['Quo'], [], []]);
-    expect(q[0]!.children[0]!.children[1]!.textContent).toBe(FOLD_BODY);
+    expect(titles(q)).toEqual([[], [], []]);
+    const quo = s.card.children.filter((c) => c.children[0]?.textContent === 'Quo'); // (Arbo's own line, cut, folds in beside it)
+    expect(quo).toHaveLength(1);
+    expect(quo[0]!.children[1]!.textContent).toBe(FOLD_BODY);
     expect(s.v.textContent).not.toContain('Waiting on Quo');
     expect(s.v.style.minHeight).toBe(''); // the held height still lets go once the fold has landed
   });
 
-  it('run: any other state → Calls keeps its three cards, in order', async () => {
+  it('run: any other state → Calls keeps its three cards, in order (Sona\'s calls first — Direction B P16)', async () => {
     const s = mountCalls([false, false, false]);
     await s.renderCalls();
     await flush();
-    expect(titles(quoSlots(s.v))).toEqual([['Where each customer stands'], ['Text outreach'], ['Sona calls (Quo)']]);
+    expect(titles(quoSlots(s.v))).toEqual([['Sona calls (Quo)'], ['Where each customer stands'], ['Text outreach']]);
     const mixed = mountCalls([true, true, false]);
     await mixed.renderCalls();
     await flush();
-    expect(titles(quoSlots(mixed.v))).toEqual([['Where each customer stands'], ['Text outreach'], ['Sona calls (Quo)']]);
+    expect(titles(quoSlots(mixed.v))).toEqual([['Sona calls (Quo)'], ['Where each customer stands'], ['Text outreach']]);
   });
 });

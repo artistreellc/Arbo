@@ -494,7 +494,7 @@ describe('the panels mark the wrapper that only reports a dead feed (data-off + 
 });
 
 describe('fillQuoSlots hands its answers to the screen\'s place, when it has one', () => {
-  const fill = (links: string) => new Function('el', 'LINKS_READY', 'Cap', 'FEED_WORD', `${fnSrc('fillQuoSlots')}\nreturn fillQuoSlots;`)(
+  const fill = (links: string) => new Function('el', 'LINKS_READY', 'Cap', 'FEED_WORD', `${fnSrc('quoOffLine')}\n${fnSrc('fillQuoSlots')}\nreturn fillQuoSlots;`)(
     el, Promise.resolve(links), (s: string) => s.charAt(0).toUpperCase() + s.slice(1), FEED_WORD,
   ) as (reads: Array<Promise<N | null>>, slots: N[], place?: (slot: N, x: unknown) => Promise<void>) => Promise<unknown>;
   const quoOff = (title: string) => { const w = el('div'); w.appendChild(el('div', 'panel-title', title)); w.dataset.quoOff = '1'; return w; };

@@ -84,6 +84,8 @@ const deps = {
   el, chip, plural, fmtTime: () => '', feedLine: () => el('div', 'feed-state unread', 'x'),
   renderCalls: () => {}, renderToday: () => {}, slipRuleLabel: (r: string) => r, openSonaCall: () => {},
   document: { createElement: (t: string) => el(t) },
+  // Direction B P16: the red flag's one builder, the page's own (Today's panel calls it).
+  sonaSlipBox: (d: unknown) => pageFn<(d: unknown) => unknown>('sonaSlipBox', { el, plural, fmtTime: () => '', slipRuleLabel: (r: string) => r, openSonaCall: () => {} })(d),
 };
 
 // ═══ 1–2: the outreach panel while Quo is read-only ═══════════════════════
@@ -179,6 +181,13 @@ describe('a missing Quo texts webhook is named where the texts would show (revie
         ...deps, $: () => v, fmtWhen: () => '', api: async (p: string) => routes[p], readingLine: () => el('div', 'reading', 'Reading…'), tapCount: () => 0, keepsPage: () => false, TIMER_REDRAW: false, 
         studyPanel: async () => null, outreachPanel: async () => null, sonaPanel: async () => null, fillQuoSlots: () => Promise.resolve(),
         showKeywall: () => {}, LINKS_READY: Promise.resolve('sim'), state: (t: string, m: string) => el('div', 'state', t + ' ' + m), showSaveFail: () => {},
+        // Direction B P16: Calls & texts' feeds card — a stand-in with the page's fold rule (the R33 hook line never folds: a partial read).
+        feedsCard: () => ({
+          el: el('div', 'card feeds'),
+          place: (slot: FakeEl, x: unknown) => Promise.resolve(x as FakeEl | null).then((n) => { if (n && !['cut', 'sim', 'unset'].includes(n.dataset.off ?? '')) slot.appendChild(n); }),
+          note: () => Promise.resolve(),
+        }),
+        feedKind: () => 'unread',
       });
       await renderCalls();
       await flush();
