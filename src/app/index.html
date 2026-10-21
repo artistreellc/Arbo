@@ -554,6 +554,18 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 .seg button.on{background:var(--seg-on,var(--card));color:var(--forest);box-shadow:0 1px 3px rgba(20,40,30,.14),inset 0 0 0 1px var(--border)}
 .check-item .who{font-size:17px;margin-top:8px}
 .card.fact{scroll-margin-top:calc(84px + env(safe-area-inset-top))} /* a "Source ↓" jump lands below the sticky app bar */
+/* Direction B P9: the job check's result, pinned under the app bar while the questions are worked; the topics fold. */
+.permit-verdict{position:sticky;top:calc(64px + env(safe-area-inset-top));z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;width:100%;min-height:52px;margin:0 0 10px;padding:8px 14px;border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-card);text-align:left;color:var(--ink-1)}
+.permit-verdict .pv-line{font-size:14px;font-weight:700;color:var(--ink-2)}
+.permit-verdict .reading{margin:0;padding:0}
+.pv-results{scroll-margin-top:calc(144px + env(safe-area-inset-top))}
+.topic > summary{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;min-height:52px;padding:10px 30px 10px 2px;cursor:pointer;list-style:none;position:relative;border-bottom:1px solid var(--hairline)}
+.topic > summary::-webkit-details-marker{display:none}
+.topic > summary::after{content:'';position:absolute;right:8px;top:50%;width:8px;height:8px;border-right:2px solid var(--forest);border-bottom:2px solid var(--forest);transform:translateY(-70%) rotate(45deg);transition:transform .2s}
+.topic[open] > summary::after{transform:translateY(-30%) rotate(-135deg)}
+.topic[open] > summary{margin-bottom:12px}
+.topic .topic-name{font-family:var(--serif);font-size:17.5px;font-weight:600;color:var(--ink-1)}
+.topic .topic-n{font-size:13px;font-weight:600;color:var(--ink-3)}
 .factmeta{font-size:13.5px;color:var(--ink-3);margin-top:10px;display:grid;gap:4px}
 .factmeta b{color:var(--ink-1);font-weight:650}
 .factmeta a{color:var(--forest);font-weight:600;text-decoration:none}
@@ -5997,6 +6009,43 @@ const PERMIT_ANS = { inRpa: 'unknown', nearPowerLines: 'unknown', inRightOfWay: 
 // split at a hyphen: a word joiner after each digit-hyphen-digit keeps them whole,
 // and a no-break space keeps "§" on the same line as its section number.
 const nb = (s) => String(s).replace(/(\d)-(?=\d)/g, '$1-\u2060').replace(/§\s+/g, '§\u00a0');
+// Direction B P9 (spec: "Permits folds down … with the result pinned"): the job
+// check's result on one line — the strongest chip (alarm > stop > watch > info)
+// in the permit words, CALL FIRST and TICKET REQUIRED kept on it, then
+// "N steps · city". No steps back is never a calm line: it is not an answer.
+function permitVerdict(items, city) {
+  if (!items.length) return { chips: [], line: 'No steps came back — that is not an answer. Check with the city.' };
+  const rank = ['alarm', 'stop', 'watch', 'good', 'info'];
+  // The chip each result card wears (checkCard): CALL FIRST is the alarm only on the power-line step.
+  const look = (it) => { const st = PERMIT_STATUS[it.status] || [it.status, 'watch']; return [st[0], it.status === 'CALL FIRST' && !it.safety ? 'watch' : st[1]]; };
+  const best = items.map(look).reduce((a, b) => (rank.indexOf(b[1]) < rank.indexOf(a[1]) ? b : a));
+  const chips = [best];
+  for (const it of items) {
+    if (it.status !== 'CALL FIRST' && it.status !== 'TICKET REQUIRED') continue;
+    const c = look(it);
+    if (!chips.some((x) => x[0] === c[0])) chips.push(c);
+  }
+  return { chips, line: plural(items.length, 'step') + ' · ' + city };
+}
+// Direction B P9: one rule topic, folded. The summary names it, counts its rules and
+// keeps UNCONFIRMED and RE-CHECK DUE in sight while it is closed. Permits is not on
+// the minute timer, so an open fold holds nothing.
+function topicFold(name, facts, staleSet) {
+  const d = el('details', 'topic');
+  const s = el('summary');
+  s.appendChild(el('span', 'topic-name', name));
+  s.appendChild(el('span', 'topic-n', plural(facts.length, 'rule')));
+  const counts = {};
+  for (const f of facts) if (f.confidence !== 'SOURCED') counts[f.confidence] = (counts[f.confidence] || 0) + 1;
+  const due = facts.filter((f) => staleSet.has(f.id)).length;
+  const b = el('span', 'badges');
+  for (const k of Object.keys(counts)) b.appendChild(chip(counts[k] + ' ' + k, 'watch'));
+  if (due) b.appendChild(chip(due + ' RE-CHECK DUE', 'watch'));
+  if (b.children.length) s.appendChild(b);
+  d.appendChild(s);
+  for (const f of facts) d.appendChild(factCard(f, staleSet.has(f.id)));
+  return d;
+}
 
 let PERMIT_GEN = 0;
 async function renderPermits() {
@@ -6022,24 +6071,34 @@ async function renderPermits() {
   // put. A city change is the one thing that rebuilds the whole desk.
   const job = el('div', 'slot');
   job.appendChild(el('div', 'panel-title', 'Job check — ' + PERMIT_CITY));
-  const out = el('div');
+  // Direction B P9: the result, pinned above the questions (sticky while they are worked); a tap goes to the steps.
+  const verdict = el('button', 'permit-verdict');
+  verdict.type = 'button';
+  verdict.appendChild(readingLine());
+  job.appendChild(verdict);
+  const out = el('div', 'pv-results');
+  verdict.addEventListener('click', () => out.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   let ck = 0;
   const runCheck = () => {
     const g = ++ck;
     // The old results stay up, dimmed and at their height, until the new ones land.
     out.style.minHeight = out.offsetHeight + 'px';
     out.style.opacity = '.5';
+    verdict.style.opacity = '.5';
     out.setAttribute('aria-busy', 'true');
     api('/api/permits/checklist', { method: 'POST', body: Object.assign({ city: PERMIT_CITY }, PERMIT_ANS) }).then((r) => {
       if (g !== ck || gen !== PERMIT_GEN) return; // a newer check or render owns the screen
       out.replaceChildren(...r.items.map(checkCard));
+      const pv = permitVerdict(r.items, PERMIT_CITY);
+      verdict.replaceChildren(...pv.chips.map((c) => chip(c[0], c[1])), el('span', 'pv-line', pv.line));
     }).catch((e) => {
       if (g !== ck || gen !== PERMIT_GEN) return;
       if (e.code === 401) showKeywall();
       // §1B: a failed check REPLACES the old results — they are never left up as current.
       out.replaceChildren(el('div', 'feed-state unread', (e.code ? 'Arbo could not build the checklist right now.' : 'Could not reach Arbo (no signal?).') + ' An empty list here is not an answer — Arbo could not check.'));
+      verdict.replaceChildren(el('span', 'pv-line', 'Not checked — Arbo could not build the checklist. That is not an answer.'));
     }).finally(() => {
-      if (g === ck) { out.style.minHeight = ''; out.style.opacity = ''; out.removeAttribute('aria-busy'); }
+      if (g === ck) { out.style.minHeight = ''; out.style.opacity = ''; verdict.style.opacity = ''; out.removeAttribute('aria-busy'); }
     });
   };
   const tri = (key, q) => {
@@ -6091,11 +6150,12 @@ async function renderPermits() {
   const staleSet = new Set(db.stale);
   const byTopic = {};
   for (const f of db.facts) (byTopic[f.topic] = byTopic[f.topic] || []).push(f);
+  // Direction B P9: each topic folds; a summary keeps its counts in sight.
+  v.appendChild(el('div', 'panel-title', 'The rules, by topic'));
   for (const topic of Object.keys(TOPIC_NAMES)) {
     const list = byTopic[topic];
     if (!list) continue;
-    v.appendChild(el('div', 'panel-title', TOPIC_NAMES[topic]));
-    for (const f of list) v.appendChild(factCard(f, staleSet.has(f.id)));
+    v.appendChild(topicFold(TOPIC_NAMES[topic], list, staleSet));
   }
 }
 
@@ -6123,6 +6183,9 @@ function checkCard(it) {
       const t = document.getElementById('fact-' + it.factIds[0]);
       if (!t) return;
       ev.preventDefault();
+      // Direction B P9: the rule sits in a folded topic — open it before the jump.
+      const fold = t.closest('details.topic');
+      if (fold) fold.open = true;
       t.scrollIntoView({ behavior: 'smooth' });
       // The rule sits far below the job check: one link back to the result that was tapped.
       const old = t.querySelector('.back-to-check');
