@@ -214,6 +214,14 @@ describe('each desk draws its head before any read, then the Queue\'s panels, un
     expect(d.v.style.minHeight).toBe('');
   });
 
+  // The browser re-run of that fix: scrolled to the very bottom of Money, the redraw still moved it 12 px
+  // (388 → 376) — the last card's bottom margin collapsed out of the view, so offsetHeight left it out and
+  // the held height came up short. On a phone the desks are their own block formatting context
+  // (display:flow-root, layout-neutral: main's padding already stopped the collapse), so the hold is whole.
+  it('on a phone the desks hold their whole height: no margin collapses out of the view (flow-root)', () => {
+    expect(html).toContain('@media (max-width:899px){#view-followups.active,#view-money.active,#view-fleet.active,#view-safety.active{display:flow-root}}');
+  });
+
   it('an older draw that lands late never lets go of a newer draw\'s hold', async () => {
     const gen = {};
     const d = desk('fleet', gen);
