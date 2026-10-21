@@ -25,9 +25,11 @@ out of scope (CLAUDE.md hard boundary). Quo sits *behind* 757-319-5131.
 
 Mike: *"disconnect the twilio and eleven labs links while we develop off
 sona"*. Cut in code, not deleted. Doors refused with 503 `link_cut`: the
-voice bridge `/voice/llm`, `/webhooks/elevenlabs`, Talk to Arbo, the spoken
-brief, `/webhooks/twilio/sms`. Boot log: `[links] CUT while Sona handles
-calls (R21): elevenlabs, twilio`.
+voice bridge `/voice/llm`, `/webhooks/elevenlabs`,
+the Phone line page (`/talk`), the spoken brief, `/webhooks/twilio/sms`.
+Boot log: `[links] CUT while Sona handles calls (R21): elevenlabs, twilio`.
+(The Phone line page was "Talk to Arbo" until Mike renamed it on 2026-10-20;
+"Talk" now means only the R30 button in the app's header.)
 
 To reconnect (Mike's call only): set `ARBO_LINK_ELEVENLABS=live` and/or
 `ARBO_LINK_TWILIO=live` on Railway, redeploy by full SHA.

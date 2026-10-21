@@ -1878,7 +1878,7 @@ async function receptionStrip() {
   const wrap = el('div');
   wrap.appendChild(el('div', 'panel-title', 'Arbo’s phone line'));
   // R21: Arbo's own line is cut on purpose while Sona handles calls — a
-  // named state, not an alarm, and Talk to Arbo goes away with it. The
+  // named state, not an alarm, and the Phone line button goes away with it. The
   // vendors (ElevenLabs, Twilio) are named on Settings, not here.
   if (s.linkCut) {
     const tb = document.getElementById('talk-btn');
@@ -2491,10 +2491,12 @@ async function renderToday() {
   const recSlot = el('div', 'slot');
   v.appendChild(recSlot);
   receptionStrip().then((b) => { if (b) recSlot.appendChild(b); });
-  // Talk to Arbo lives ABOVE the brief fetch on purpose: the first version
+  // The Phone line button lives ABOVE the brief fetch on purpose: the first version
   // sat in the post-brief section, and with the data links cut the brief's
   // early return meant the button never rendered — on production, exactly.
-  const talkBtn = el('button', 'hudbtn', 'Talk to Arbo');
+  // Mike renamed the old receptionist page "Phone line (off while Sona answers)"
+  // (2026-10-20); "Talk" means only the R30 header button.
+  const talkBtn = el('button', 'hudbtn', 'Phone line');
   talkBtn.id = 'talk-btn';
   talkBtn.addEventListener('click', () => window.open('/talk', '_blank', 'noopener'));
   v.appendChild(talkBtn);
@@ -5819,7 +5821,8 @@ function renderMore() {
   // file or clock in. Same tab on purpose: an installed iPhone app keeps its
   // own saved data, so a new tab might not have the key.
   tile('i-crew', 'Crew', 'What the crew sees', () => { location.href = '/crew?preview=1'; });
-  const talk = tile('i-message', 'Talk', 'Voice with Arbo', () => window.open('/talk', '_blank', 'noopener'));
+  // The old receptionist page, renamed "Phone line" by Mike (2026-10-20); "Talk" is only the R30 header button.
+  const talk = tile('i-message', 'Phone line', 'Arbo’s receptionist', () => window.open('/talk', '_blank', 'noopener'));
   // R21: the same switch Today reads. While Arbo's own line is cut the tile
   // says so instead of opening a page that can only say "off". A status Arbo
   // could not read leaves the tile as it is.

@@ -60,7 +60,7 @@ describe('vendor link switches', () => {
     await cut('POST', '/webhooks/twilio/sms?key=x', 'twilio');
     const talk = await fetch(`${base}/talk`);
     expect(talk.status).toBe(503);
-    expect(await talk.text()).toContain('Talk to Arbo is off');
+    expect(await talk.text()).toContain('Phone line is off'); // Direction B P4: the page is "Phone line" now
     const rec = (await (await ownerFetch(`${base}/api/reception/status`)).json()) as { linkCut: boolean };
     expect(rec.linkCut).toBe(true);
     const wh = (await (await ownerFetch(`${base}/api/webhooks`)).json()) as { cut: string[] };

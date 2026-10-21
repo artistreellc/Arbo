@@ -303,12 +303,13 @@ describe('ARBOR app shell', () => {
     expect(html).toContain('Every line needs a ZIP (23xxx). Nothing was planned.');
   });
 
-  it('Talk-to-Arbo: one tap from Today; the widget lives on its OWN page so the shell stays CDN-free', () => {
-    expect(html).toContain('Talk to Arbo');
+  it('Phone line (once Talk-to-Arbo): one tap from Today; the widget lives on its OWN page so the shell stays CDN-free', () => {
+    // Direction B P4: Mike renamed the old receptionist page "Phone line" (2026-10-20).
+    expect(html).toContain("el('button', 'hudbtn', 'Phone line')");
     expect(html).toContain("window.open('/talk'");
     // The button renders BEFORE the brief fetch — a disconnected database
     // must never hide the microphone (the first version did exactly that).
-    expect(html.indexOf('Talk to Arbo')).toBeLessThan(html.indexOf("brief = await api('/api/brief"));
+    expect(html.indexOf("el('button', 'hudbtn', 'Phone line')")).toBeLessThan(html.indexOf("brief = await api('/api/brief"));
     expect(html).not.toContain('elevenlabs.io/convai-widget'); // the shell law holds
     const talk = loadTalkHtml();
     expect(talk).toContain('elevenlabs-convai');

@@ -99,7 +99,7 @@ describe('the Talk pages', () => {
       const res = await fetch(`http://127.0.0.1:${(srv.address() as { port: number }).port}/talk`);
       expect(res.status).toBe(503);
       const page = await res.text();
-      for (const want of ['Talk to Arbo is off', 'Nothing was deleted', "url(/fonts/fraunces.woff2)", '#F7F5F0', '#1B4D3E', 'prefers-color-scheme:dark', 'href="/app"']) {
+      for (const want of ['Phone line is off', 'Nothing was deleted', "url(/fonts/fraunces.woff2)", '#F7F5F0', '#1B4D3E', 'prefers-color-scheme:dark', 'href="/app"']) {
         expect(page, `talk-off page lost ${want}`).toContain(want);
       }
     } finally {

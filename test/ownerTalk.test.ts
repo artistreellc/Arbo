@@ -1168,8 +1168,10 @@ describe('the page: wiring, header button and sheet', () => {
     const sprite = readFileSync(new URL('../src/app/sprite.svg', import.meta.url), 'utf8');
     expect(sprite).toContain('<symbol id="i-mic"');
     // Never the receptionist's names: receptionStrip deletes #talk-btn while R21 holds.
+    // Direction B P4: the receptionist page is "Phone line" now (once "Talk to Arbo").
     expect(head).not.toContain('talk-btn');
     expect(head).not.toContain('Talk to Arbo');
+    expect(head).not.toContain('Phone line');
   });
 
   it('it is a sheet like the others: Back, the phone\'s back and the X all leave it — and leaving stops the talk', () => {
