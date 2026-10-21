@@ -243,3 +243,77 @@ describe('the minute re-read leaves an unchanged map alone (review round)', () =
     expect(drawn).toHaveLength(2);
   });
 });
+
+// UI review round (D106): what Mike sees on the first screen of the map.
+describe('pins that would overlap share one marker (UI review)', () => {
+  const byTime = frameFn<(a: Stop, b: Stop) => number>('byTime');
+  const mapGroups = frameFn<(s: Stop[]) => Array<{ lat: number; lon: number; exact: boolean; practice: boolean; stops: Stop[] }>>('mapGroups', { byTime });
+  const screenGroups = frameFn<(g: ReturnType<typeof mapGroups>, toPx: (g: { lat: number; lon: number }) => { x: number; y: number }, gap: number) => ReturnType<typeof mapGroups>>('screenGroups', { byTime });
+  // A stand-in projection: 1000 px per degree, so 0.006° is 6 px.
+  const toPx = (g: { lat: number; lon: number }) => ({ x: g.lon * 1000, y: -g.lat * 1000 });
+
+  it('two exact stops 6 px apart: one marker listing both, in time order; numbers 1·2', () => {
+    const a = S({ id: 'a', n: 2, time: '16:45', title: 'SIM-B', placedBy: 'tomtom', lat: 36.918, lon: -76.242 });
+    const b = S({ id: 'b', n: 1, time: '16:00', title: 'SIM-A', placedBy: 'tomtom', lat: 36.924, lon: -76.25 });
+    const out = screenGroups(mapGroups([a, b]), toPx, 52);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.stops.map((s) => s.title)).toEqual(['SIM-A', 'SIM-B']);
+    expect(out[0]!.exact).toBe(true);
+    expect(frameFn<(g: { stops: Stop[] }) => string>('pinText')(out[0]!)).toBe('1·2');
+  });
+
+  it('far apart: each its own marker; an exact stop sharing a marker with a ZIP-area one is drawn hollow', () => {
+    const far = screenGroups(mapGroups([S({ id: 'a', lat: 36.9, lon: -76.25 }), S({ id: 'b', lat: 36.8, lon: -76.0 })]), toPx, 52);
+    expect(far).toHaveLength(2);
+    const mixed = screenGroups(mapGroups([S({ id: 'a', placedBy: 'tomtom' }), S({ id: 'b', placedBy: 'zip' })]), toPx, 52);
+    expect(mixed).toHaveLength(1);
+    expect(mixed[0]!.exact).toBe(false);
+    expect(mixed[0]!.stops).toHaveLength(2);
+  });
+
+  it('a stop in a shared list says how it was placed', () => {
+    const placeNote = frameFn<(s: Stop) => string>('placeNote', { MAP_SAYS });
+    expect(placeNote(S({ placedBy: 'tomtom' }))).toBe(MAP_SAYS.exactShort);
+    expect(placeNote(S({ placedBy: 'zip' }))).toBe('ZIP area — not the exact spot');
+    expect(placeNote(S({ placedBy: 'practice' }))).toBe('Practice pin — not a real place');
+  });
+});
+
+describe('the first screen: lines, legend, popups (UI review)', () => {
+  it('a street map that didn\'t load says "pins are still placed" only when pins are drawn', () => {
+    const tileLine = frameFn<(pins: boolean) => string>('tileLine', { MAP_SAYS });
+    expect(tileLine(true)).toBe('Street map didn’t load (OpenStreetMap) — pins are still placed; this is not an empty map.');
+    expect(tileLine(false)).toBe(MAP_SAYS.tilesFailedBare);
+    expect(MAP_SAYS.tilesFailedBare).not.toMatch(/pins/i);
+    expect(MAP_SAYS.tilesFailedBare).toMatch(/OpenStreetMap/);
+    expect(MAP_SAYS.tilesFailedBare).toMatch(/not an empty map/);
+  });
+
+  it('the legend shows only the kinds drawn, with sample pins that carry no number', () => {
+    const legendPins = frameFn<(s: Stop[]) => Array<{ g: { exact: boolean; practice: boolean; stops: unknown[] }; text: string }>>('legendPins', { MAP_SAYS });
+    const practice = legendPins([S({ placedBy: 'practice', n: 1 }), S({ placedBy: 'practice', n: 2 })]);
+    expect(practice.map((k) => k.text)).toEqual([MAP_SAYS.practicePin]);
+    const live = legendPins([S({ placedBy: 'tomtom', n: 1 }), S({ placedBy: 'zip', n: 2 })]);
+    expect(live.map((k) => k.text)).toEqual([MAP_SAYS.exact, MAP_SAYS.zipArea]);
+    for (const k of [...practice, ...live]) expect(k.g.stops).toEqual([]);
+    expect(legendPins([])).toEqual([]);
+  });
+
+  it('pins off the visible map (outside it, under the notes card or under the Route button) are counted', () => {
+    const offViewCount = frameFn<(s: Stop[], toPt: (s: Stop) => { x: number; y: number }, w: number, top: number, bottom: number) => number>('offViewCount');
+    const at = (x: number, y: number) => S({ lat: y, lon: x });
+    const stops = [at(10, 200), at(-5, 200), at(400, 200), at(10, 50), at(10, 590)];
+    expect(offViewCount(stops, (s) => ({ x: s.lon, y: s.lat }), 340, 120, 520)).toBe(4);
+    expect(offViewCount([at(10, 200)], (s) => ({ x: s.lon, y: s.lat }), 340, 120, 520)).toBe(0);
+    expect(MAP_SAYS.offOne).toMatch(/show all/i);
+    expect(MAP_SAYS.offMany).toContain('{k}');
+  });
+
+  it('a stop list fits the map\'s width — at 320 px too', () => {
+    const popupFits = frameFn<(w: number) => { maxWidth: number; minWidth: number }>('popupFits');
+    const narrow = popupFits(268);
+    expect(narrow.maxWidth + 26).toBeLessThanOrEqual(268 - 16); // Leaflet adds its margins (24) and border (2); autopan keeps 8 a side
+    expect(narrow.minWidth).toBeLessThanOrEqual(narrow.maxWidth);
+    expect(popupFits(346).maxWidth).toBe(260);
+  });
+});

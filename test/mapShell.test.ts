@@ -264,8 +264,13 @@ describe('the frame in the Calendar view\'s place: the swipe strip and the size'
     expect(fnSrc('renderMap')).toContain("el('div', 'map-edge')");
     expect(html).toMatch(/\.map-edge\{[^}]*width:16px/);
   });
-  it('the frame is at least 560 px tall', () => {
-    expect(html).toMatch(/#map-frame\{[^}]*min-height:560px/);
+  // UI review (D106): the frame is exactly the band between the app bar and the dock — its own page never scrolls
+  // and never runs under the dock; the map inside takes all of it but the chips (≥560 px at 390×844, browser check).
+  it('the frame fills the band between the app bar and the dock, and never runs under the dock', () => {
+    const rule = /#map-frame\{([^}]*)\}/.exec(html)![1]!;
+    expect(rule).toContain('height:calc(100dvh - 185px - env(safe-area-inset-top) - env(safe-area-inset-bottom))');
+    const min = /min-height:(\d+)px/.exec(rule);
+    expect(min && Number(min[1])).toBeLessThanOrEqual(320);
   });
 });
 
