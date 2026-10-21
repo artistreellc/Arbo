@@ -515,6 +515,7 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
   font-size:16.5px;padding:12px 14px;display:block;font-variant-numeric:tabular-nums;transition:border-color .18s var(--ease),box-shadow .18s var(--ease)}
 .field input:focus,.field select:focus,.field textarea:focus,#yard input:focus,#yard select:focus,#bd input[type=text]:focus,.input:focus{border-color:var(--forest);outline:none;box-shadow:var(--ring)}
 .field textarea{min-height:84px;resize:vertical;line-height:1.45}
+.prep-card .field{margin-bottom:10px}.prep-card .field textarea{min-height:60px} /* P15 review: Estimate's form a little tighter (two lines of access notes), so the Yard check fits the first screen */
 .field select,#yard select,select.input{-webkit-appearance:none;appearance:none;padding-right:44px;background-image:linear-gradient(45deg,transparent 50%,var(--forest) 50%),linear-gradient(135deg,var(--forest) 50%,transparent 50%);background-position:calc(100% - 22px) 50%,calc(100% - 16px) 50%;background-size:6px 6px,6px 6px;background-repeat:no-repeat}
 .checkfield{display:flex;align-items:center;gap:12px;min-height:56px;margin-bottom:4px;cursor:pointer}
 .checkfield span{font-size:16px;font-weight:600;color:var(--ink-1);text-transform:none;letter-spacing:0}
@@ -3726,10 +3727,12 @@ function renderCalendar() {
 // Today (R29 #4), still one tap away — opens its sheet; Properties on file (the Book, renamed) says what
 // is on file from the read its own screen makes. A read that failed names its feed, and that row opens
 // nothing (§1B). Never a price, never a booking. Each row's small line is its desk, as on Office.
-const ESTIMATE_TOOLS = [{ key: 'permits', line: 'Permit Desk', title: 'Permit rules', note: '4 cities, sourced and dated', icon: 'i-permit' }, { key: 'measure', line: 'Arborist', title: 'Measure a tree', note: 'LiDAR scan → trunk width', icon: 'i-lidar' }, { key: 'yard', line: 'Moved from Today', title: 'Yard check — will this job pay?', note: 'Internal only — the customer never sees it', icon: 'i-numbers' }, { key: 'book', line: 'Arborist', title: 'Properties on file', note: '', icon: 'i-book' }];
+// P15 review: the spec's order (Yard check, Measure, Properties on file, Permit rules), so the Yard check is
+// the first tool and on the first screen; its desk is the Yard Boss (R26: the money desk) — it was "Moved from Today".
+const ESTIMATE_TOOLS = [{ key: 'yard', line: 'Yard Boss', title: 'Yard check — will this job pay?', note: 'Internal only — the customer never sees it', icon: 'i-numbers' }, { key: 'measure', line: 'Arborist', title: 'Measure a tree', note: 'LiDAR scan → trunk width', icon: 'i-lidar' }, { key: 'book', line: 'Arborist', title: 'Properties on file', note: '', icon: 'i-book' }, { key: 'permits', line: 'Permit Desk', title: 'Permit rules', note: '4 cities, sourced and dated', icon: 'i-permit' }];
 let EST_GEN = 0;
 // What the Properties on file row last said, and whether it could open: a redraw keeps it up until its
-// own read lands (P3's swap) — only a first draw says "Reading…".
+// own read lands (P3's swap) — only a first draw says "Reading…", and opens the screen meanwhile.
 let EST_BOOK = null;
 async function renderEstimate() {
   const gen = ++EST_GEN;
@@ -3738,11 +3741,14 @@ async function renderEstimate() {
   const head = el('div', 'viewhead');
   head.appendChild(el('div', 'eyebrow', 'Arborist · Permit Desk'));
   head.appendChild(el('h1', '', 'Before you write it up'));
-  head.appendChild(el('p', '', 'Start with the address. Arbo lines up the permit screen, drive time, 811 and access.'));
+  // P15 review: the prep card's own title and help line said this again; the head says it once, so the Yard check fits the first screen.
+  head.appendChild(el('p', '', 'Start with the address: permit, drive time, 811 and access. Never a price, never a booking.'));
   v.appendChild(head);
   v.appendChild(estimatePrepPanel());
-  v.appendChild(el('div', 'panel-title', 'Tools for the estimate'));
+  // P15 review: no heading row above the tools (it pushed the Yard check off the first screen); the list keeps the name for a screen reader.
   const list = v.appendChild(el('div', 'est-tools'));
+  list.setAttribute('role', 'group');
+  list.setAttribute('aria-label', 'Tools for the estimate');
   let book = null;
   for (const t of ESTIMATE_TOOLS) {
     const b = list.appendChild(el('button', 'est-tool'));
@@ -3771,7 +3777,7 @@ async function renderEstimate() {
   };
   book.b.addEventListener('click', () => { if (go) switchTab('book'); });
   if (EST_BOOK) { book.note.textContent = EST_BOOK.said; can(EST_BOOK.go); }
-  else { book.note.replaceChildren(readingLine()); can(false); book.b.classList.remove('gap'); }
+  else { book.note.replaceChildren(readingLine()); can(true); } // P15 review: it opens while its count reads, as Office's desks do
   let p;
   try {
     p = await api('/api/properties');
@@ -3808,9 +3814,8 @@ function prepFromLead(lead) {
 // ---------- The Book (§6/#36: every property, tap into its twin) ----------
 // ---------- Estimate prep (Mike 2026-09-24: know the property before the drive) ----------
 function estimatePrepPanel() {
-  const card = el('div', 'card');
-  card.appendChild(el('div', 'panel-title', 'Estimate prep'));
-  card.appendChild(el('div', 'storm-muted', 'Permit check, drive time, Miss Utility and access notes — one sheet before you drive. Never a price, never a booking.'));
+  // Estimate's head says what this sheet is and that it never prices or books (P15 review: said once, above it).
+  const card = el('div', 'card prep-card');
   // Each label is tied to its field (a tap focuses it, a screen reader names
   // it) and takes the shared .field label style.
   const f = (label, node) => {
@@ -3828,7 +3833,8 @@ function estimatePrepPanel() {
   for (const c of cities) citySel.appendChild(new Option(c, c));
   // A city outside the four stays as the lead said it — the server flags it (R1: flag, never bin).
   if (lead && lead.city && !cities.includes(lead.city)) citySel.appendChild(new Option(lead.city, lead.city));
-  const zip = el('input'); zip.type = 'text'; zip.placeholder = '23452'; zip.inputMode = 'numeric';
+  // P18 review: a sample ZIP as the placeholder read like a filled-in value; the box says what goes in it.
+  const zip = el('input'); zip.type = 'text'; zip.placeholder = '5 digits'; zip.inputMode = 'numeric';
   const jobSel = el('select');
   for (const [val, lab] of [['removal', 'Removal'], ['pruning', 'Pruning / trimming'], ['stump', 'Stump grinding'], ['land_clearing', 'Land clearing'], ['other', 'Other']]) {
     jobSel.appendChild(new Option(lab, val));
@@ -3873,6 +3879,11 @@ function estimatePrepPanel() {
   cz.appendChild(f('ZIP', zip));
   if (lead && !lead.city) {
     const n = card.appendChild(el('div', 'storm-muted', 'City not on file — choose one.'));
+    said.push(n);
+  }
+  // P18 review: a lead with no ZIP says so before Build — without one the drive time can't be worked out (never a 0).
+  if (lead && !lead.zip) {
+    const n = card.appendChild(el('div', 'storm-muted', 'ZIP not on file — without it the drive time can’t be worked out.'));
     said.push(n);
   }
   card.appendChild(f('Job type', jobSel));
@@ -3964,7 +3975,7 @@ async function renderBook() {
     if (e.code === 401) return showKeywall();
     // §1B: a Book Arbo could not read is NAMED, never headed "empty".
     await LINKS_READY;
-    v.appendChild(feedState(e, 'The Book', 'an empty Book'));
+    v.appendChild(feedState(e, VIEW_TITLES.book, 'an empty list')); // P15 review: the screen's own name (the Book was renamed)
     return;
   }
   if (data.forecastUnavailable) {

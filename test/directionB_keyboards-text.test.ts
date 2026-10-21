@@ -68,7 +68,8 @@ describe('number fields open the number keyboard (P2)', () => {
 
   it('every field whose placeholder asks for a number sets its keyboard in the same function', () => {
     // A placeholder (set directly, or through a composer's mk()/add()) that is a number, a ZIP, a level, inches or pounds.
-    const numeric = /(?:placeholder = |\bmk\(|\badd\('\w+', )'(?:\d+|5-digit ZIP|Skill level 1–10|Height in inches \(optional\)|Loaded weight in lbs \(optional\))'/g;
+    // P18 review: the prep ZIP's hint is "5 digits" (a sample ZIP read like a filled-in value) — still a number field.
+    const numeric = /(?:placeholder = |\bmk\(|\badd\('\w+', )'(?:\d+|5 digits|5-digit ZIP|Skill level 1–10|Height in inches \(optional\)|Loaded weight in lbs \(optional\))'/g;
     const found = [...html.matchAll(numeric)];
     expect(found.length).toBe(6); // prep ZIP, work ZIP, roster level, height, weight, library level
     for (const m of found) {
