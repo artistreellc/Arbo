@@ -818,3 +818,82 @@ describe('read-only on the crew door (C1): warned before anyone types or signs',
     expect(crew).toMatch(/\.ro-note b\{[^}]*display:block/);
   });
 });
+
+// ═══ 7. CREW_PLAN C1 review round (D107) — under read-only GO never arms ═══
+// Review D1 / UI 1: the read-only note said "Do not start work — call the
+// office." directly above a GREEN GO reading "Ready — press GO.", and after
+// the read_only refusal, ticking the box again armed GO once more (the box
+// clears serverHold). Under read-only the sign-off cannot be saved, so GO is
+// held for good — a hold the box cannot clear — and nothing says "Ready".
+describe('read-only on the crew door (C1 review): GO is never armed under the read-only note', () => {
+  const crew = readFileSync(new URL('../src/app/crew.html', import.meta.url), 'utf8');
+
+  type N = { tag: string; className: string; textContent: string; kids: N[]; id: string; disabled: boolean; checked?: boolean; on: Record<string, () => void> };
+  const make = (tag: string, className = '', textContent = ''): N & Record<string, unknown> => {
+    const n = {
+      tag, className, textContent, kids: [] as N[], id: '', disabled: false, scrollHeight: 0, clientHeight: 0, scrollTop: 0,
+      on: {} as Record<string, () => void>,
+      classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+      appendChild(k: N) { n.kids.push(k); return k; },
+      prepend(k: N) { n.kids.unshift(k); },
+      insertBefore(k: N, ref: N) { const at = n.kids.indexOf(ref); if (at < 0) throw new Error('insertBefore: ref is not a child'); n.kids.splice(at, 0, k); return k; },
+      replaceChildren() { n.kids = []; },
+      addEventListener(type: string, fn: () => void) { n.on[type] = fn; },
+      setAttribute(k: string, v: string) { if (k === 'id') n.id = v; },
+    };
+    return n;
+  };
+  const all = (n: N): N[] => n.kids.flatMap((k) => [k, ...all(k)]);
+
+  /** The gate's own block over stand-ins, read to the end: scrolled (a short body), ticked, past the read floor. */
+  const readAndTick = async (links: string | null) => {
+    const slot = make('div');
+    const block = crew.slice(crew.indexOf('const GATE = {'), crew.indexOf('async function submitGate('));
+    const ready = Promise.resolve();
+    const find = (id: string) => (id === 'gate-slot' ? slot : all(slot).find((n) => n.id === id) ?? null);
+    const page = new Function(
+      'PREVIEW', 'PREVIEW_WHY', 'document', '$', 'el', 'setInterval', 'submitGate', 'LINKS_READY', 'LINKS',
+      `${block}\nreturn { GATE, renderGate, refreshGate };`,
+    )(false, '', { querySelector: () => make('main'), createElement: (t: string) => make(t) },
+      find, make, () => 1, () => {}, ready, links) as { GATE: Record<string, unknown>; renderGate: (b: unknown) => void; refreshGate: () => void };
+    page.renderGate({ id: 'SIM-brief', body: 'SIM briefing.\nHard hats on.', standardRefs: [], requiredSeconds: 10 });
+    await ready.then(() => {});
+    const box = find('ackbox')!;
+    const tick = (on: boolean) => { box.checked = on; box.on.change!(); };
+    tick(true);
+    page.GATE.openedMs = Date.now() - 60_000; // the read floor is long past
+    page.refreshGate();
+    const go = find('gobtn')!;
+    const status = find('gate-status')!;
+    return { page, tick, go, status };
+  };
+
+  it('control — off read-only, a briefing read to the end and ticked arms GO and says Ready', async () => {
+    const { go, status } = await readAndTick('live');
+    expect(go.disabled).toBe(false);
+    expect(go.className).toBe('ready');
+    expect(status.textContent).toBe('Ready — press GO.');
+  });
+
+  it('under readonly, read to the end and ticked: GO stays off, never green, and nothing says "Ready — press GO."', async () => {
+    const { go, status } = await readAndTick('readonly');
+    expect(go.className).not.toBe('ready');
+    expect(go.disabled).toBe(true);
+    expect(status.textContent).not.toContain('Ready');
+  });
+
+  it('under readonly, after a refusal, unticking and ticking the box again cannot arm GO', async () => {
+    const { page, tick, go, status } = await readAndTick('readonly');
+    // The read_only refusal as submitGate leaves it: the server's word, held.
+    Object.assign(page.GATE, { serverMsg: 'Your sign-off could not be recorded (Arbo is read-only right now — it can look but not save, so nothing was written).', serverErr: true, serverHold: true });
+    page.refreshGate();
+    expect(go.className).not.toBe('ready');
+    tick(false);
+    tick(true); // the box clears serverHold — the read-only hold must survive it
+    page.refreshGate();
+    expect(page.GATE.serverHold).toBe(false);
+    expect(go.className).not.toBe('ready');
+    expect(go.disabled).toBe(true);
+    expect(status.textContent).not.toContain('Ready');
+  });
+});
