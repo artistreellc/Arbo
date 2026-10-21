@@ -462,6 +462,13 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 .tile.hot{border-color:color-mix(in srgb,var(--emergency) 35%,transparent)} .tile.hot b{color:var(--emergency)}
 .tile.warn{border-color:color-mix(in srgb,var(--warning) 35%,transparent)} .tile.warn b{color:var(--warning)}
 .tile.ok-t b{color:var(--ok)}
+/* Direction B P11: Before you roll — under the hero; each row a full-width tap that lands on its item. */
+.card.roll{padding:12px 14px}
+.roll-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 10px}
+.roll .sliplink.roll-row{min-height:48px;margin-top:6px;font-size:15px}
+.roll .roll-group{margin:12px 0 0}
+.roll .feed-state,.roll .storm-muted{margin:10px 0 0}
+.roll .roll-retry{display:flex;width:fit-content;align-items:center;justify-content:center;margin-top:8px;min-height:44px}
 /* Direction B P10: a tile opens what it counts; a tile whose feed failed is dashed and opens nothing. */
 .tile.go:not(.gap){cursor:pointer}.tile.go:not(.gap):active{transform:scale(.975)}
 .tile.gap{border-style:dashed;border-color:var(--border);box-shadow:none;background:transparent}
@@ -1073,10 +1080,14 @@ function permitBadge(lead) {
 }
 
 // ---------- Storm banner (§26: flags, never silently clear) ----------
+// Direction B P11: the last weather read's outcome — { alerts, events } or { error } —
+// for Before you roll, so the weather is read once, never a second time.
+let STORM_READ = null;
 async function stormBanner() {
   try {
     const s = await api('/api/storm');
     const na = s.alerts.length;
+    STORM_READ = { alerts: na, events: s.alerts.map((a) => a.event) };
     if (HERO) HERO.stat('alerts', na, na ? 'warn' : '', na ? plural(na, 'weather alert') : 'no weather alerts');
     sysSet('weather', na ? 'warn' : 'ok', na ? plural(na, 'alert') : 'no alerts');
     if (!na) return null;
@@ -1094,6 +1105,7 @@ async function stormBanner() {
   } catch (e) {
     // A dead weather feed is reported, never treated as clear skies. The hero
     // subline names it — once, in one word (Weather has no chip of its own).
+    STORM_READ = { error: e };
     const k = feedKind(e);
     if (HERO) HERO.stat('alerts', '–', '', 'weather ' + FEED_TAG[k]);
     sysSet('weather', k === 'unread' ? 'down' : 'warn', FEED_TAG[k]);
@@ -2025,6 +2037,7 @@ async function emergencyLeads() {
 // the two taps that matter — call back, or open it in Leads.
 function emergencyLeadCard(l) {
   const c = el('div', 'card emergency');
+  c.dataset.lead = l.id; // where Before you roll lands (Direction B P11)
   const top = el('div', 'toprow');
   top.appendChild(el('div', 'who', l.name || 'Unknown caller'));
   top.appendChild(el('div', 'when', fmtWhen(l.createdAt)));
@@ -2387,6 +2400,105 @@ async function renderAssistant() {
 }
 
 // ---------- Today (Morning Brief) ----------
+// Direction B P11 (spec: Today gets a "Before you roll" strip): what can stop the
+// day before the trucks leave — crew who can't go aerial, trucks down or held,
+// emergencies, weather — and a named row for any of them Arbo couldn't read.
+// The feeds, in the order their rows draw.
+const ROLL_ROWS = { safety: 'Crew & safety', fleet: 'Fleet', leads: 'Emergency leads', weather: 'Weather alerts' };
+// It reads /api/safety and /api/fleet/units itself; the emergency leads and the
+// weather come from the reads Today already made (emgP, stormP) — nothing twice.
+// Every unreadable read is its own named row; cut and not set up share one muted
+// line; the chip counts only real items; "Nothing to check" only when every read
+// succeeded and there is no blind spot (§1B). No <details>: Today is on the timer.
+function beforeYouRoll(emgP, stormP) {
+  const box = el('div', 'card roll');
+  box.appendChild(readingLine());
+  const settle = (p) => p.then((v) => ({ v: v }), (e) => ({ e: e }));
+  // A body without the lists it should carry is a read that failed, never "nothing to check" (§1B).
+  const lists = (o, keys) => { if (!o || keys.some((k) => !Array.isArray(o[k]))) throw new Error('unreadable'); return o; };
+  // Each read is { v } (read), { e } (what stopped it), or null (a 401 — the key wall owns the screen).
+  const res = {};
+  const got = {
+    safety: settle(api('/api/safety').then((v) => lists(v, ['aerialBlocked', 'blindSpots', 'certProblems']))),
+    fleet: settle(api('/api/fleet/units').then((v) => lists(v, ['units']))),
+    leads: emgP.then((r) => (!r ? null : r.gap ? { e: r.gap } : { v: r.list }), (e) => ({ e: e })),
+    weather: stormP.then((o) => (!o ? { e: null } : o.error ? { e: o.error } : { v: o }), (e) => ({ e: e })),
+  };
+  const names = (a) => (a.length === 1 ? a[0] : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]);
+  const draw = () => {
+    if (Object.values(res).some((r) => r === null || (r.e && r.e.code === 401))) { box.replaceChildren(); box.remove(); return; }
+    const rows = [];
+    const unread = [];
+    const off = { cut: [], sim: [], unset: [] };
+    let n = 0;
+    // One small heading per feed, then its rows: a full-width tap each.
+    const row = (k, text, go) => {
+      if (!rows.some((r) => r.dataset.roll === k)) { const h = el('div', 'loop-kind roll-group', ROLL_ROWS[k]); h.dataset.roll = k; rows.push(h); }
+      const b = el('button', 'sliplink roll-row', text);
+      b.type = 'button';
+      b.dataset.roll = k;
+      b.addEventListener('click', go);
+      rows.push(b);
+    };
+    for (const k of Object.keys(ROLL_ROWS)) {
+      const r = res[k];
+      if ('e' in r) { const kind = feedKind(r.e); if (kind === 'unread') unread.push(k); else off[kind].push(ROLL_ROWS[k]); continue; }
+      if (k === 'safety') {
+        for (const id of r.v.aerialBlocked) {
+          const who = (r.v.certProblems.find((f) => f.crewMemberId === id) || {}).crewMemberName || 'A crew member';
+          row(k, who + ' can’t go aerial', () => openPanel(DESK_VIEW.safety, () => [...document.querySelectorAll('#view-' + DESK_VIEW.safety + ' [data-crew]')].find((x) => x.dataset.crew === id)));
+          n++;
+        }
+        for (const b of r.v.blindSpots) { row(k, '⚠ CANNOT SEE · ' + b, () => openPanel(DESK_VIEW.safety, 'queue-safety')); n++; }
+      } else if (k === 'fleet') {
+        for (const u of r.v.units.filter((x) => x.status === 'held' || x.status === 'down')) {
+          row(k, u.name + ' is ' + UNIT_STATUS[u.status][0] + (u.status === 'held' ? ' · ' + (u.holdReason || 'brake/steering defect') : ''),
+            () => openPanel(DESK_VIEW.fleet, () => [...document.querySelectorAll('#view-' + DESK_VIEW.fleet + ' [data-unit]')].find((x) => x.dataset.unit === u.id)));
+          n++;
+        }
+      } else if (k === 'leads') {
+        // The first three are Today's red cards just below; more than three, one row to all of them on Leads.
+        for (const l of r.v.slice(0, 3)) row(k, (l.name || 'Unknown caller') + (l.city ? ' · ' + l.city : ''), () => openPanel('today', () => [...document.querySelectorAll('#view-today [data-lead]')].find((x) => x.dataset.lead === l.id)));
+        if (r.v.length > 3) row(k, 'All ' + r.v.length + ' emergency leads', () => openPanel('leads'));
+        n += r.v.length;
+      } else if (r.v.alerts > 0) {
+        row(k, (r.v.events || []).filter(Boolean).join(' · ') || plural(r.v.alerts, 'weather alert'), () => openPanel('today', 'today-storm'));
+        n++;
+      }
+    }
+    const out = [];
+    const head = el('div', 'roll-head');
+    head.appendChild(el('div', 'who', 'Before you roll'));
+    const said = [n ? n + ' to check' : '', unread.length ? unread.length + ' couldn’t read' : ''].filter(Boolean).join(' · ');
+    if (said) { const c = chip(said, n ? 'stop' : 'watch'); c.classList.add('roll-count'); head.appendChild(c); }
+    out.push(head, ...rows);
+    for (const k of unread) {
+      const line = el('div', 'feed-state unread', ROLL_ROWS[k] + ': ' + FEED_WORD.unread + ' — not the same as none.');
+      if (k === 'weather') {
+        // ↻ asks the weather again, and only the weather.
+        const again = el('button', 'minibtn roll-retry', '↻ Try again');
+        again.type = 'button';
+        again.addEventListener('click', () => {
+          again.disabled = true;
+          stormBanner().then((b) => {
+            const slot = document.getElementById('today-storm');
+            if (b && slot && !slot.hasChildNodes()) slot.appendChild(b);
+            res.weather = !STORM_READ ? { e: null } : STORM_READ.error ? { e: STORM_READ.error } : { v: STORM_READ };
+            draw();
+          });
+        });
+        line.appendChild(again);
+      }
+      out.push(line);
+    }
+    const kinds = ['cut', 'sim', 'unset'].filter((k) => off[k].length);
+    if (kinds.length) out.push(el('div', 'feed-state ' + (off.unset.length ? 'unset' : 'cut') + ' roll-off', kinds.map((k) => names(off[k]) + ': ' + FEED_WORD[k] + '.').join(' ')));
+    if (!n && !unread.length && !kinds.length) out.push(el('div', 'storm-muted', 'Nothing to check before you roll.'));
+    box.replaceChildren(...out);
+  };
+  Promise.all(Object.keys(ROLL_ROWS).map((k) => got[k].then((r) => { res[k] = r; }))).then(() => LINKS_READY).then(draw);
+  return box;
+}
 // Direction B P10: where Today's taps land. The four back-office desks still live on
 // the Queue; P13 splits it and re-points them here, in one place.
 const DESK_VIEW = { loops: 'followups', money: 'followups', fleet: 'followups', safety: 'followups' };
@@ -2423,6 +2535,11 @@ async function renderToday() {
   const v = $('view-today');
   v.replaceChildren();
   v.appendChild(buildHero());
+  // Direction B P11: Before you roll sits directly under the hero. It is filled
+  // (and its reads start) below, before the brief's await — that await ends
+  // Today early whenever the schedule is cut, which is always in production.
+  const rollSlot = el('div', 'slot plain roll-slot');
+  v.appendChild(rollSlot);
   v.appendChild(buildSystems());
   // R32: one plain line while Arbo reads real records and saves nothing.
   const roSlot = el('div', 'slot plain');
@@ -2547,6 +2664,9 @@ async function renderToday() {
     tileWhy(owedTile, FEED_TAG[feedKind(e)]);
     tileWhy(billTile, FEED_TAG[feedKind(e)]);
   });
+  // Direction B P11: the emergency read below, handed to Before you roll — never a second read.
+  let emgDone;
+  const emgP = new Promise((res) => { emgDone = res; });
   // Safety flags fill the first row exactly (one: all of it, two: half each), so the six tiles stay one even row on a wide screen.
   const layoutFlags = () => {
     const flags = hud.querySelectorAll('.wide');
@@ -2574,6 +2694,7 @@ async function renderToday() {
     layoutFlags();
   };
   emergencyLeads().then((r) => {
+    emgDone(r);
     if (!r) return;
     if (r.gap) {
       emgSlot.appendChild(feedLine(r.gap, 'Emergency leads', 'That doesn’t mean there are none.'));
@@ -2589,6 +2710,7 @@ async function renderToday() {
       emgSlot.appendChild(more);
     }
   });
+  rollSlot.appendChild(beforeYouRoll(emgP, alerting.then(() => STORM_READ)));
   const locSlot = el('div', 'slot plain');
   v.appendChild(locSlot);
   // A failed read gets a titled card (data-feed); the live ON/OFF strip stays plain.
@@ -4957,6 +5079,7 @@ async function renderFleetList(slot) {
   // A unit off the schedule (DOWN or HELD) is the one that changes the day, so it leads the list.
   for (const u of [...f.units].sort((a, b) => (!b.schedulable) - (!a.schedulable))) {
     const c = el('div', 'card' + (u.schedulable ? '' : ' emergency'));
+    c.dataset.unit = u.id; // where Before you roll lands (Direction B P11)
     const top = el('div', 'toprow');
     top.appendChild(el('div', 'who', u.name));
     top.appendChild(el('div', 'when', u.kind || ''));
