@@ -353,11 +353,25 @@ describe('every link into the Queue lands on its desk (P13)', () => {
     expect(more).toContain("switchTab('followups')");
     expect(more).toContain("tile('i-flag', 'Money', ");
     expect(more).toContain("switchTab('money')");
-    expect(more).toContain("tile('i-route', 'Fleet', ");
+    // UI review (b-wave-2, low 6): Crew & safety wore the Assistant's shield and Fleet the Dispatcher's
+    // route pin. Fleet is a truck (the mockup draws one); Crew & safety a safety cone (the hard hat is Crew's).
+    expect(more).toContain("tile('i-truck', 'Fleet', ");
     expect(more).toContain("switchTab('fleet')");
-    expect(more).toContain("tile('i-shield', 'Crew & safety', ");
+    expect(more).toContain("tile('i-cone', 'Crew & safety', ");
     expect(more).toContain("switchTab('safety')");
     expect(more).not.toContain("'Queue'");
+  });
+
+  it('More: no two tiles share an icon, and every icon is in the sprite, drawn in its grammar', () => {
+    const sprite = readFileSync(new URL('../src/app/sprite.svg', import.meta.url), 'utf8');
+    const icons = [...fnSrc('renderMore').matchAll(/tile\('(i-[a-z-]+)', '([^']+)'/g)].map((m) => [m[1]!, m[2]!] as const);
+    expect(icons.length).toBeGreaterThanOrEqual(13);
+    const seen = new Map<string, string>();
+    for (const [ic, title] of icons) {
+      expect(seen.get(ic), `${title} wears ${ic}, as ${seen.get(ic)} does`).toBeUndefined();
+      seen.set(ic, title);
+      expect(sprite, ic).toContain(`<symbol id="${ic}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">`);
+    }
   });
 
   it('the breakdown sheet, once filed, redraws Fleet and Today — not the Follow-ups', () => {
