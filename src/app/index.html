@@ -1890,11 +1890,12 @@ function sonaHandled() {
   for (const id of Object.keys(m)) if (typeof m[id] === 'number' && Date.now() - m[id] < SONA_DONE_MS) out[id] = m[id];
   return out;
 }
-// Call back on a Sona card (Today's or Calls & texts'): every flagged call Arbo holds from that caller is handled,
-// by its id. The head redraws, so the flag and the badge drop it now. Not remembered: the flag stays.
+// Call back on a Sona card (Today's or Calls & texts'): every call Arbo holds from that caller that asks Mike to act
+// (a flag, or one to book — sonaNeedsYou) is handled, by its id. The head redraws, so the flag, the badge and
+// "calls need you" drop it now. Not remembered: the flag stays.
 function sonaCalledBack(c, calls) {
   if (!c.from) return false;
-  const ids = calls.filter((x) => x.handledBy === 'sona' && x.slips.length && x.from === c.from).map((x) => x.callId);
+  const ids = calls.filter((x) => x.handledBy === 'sona' && sonaNeedsYou(x) && x.from === c.from).map((x) => x.callId);
   if (!ids.length) return false;
   try {
     const m = sonaHandled(); // the older marks pruned on this write
@@ -1931,6 +1932,12 @@ function sonaSlipBox(d, done) {
   // Calls older than the ones Arbo still holds are counted but cannot be opened: said, not hidden.
   if (older) box.appendChild(el('div', '', plural(older, 'older call is', 'older calls are') + ' only in Quo now.'));
   return box;
+}
+// A Sona call that asks Mike to act: a red one (a rule slip, an emergency, a hold that failed) or one he must book
+// himself — R33 holds off ('read_only'), or no hold filed ('learned_only', 'no_writer'); its card says so. Calls &
+// texts counts these ("N calls need you"), and a Call back on that customer handles them (P17).
+function sonaNeedsYou(c) {
+  return c.slips.length > 0 || !!(c.facts && c.facts.emergency) || c.hold === 'failed' || c.hold === 'read_only' || c.hold === 'learned_only' || c.hold === 'no_writer';
 }
 // /api/quo can answer while what the flags come from did not: Quo's record unreadable (R33 — Arbo makes no Quo
 // webhook, so the record is the only way Sona's calls reach it) or the model down (a call kept but not checked
@@ -1985,8 +1992,8 @@ async function sonaPanel(limit, withTranscripts) {
     wrap.appendChild(el('div', 'feed-state unread', 'Arbo could not read ' + plural(st.readsRetrying, 'Sona call') + ' yet (the AI model was unavailable) — trying again every 10 minutes.' + (st.holds === 'read_only' ? '' : ' No hold is filed until it can.')));
   }
   const sona = d.calls.filter((c) => c.handledBy === 'sona');
-  // Direction B P17: the calls Mike called back (this phone's marks, read once), only when there is a flag to clear.
-  const done = sona.some((c) => c.slips.length) ? sonaHandled() : {};
+  // Direction B P17: the calls Mike called back (this phone's marks, read once), only when a call asks him to act.
+  const done = sona.some(sonaNeedsYou) ? sonaHandled() : {};
   // Direction B P16: on Calls & texts the red flag rides the Leads head above the segments (one builder,
   // sonaSlipBox); Today keeps its own box here.
   let flagBox = null;
@@ -2006,7 +2013,7 @@ async function sonaPanel(limit, withTranscripts) {
       flagBox.remove();
       flagBox = box;
     }
-    for (const k of cards) if (k.c.slips.length && now[k.c.callId] && !k.card.querySelector('.sona-handled')) k.card.insertBefore(handledLine(now[k.c.callId]), k.actions);
+    for (const k of cards) if (sonaNeedsYou(k.c) && now[k.c.callId] && !k.card.querySelector('.sona-handled')) k.card.insertBefore(handledLine(now[k.c.callId]), k.actions);
   };
   const rec = st.quoRecord || {};
   if (rec.error) {
@@ -2102,7 +2109,7 @@ async function sonaPanel(limit, withTranscripts) {
     // Direction B P17: a flag Mike cleared by calling back stays in history, said in a muted line.
     const hl = holdLine(c);
     if (hl) card.appendChild(el('div', hl[0], hl[1]));
-    if (c.slips.length && done[c.callId]) card.appendChild(handledLine(done[c.callId]));
+    if (sonaNeedsYou(c) && done[c.callId]) card.appendChild(handledLine(done[c.callId]));
     const actions = el('div', 'actions');
     cards.push({ c: c, card: card, actions: actions });
     if (c.from) {
@@ -3434,7 +3441,7 @@ async function renderLeadsHead() {
     lk = feedKind(lr.e);
     leadsTabBadge(lr.e);
   }
-  // Calls & texts: the red calls (a rule slip, an emergency, a hold that failed) and the red flags. A counted slip
+  // Calls & texts: the calls that ask Mike to act (sonaNeedsYou: the red ones, and the ones he must book) and the red flags. A counted slip
   // older than the calls Arbo still holds is still a flag ("… only in Quo now"). Quo not set up is a gap of its own.
   let S = null, qk = null, qe = null, done = {};
   if (qr.e) qe = qr.e;
@@ -3445,10 +3452,12 @@ async function renderLeadsHead() {
     const older = Math.max(0, (st.callsWithSlips || 0) - sona.filter((c) => c.slips.length).length);
     // Direction B P17: a flag Mike cleared by calling back (this phone's marks) leaves the count, the flag and the badge.
     done = sonaHandled();
-    const flagged = (c) => c.slips.length > 0 && !done[c.callId];
+    const open = (c) => !done[c.callId];
     S = {
-      flags: sona.filter(flagged).length + older,
-      need: sona.filter((c) => flagged(c) || (c.facts && c.facts.emergency) || c.hold === 'failed').length + older,
+      flags: sona.filter((c) => c.slips.length > 0 && open(c)).length + older,
+      // Review round (R33): a call Mike must book himself needs him too — its card says so. Red ones color the pill.
+      need: sona.filter((c) => sonaNeedsYou(c) && open(c)).length + older,
+      red: sona.filter((c) => open(c) && (c.slips.length > 0 || (c.facts && c.facts.emergency) || c.hold === 'failed')).length + older,
       // "No call needs you" only over a whole read: wired, checked by the model, the week read through, nothing retrying.
       whole: (st.registration.state === 'ok' || st.registration.state === 'read_only') && !!st.reading && !rec.error && !rec.unreadable
         && !(rec.weekThreadsNotRead > 0) && !!rec.weekReadOkAt && !(st.readsRetrying > 0),
@@ -3496,7 +3505,7 @@ async function renderLeadsHead() {
     segs.appendChild(b);
   };
   segBtn('leads', 'New leads', L ? L.n : 0, lk, false);
-  segBtn('calls', 'Calls & texts', S ? S.need : 0, qk || (S && S.gap ? 'unread' : null), true);
+  segBtn('calls', 'Calls & texts', S ? S.need : 0, qk || (S && S.gap ? 'unread' : null), !!(S && S.red));
   out.push(segs);
   // New leads' filter chips — from a read that landed, with leads to filter. Not Back steps: the list stays the same screen.
   if (L && L.n) {

@@ -225,6 +225,7 @@ const deps = {
   document: { createElement: (t: string) => el(t) },
   // Direction B P16: the red flag's one builder, the page's own (Today's panel calls it).
   sonaSlipBox: (d: unknown) => pageFn<(d: unknown) => unknown>('sonaSlipBox', { el, plural, fmtTime: () => '', slipRuleLabel: (r: string) => r, openSonaCall: () => {} })(d),
+  sonaNeedsYou: pageFn<(c: unknown) => boolean>('sonaNeedsYou', {}), sonaHandled: () => ({}), // review round: the calls that ask Mike to act; none handled here (directionB_sonaHandled)
 };
 
 /** The status the intake really returns (H1 + R33 fields). */

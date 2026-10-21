@@ -312,6 +312,7 @@ describe('T5: one cause, one card, plain words', () => {
     const sona = (state: string) => pageFn<(n: number, t: boolean) => Promise<FakeEl>>('sonaPanel', {
       ...deps, api: async () => ({ status: { registration: { state, detail: 'Registering with Quo…' }, reading: true, quoRecord: {} }, calls: [] }),
       sonaSlipBox: () => null, // Direction B P16: the red flag's one builder (no slips here; its own tests: navBack, directionB_leadsHub)
+      sonaNeedsYou: () => false, // review round: the calls that ask Mike to act (none here; its own tests: directionB_leadsHub)
     })(3, false);
     const off = await sona('not_configured');
     expect(off.dataset.quoOff).toBe('1');

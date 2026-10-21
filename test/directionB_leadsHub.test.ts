@@ -127,7 +127,7 @@ function kit(routes: { leads?: () => unknown; quo?: () => unknown }, links = 're
     throw new Error('unexpected read ' + path);
   };
   const helpers = ['feedKind', 'feedLine', 'plural', 'readingLine', 'slipRuleLabel', 'sonaSlipBox', 'quoOffLine',
-    'leadsTabBadge', 'sonaTabBadge', 'leadsHeadOn', 'leadsFilter', 'renderLeadsHead', 'sonaHandled', 'sonaFlagGap']; // P17: the calls Mike called back
+    'leadsTabBadge', 'sonaTabBadge', 'leadsHeadOn', 'leadsFilter', 'renderLeadsHead', 'sonaHandled', 'sonaFlagGap', 'sonaNeedsYou']; // P17: the calls Mike called back
   const store = new Map<string, string>();
   const localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => { store.set(k, v); } };
   const built = new Function('document', 'api', 'switchTab', 'openSonaCall', 'linksIn', 'curIn', 'localStorage', `
@@ -203,7 +203,8 @@ describe('the Leads hub head: counts, flag, segments, chips (run)', () => {
   });
 
   it('the red Sona flag sits ABOVE the segments, and shows on both segments; each row opens its call', async () => {
-    const k = kit({ quo: () => quo([call('Q1', { slips: [SLIP] }), call('Q2')]) });
+    // Review round: Q2 asks for nothing (a read_only call asks Mike to book it and is counted — its own test).
+    const k = kit({ quo: () => quo([call('Q1', { slips: [SLIP] }), call('Q2', { hold: 'not_requested' })]) });
     await k.renderLeadsHead();
     const kids = head(k).children;
     const flag = kids.findIndex((n) => n.has('storm'));
@@ -235,20 +236,22 @@ describe('the Leads hub head: counts, flag, segments, chips (run)', () => {
   });
 
   it('Calls & texts with nothing red: "No call needs you right now" only when Quo\'s whole week was read', async () => {
-    const whole = kit({ quo: () => quo([call('Q2')]) });
+    // Review round: a call with no estimate asked for — a read_only call asks Mike to book it, so it needs him.
+    const whole = kit({ quo: () => quo([call('Q2', { hold: 'not_requested' })]) });
     await whole.renderLeadsHead();
     expect(h1For(whole, 'calls').textContent).toBe('No call needs you right now');
     expect(seg(whole, 'calls').querySelector('.lcount')).toBeNull(); // a pill is a count, never a bare 0
     for (const st of [{ reading: false }, { quoRecord: { lastAt: 'x' } }, { quoRecord: { lastAt: 'x', weekReadOkAt: 'x', weekThreadsNotRead: 3 } },
       { quoRecord: { lastAt: 'x', weekReadOkAt: 'x', error: 'quo_down' } }, { readsRetrying: 1 }, { registration: { state: 'failed', detail: 'x' } }]) {
-      const part = kit({ quo: () => quo([call('Q2')], st) });
+      const part = kit({ quo: () => quo([call('Q2', { hold: 'not_requested' })], st) });
       await part.renderLeadsHead();
       expect(h1For(part, 'calls').textContent, JSON.stringify(st)).toBe('No call Arbo read needs you');
     }
   });
 
   it('a red call that is an emergency or a hold that failed needs Mike too — "calls need you" counts every red card', async () => {
-    const k = kit({ quo: () => quo([call('Q1', { slips: [SLIP] }), call('Q2', { facts: { name: 'SIM-B', emergency: true } }), call('Q3', { hold: 'failed' }), call('Q4')]) });
+    // Review round: Q4 asks for nothing (a read_only call would ask Mike to book it — counted on its own, below).
+    const k = kit({ quo: () => quo([call('Q1', { slips: [SLIP] }), call('Q2', { facts: { name: 'SIM-B', emergency: true } }), call('Q3', { hold: 'failed' }), call('Q4', { hold: 'not_requested' })]) });
     await k.renderLeadsHead();
     expect(h1For(k, 'calls').textContent).toBe('3 calls need you');
   });
@@ -516,7 +519,7 @@ describe('Calls & texts: the old Calls screen, Sona first (P16)', () => {
         const fmtTime = (x) => 'T(' + x + ')';
         ${['FEED_WORD', 'Cap', 'RETRY', 'TONE'].map(constSrc).join('\n')}
         const SONA_DONE_KEY = 'arboSonaHandled'; const SONA_DONE_MS = 1; const localStorage = { getItem: () => null, setItem: () => {} };
-        ${['plural', 'badge', 'chip', 'slipRuleLabel', 'feedKind', 'feedLine', 'sonaHandled', 'sonaCalledBack', 'sonaSlipBox', 'sonaPanel'].map(fnSrc).join('\n')}
+        ${['plural', 'badge', 'chip', 'slipRuleLabel', 'feedKind', 'feedLine', 'sonaHandled', 'sonaNeedsYou', 'sonaCalledBack', 'sonaSlipBox', 'sonaPanel'].map(fnSrc).join('\n')}
         return sonaPanel(withT ? 20 : 3, withT);`.replace(/withT/g, String(withTranscripts)))(
         document, async () => quo([call('Q1', { slips: [SLIP] })]), () => {},
       ) as Promise<N>;
@@ -537,7 +540,7 @@ describe('Calls & texts: the old Calls screen, Sona first (P16)', () => {
       const fmtTime = (x) => 'T(' + x + ')';
       ${['FEED_WORD', 'Cap', 'RETRY', 'TONE'].map(constSrc).join('\n')}
       const SONA_DONE_KEY = 'arboSonaHandled'; const SONA_DONE_MS = 1; const localStorage = { getItem: () => null, setItem: () => {} };
-      ${['plural', 'badge', 'chip', 'slipRuleLabel', 'feedKind', 'feedLine', 'sonaHandled', 'sonaCalledBack', 'sonaSlipBox', 'sonaPanel'].map(fnSrc).join('\n')}
+      ${['plural', 'badge', 'chip', 'slipRuleLabel', 'feedKind', 'feedLine', 'sonaHandled', 'sonaNeedsYou', 'sonaCalledBack', 'sonaSlipBox', 'sonaPanel'].map(fnSrc).join('\n')}
       return sonaPanel(20, true);`)(document, async () => quo([call('Q1', { slips: [SLIP], dialogue: [{ speaker: 'agent', text: 'SIM words' }] })]), () => {}) as Promise<N>);
     const det = panel.all().filter((n) => n.tag === 'details');
     expect(det).toHaveLength(1);
@@ -707,5 +710,34 @@ describe('review round: Quo answered but its record or the model failed — the 
     await k.renderLeadsHead();
     expect(dot(k)).toBeNull();
     expect(flagPlace(k).filter((n) => n.has('feed-state'))).toEqual([]);
+  });
+});
+
+describe('review round: a Sona call Mike must book himself needs him — the head never says otherwise (R33)', () => {
+  it.each([
+    ['read_only, a time asked for', { hold: 'read_only', facts: { name: 'SIM-B', requestedTime: 'Thursday morning' } }],
+    ['read_only, no time given', { hold: 'read_only' }],
+    ['learned from Quo\'s record, no hold filed', { hold: 'learned_only' }],
+    ['no calendar writer, no hold filed', { hold: 'no_writer' }],
+  ])('%s: "1 call needs you", counted on the segment — the pill is not red for it', async (_w, o) => {
+    const k = kit({ quo: () => quo([call('Q2', o)]) });
+    await k.renderLeadsHead();
+    expect(h1For(k, 'calls').textContent).toBe('1 call needs you');
+    const pill = seg(k, 'calls').querySelector('.lcount')!;
+    expect(pill.textContent).toBe('1');
+    expect(pill.has('hot')).toBe(false); // red is for a rule slip, an emergency or a hold that failed
+  });
+
+  it('a call that needs nothing (no estimate asked for, a hang-up) is not counted: "No call needs you right now" over a whole read', async () => {
+    const k = kit({ quo: () => quo([call('Q2', { hold: 'not_requested' }), call('Q3', { hold: 'hangup' })]) });
+    await k.renderLeadsHead();
+    expect(h1For(k, 'calls').textContent).toBe('No call needs you right now');
+  });
+
+  it('red and to-book together: every card that asks Mike to act is counted once; the pill is red when one is red', async () => {
+    const k = kit({ quo: () => quo([call('Q1', { slips: [SLIP] }), call('Q2'), call('Q3', { hold: 'not_requested' })]) });
+    await k.renderLeadsHead();
+    expect(h1For(k, 'calls').textContent).toBe('2 calls need you');
+    expect(seg(k, 'calls').querySelector('.lcount')!.has('hot')).toBe(true);
   });
 });
