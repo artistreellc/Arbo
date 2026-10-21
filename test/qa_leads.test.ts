@@ -225,7 +225,8 @@ describe('Book + estimate prep (source pins)', () => {
   const prep = region('function estimatePrepPanel()', 'async function renderBook()');
 
   it('an unreadable Book is worded by the feed-state vocabulary, never "The Book is empty"', () => {
-    expect(book).toContain("feedState(e, 'The Book', 'an empty Book')");
+    // Direction B P15 review: the Book is "Properties on file" (VIEW_TITLES.book) — its dead feed says that name.
+    expect(book).toContain("feedState(e, VIEW_TITLES.book, 'an empty list')");
     for (const gone of ['The Book is empty', 'Pull refresh', 'Database not connected']) {
       expect(book, gone).not.toContain(gone);
     }
@@ -259,7 +260,8 @@ describe('Book + estimate prep (source pins)', () => {
   it('prep labels are tied to their fields and use the shared label style', () => {
     expect(prep).toContain('l.htmlFor = node.id');
     expect(prep).not.toContain('l.style.');
-    expect(prep).toContain('Permit check, drive time, Miss Utility and access notes');
+    // Direction B P15 review: what the sheet holds is said once, in Estimate's head (the card's own intro repeated it).
+    expect(html).toContain("'Start with the address: permit, drive time, 811 and access. Never a price, never a booking.'");
   });
 
   it('dropdowns and the prep card title match the rest of the form', () => {

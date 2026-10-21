@@ -91,12 +91,14 @@ function kit(run: unknown) {
   };
   const went: string[] = [];
   const consts = ['$', 'el', 'FEED_WORD', 'Cap', 'FEED_TAG', 'FEED_SAYS', 'RETRY', 'TONE', 'AGENT_ICONS', 'INPUT_STATE', 'REPORT_STATUS', 'noRefs', 'PROPOSAL_GO'];
+  if (/^const PROPOSAL_AT = /m.test(html)) consts.push('PROPOSAL_AT'); // P14 review: where each proposal lands
   const helpers = ['readingLine', 'state', 'feedKind', 'feedSays', 'feedLine', 'feedState', 'chip', 'badge', 'plural', 'fmtWhen', 'agentProposals', 'proposalRow'];
   const render = new Function('document', 'api', 'switchTab', 'icon', 'runIn', `
     let LINKS = 'readonly';
     let AGENT_GEN = 0;
     let AGENT_RUN = runIn;
     const showKeywall = () => { throw new Error('no key wall here'); };
+    const openPanel = (view) => switchTab(view); // P14 review: a proposal lands on its panel; the stand-in records the screen
     ${consts.map(constSrc).join('\n')}
     ${helpers.map(fnSrc).join('\n')}
     ${fnSrc('renderAgents')}

@@ -76,7 +76,8 @@ describe('the four desks are screens of their own (P13)', () => {
   });
 
   it('DESK_LINE: the R26 desk name above each title, in one table (R27 can find it)', () => {
-    expect(constVal('DESK_LINE')).toEqual({ followups: 'Chief of Staff', money: 'Yard Boss', fleet: 'Yard Boss', safety: 'Crew Chief', perf: 'Analyst' });
+    // Direction B P14: Office's Teach Arbo tile reads its small line here too ("Learn", the plan's table); the R26 names are unchanged.
+    expect(constVal('DESK_LINE')).toEqual({ followups: 'Chief of Staff', money: 'Yard Boss', fleet: 'Yard Boss', safety: 'Crew Chief', perf: 'Analyst', learn: 'Learn' });
     expect(fnSrc('deskView')).toContain("el('div', 'eyebrow', DESK_LINE[view])");
     expect(fnSrc('deskView')).toContain("el('h1', '', VIEW_TITLES[view])");
     expect(fnSrc('renderFollowUps')).toContain("el('div', 'eyebrow', DESK_LINE.followups)");
@@ -162,7 +163,8 @@ describe('each desk draws its head before any read, then the Queue\'s panels, un
   it('Crew & safety: Crew Chief; the safety board (blind spots and aerial first) leads, then roster, training, lessons, library', async () => {
     const d = desk('safety');
     const p = d.run();
-    expect(d.log).toEqual(['safety#queue-safety:head-first', 'roster#-:head-first', 'training#-:head-first', 'vetting#-:head-first', 'library#-:head-first']);
+    // P14 review: the library's slot has an id now — where a "vet a library draft" proposal lands.
+    expect(d.log).toEqual(['safety#queue-safety:head-first', 'roster#-:head-first', 'training#-:head-first', 'vetting#-:head-first', 'library#safety-library:head-first']);
     expect(d.v.children[0]!.children[0]!.textContent).toBe('Crew Chief');
     expect(d.v.children[0]!.children[1]!.textContent).toBe('Crew & safety');
     d.settle();
@@ -355,25 +357,28 @@ describe('every link into the Queue lands on its desk (P13)', () => {
     expect(fnSrc('renderSafetyView')).toContain("'queue-safety'");
   });
 
-  it('More: four desk tiles where the Queue tile was, each opening its desk', () => {
-    const more = fnSrc('renderMore');
-    expect(more).toContain("tile('i-queue', 'Follow-ups', ");
-    expect(more).toContain("switchTab('followups')");
-    expect(more).toContain("tile('i-flag', 'Money', ");
-    expect(more).toContain("switchTab('money')");
+  // Direction B P14: the four desks are Office's counted desk tiles now (OFFICE_DESKS, drawn by officeHub) — same
+  // icons, each still opening its own desk (its tap is tested in directionB_office).
+  it('More (Office since P14): four desk tiles where the Queue tile was, each opening its desk', () => {
+    const desks = constVal<Array<{ view: string; icon: string }>>('OFFICE_DESKS');
+    const icon = Object.fromEntries(desks.map((d) => [d.view, d.icon]));
+    expect(icon.followups).toBe('i-queue');
+    expect(icon.money).toBe('i-flag');
     // UI review (b-wave-2, low 6): Crew & safety wore the Assistant's shield and Fleet the Dispatcher's
     // route pin. Fleet is a truck (the mockup draws one); Crew & safety a safety cone (the hard hat is Crew's).
-    expect(more).toContain("tile('i-truck', 'Fleet', ");
-    expect(more).toContain("switchTab('fleet')");
-    expect(more).toContain("tile('i-cone', 'Crew & safety', ");
-    expect(more).toContain("switchTab('safety')");
-    expect(more).not.toContain("'Queue'");
+    expect(icon.fleet).toBe('i-truck');
+    expect(icon.safety).toBe('i-cone');
+    expect(fnSrc('officeHub')).toContain('switchTab(d.view)');
+    expect(fnSrc('renderMore')).toContain('officeHub(v)');
+    expect(fnSrc('renderMore')).not.toContain("'Queue'");
   });
 
-  it('More: no two tiles share an icon, and every icon is in the sprite, drawn in its grammar', () => {
+  it('More (Office since P14): no two tiles share an icon, and every icon is in the sprite, drawn in its grammar', () => {
     const sprite = readFileSync(new URL('../src/app/sprite.svg', import.meta.url), 'utf8');
-    const icons = [...fnSrc('renderMore').matchAll(/tile\('(i-[a-z-]+)', '([^']+)'/g)].map((m) => [m[1]!, m[2]!] as const);
-    expect(icons.length).toBeGreaterThanOrEqual(13);
+    const desks = constVal<Array<{ view: string; icon: string }>>('OFFICE_DESKS').map((d) => [d.icon, VIEW_TITLES[d.view]!] as const);
+    const icons = [...desks, ...[...fnSrc('renderMore').matchAll(/tile\('(i-[a-z-]+)', '([^']+)'/g)].map((m) => [m[1]!, m[2]!] as const)];
+    // Direction B P15: Book, Permits and Measure moved under Estimate (one Estimate tile) — the whole list, exactly.
+    expect(icons.map(([, t]) => t)).toEqual(['Follow-ups', 'Money', 'Fleet', 'Crew & safety', 'Numbers', 'Teach Arbo', 'Assistant', 'Agents', 'Estimate', 'Crew', 'Phone line']);
     const seen = new Map<string, string>();
     for (const [ic, title] of icons) {
       expect(seen.get(ic), `${title} wears ${ic}, as ${seen.get(ic)} does`).toBeUndefined();

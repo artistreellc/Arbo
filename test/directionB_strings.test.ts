@@ -25,6 +25,8 @@ const RENAMED: Record<string, string[]> = {
   Calls: ['Calls & texts'],
   More: ['Office'],
   'Talk to Arbo': ['Phone line'],
+  // Direction B P14: the spec names Teach Arbo among the screens Mike approved ("plus Estimate, Office, Teach Arbo as named screens").
+  Learn: ['Teach Arbo'],
 };
 const survives = (s: string, has: (x: string) => boolean) => has(s) || (RENAMED[s] ?? []).some(has);
 
@@ -66,7 +68,7 @@ describe('the ruling-carrying words survive word for word (P1)', () => {
   });
 
   it('every approved rename is Mike\'s word in the spec, and nothing else is on the list', () => {
-    expect(Object.keys(RENAMED).sort()).toEqual(['Book', 'Calls', 'More', 'Permits', 'Queue', 'Talk to Arbo']);
+    expect(Object.keys(RENAMED).sort()).toEqual(['Book', 'Calls', 'Learn', 'More', 'Permits', 'Queue', 'Talk to Arbo']);
     for (const names of Object.values(RENAMED)) for (const n of names) expect(spec, n).toContain(n);
   });
 });

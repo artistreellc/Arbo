@@ -27,11 +27,14 @@ describe('Today: run order and the Yard check (T-order, T-hud, T-yard)', () => {
     expect(instr).toBeLessThan(briefFetch);
   });
 
-  it('the Yard check renders before the brief fetch, with the SVG icon, not a gear glyph', () => {
-    const yard = today.indexOf('yardBtn.addEventListener(\'click\', openYard)');
-    expect(yard).toBeGreaterThan(-1);
-    expect(yard).toBeLessThan(briefFetch);
-    expect(today).toContain("icon('i-numbers')");
+  // Direction B P15 (R29 #4): the Yard check moved from Today to Estimate. Its rule holds there: drawn before
+  // any read (a cut feed never hides it), with the SVG icon, never a gear glyph.
+  it('the Yard check renders before any read on Estimate, with the SVG icon, not a gear glyph — and Today has none', () => {
+    expect(today).not.toContain('openYard');
+    const est = html.slice(html.indexOf('async function renderEstimate()'), html.indexOf('\n}\n', html.indexOf('async function renderEstimate()')));
+    expect(est.indexOf('openYard()')).toBeGreaterThan(-1);
+    expect(est.indexOf('openYard()')).toBeLessThan(est.indexOf("api('/api/properties')"));
+    expect(html).toMatch(/key: 'yard', [^}]*icon: 'i-numbers'/);
     expect(html).not.toContain('⚙ Yard check');
   });
 
@@ -68,13 +71,18 @@ describe('Today: the tiles (T-hud, T-money)', () => {
   });
 
   it('overdue is past-due invoices only; unbilled work is its own tile; an undatable one is named', () => {
-    expect(today).toContain('m.collections.length + (m.suppressed || []).length');
-    expect(today).not.toContain('m.collections.length + m.drafts.length');
+    // Direction B P14: the counts live in moneyCounts, which Office's Money tile reads too, so the two agree.
+    const counts = html.slice(html.indexOf('function moneyCounts('), html.indexOf('\n}', html.indexOf('function moneyCounts(')));
+    expect(counts).toContain('over: m.collections.length + (m.suppressed || []).length');
+    expect(counts).toContain('bill: m.drafts.length');
+    expect(counts).toContain('noFigure: (m.blocked || []).length');
+    expect(counts).not.toContain('m.collections.length + m.drafts.length');
+    expect(counts).not.toContain('m.drafts.length + (m.blocked || []).length');
+    expect(today).toContain('const mc = moneyCounts(m);');
     expect(today).toContain("tile('–', 'to bill')");
     // To bill counts drafts; a job with no agreed figure is named beside it and keeps the tile amber.
-    expect(today).toContain('setTile(billTile, m.drafts.length, (m.drafts.length || nb) ? \'warn\' : \'ok-t\');');
-    expect(today).toContain("billTile.appendChild(el('small', '', '+' + nb + ' no agreed figure'))");
-    expect(today).not.toContain('m.drafts.length + (m.blocked || []).length');
+    expect(today).toContain("setTile(billTile, mc.bill, (mc.bill || mc.noFigure) ? 'warn' : 'ok-t');");
+    expect(today).toContain("billTile.appendChild(el('small', '', '+' + mc.noFigure + ' no agreed figure'))");
     expect(today).toContain(' can’t tell');
   });
 

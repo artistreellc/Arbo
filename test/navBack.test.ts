@@ -83,7 +83,8 @@ describe('the Back button', () => {
       closeSheet: (id: string) => calls.push('close:' + id),
       history: { state: { v: tab, d }, back: () => calls.push('back'), replaceState: (s: { v: string }) => calls.push('replace:' + s.v) },
       CUR_TAB: tab,
-      NAV_PARENT: { book: 'more', followups: 'more', perf: 'more', permits: 'more', agents: 'more', measure: 'more', learn: 'more', settings: 'today' },
+      // Direction B P15: the page's own table, not a copy of it.
+      NAV_PARENT: new Function(`return (${/^const NAV_PARENT = (\{.*\});$/m.exec(html)![1]});`)() as Record<string, string>,
       navShow: (v: string) => calls.push('show:' + v),
     });
     sheets.yard = true;
@@ -93,7 +94,10 @@ describe('the Back button', () => {
     pageFn<() => void>('navBack', deps('agents', 2))();
     expect(calls).toEqual(['back']);
     calls.length = 0;
-    pageFn<() => void>('navBack', deps('permits', 0))(); // a reload on #permits
+    pageFn<() => void>('navBack', deps('permits', 0))(); // a reload on #permits: Permit rules is a child of Estimate (P15)
+    expect(calls).toEqual(['show:estimate', 'replace:estimate']);
+    calls.length = 0;
+    pageFn<() => void>('navBack', deps('agents', 0))(); // a reload on #agents: still an Office desk
     expect(calls).toEqual(['show:more', 'replace:more']);
     calls.length = 0;
     pageFn<() => void>('navBack', deps('calls', 0))(); // a home-screen shortcut to Calls

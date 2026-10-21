@@ -188,15 +188,17 @@ describe('R26 qa-x7 / qa-x13 — Book, Queue, Numbers and Settings carry the des
     return h.children.map((c) => c.tag + ':' + c.className + ':' + c.textContent);
   };
 
-  it('Book — eyebrow Arborist, drawn before the properties read (a dead feed keeps it)', async () => {
+  // Direction B P15: the Book is "Properties on file" (Mike's rename) and its prep card moved to Estimate.
+  it('Book (Properties on file) — eyebrow Arborist, drawn before the properties read (a dead feed keeps it)', async () => {
     const v = el('div');
     const book = pageFn<() => Promise<void>>('renderBook', {
-      $: () => v, el, readingLine: () => el('div', 'reading', 'Reading…'), estimatePrepPanel: () => el('div', 'card', 'prep'), api: async () => { throw fail(503, 'link_cut'); },
+      $: () => v, el, readingLine: () => el('div', 'reading', 'Reading…'), api: async () => { throw fail(503, 'link_cut'); },
       showKeywall: () => {}, LINKS_READY: Promise.resolve('cut'), feedState: (_e: unknown, w: string) => el('div', 'state', w),
+      VIEW_TITLES: pageConst<Record<string, string>>('VIEW_TITLES'),
     });
     await book();
-    expect(head(v)).toEqual(['div:eyebrow:Arborist', 'h1::Properties & estimate prep', 'p::Every property Arbo has on file, and one sheet to read before you drive out to an estimate.']);
-    expect(v.children.map((c) => c.className)).toEqual(['viewhead', 'card', 'state']);
+    expect(head(v)).toEqual(['div:eyebrow:Arborist', 'h1::Properties on file', 'p::Every property Arbo has on file. Tap one for its history, trees and permit screens.']);
+    expect(v.children.map((c) => c.className)).toEqual(['viewhead', 'state']);
   });
 
   it('Numbers — eyebrow Analyst, above the read', async () => {
@@ -241,8 +243,9 @@ describe('R26 qa-x7 / qa-x13 — Book, Queue, Numbers and Settings carry the des
     expect(v.children[1]!.textContent).toBe('Lead channel switches');
   });
 
-  it('the Today calculator stays "Yard check", and Measure keeps the Arborist eyebrow', () => {
-    expect(fnSrc('renderToday')).toContain("'Yard check — will this job pay?'");
+  // Direction B P15 (R29 #4): the calculator moved from Today to Estimate, its name unchanged.
+  it('the calculator stays "Yard check" (on Estimate now), and Measure keeps the Arborist eyebrow', () => {
+    expect(html).toMatch(/key: 'yard', [^}]*title: 'Yard check — will this job pay\?'/);
     expect(fnSrc('renderMeasure')).toContain("el('div', 'eyebrow', 'Arborist')");
   });
 
