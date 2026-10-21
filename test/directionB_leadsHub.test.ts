@@ -741,3 +741,54 @@ describe('review round: a Sona call Mike must book himself needs him — the hea
     expect(seg(k, 'calls').querySelector('.lcount')!.has('hot')).toBe(true);
   });
 });
+
+describe('review round: no CSS can hide the Sona flag on either segment (R29 #1: "just as loud as today")', () => {
+  // Every rule that hides something, as [selector, body] — @media blocks included, comments gone.
+  const HIDE = /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*(?:hidden|collapse)|opacity\s*:\s*0(?:\.0*)?\s*(?:;|$)|(?:max-)?height\s*:\s*0(?:px)?\s*(?:;|$)|clip(?:-path)?\s*:|content-visibility\s*:\s*hidden|font-size\s*:\s*0(?:px)?\s*(?:;|$)|transform\s*:\s*scale\(0)/;
+  // The head itself, or anything the flag's place is built from: its box, its rows, its named lines.
+  const TOUCHES = /hubhead|leads-head|(?:^|[\s>+~(])(?:[\w-]*|\*)(?:\[[^\]]*\]|:[\w-]+(?:\([^)]*\))?|\.[\w-]+)*\.(?:lh-flag|storm|sliplink|feed-state|unread|unset|sim|cut)\b/;
+  const hiders = (sheet: string) => {
+    const out: string[] = [];
+    const flat = sheet.replace(/\/\*[\s\S]*?\*\//g, '');
+    for (const m of flat.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (!HIDE.test(m[2]!)) continue;
+      for (const sel of m[1]!.split(',').map((x) => x.trim())) if (TOUCHES.test(sel)) out.push(sel);
+    }
+    return out;
+  };
+  // The head shut off-screen (.hubhead, opened by .hubhead.on) and the parts that belong to one segment only.
+  const KNOWN = ['.hubhead', '.hubhead .lh-calls', '.hubhead.calls .lh-leads', '.hubhead.calls .lchips', '.hubhead.calls .filter-none'];
+
+  it('every rule that hides part of the head, or the flag\'s own classes, is one of the five known ones — none reaches the flag', () => {
+    expect(hiders(css).sort()).toEqual([...KNOWN].sort());
+    expect(css).toMatch(/\n\.hubhead\{display:none\}\.hubhead\.on\{display:block\}/);
+  });
+
+  it('the guard catches a rule that would hide the flag — on both segments, on one, or at one width (the review\'s mutations)', () => {
+    for (const bad of ['.hubhead .storm{display:none}', '.hubhead.calls .storm{display:none}', '#leads-head .lh-flag{visibility:hidden}',
+      '@media (max-width:359px){.hubhead .storm{opacity:0}}', '.storm .sliplink{display:none}', '.lseg ~ .feed-state.unread{height:0}', '.hubhead.calls{display:none}']) {
+      expect(hiders(css + bad).length, bad).toBeGreaterThan(KNOWN.length);
+    }
+  });
+
+  it('everything in the flag\'s place carries lh-flag — the box, the named line when Quo is unreadable, partial or not set up', async () => {
+    const place = async (routes: Parameters<typeof kit>[0], links = 'readonly') => {
+      const k = kit(routes, links);
+      await k.renderLeadsHead();
+      const kids = head(k).children;
+      return kids.slice(1, kids.findIndex((n) => n.has('lseg'))); // between the titles and the segments
+    };
+    const cases = [
+      await place({ quo: () => quo([call('Q1', { slips: [SLIP] })]) }),
+      await place({ quo: () => { throw fail(); } }),
+      await place({ quo: () => quo([call('Q1', { slips: [SLIP] })], { quoRecord: { lastAt: 'x', error: 'HTTP 500' } }) }),
+      await place({ quo: () => ({ status: { registration: { state: 'not_configured' }, reading: true, quoRecord: {} }, calls: [] }) }),
+      await place({ quo: () => ({ status: { registration: { state: 'not_configured' }, reading: true, quoRecord: {} }, calls: [] }) }, 'simulation'),
+    ];
+    for (const [i, kids] of cases.entries()) {
+      expect(kids.length, 'case ' + i).toBeGreaterThan(0);
+      for (const n of kids) expect(n.has('lh-flag'), 'case ' + i + ': ' + n.className).toBe(true);
+    }
+    expect(cases[2]!.map((n) => n.has('storm') ? 'storm' : 'line')).toEqual(['storm', 'line']);
+  });
+});
