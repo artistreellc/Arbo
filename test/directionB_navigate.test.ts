@@ -90,6 +90,21 @@ describe('Navigate on each stop (P7)', () => {
     expect(fnSrc('renderToday')).toContain('const addrs = brief.stops.map(stopAddress).filter(Boolean);');
   });
 
+  // Review (b-wave-1b, correctness minor): Route the day now skips a stop with no street
+  // (the base sent ", City, VA" as a junk waypoint) — but it skipped it in silence, so its
+  // count disagreed with the cards listed. R35's day sheet names the stops it leaves out;
+  // so does this.
+  it('a stop the route leaves out (no street) is named under Route the day, never silently missing', () => {
+    const plural = (n: number, one: string) => n + ' ' + (n === 1 ? one : one + 's');
+    const routeLeftOut = pageFn<(stops: Array<typeof STOP>) => N | null>('routeLeftOut', { el, plural, stopAddress });
+    expect(routeLeftOut([STOP, { ...STOP, id: 'e2', name: 'SIM-Birch, Test' }]), 'every stop routed: no line').toBeNull();
+    const line = routeLeftOut([STOP, { ...STOP, id: 'e2', name: 'SIM-Birch, Test', address: '' }, { ...STOP, id: 'e3', name: '', address: '' }])!;
+    expect(line.text()).toBe('⚠ Not in the route: 2 stops with no street on file — SIM-Birch, Test, Unnamed.');
+    const today = fnSrc('renderToday');
+    const block = today.slice(today.indexOf('const addrs = brief.stops.map(stopAddress).filter(Boolean);'), today.indexOf('for (const stop of brief.stops) {'));
+    expect(block, 'named right under the button, and even when no stop has a street (no button at all)').toContain('\n    const left = routeLeftOut(brief.stops);\n    if (left) day.appendChild(left);');
+  });
+
   it('the button is at least 48 px tall and spans the card', () => {
     expect(html).toMatch(/\.navbtn\{[^}]*width:100%/);
     expect(html).toMatch(/\.navbtn\{[^}]*min-height:52px/);

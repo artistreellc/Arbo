@@ -1051,6 +1051,13 @@ function mapsLink(address, city) {
 function stopAddress(s) {
   return s.address ? [s.address, s.city, 'VA' + (s.zip ? ' ' + s.zip : '')].filter(Boolean).join(', ') : '';
 }
+// Direction B P7 review: Route the day routes only stops with a street; the ones it
+// leaves out are named under it — never silently missing from the drive, as R35's day sheet names its own.
+function routeLeftOut(stops) {
+  const left = stops.filter((s) => !stopAddress(s));
+  if (!left.length) return null;
+  return el('div', 'late', '⚠ Not in the route: ' + plural(left.length, 'stop') + ' with no street on file — ' + left.map((s) => s.name || 'Unnamed').join(', ') + '.');
+}
 // Direction B P7 (spec: "Stops get a big Navigate button"): it asks first through
 // R35's own sheet (openMapsStop) — no second sheet, no link of its own. No street, no button.
 function navigateBtn(stop) {
@@ -2872,6 +2879,8 @@ async function renderToday() {
       r.rel = 'noopener';
       day.appendChild(r);
     }
+    const left = routeLeftOut(brief.stops);
+    if (left) day.appendChild(left);
   }
   for (const stop of brief.stops) {
     const c = el('div', 'card' + (stop.redFlags.length ? ' emergency' : ''));
