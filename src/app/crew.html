@@ -365,6 +365,10 @@ const GATE = {
   // True when pressing again cannot help (400 wrong crew code; 503 cut, practice
   // data, not set up): GO stays tappable but is never green under that line.
   serverHold: false,
+  // C1 review (D107): true once /health says read-only. The sign-off cannot be
+  // saved, so GO is held for good — unlike serverHold, ticking the box again
+  // cannot lift it. Set with the read-only note above GO; C5 rekeys both.
+  readOnly: false,
   // M11: the one 1-second refresh timer, so a second renderGate never starts another.
   ticking: null,
   // R26: why GO never arms in the office preview ('' on a crew phone). On
@@ -431,6 +435,9 @@ function renderGate(brief) {
     ro.appendChild(el('div', '', 'Arbo is read-only today — your sign-off can’t be saved on this phone.'));
     ro.appendChild(el('b', '', 'Do not start work — call the office.'));
     box.insertBefore(ro, go);
+    // Review D1: a GO that cannot save never arms under this note (refreshGate).
+    GATE.readOnly = true;
+    refreshGate();
   });
 
   // If the content is short the scroll event never fires — a body that needs
@@ -460,6 +467,14 @@ function refreshGate() {
     const ready = need.length === 0;
     go.disabled = !ready;
     go.className = ready && !GATE.serverHold ? 'ready' : '';
+  }
+  // C1 review (D107): under read-only the note directly above GO says the
+  // sign-off can't be saved, so GO is switched off and never green, and the
+  // line never says "Ready" — the box cannot lift this hold. The server's
+  // own word, if one came back, still shows.
+  if (GATE.readOnly) {
+    if (status && !GATE.serverMsg) status.textContent = '';
+    if (go) { go.disabled = true; go.className = ''; }
   }
   // R26: in the preview GO never arms, whatever the briefing state, and the
   // line says why instead of "Ready".
