@@ -946,6 +946,8 @@ describe('R28 — the desk in the shell: More tile, title, Back, ↻ and start-u
       switchTab: (t: string) => go.push('tab:' + t), renderAssistant: () => go.push('desk'),
       renderAgents: () => {}, renderLearn: () => {}, renderMeasure: () => {}, renderPermits: () => {},
       themePref: () => 'auto', setTheme: () => {}, installCard: () => el('div'), location: {}, window: {},
+      // Direction B P14: Office's head, proposals and counted desks draw above this grid (directionB_office tests them).
+      officeHub: () => ({ el: el('div') }),
     });
     render();
     await flush();

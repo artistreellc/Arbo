@@ -63,6 +63,8 @@ class FNode {
   appendChild(c: FNode): FNode { c.parent?.drop(c); c.parent = this; this.children.push(c); return c; }
   drop(c: FNode): void { this.children = this.children.filter((x) => x !== c); c.parent = null; }
   remove(): void { this.parent?.drop(this); }
+  // Direction B P14: an Office desk tile swaps its "Reading…" for the count (or the dash) in place.
+  replaceWith(...ns: FNode[]): void { const p = this.parent!; const at = p.children.indexOf(this); for (const n of ns) { n.parent?.drop(n); n.parent = p; } p.children.splice(p.children.indexOf(this) < 0 ? at : p.children.indexOf(this), 1, ...ns); this.parent = null; }
   replaceChildren(...ns: FNode[]): void { for (const c of this.children) c.parent = null; this.children = []; this.own = ''; for (const n of ns) this.appendChild(n); }
   hasChildNodes(): boolean { return this.children.length > 0 || this.own !== ''; }
   setAttribute(k: string, v: string): void { this.attrs[k] = v; }
@@ -76,7 +78,7 @@ class FNode {
   private match(sel: string): (n: FNode) => boolean {
     const cls = /^(?::scope > )?\.([\w-]+)$/.exec(sel);
     if (cls) return (n) => n.names().includes(cls[1]!);
-    if (/^[a-z]+$/.test(sel)) return (n) => n.tag === sel;
+    if (/^[a-z][a-z0-9]*$/.test(sel)) return (n) => n.tag === sel;
     throw new Error('stand-in DOM does not do ' + sel);
   }
   querySelectorAll(sel: string): FNode[] {
@@ -116,6 +118,8 @@ type Panels = {
   feedsCard?: (key: string) => { el: FNode; place: (slot: FNode, x: unknown) => Promise<void> };
   // Direction B P13: the Queue's four desks, each a screen of its own.
   renderMoneyView?: () => Promise<void>; renderFleetView?: () => Promise<void>; renderSafetyView?: () => Promise<void>; renderFollowUps?: () => Promise<void>;
+  // Direction B P14: Office (view-more), its counted desk tiles and their reads.
+  renderMore?: () => void;
 };
 /** The page's helpers and the panels under test, built together with one stand-in document. */
 function kit(fail: (typeof FAILS)[number]) {
@@ -156,6 +160,13 @@ function kit(fail: (typeof FAILS)[number]) {
     targets.push('deskView', 'renderMoneyView', 'renderFleetView', 'renderSafetyView', 'renderFollowUps', 'renderFleet',
       'renderRoster', 'renderRosterList', 'renderTrainingBoard', 'renderVetting', 'renderLibraryDesk', 'renderLibraryQueue');
   }
+  // Direction B P14: Office — its proposals, its counted desks (every read they make) and the rest of Arbo.
+  const office = /^function officeHub\(/m.test(html);
+  if (office) {
+    consts.push('VIEW_TITLES', 'DESK_LINE', 'OFFICE_DESKS', 'PROPOSAL_GO', 'noRefs');
+    helpers.push('moneyCounts', 'lessonsWaiting', 'agentProposals', 'proposalRow', 'runAllEight');
+    targets.push('officeDesk', 'officeProposals', 'officeHub', 'renderMore');
+  }
   const built = new Function('document', 'api', 'HERO', 'sysSet', 'showKeywall', 'linksIn', `
     let LINKS = linksIn;
     let TIMER_REDRAW = false;
@@ -165,8 +176,11 @@ function kit(fail: (typeof FAILS)[number]) {
     let STORM_READ = null; // Direction B P11: stormBanner keeps its outcome for Before you roll
     let ROLL_BOX = null; // P11 review: the card a redraw keeps up, and the draw that owns it
     let ROLL_GEN = 0;
-    ${consts.map(constSrc).join('\n')}
-    ${[...helpers, ...targets].map(fnSrc).join('\n')}
+    ${office ? `let AGENT_RUN = null; const NAV_DRAW = {}; const icon = () => document.createElement('svg'); const switchTab = () => {};
+      const renderAssistant = () => {}, renderAgents = () => {}, renderMeasure = () => {}, renderPermits = () => {}, renderLearn = () => {};
+      const themePref = () => 'auto', setTheme = () => {}, installCard = () => document.createElement('div'), location = {}, window = {};` : ''}
+    ${[...new Set(consts)].map(constSrc).join('\n')}
+    ${[...new Set([...helpers, ...targets])].map(fnSrc).join('\n')}
     return { ${targets.join(', ')} };`)(
     document, api, HERO, (k: string, lvl: string, t: string) => sys.push(k + ':' + lvl + ':' + t), () => { throw new Error('a 503 must never open the key wall'); }, fail.links,
   ) as Panels;
@@ -302,6 +316,28 @@ describe.each(FAILS)('a read that died: $kind', (fail) => {
     expect(k.paths.sort()).toEqual(['/api/reference/drafts', '/api/roster', '/api/safety', '/api/training/board', '/api/training/drafts']);
   });
 
+  // Direction B P14: Office — every desk tile whose read died is dashed, worded and opens nothing; the head never reads calm.
+  it('Office (P14): every dead desk is a dash with its feed word — never a 0, never "No desk needs you"', async () => {
+    const k = kit(fail);
+    k.renderMore!();
+    for (let i = 0; i < 12; i++) await flush();
+    const v = k.$('view-more');
+    expectNamed(v.textContent, fail.kind, 'Office');
+    expect(v.textContent).not.toContain('No desk needs you');
+    const tiles = v.querySelectorAll('.otile');
+    expect(tiles).toHaveLength(6);
+    for (const t of tiles) {
+      expect(t.classList.contains('gap'), t.dataset.desk).toBe(true);
+      expect(t.getAttribute('aria-disabled'), t.dataset.desk).toBe('true');
+      expect(t.querySelector('.ocount')!.textContent, t.dataset.desk).toBe('–');
+      expect(t.textContent.toLowerCase(), t.dataset.desk).toContain(FEED_WORD[fail.kind].toLowerCase());
+      expect(t.textContent, t.dataset.desk).not.toContain('Reading…');
+    }
+    expect(v.querySelector('h1')!.textContent).toBe('No desk could be read · 6 ' + (fail.kind === 'unread' ? 'couldn’t be read' : 'off'));
+    expect([...new Set(k.paths)].sort()).toEqual(['/api/assistant/approvals', '/api/fleet/units', '/api/followups', '/api/money', '/api/performance',
+      '/api/queue', '/api/reception/status', '/api/safety', '/api/sim/state']);
+  });
+
   it('Open loops (the hero stat): a dash and the feed tag, never 0 open', async () => {
     const k = kit(fail);
     k.heroLoops();
@@ -319,7 +355,8 @@ describe('the dead-feed harness knows every panel in the page', () => {
   const COVERED = ['renderLeads', 'sonaPanel', 'renderSafety', 'renderFleetList', 'renderMoney',
     'inboxIntentPanel', 'studyPanel', 'outreachPanel', 'websiteFormsPanel', // P12 joined the four Today panels
     'renderMoneyView', 'renderFleetView', 'renderSafetyView', 'renderFollowUps', // P13: the Queue's four desks …
-    'renderRosterList', 'renderTrainingBoard', 'renderVetting', 'renderLibraryQueue']; // … and the panels Crew & safety holds
+    'renderRosterList', 'renderTrainingBoard', 'renderVetting', 'renderLibraryQueue', // … and the panels Crew & safety holds
+    'renderMore']; // P14: Office, its desks counted
   const EXEMPT: Record<string, string> = {
     renderToday: 'a page of panels; its dead-feed lines are pinned in qa_today, qa2_today and qa3_today-rest (emergencyLeads, stormBanner, heroLoops are covered above)',
     renderAssistant: 'R28 desk; its gaps are pinned in assistantUi',
@@ -335,7 +372,6 @@ describe('the dead-feed harness knows every panel in the page', () => {
     renderLibraryDesk: 'wrapper of renderLibraryQueue',
     renderFleet: 'wrapper of renderFleetList (covered) and the Bouncie line (bouncie.test)',
     renderSettings: 'not seeded in P1; pinned in qa_settings and qa2_settings-more',
-    renderMore: 'tiles only today — no read (P14 adds counted tiles and joins)',
     renderPermits: 'not seeded in P1; pinned in qa_permits and qa2_permits-measure-crew',
     renderAgents: 'not seeded in P1; pinned in qa_agents (joins with P6)',
     renderMeasure: 'a form — reads only on a file; pinned in qa2_permits-measure-crew',

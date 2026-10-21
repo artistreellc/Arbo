@@ -84,7 +84,9 @@ describe('Learn desk', () => {
   });
 
   it('a desk with no handler is never an Approve/Reject card or an approved lesson', () => {
-    expect(learn).toContain("l.status === 'proposed' && !l.rule.startsWith('unhandled:')");
+    // Direction B P14: the waiting list lives in lessonsWaiting, which Office's Teach Arbo count reads too.
+    expect(learn).toContain('lessonsWaiting(st)');
+    expect(html.slice(html.indexOf('function lessonsWaiting('), html.indexOf('\n}', html.indexOf('function lessonsWaiting(')))).toContain("l.status === 'proposed' && !l.rule.startsWith('unhandled:')");
     expect(learn).toContain("l.status === 'approved' && !l.rule.startsWith('unhandled:')");
   });
 

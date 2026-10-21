@@ -47,6 +47,7 @@ async function moreTiles(linkCut: boolean) {
     api: async (p: string) => (p === '/api/reception/status' ? { linkCut } : { approvals: [] }),
     switchTab: () => {}, renderAssistant: () => {}, renderAgents: () => {}, renderLearn: () => {}, renderMeasure: () => {}, renderPermits: () => {},
     themePref: () => 'auto', setTheme: () => {}, installCard: () => el('div'), location: {}, window: { open: (...a: unknown[]) => opened.push(a) },
+    officeHub: () => ({ el: el('div') }), // Direction B P14: Office's desks draw above the grid (directionB_office)
   })();
   await flush();
   const tiles = v.all().filter((n) => n.className === 'gtile');
