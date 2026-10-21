@@ -142,3 +142,104 @@ describe('the Map button in Calendar\'s Today\'s stops header (M1)', () => {
     expect(srcOf(shell, 'renderCalendar')).toContain('frame.src = gcalEmbedUrl();');
   });
 });
+
+// Review round (D106): the frame on an old day, and a throttled connection named as what it is (§1B).
+describe('the map never sits on an old day (review round)', () => {
+  const etToday = frameFn<(now: Date) => string | null>('etToday');
+  const staleDay = frameFn<(day: unknown, today: string | null) => boolean>('staleDay');
+
+  it('etToday is the ET calendar day, whatever the phone\'s own zone', () => {
+    expect(etToday(new Date('2026-10-22T03:30:00Z'))).toBe('2026-10-21'); // 11:30 PM EDT
+    expect(etToday(new Date('2026-10-22T04:30:00Z'))).toBe('2026-10-22'); // 12:30 AM EDT
+    expect(etToday(new Date('2026-12-01T04:30:00Z'))).toBe('2026-11-30'); // 11:30 PM EST
+  });
+
+  it('a drawn day that is not today is stale; an unknown clock never clears anything', () => {
+    expect(staleDay('2026-10-21', '2026-10-22')).toBe(true);
+    expect(staleDay('2026-10-22', '2026-10-22')).toBe(false);
+    expect(staleDay('2026-10-21', null)).toBe(false);
+    expect(staleDay(undefined, '2026-10-22')).toBe(false);
+  });
+
+  function tickHarness(o: { shown: boolean; day: string | null; today: string }) {
+    const did: string[] = [];
+    const GAPS: Record<string, unknown[]> = { today: [] };
+    const TODAY = { d: o.day ? { day: o.day } : null };
+    const dropStaleDay = frameFn<() => void>('dropStaleDay', {
+      TODAY, staleDay, etToday: () => o.today, GAPS, MAP_SAYS, clearToday: () => { did.push('clear'); TODAY.d = null; }, drawStatus: () => did.push('status'),
+    });
+    const onTick = frameFn<() => void>('onTick', { shownNow: () => o.shown, dropStaleDay, readLayer: (l: string) => did.push('read:' + l) });
+    onTick();
+    return { did, GAPS };
+  }
+  it('the shell\'s tick re-reads Today while Map shows; an old day comes down at once, named "Reading…"', () => {
+    expect(tickHarness({ shown: true, day: '2026-10-21', today: '2026-10-21' }).did).toEqual(['read:today']);
+    const old = tickHarness({ shown: true, day: '2026-10-21', today: '2026-10-22' });
+    expect(old.did).toEqual(['clear', 'status', 'read:today']);
+    expect(old.GAPS.today).toEqual([{ cls: 'unset', text: MAP_SAYS.readingToday }]);
+    expect(tickHarness({ shown: false, day: '2026-10-21', today: '2026-10-22' }).did).toEqual([]);
+    // Map coming back on screen (the shell's view class) drops an old day the same way, then reads every layer.
+    expect(srcOf(script, 'watchShown')).toContain('if (now && !shown) { dropStaleDay(); readAll(); }');
+  });
+
+  it('the tick is taken from the shell only, on this origin', () => {
+    const seen: string[] = [];
+    const parent = {};
+    const deps = {
+      location: { origin: 'https://arbo.test' }, window: { parent }, LAYERS: ['today', 'permits', 'leads', 'trucks'], ON: { today: true },
+      readLayer: () => seen.push('read'), setLayer: () => seen.push('set'), GAPS: { key: [] }, retryTiles: () => seen.push('tiles'), readAll: () => seen.push('all'), onTick: () => seen.push('tick'),
+    };
+    const on = frameFn<(e: unknown) => void>('onShellMessage', deps);
+    on({ origin: 'https://evil.test', source: parent, data: { type: 'tick' } });
+    on({ origin: 'https://arbo.test', source: {}, data: { type: 'tick' } });
+    expect(seen).toEqual([]);
+    on({ origin: 'https://arbo.test', source: parent, data: { type: 'tick' } });
+    expect(seen).toEqual(['tick']);
+  });
+});
+
+describe('a refused or slowed key is named as what it is (review round)', () => {
+  async function why(status: number, body: unknown) {
+    const mapGet = frameFn<(p: string) => Promise<unknown>>('mapGet', {
+      shellKey: () => 'k', fetch: async () => ({ status, ok: status >= 200 && status < 300, json: async () => body }),
+    });
+    try { await mapGet('/api/map/today'); return 'ok'; } catch (e) { return (e as { why: string }).why; }
+  }
+  it('429 too_many_attempts is "throttled" (wait, then ↻) — never "Arbo didn\'t take this phone\'s key"', async () => {
+    expect(await why(429, { error: 'too_many_attempts', message: 'wait 40 seconds', retryAfterSec: 40 })).toBe('throttled');
+    expect(await why(429, { error: 'busy' })).toBe('unread');
+    expect(await why(401, { error: 'no_app_key' })).toBe('noAppKey');
+    expect(await why(401, { error: 'wrong_key' })).toBe('refused');
+    expect(MAP_SAYS.throttled).toMatch(/wait a minute/i);
+    expect(MAP_SAYS.throttled).toMatch(/Wi-Fi and cellular/);
+    expect(MAP_SAYS.throttled).not.toBe(MAP_SAYS.refused);
+  });
+  it('the throttled line carries its own ↻; the others do not need one (Arbo\'s key screen fixes them)', () => {
+    const GAPS: { key: Array<{ retry?: unknown; text: string }> } = { key: [] };
+    const keyGap = frameFn<(e: unknown) => boolean>('keyGap', { MAP_SAYS, GAPS, drawStatus: () => {}, readAll: () => {} });
+    expect(keyGap({ why: 'throttled' })).toBe(true);
+    expect(GAPS.key[0]!.text).toBe(MAP_SAYS.throttled);
+    expect(typeof GAPS.key[0]!.retry).toBe('function');
+    keyGap({ why: 'refused' });
+    expect(GAPS.key[0]!.text).toBe(MAP_SAYS.refused);
+  });
+});
+
+describe('the minute re-read leaves an unchanged map alone (review round)', () => {
+  it('the same answer again is not redrawn — an open stop list stays open; a changed one is drawn', async () => {
+    const day = { state: 'ok', day: '2026-10-21', stops: [], notOnMap: [], counts: { events: 0, onMap: 0, notOnMap: 0 } };
+    let answer: unknown = day;
+    const drawn: unknown[] = [];
+    const TODAY = { seq: 0, d: null as unknown };
+    const readToday = frameFn<() => Promise<void>>('readToday', {
+      TODAY, ON: { today: true }, GAPS: { key: [], today: [] }, MAP_SAYS, mapGet: async () => JSON.parse(JSON.stringify(answer)),
+      clearToday: () => {}, keyGap: () => false, drawStatus: () => {}, drawToday: (d: unknown) => { drawn.push(d); TODAY.d = d; },
+    });
+    await readToday();
+    await readToday();
+    expect(drawn).toHaveLength(1);
+    answer = { ...day, counts: { events: 1, onMap: 0, notOnMap: 1 }, notOnMap: [{ id: 'a', title: 'SIM-A', why: 'No address on the event' }] };
+    await readToday();
+    expect(drawn).toHaveLength(2);
+  });
+});

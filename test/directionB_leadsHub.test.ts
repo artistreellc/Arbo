@@ -386,9 +386,9 @@ describe('the Leads hub head: refresh', () => {
 
   it('autoRefresh redraws the head every minute, even while both Leads views hold', () => {
     const ran: string[] = [];
-    const tick = new Function('document', '$', 'TIMED', 'holdsTyping', 'renderLeadsHead', `let TIMER_REDRAW = false;\n${fnSrc('autoRefresh')}\nreturn autoRefresh;`)(
+    const tick = new Function('document', '$', 'TIMED', 'holdsTyping', 'renderLeadsHead', 'mapTick', `let TIMER_REDRAW = false;\n${fnSrc('autoRefresh')}\nreturn autoRefresh;`)(
       { hidden: false }, (id: string) => ({ id, classList: { contains: () => false } }),
-      { leads: () => ran.push('leads'), calls: () => ran.push('calls') }, () => true, () => ran.push('head'),
+      { leads: () => ran.push('leads'), calls: () => ran.push('calls') }, () => true, () => ran.push('head'), () => {} /* Maps review: the map's tick, mapShell's own tests */,
     ) as () => void;
     tick();
     expect(ran).toEqual(['head']);
@@ -397,9 +397,9 @@ describe('the Leads hub head: refresh', () => {
   it('an open transcript on Calls & texts holds only Calls & texts: New leads and the head still redraw (the reverse too)', () => {
     const run = (held: string) => {
       const ran: string[] = [];
-      new Function('document', '$', 'TIMED', 'holdsTyping', 'renderLeadsHead', `let TIMER_REDRAW = false;\n${fnSrc('autoRefresh')}\nreturn autoRefresh;`)(
+      new Function('document', '$', 'TIMED', 'holdsTyping', 'renderLeadsHead', 'mapTick', `let TIMER_REDRAW = false;\n${fnSrc('autoRefresh')}\nreturn autoRefresh;`)(
         { hidden: false }, (id: string) => ({ id, classList: { contains: () => false } }),
-        { leads: () => ran.push('leads'), calls: () => ran.push('calls') }, (v: { id: string }) => v.id === 'view-' + held, () => ran.push('head'),
+        { leads: () => ran.push('leads'), calls: () => ran.push('calls') }, (v: { id: string }) => v.id === 'view-' + held, () => ran.push('head'), () => {} /* Maps review: the map's tick */,
       )();
       return ran;
     };
