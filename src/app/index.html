@@ -3481,12 +3481,14 @@ async function renderLeadsHead() {
     : title(VIEW_TITLES.calls, 'lh-calls', FEED_WORD[qk]));
   out.push(head);
   // The red Sona flag, above the segments and on both. Quo unreadable: a named line in its place; Quo not set up: the fold's words, once.
+  // Each part of the flag's place carries lh-flag: no rule may hide it on either segment (the review's CSS guard).
+  const flagPart = (n) => { n.classList.add('lh-flag'); out.push(n); };
   if (S) {
     const box = sonaSlipBox(qr.d, done);
-    if (box) out.push(box);
-    if (S.gap) out.push(el('div', 'feed-state unread', S.gap)); // named in the flag's place, under any flag it did read
-  } else if (qr.e) out.push(feedLine(qr.e, 'Sona calls (Quo)', 'Her rule flags can’t show here — not the same as none.'));
-  else out.push(quoOffLine(links));
+    if (box) flagPart(box);
+    if (S.gap) flagPart(el('div', 'feed-state unread', S.gap)); // named in the flag's place, under any flag it did read
+  } else if (qr.e) flagPart(feedLine(qr.e, 'Sona calls (Quo)', 'Her rule flags can’t show here — not the same as none.'));
+  else flagPart(quoOffLine(links));
   // The two segments: a count only when there is one; a read that failed is '–' and its feed word, never a 0.
   const segs = el('div', 'seg lseg');
   segs.setAttribute('role', 'group');
