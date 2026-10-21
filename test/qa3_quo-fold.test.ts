@@ -131,7 +131,8 @@ describe('item 5: Calls folds the same way Today does — one shared helper, no 
   it('source: Today and Calls each call fillQuoSlots once; neither carries an inline fold of its own', () => {
     const today = src('renderToday');
     const calls = src('renderCalls');
-    expect(today).toContain('fillQuoSlots([studyPanel(5), outreachPanel(false), sonaPanel(3, false)], [studySlot, outreachSlot, sonaSlot]);');
+    // Direction B P12: Today hands the fold its feeds card's place; Calls has no card yet (P16) and appends.
+    expect(today).toContain('fillQuoSlots([studyPanel(5), outreachPanel(false), sonaPanel(3, false)], [studySlot, outreachSlot, sonaSlot], feeds.place);');
     expect(calls).toContain('fills.push(fillQuoSlots([studyPanel(60), outreachPanel(true), sonaPanel(20, true)], [studyFull, outreachFull, sonaCallsSlot]));');
     for (const [name, s] of [['renderToday', today], ['renderCalls', calls]] as const) {
       expect(s.match(/fillQuoSlots\(/g), name).toHaveLength(1);

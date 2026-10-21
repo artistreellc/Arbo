@@ -359,12 +359,16 @@ describe('Q5 — admin forms fold away, and the sends come right after safety', 
     expect(html).not.toContain('Also fits — e.g. both chippers');
   });
 
-  it('recommended sends get their own slot right after the safety board', () => {
+  it('recommended sends get their own slot right after the open loops (Direction B P13: safety leads its own desk)', () => {
     const q = queue();
-    const safetyAt = q.indexOf('renderSafety(safetySlot);');
+    const loopsAt = q.indexOf('v.appendChild(loopsSlot);');
     const slotAt = q.indexOf("const fuSlot = el('div');\n  v.appendChild(fuSlot);");
-    expect(slotAt).toBeGreaterThan(safetyAt);
-    expect(slotAt).toBeLessThan(q.indexOf('renderRoster(rosterSlot);'));
+    expect(loopsAt).toBeGreaterThan(-1);
+    expect(slotAt).toBeGreaterThan(loopsAt);
+    // The safety board still leads, on Crew & safety: its first panel, before the roster.
+    const safety = html.slice(html.indexOf('function renderSafetyView('), html.indexOf('// ---------- Shell'));
+    expect(safety.indexOf("['queue-safety', renderSafety]")).toBeGreaterThan(-1);
+    expect(safety.indexOf("['queue-safety', renderSafety]")).toBeLessThan(safety.indexOf('[null, renderRoster]'));
     const sends = q.slice(q.indexOf("fuSlot.appendChild(el('div', 'panel-title', 'Recommended sends'));"));
     expect(sends.length).toBeGreaterThan(0);
     expect(sends.startsWith("fuSlot.appendChild(el('div', 'panel-title', 'Recommended sends'));")).toBe(true);

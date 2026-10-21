@@ -29,11 +29,18 @@ describe('Queue — one dead feed never blanks the screen (§1B)', () => {
     const q = queue();
     const read = q.indexOf("await api('/api/followups')");
     expect(read).toBeGreaterThan(-1);
-    for (const panel of ['renderSafety(safetySlot)', 'renderRoster(rosterSlot)', 'renderTrainingBoard(trainSlot)',
-      'renderVetting(vetSlot)', 'renderLibraryDesk(libSlot)', 'renderMoney(moneySlot)', 'renderFleet(fleetSlot)',
-      "'Recommended sends'", 'Arbo recommends']) {
+    // Direction B P13: Follow-ups holds the loops and the sends; the other desks are screens of their own.
+    for (const panel of ["loopsSlot.id = 'queue-loops'", "api('/api/queue')", "'Recommended sends'", 'Arbo recommends']) {
       expect(q.indexOf(panel), `${panel} waits on the follow-ups read`).toBeGreaterThan(-1);
       expect(q.indexOf(panel), `${panel} waits on the follow-ups read`).toBeLessThan(read);
+    }
+    // …and each of those desks gives every panel its slot at once, before any read lands (deskView): none waits on another.
+    const desk = between('async function deskView(', '// ---------- Shell');
+    expect(desk).toContain('const runs = panels.map(([id, render]) => {');
+    expect(desk.indexOf('return render(slot);')).toBeLessThan(desk.indexOf('await Promise.allSettled(runs);'));
+    for (const panel of ["['queue-safety', renderSafety]", '[null, renderRoster]', '[null, renderTrainingBoard]', '[null, renderVetting]',
+      '[null, renderLibraryDesk]', "['queue-money', renderMoney]", "['queue-fleet', renderFleet]"]) {
+      expect(desk, panel).toContain(panel);
     }
   });
 

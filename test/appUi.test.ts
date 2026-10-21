@@ -271,7 +271,8 @@ describe('ARBOR app shell', () => {
     expect(html).toContain('Reception: status unavailable right now');
     expect(html).toContain('no calls since Arbo last restarted');
     expect(html).toContain('rejected call attempt');
-    expect(html).toContain('receptionStrip().then((b) => { if (b) recSlot.appendChild(b); });');
+    // Direction B P12: its slot is filled through Today's feeds card (a line cut on purpose folds into the card).
+    expect(html).toContain('feeds.place(recSlot, receptionStrip());');
   });
 
   it('the settings screen exists, is honest about persistence, and fails safe', () => {

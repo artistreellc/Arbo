@@ -70,6 +70,8 @@ class FNode {
   getAttribute(k: string): string | null { return this.attrs[k] ?? null; }
   addEventListener(): void {}
   get isConnected(): boolean { return true; }
+  // The feeds card lists its feeds in the screen's order (P12 review): 4 when o follows this node.
+  compareDocumentPosition(o: FNode): number { const top = (n: FNode): FNode => (n.parent ? top(n.parent) : n); const all = top(this).all(); return all.indexOf(o) > all.indexOf(this) ? 4 : 2; }
   all(): FNode[] { return [this, ...this.children.flatMap((c) => c.all())]; }
   private match(sel: string): (n: FNode) => boolean {
     const cls = /^(?::scope > )?\.([\w-]+)$/.exec(sel);
@@ -108,6 +110,12 @@ type Panels = {
   renderSafety: (slot: FNode) => Promise<void>; renderFleetList: (slot: FNode) => Promise<boolean>; renderMoney: (slot: FNode) => Promise<void>;
   stormBanner: () => Promise<unknown>; heroLoops: () => void;
   beforeYouRoll?: (emgP: Promise<unknown>, stormP: Promise<unknown>) => FNode;
+  // Direction B P12: the Today panels the feeds card folds, and the card itself.
+  inboxIntentPanel?: () => Promise<FNode | null>; websiteFormsPanel?: () => Promise<FNode | null>;
+  studyPanel?: (limit: number) => Promise<FNode | null>; outreachPanel?: (full: boolean) => Promise<FNode | null>;
+  feedsCard?: (key: string) => { el: FNode; place: (slot: FNode, x: unknown) => Promise<void> };
+  // Direction B P13: the Queue's four desks, each a screen of its own.
+  renderMoneyView?: () => Promise<void>; renderFleetView?: () => Promise<void>; renderSafetyView?: () => Promise<void>; renderFollowUps?: () => Promise<void>;
 };
 /** The page's helpers and the panels under test, built together with one stand-in document. */
 function kit(fail: (typeof FAILS)[number]) {
@@ -135,9 +143,24 @@ function kit(fail: (typeof FAILS)[number]) {
   const targets = ['renderLeads', 'emergencyLeads', 'sonaPanel', 'renderSafety', 'renderFleetList', 'renderMoney', 'stormBanner', 'heroLoops'];
   // Direction B P11: Before you roll, with the tables it reads.
   if (/^function beforeYouRoll\(/m.test(html)) { consts.push('DESK_VIEW', 'UNIT_STATUS', 'ROLL_ROWS'); targets.push('beforeYouRoll'); }
+  // Direction B P12: the panels Today folds into its feeds card, and the card.
+  if (/^function feedsCard\(/m.test(html)) {
+    consts.push('FEEDS_SAID', 'FEEDS_OPEN', 'FEEDS_BOX', 'FEEDS_GEN');
+    if (!helpers.includes('readingLine')) helpers.push('readingLine');
+    targets.push('inboxIntentPanel', 'websiteFormsPanel', 'studyPanel', 'outreachPanel', 'feedsCard');
+  }
+  // Direction B P13: the four desk screens, with every panel the Queue held (and what the Fleet's Bouncie line reads).
+  if (/^async function deskView\(/m.test(html)) {
+    consts.push('VIEW_TITLES', 'DESK_LINE', 'DESK_GEN', 'FU_LABEL', 'LOOP_LABEL', 'TRACK_SAYS');
+    helpers.push('loopCard', 'loadTrack', 'agoWords', 'truckWords', 'trackWords', 'fleetTrackLine', 'fillTrack');
+    targets.push('deskView', 'renderMoneyView', 'renderFleetView', 'renderSafetyView', 'renderFollowUps', 'renderFleet',
+      'renderRoster', 'renderRosterList', 'renderTrainingBoard', 'renderVetting', 'renderLibraryDesk', 'renderLibraryQueue');
+  }
   const built = new Function('document', 'api', 'HERO', 'sysSet', 'showKeywall', 'linksIn', `
     let LINKS = linksIn;
     let TIMER_REDRAW = false;
+    let FU_GEN = 0; // P13: Follow-ups' own newest-draw guard
+    let TRACK = null; // P13: the Fleet's last Bouncie read
     const LINKS_READY = Promise.resolve(linksIn);
     let STORM_READ = null; // Direction B P11: stormBanner keeps its outcome for Before you roll
     let ROLL_BOX = null; // P11 review: the card a redraw keeps up, and the draw that owns it
@@ -224,6 +247,61 @@ describe.each(FAILS)('a read that died: $kind', (fail) => {
     expect(k.paths.filter((p) => p === '/api/safety' || p === '/api/fleet/units')).toEqual(['/api/safety', '/api/fleet/units']);
   });
 
+  // Direction B P12: the Today panels the feeds card folds — each names its feed, and marks its
+  // wrapper with the kind and the feed's name, so the card can count it and name it.
+  it.each([
+    ['inboxIntentPanel', 'Inbox', []], ['websiteFormsPanel', 'Website forms', []],
+    ['studyPanel', 'Customer notes', [5]], ['outreachPanel', 'Text outreach', [false]], ['sonaPanel', 'Sona calls', [3, false]],
+  ] as const)('%s (P12): named, marked off with its kind, never a calm line', async (name, feed, args) => {
+    const k = kit(fail);
+    const run = (k as unknown as Record<string, (...a: unknown[]) => Promise<FNode | null>>)[name]!;
+    const w = (await run(...args))!;
+    expectNamed(w.textContent, fail.kind, name);
+    expect(w.dataset.off, name).toBe(fail.kind);
+    expect(w.dataset.feedName, name).toBe(feed);
+  });
+
+  it('the feeds card (P12): every dead panel counted under its own word and named — never a calm line, never a 0', async () => {
+    const k = kit(fail);
+    const card = k.feedsCard!('today');
+    const panels = [k.inboxIntentPanel!(), k.websiteFormsPanel!(), k.studyPanel!(5), k.outreachPanel!(false), k.sonaPanel(3, false)];
+    const slots = panels.map(() => new FNode('div'));
+    panels.forEach((p, i) => card.place(slots[i]!, p));
+    for (let i = 0; i < 8; i++) await flush();
+    const said = { cut: 'cut on purpose', sim: 'not in the practice data', unset: 'not set up', unread: 'couldn’t read' }[fail.kind];
+    expect(card.el.textContent).toContain('5 feeds off: 5 ' + said);
+    // Every feed named with its state word — "Name — word" over its folded words, or its own line "Name: word…" (P12 review: never both).
+    for (const n of ['Inbox', 'Website forms', 'Customer notes', 'Text outreach', 'Sona calls']) expect(card.el.textContent).toMatch(new RegExp(n + '(?: — |: )' + FEED_WORD[fail.kind]));
+    expectNamed(card.el.textContent, fail.kind, 'the feeds card');
+    // Folded (cut, not simulated, not set up): their slots are empty. Unread: each stays where it would show.
+    expect(slots.every((s) => s.children.length === (fail.kind === 'unread' ? 1 : 0))).toBe(true);
+  });
+
+  // Direction B P13: the Queue's four desks. Each draws its desk head first; every panel on it names its feed.
+  it.each([
+    ['renderMoneyView', 'view-money', 'Yard Boss', 'Money'], ['renderFleetView', 'view-fleet', 'Yard Boss', 'Fleet'],
+    ['renderSafetyView', 'view-safety', 'Crew Chief', 'Crew & safety'], ['renderFollowUps', 'view-followups', 'Chief of Staff', 'Follow-ups'],
+  ] as const)('%s (P13): its desk head, then every panel names its feed — never a calm line, never a 0', async (name, view, line, title) => {
+    const k = kit(fail);
+    await (k as unknown as Record<string, () => Promise<void>>)[name]!();
+    for (let i = 0; i < 8; i++) await flush();
+    const v = k.$(view);
+    expect(v.children[0]!.className).toBe('viewhead');
+    expect(v.children[0]!.children[0]!.textContent).toBe(line);
+    expect(v.children[0]!.children[1]!.textContent).toBe(title);
+    expectNamed(v.textContent, fail.kind, name);
+    expect(v.textContent, name + ': nothing still says Reading…').not.toContain('Reading…');
+  });
+
+  it('Crew & safety (P13): the safety board, roster, training, lessons and library each name their own dead feed', async () => {
+    const k = kit(fail);
+    await k.renderSafetyView!();
+    for (let i = 0; i < 8; i++) await flush();
+    const t = k.$('view-safety').textContent;
+    for (const what of ['Safety board — ', 'Roster — ', 'Training board — ', 'Draft queue — ', 'Library drafts — ']) expect(t, what).toContain(what + FEED_WORD[fail.kind]);
+    expect(k.paths.sort()).toEqual(['/api/reference/drafts', '/api/roster', '/api/safety', '/api/training/board', '/api/training/drafts']);
+  });
+
   it('Open loops (the hero stat): a dash and the feed tag, never 0 open', async () => {
     const k = kit(fail);
     k.heroLoops();
@@ -238,7 +316,10 @@ describe.each(FAILS)('a read that died: $kind', (fail) => {
 // Every render*/…Panel function in the page is listed here: covered above, or
 // exempt with the reason. A new one (each later package) must join one list.
 describe('the dead-feed harness knows every panel in the page', () => {
-  const COVERED = ['renderLeads', 'sonaPanel', 'renderSafety', 'renderFleetList', 'renderMoney'];
+  const COVERED = ['renderLeads', 'sonaPanel', 'renderSafety', 'renderFleetList', 'renderMoney',
+    'inboxIntentPanel', 'studyPanel', 'outreachPanel', 'websiteFormsPanel', // P12 joined the four Today panels
+    'renderMoneyView', 'renderFleetView', 'renderSafetyView', 'renderFollowUps', // P13: the Queue's four desks …
+    'renderRosterList', 'renderTrainingBoard', 'renderVetting', 'renderLibraryQueue']; // … and the panels Crew & safety holds
   const EXEMPT: Record<string, string> = {
     renderToday: 'a page of panels; its dead-feed lines are pinned in qa_today, qa2_today and qa3_today-rest (emergencyLeads, stormBanner, heroLoops are covered above)',
     renderAssistant: 'R28 desk; its gaps are pinned in assistantUi',
@@ -249,25 +330,16 @@ describe('the dead-feed harness knows every panel in the page', () => {
     renderBook: 'not seeded in P1; pinned in qa2_queue-numbers-book (joins with P15)',
     renderCalls: 'not seeded in P1; its Quo gaps are pinned in qa3_quo-fold and r33Review (joins with P16)',
     renderRoster: 'wrapper of renderRosterList',
-    renderRosterList: 'not seeded in P1; pinned in qa3_queue-desks (joins with P13)',
-    renderTrainingBoard: 'not seeded in P1; pinned in qa2_queue-numbers-book (joins with P13)',
     renderPerformance: 'not seeded in P1; pinned in qa2_queue-numbers-book',
     renderCampaignList: 'draws a list it is handed — no read of its own',
-    renderVetting: 'not seeded in P1; pinned in qa2_queue-numbers-book (joins with P13)',
     renderLibraryDesk: 'wrapper of renderLibraryQueue',
-    renderLibraryQueue: 'not seeded in P1; pinned in qa2_queue-numbers-book (joins with P13)',
     renderFleet: 'wrapper of renderFleetList (covered) and the Bouncie line (bouncie.test)',
-    renderFollowUps: 'not seeded in P1; pinned in qa_queue and qa2_queue-numbers-book (joins with P13)',
     renderSettings: 'not seeded in P1; pinned in qa_settings and qa2_settings-more',
     renderMore: 'tiles only today — no read (P14 adds counted tiles and joins)',
     renderPermits: 'not seeded in P1; pinned in qa_permits and qa2_permits-measure-crew',
     renderAgents: 'not seeded in P1; pinned in qa_agents (joins with P6)',
     renderMeasure: 'a form — reads only on a file; pinned in qa2_permits-measure-crew',
     renderLearn: 'not seeded in P1; pinned in qa_agents_learn_round2',
-    inboxIntentPanel: 'not seeded in P1; pinned in qa_today and qa3_today-rest (joins with P12)',
-    studyPanel: 'not seeded in P1; pinned in qa2_calls-cal-leads (joins with P12)',
-    outreachPanel: 'not seeded in P1; pinned in outreach and qa2_today (joins with P12)',
-    websiteFormsPanel: 'not seeded in P1; pinned in qa_today and webhooks (joins with P12)',
     openPanel: 'P10 navigation, not a panel: it opens a screen and lands on one of its panels — no read of its own (directionB_todayTaps)',
   };
   it('every render* and *Panel function is covered or exempt with a reason — never both', () => {

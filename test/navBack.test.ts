@@ -193,16 +193,17 @@ describe('Back retraces every tab tapped, in order (Direction B P1)', () => {
     const drawn: string[] = [];
     const navDrawLine = oneLine('NAV_DRAW');
     const renders = [...new Set([...navDrawLine.matchAll(/\b(render[A-Z]\w*)\(/g)].map((m) => m[1]!))];
-    const core = new Function('$', 'history', 'window', 'setAppSub', 'talkEnd', 'photoLetGo', ...renders, `
+    const core = new Function('$', 'history', 'window', 'setAppSub', 'talkEnd', 'photoLetGo', 'fitTitle', ...renders, `
       let CUR_TAB = 'today'; let NAV_QUIET = false; const TALK = { on: false }; let PHOTO_OPEN = null;
       ${oneLine('VIEW_TITLES')}
+      ${oneLine('DOCK_OF')}
       ${oneLine('NAV_PARENT')}
       ${oneLine('SHEETS')}
       ${navDrawLine}
       ${['switchTab', 'navPush', 'navShowBack', 'navShow', 'navBack', 'sheetOpened', 'closeSheet'].map(fnText).join('\n')}
       ${pop}
       return { switchTab, navBack, sheetOpened, tab: () => CUR_TAB };`)(
-      $, history, window, () => {}, () => {}, () => {}, ...renders.map((r) => () => drawn.push(r)),
+      $, history, window, () => {}, () => {}, () => {}, () => {} /* fitTitle (P13 review) */, ...renders.map((r) => () => drawn.push(r)),
     ) as { switchTab: (w: string) => void; navBack: () => void; sheetOpened: (id: string) => void; tab: () => string };
     history.replaceState({ v: 'today', d: 0 }, '', '#today'); // the boot step
     const openSheet = (id: string) => { $(id)!.classList.add!('show'); core.sheetOpened(id); };
@@ -296,13 +297,24 @@ describe('a refused save says the server\'s own words', () => {
   });
 });
 
+/** A one-line `const NAME = …;` table's value, as written. */
+function oneLineVal(name: string): string {
+  const m = new RegExp(`^const ${name} = (.*);$`, 'm').exec(html);
+  if (!m) throw new Error('no one-line const ' + name);
+  return m[1]!;
+}
+
 describe('three small navigation fixes from the usability audit', () => {
   it('the sheets\' close X draws its icon at button size, not the browser\'s 300×150 default', () => {
     expect(html).toContain('.sheet-head button .hico{width:21px;height:21px}');
   });
   it('Settings opens from the gear and lights no dock tab', () => {
+    // Direction B P13: one DOCK_OF table says which tab lights (the plan: it replaces the hand-kept More list).
     const sw = html.slice(html.indexOf('function switchTab('), html.indexOf('\n}', html.indexOf('function switchTab(')));
-    expect(sw).toContain("['book', 'followups', 'perf', 'more', 'permits', 'agents', 'measure', 'learn', 'assistant'].indexOf(which)"); // R28: the Assistant desk sits behind More too
-    expect(sw).not.toContain("'perf', 'settings', 'more', 'permits', 'agents', 'measure', 'learn'].indexOf(which)");
+    expect(sw).toContain('DOCK_OF[which]');
+    const DOCK_OF = new Function(`return ${oneLineVal('DOCK_OF')};`)() as Record<string, string>;
+    expect(DOCK_OF).not.toHaveProperty('settings');
+    // R28: the Assistant desk sits behind More too; so do the Queue's four desks.
+    for (const v of ['book', 'followups', 'money', 'fleet', 'safety', 'perf', 'more', 'permits', 'agents', 'measure', 'learn', 'assistant']) expect(DOCK_OF[v], v).toBe('more');
   });
 });

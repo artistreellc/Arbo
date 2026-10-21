@@ -262,10 +262,12 @@ describe('every tap target on Today is a DESK_VIEW desk or a real screen (source
   const today = fnSrc('renderToday');
   const DESK_VIEW = new Function(`return ${/^const DESK_VIEW = (\{.*\});$/m.exec(html)![1]};`)() as Record<string, string>;
 
-  it('DESK_VIEW names the four desks, all on the Queue until P13 splits it, and the Queue\'s slots carry their ids', () => {
-    expect(DESK_VIEW).toEqual({ loops: 'followups', money: 'followups', fleet: 'followups', safety: 'followups' });
-    const q = fnSrc('renderFollowUps');
-    for (const id of ['queue-loops', 'queue-money', 'queue-fleet', 'queue-safety']) expect(q).toContain(`'${id}'`);
+  it('DESK_VIEW names the four desks — P13 split the Queue and re-pointed them — and each desk\'s slot carries its id', () => {
+    expect(DESK_VIEW).toEqual({ loops: 'followups', money: 'money', fleet: 'fleet', safety: 'safety' });
+    expect(fnSrc('renderFollowUps')).toContain("'queue-loops'");
+    expect(fnSrc('renderMoneyView')).toContain("'queue-money'");
+    expect(fnSrc('renderFleetView')).toContain("'queue-fleet'");
+    expect(fnSrc('renderSafetyView')).toContain("'queue-safety'");
   });
 
   it('every goTile and HERO.go hands its tap to openPanel, aimed at DESK_VIEW or a VIEW_TITLES key', () => {
@@ -295,6 +297,17 @@ describe('every tap target on Today is a DESK_VIEW desk or a real screen (source
     expect(today).toMatch(/goTile\(hud\.firstChild, \(\) => openPanel\('today', /);
     expect(today).toMatch(/HERO\.go\('alerts', \(\) => openPanel\('today', 'today-storm'\)\)/);
     expect(fnSrc('heroLoops')).toContain("HERO.go('loops', () => openPanel(DESK_VIEW.loops, 'queue-loops'))");
+  });
+
+  // Review (b-wave-2, correctness 1): "All N open loops →" switched to 'followups' with no
+  // guard — pointed at More, every test stayed green. It goes where the hero's loops stat
+  // goes, through the same table, and lands on the loops panel (flashed), not the screen top.
+  it('"All N open loops →" opens the open loops on Follow-ups, through DESK_VIEW like the hero\'s loops stat', () => {
+    const at = today.indexOf("const more = el('button', 'hudbtn', 'All ' + q.open.length + ' open loops →');");
+    expect(at).toBeGreaterThan(-1);
+    const wire = today.slice(at, today.indexOf('loopsPanel.appendChild(more);', at));
+    expect(wire).toContain("more.addEventListener('click', () => openPanel(DESK_VIEW.loops, 'queue-loops'));");
+    expect(wire).not.toContain('switchTab(');
   });
 
   it('a target is set only where its read succeeded — never in a failure path', () => {

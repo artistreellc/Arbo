@@ -180,6 +180,10 @@ header.scrolled{border-bottom-color:var(--hairline)}
 main{padding:8px 16px 16px;max-width:680px;margin:0 auto}
 .view{display:none}
 .view.active{display:block;animation:viewin .32s var(--ease)}
+/* P13 review: a desk holds its height through the minute redraw (deskView, renderFollowUps). On a phone its last card's
+   margin would collapse out of the view and out of the held height (the page moved 12 px at its bottom); as its own
+   formatting context the view keeps it. Layout-neutral: main's padding already stopped that margin. */
+@media (max-width:899px){#view-followups.active,#view-money.active,#view-fleet.active,#view-safety.active{display:flow-root}}
 @keyframes viewin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .viewhead{margin:10px 2px 14px}
 .viewhead h1{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1.08;letter-spacing:-.01em;color:var(--ink-1);font-variation-settings:'opsz' 72}
@@ -371,6 +375,22 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 .feed-state.cut::before,.feed-state.sim::before{background:var(--ink-4)}
 .feed-state.unread::before{background:none;border:2px solid var(--warning)}
 .texts .feed-state + .storm-muted{padding-left:18px}
+/* Direction B P12: one feeds card per screen — its headline is a button that opens every feed it folded or counted.
+   The dot is the worst kind it holds (the feed-state dots). A button, never a <details>: Today redraws every minute. */
+.card.feeds{padding:4px 14px}
+.feeds[hidden],.feeds-list[hidden]{display:none}
+.feeds-head{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:48px;border:0;background:none;padding:6px 0;font:inherit;text-align:left;color:var(--ink-2)}
+.feeds-head .feed-state{margin:0;font-size:14.5px}
+.feeds-head .fh{white-space:nowrap} /* a count stays with its words on a 320 px phone */
+.feeds-head::after{content:'';flex:none;width:8px;height:8px;border-right:2px solid var(--forest);border-bottom:2px solid var(--forest);transform:rotate(45deg);margin:0 6px 4px 0;transition:transform .2s}
+.feeds-head[aria-expanded="true"]::after{transform:rotate(-135deg);margin-bottom:-4px}
+.feeds-list{border-top:1px solid var(--hairline);padding:2px 0 6px}
+.feeds-item{padding:12px 0 0}
+.feeds-name{font-size:14.5px;font-weight:700;color:var(--ink-1);margin-bottom:6px}
+.feeds-item .panel-title{display:none} /* the name line above says it, with its state word */
+.feeds-item .feed-state,.feeds-item .storm-muted{margin-bottom:6px}
+.card.feeds .reading{padding:12px 2px;margin:0}
+@media (min-width:900px){.view .feeds{grid-column:1 / -1}}
 .loc-strip{display:flex;align-items:center;gap:12px;margin-bottom:12px;font-size:14px;color:var(--ink-2)}
 .loc-strip .badge{flex:none;min-width:92px;text-align:center;white-space:nowrap}
 .fleet-track{margin-top:10px}
@@ -636,6 +656,8 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 #appbar .hrow > div:first-child{min-width:0}
 #appbar .brand > span{min-width:0}
 #apptitle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* P13 review: a long title that will not fit one line even stepped down takes two (fitTitle), clamped — never spilled. */
+#apptitle.two{white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-height:1.1}
 .hbtns{flex:none}
 .talk-body{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
 .talk-body [hidden]{display:none}
@@ -736,6 +758,9 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
   <div id="view-cal" class="view"></div>
   <div id="view-book" class="view"></div>
   <div id="view-followups" class="view"></div>
+  <div id="view-money" class="view"></div>
+  <div id="view-fleet" class="view"></div>
+  <div id="view-safety" class="view"></div>
   <div id="view-calls" class="view"></div>
   <div id="view-perf" class="view"></div>
   <div id="view-settings" class="view"></div>
@@ -976,6 +1001,107 @@ function saveFailText(e) {
 }
 function showSaveFail(box, e) { const n = box.querySelector(':scope > .save-err') || box.appendChild(el('div', 'errline save-err')); n.textContent = saveFailText(e); return n; }
 
+// ---------- The feeds card (Direction B P12; R29 #1: one feeds card per screen that still names every dead feed, §1B) ----------
+// A screen hands each panel's answer — the node, or the read's promise — to place(slot, x):
+//  · a wrapper that only reports a feed cut on purpose, not in the practice data or not set up
+//    (data-off = cut | sim | unset, with data-feed-name) folds INTO the card;
+//  · one Arbo couldn't read (data-off = unread), or one kept in its place (data-keep: a partial
+//    read rides with it, or the schedule card), stays where it would show — and is counted too;
+//  · anything else goes to its slot, as it always did.
+// A read the screen shows off in a place of its own — the hero's '–', a Before you roll line, a tile —
+// is handed to note(name, where, kind) (P12 review: "N feeds off" read as a total, so it must be one):
+// counted and named, and left where it shows. The same feed noted twice counts once.
+// The card counts only the reads its screen hands it — never /health/feeds (two sources could
+// disagree) — and a read still in flight is "Reading…", never counted as working. It opens with a
+// button (aria-expanded), never a <details>: its screens redraw every minute, and an open <details>
+// holds the redraw (holdsTyping). Open stays open through a redraw (this launch only), and a redraw
+// keeps the last card up until its own reads land (P11's swap). Nothing off and nothing reading:
+// no card at all — never a calm line. The list runs in the screen's order, top to bottom.
+const FEEDS_SAID = { cut: 'cut on purpose', sim: 'not in the practice data', unset: 'not set up', unread: 'couldn’t read' }; // the headline's words (the spec's), in its order
+const FEEDS_OPEN = {}; // per screen: the card is open
+const FEEDS_BOX = {}; // per screen: its one card, kept across redraws
+const FEEDS_GEN = {}; // per screen: the newest draw owns the card
+function feedsCard(key) {
+  const gen = FEEDS_GEN[key] = (FEEDS_GEN[key] || 0) + 1;
+  const box = FEEDS_BOX[key] || el('div', 'card feeds');
+  FEEDS_BOX[key] = box;
+  const first = !box.dataset.drawn; // only a first draw shows readingLine(); a redraw waits for its reads, then swaps
+  const got = []; // { at, kind, name, node, slot } — node only when it folds into the card; slot: where it shows
+  let waiting = 0;
+  let order = 0;
+  // The screen's order: where each shows, top to bottom (4: the other follows it in the document);
+  // two in one place, or one not on the page, keep the order they were handed over.
+  const before = (a, b) => (a.slot === b.slot || !a.slot || !b.slot || !a.slot.isConnected || !b.slot.isConnected
+    ? a.at - b.at : a.slot.compareDocumentPosition(b.slot) & 4 ? -1 : 1);
+  const draw = () => {
+    if (gen !== FEEDS_GEN[key] || (!first && waiting)) return;
+    if (!waiting) box.dataset.drawn = '1';
+    if (!got.length && !waiting) { box.replaceChildren(); box.hidden = true; return; }
+    box.hidden = false;
+    const out = [];
+    if (got.length) {
+      const feeds = got.slice().sort(before); // the screen's order, never the order the reads landed
+      const n = {};
+      for (const f of feeds) n[f.kind] = (n[f.kind] || 0) + 1;
+      const worst = n.unread ? 'unread' : n.unset ? 'unset' : n.sim ? 'sim' : 'cut';
+      const btn = el('button', 'feeds-head');
+      btn.type = 'button';
+      // Each count stays with its words (.fh never breaks inside); a narrow phone breaks between them.
+      const parts = [plural(feeds.length, 'feed') + ' off:'].concat(Object.keys(FEEDS_SAID).filter((k) => n[k]).map((k) => n[k] + ' ' + FEEDS_SAID[k]));
+      const said = el('span', 'feed-state ' + worst);
+      parts.forEach((t, i) => {
+        if (i) said.appendChild(document.createTextNode(' '));
+        said.appendChild(el('span', 'fh', t + (i && i < parts.length - 1 ? ',' : '')));
+      });
+      btn.appendChild(said);
+      const list = el('div', 'feeds-list');
+      list.id = 'feeds-' + key;
+      // Every feed by name, with its state word — the folded wrapper's own words under it, or where to find it.
+      // A folded line that already opens "Name: state word" is its own name line (never said twice).
+      for (const f of feeds) {
+        const item = el('div', 'feeds-item');
+        const own = f.node && (f.node.classList.contains('feed-state') ? f.node : f.node.querySelector('.feed-state'));
+        if (!own || !own.textContent.startsWith(f.name + ': ' + FEED_WORD[f.kind])) item.appendChild(el('div', 'feeds-name', f.name + ' — ' + FEED_WORD[f.kind]));
+        item.appendChild(f.node || el('div', 'storm-muted', 'Shown in its own place on this screen.'));
+        list.appendChild(item);
+      }
+      const show = (open) => { btn.setAttribute('aria-expanded', open ? 'true' : 'false'); list.hidden = !open; };
+      btn.setAttribute('aria-controls', list.id);
+      show(!!FEEDS_OPEN[key]);
+      btn.addEventListener('click', () => { FEEDS_OPEN[key] = !FEEDS_OPEN[key]; show(FEEDS_OPEN[key]); });
+      out.push(btn, list);
+    }
+    if (waiting) out.push(readingLine());
+    box.replaceChildren(...out);
+  };
+  const place = (slot, x) => {
+    const at = order++;
+    waiting++;
+    draw();
+    return Promise.resolve(x).then((node) => {
+      if (!node) return; // a 401 (the key wall's) or a panel with nothing to say
+      const kind = node.dataset && node.dataset.off;
+      if (Object.prototype.hasOwnProperty.call(FEEDS_SAID, kind)) {
+        const stays = kind === 'unread' || node.dataset.keep === '1';
+        got.push({ at: at, kind: kind, name: node.dataset.feedName || 'A feed', node: stays ? null : node, slot: slot });
+        if (!stays) return;
+      }
+      slot.appendChild(node);
+    }).catch(() => { /* a panel that threw places nothing, as before */ }).finally(() => { waiting--; draw(); });
+  };
+  // where: the element it shows off in (for the order); kind: what the read came to — a FEEDS_SAID kind, or null when it read.
+  const note = (name, where, kind) => {
+    const at = order++;
+    waiting++;
+    draw();
+    return Promise.resolve(kind).then((k) => {
+      if (!Object.prototype.hasOwnProperty.call(FEEDS_SAID, k) || got.some((f) => f.name === name)) return;
+      got.push({ at: at, kind: k, name: name, node: null, slot: where });
+    }).catch(() => { /* a read that threw is named where it shows, as before */ }).finally(() => { waiting--; draw(); });
+  };
+  return { el: box, place: place, note: note };
+}
+
 // ONE status -> colour table. Every chip says what it means with one of five tones (alarm > stop > watch > good > info).
 // TONE WORDS (the canonical list) — a new chip finds its word here, or the nearest kin of it:
 //   alarm = EMERGENCY, POWER LINES, the power-line CALL FIRST, NO AERIAL WORK (nothing is stronger); the assistant's
@@ -1136,6 +1262,9 @@ async function locationStrip() {
     // titled card of its own (data-feed tells renderToday to give it one).
     const w = el('div');
     w.dataset.feed = '1';
+    // Direction B P12: what it reports, for the feeds card — a gap on purpose folds in, a failed read stays here.
+    w.dataset.off = feedKind(e);
+    w.dataset.feedName = 'Location tracking';
     w.appendChild(el('div', 'panel-title', 'Location tracking'));
     w.appendChild(feedLine(e, 'Location tracking', feedKind(e) === 'unread' ? 'It may still be on.' : 'No check-ins are being recorded.'));
     return w;
@@ -1186,7 +1315,13 @@ async function inboxIntentPanel() {
   };
   let d;
   try { d = await api('/api/inbox/intents'); }
-  catch (e) { return e.code === 401 ? null : feedLine(e, 'Inbox'); }
+  catch (e) {
+    if (e.code === 401) return null;
+    const n = feedLine(e, 'Inbox');
+    n.dataset.off = feedKind(e); // Direction B P12: the feeds card folds or counts it
+    n.dataset.feedName = 'Inbox';
+    return n;
+  }
   if (d.pipeline === 'not_started') return null;
   const wrap = el('div');
   const title = el('div', 'panel-title', 'Inbox');
@@ -1203,8 +1338,10 @@ async function inboxIntentPanel() {
       : (!r || r === 'inbox watch has not completed a pass') ? 'Arbo hasn’t finished its first inbox check yet.'
       : 'Arbo couldn’t read Gmail on its last check' + (d.gmailUnavailableSince ? ' (not since ' + fmtTime(d.gmailUnavailableSince) + ')' : '') + '.';
     wrap.appendChild(el('div', 'feed-state ' + (sim ? 'sim' : unset ? 'unset' : 'unread'), why + ' That doesn’t mean no mail came in.'));
+    wrap.dataset.off = sim ? 'sim' : unset ? 'unset' : 'unread'; // Direction B P12: for the feeds card
+    wrap.dataset.feedName = 'Inbox';
     const gl0 = gmailGapLine(d.gmailGap);
-    if (gl0) wrap.appendChild(gl0);
+    if (gl0) { wrap.appendChild(gl0); wrap.dataset.keep = '1'; } // mail known unread never folds away (partial reads stay in place)
     return wrap;
   }
   const gapLine = gmailGapLine(d.gmailGap);
@@ -1518,6 +1655,8 @@ async function studyPanel(limit) {
       ? el('div', 'feed-state unset', 'Quo isn\u2019t connected to Arbo yet \u2014 Arbo can\u2019t read your customer threads. That doesn\u2019t mean there are none.')
       : feedLine(e, 'Customer notes', 'That doesn\u2019t mean there are none.'));
     if (quoOff) w.dataset.quoOff = '1'; // fillQuoSlots folds the three Quo cards into one when all three say this
+    w.dataset.off = quoOff ? 'unset' : feedKind(e); // Direction B P12: for the feeds card
+    w.dataset.feedName = 'Customer notes';
     return w;
   }
   const st = d.status;
@@ -1571,10 +1710,14 @@ async function studyPanel(limit) {
 // any read so the order never depends on which lands first. When all three say
 // Quo isn't connected, ONE titled card says it once. Otherwise each panel fills
 // its own slot, and a read that throws empties only its own ('.slot:empty').
-function fillQuoSlots(reads, slots) {
+// Direction B P12: a screen with a feeds card hands its place(slot, x); every
+// slot is handed over now, before the reads land, so the card knows they are in
+// flight. Without one (Calls), each answer is appended, as it always was.
+function fillQuoSlots(reads, slots, place) {
+  const put = place || ((slot, x) => x.then((b) => { if (b) slot.appendChild(b); }));
   // LINKS_READY too: in practice mode the gap is "not in the practice data",
   // not a real outage — the same words Inbox and Website forms use there.
-  return Promise.all([Promise.allSettled(reads), LINKS_READY]).then(([rs, links]) => {
+  const got = Promise.all([Promise.allSettled(reads), LINKS_READY]).then(([rs, links]) => {
     const bs = rs.map((r) => (r.status === 'fulfilled' ? r.value : null));
     if (bs.every((b) => b && b.dataset.quoOff)) {
       const q = el('div');
@@ -1582,11 +1725,13 @@ function fillQuoSlots(reads, slots) {
       q.appendChild(links === 'simulation'
         ? el('div', 'feed-state sim', Cap(FEED_WORD.sim) + ' — no real customer threads, texts or Sona calls show here; those stay in Quo.') // "real": the PRACTICE text under Calls › Texts is made up
         : el('div', 'feed-state unset', 'Quo isn’t connected to Arbo yet — Arbo can’t read your customer threads, can’t text anyone, and Sona’s calls aren’t reaching Arbo. That doesn’t mean there are no customer threads or Sona calls.'));
-      slots[0].appendChild(q);
-      return;
+      q.dataset.off = links === 'simulation' ? 'sim' : 'unset'; // Direction B P12: one feed on the feeds card
+      q.dataset.feedName = 'Quo';
+      return slots.map((s, i) => (i ? null : q)); // the first slot carries it; the others stay empty
     }
-    bs.forEach((b, i) => { if (b) slots[i].appendChild(b); });
+    return bs;
   });
+  return Promise.all(slots.map((s, i) => put(s, got.then((bs) => bs[i]))));
 }
 
 // ---------- Sona via Quo (Mike, 2026-09-24: "let sona handle it for a while while arbo learns from it") ----------
@@ -1629,6 +1774,8 @@ async function sonaPanel(limit, withTranscripts) {
     const w = el('div');
     w.appendChild(el('div', 'panel-title', 'Sona calls (Quo)'));
     w.appendChild(feedLine(e, 'Sona (Quo)'));
+    w.dataset.off = feedKind(e); // Direction B P12: for the feeds card
+    w.dataset.feedName = 'Sona calls';
     return w;
   }
   const wrap = el('div');
@@ -1638,6 +1785,8 @@ async function sonaPanel(limit, withTranscripts) {
     // Its own sentence here, so fillQuoSlots can fold it into one Quo card (quoOff).
     wrap.appendChild(el('div', 'feed-state unset', 'Waiting on Quo — Sona’s calls are not reaching Arbo.'));
     wrap.dataset.quoOff = '1';
+    wrap.dataset.off = 'unset'; // Direction B P12: for the feeds card
+    wrap.dataset.feedName = 'Sona calls';
     return wrap;
   }
   if (st.registration.state !== 'ok') {
@@ -1795,6 +1944,8 @@ async function outreachPanel(full) {
       ? el('div', 'feed-state unset', 'Waiting on Quo — nothing can be texted.')
       : feedLine(e, 'Text outreach'));
     if (quoOff) wrap0.dataset.quoOff = '1'; // fillQuoSlots folds the three Quo cards into one when all three say this
+    wrap0.dataset.off = quoOff ? 'unset' : feedKind(e); // Direction B P12: for the feeds card
+    wrap0.dataset.feedName = 'Text outreach';
     return wrap0;
   }
   const st = d.status;
@@ -1910,17 +2061,26 @@ async function outreachPanel(full) {
 async function websiteFormsPanel() {
   let d;
   try { d = await api('/api/webhooks/forms'); }
-  catch (e) { return e.code === 401 ? null : feedLine(e, 'Website forms'); }
+  catch (e) {
+    if (e.code === 401) return null;
+    const n = feedLine(e, 'Website forms');
+    n.dataset.off = feedKind(e); // Direction B P12: the feeds card folds or counts it
+    n.dataset.feedName = 'Website forms';
+    return n;
+  }
   const wrap = el('div');
   wrap.appendChild(el('div', 'panel-title', 'Website forms'));
   if (!d.wired) {
     // §1B: an unwired feed is NAMED. The emailed copy of each form still
     // reaches Gmail — whether Arbo can read Gmail is the Inbox card's job.
     // In practice mode it is a gap on purpose, said in the practice words.
-    wrap.appendChild((await LINKS_READY) === 'simulation'
+    const sim = (await LINKS_READY) === 'simulation';
+    wrap.appendChild(sim
       ? el('div', 'feed-state sim', Cap(FEED_WORD.sim) + '. Real ones still arrive in your Gmail inbox.')
       : el('div', 'feed-state unset',
         'Website forms aren’t connected to Arbo yet. They still arrive in your Gmail inbox.'));
+    wrap.dataset.off = sim ? 'sim' : 'unset'; // Direction B P12: for the feeds card
+    wrap.dataset.feedName = 'Website forms';
     return wrap;
   }
   if (!d.forms.length) {
@@ -1956,6 +2116,8 @@ async function receptionStrip() {
     if (e.code === 401) return null;
     // Every path opens with the card's title, so the card is never headless.
     const w = el('div');
+    w.dataset.off = feedKind(e); // Direction B P12: for the feeds card
+    w.dataset.feedName = 'Arbo’s phone line';
     w.appendChild(el('div', 'panel-title', 'Arbo’s phone line'));
     w.appendChild(el('div', 'feed-state ' + feedKind(e), 'Reception: status unavailable right now.'));
     return w;
@@ -1969,6 +2131,8 @@ async function receptionStrip() {
     const tb = document.getElementById('talk-btn');
     if (tb) tb.remove();
     wrap.appendChild(el('div', 'feed-state cut', 'Off on purpose — disconnected while Sona handles calls. Nothing was deleted.'));
+    wrap.dataset.off = 'cut'; // Direction B P12: a line cut on purpose folds into the feeds card
+    wrap.dataset.feedName = 'Arbo’s phone line';
     return wrap;
   }
   if (!s.configured) {
@@ -2088,12 +2252,21 @@ async function stormLawFlag(alerting) {
   catch (e) {
     if (e.code === 401 || e.code === 404) return null;
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
-    return feedKind(e) === 'unset' ? null : feedLine(e, 'Storm price law');
+    if (feedKind(e) === 'unset') return null;
+    const n = feedLine(e, 'Storm price law');
+    n.dataset.off = feedKind(e); // Direction B P12: the feeds card folds or counts it
+    n.dataset.feedName = 'Storm price law';
+    return n;
   }
   const note = typeof d.governorNote === 'string' && d.governorNote ? d.governorNote : 'Governor declarations are not in any feed Arbo can read.';
   if (d.state === 'none') return (await alerting) === true ? el('div', 'storm-muted', 'Storm price law: no open FEMA declaration. ' + note) : null;
   // 'unreadable', or a state this page does not know: named, never read as "no declaration" (§1B).
-  if (d.state !== 'active') return feedLine(null, 'Storm price law');
+  if (d.state !== 'active') {
+    const n = feedLine(null, 'Storm price law');
+    n.dataset.off = 'unread'; // Direction B P12: counted on the feeds card, shown here
+    n.dataset.feedName = 'Storm price law';
+    return n;
+  }
   const box = el('div', 'late');
   box.appendChild(document.createTextNode('Virginia post-disaster price law in effect — check with counsel'));
   for (const x of Array.isArray(d.declarations) ? d.declarations : []) {
@@ -2428,7 +2601,7 @@ const ROLL_ROWS = { safety: 'Crew & safety', fleet: 'Fleet', leads: 'Emergency l
 // land (P3's swap); only a first draw says "Reading…". The newest draw owns the card.
 let ROLL_BOX = null;
 let ROLL_GEN = 0;
-function beforeYouRoll(emgP, stormP) {
+function beforeYouRoll(emgP, stormP, note) {
   const gen = ++ROLL_GEN;
   const box = ROLL_BOX || el('div', 'card roll');
   ROLL_BOX = box;
@@ -2444,6 +2617,10 @@ function beforeYouRoll(emgP, stormP) {
     leads: emgP.then((r) => (!r ? null : r.gap ? { e: r.gap } : { v: r.list }), (e) => ({ e: e })),
     weather: stormP.then((o) => (!o ? { e: null } : o.error ? { e: o.error } : { v: o }), (e) => ({ e: e })),
   };
+  // Direction B P12 review: Crew & safety and Fleet are read here and only here, so Today's feeds card is
+  // handed them (note) and counts them too — each its kind, or null when it read; a 401 is the key wall's.
+  // Emergency leads and the weather are Today's own reads, counted there.
+  if (note) for (const k of ['safety', 'fleet']) note(ROLL_ROWS[k], box, got[k].then((r) => ('e' in r && !(r.e && r.e.code === 401) ? LINKS_READY.then(() => feedKind(r.e)) : null)));
   const names = (a) => (a.length === 1 ? a[0] : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]);
   const draw = () => {
     if (gen !== ROLL_GEN) return; // a newer redraw owns the card
@@ -2523,9 +2700,9 @@ function beforeYouRoll(emgP, stormP) {
   Promise.all(Object.keys(ROLL_ROWS).map((k) => got[k].then((r) => { res[k] = r; }))).then(() => LINKS_READY).then(draw);
   return box;
 }
-// Direction B P10: where Today's taps land. The four back-office desks still live on
-// the Queue; P13 splits it and re-points them here, in one place.
-const DESK_VIEW = { loops: 'followups', money: 'followups', fleet: 'followups', safety: 'followups' };
+// Direction B P10: where Today's taps land. P13 split the Queue into four desks and
+// re-pointed them here, in one place: the open loops live on Follow-ups.
+const DESK_VIEW = { loops: 'followups', money: 'money', fleet: 'fleet', safety: 'safety' };
 // Open a screen and land on one panel of it — openSonaCall's way: switch, look
 // (again while the screen draws), scroll, flash. A desk never drawn is drawn first
 // (the step-back draw). A miss still lands on the right screen. `target` is an
@@ -2565,6 +2742,10 @@ function goTile(t, fn) {
 async function renderToday() {
   const v = $('view-today');
   v.replaceChildren();
+  // Direction B P12: Today's feeds card. Every panel slot below hands its read to feeds.place —
+  // a feed cut on purpose, not in the practice data or not set up folds into the card; one Arbo
+  // couldn't read stays in its place and is counted too. Made before any read is handed to it.
+  const feeds = feedsCard('today');
   v.appendChild(buildHero());
   // Direction B P11: Before you roll sits directly under the hero. It is filled
   // (and its reads start) below, before the brief's await — that await ends
@@ -2576,7 +2757,9 @@ async function renderToday() {
   const roSlot = el('div', 'slot plain');
   v.appendChild(roSlot);
   LINKS_READY.then(() => { if (LINKS === 'readonly') roSlot.appendChild(el('div', 'storm-muted', 'Read-only: Arbo is reading your real records and saving nothing. Anything that would save says so.')); });
-  heroLoops();
+  // Direction B P12 review: a read Today shows off in a place of its own — the hero's '–', Before you roll,
+  // a tile — is noted on the feeds card too (counted, named, left where it shows), so "N feeds off" is a total.
+  feeds.note('Open loops', v.firstChild, heroLoops());
   const stormSlot = el('div', 'slot plain');
   stormSlot.id = 'today-storm'; // where the hero's weather alerts land (Direction B P10)
   v.appendChild(stormSlot);
@@ -2584,6 +2767,9 @@ async function renderToday() {
   const alerting = stormBanner().then((b) => { if (b) stormSlot.appendChild(b); return !!b; });
   // Direction B P10: weather alerts above 0 open the storm card; a real 0 stays inert (a fact, not a gap).
   alerting.then((on) => { if (on && HERO) HERO.go('alerts', () => openPanel('today', 'today-storm')); });
+  // The hero's weather stat names a weather read that failed; the card counts it (a 401 is the key wall's).
+  feeds.note('Weather alerts', v.firstChild, alerting.then(() => (!STORM_READ ? 'unread' : !STORM_READ.error || STORM_READ.error.code === 401 ? null
+    : LINKS_READY.then(() => feedKind(STORM_READ.error)))));
   // R26: an EMERGENCY lead sits right under the storm alert and above the run,
   // then the owner's storm price-law flag. Their places are set before any read;
   // the leads read starts below, once the tiles it counts into exist. The alarm
@@ -2593,7 +2779,7 @@ async function renderToday() {
   v.appendChild(emgSlot);
   const lawSlot = el('div', 'slot plain');
   v.appendChild(lawSlot);
-  stormLawFlag(alerting).then((b) => { if (b) lawSlot.appendChild(b); });
+  feeds.place(lawSlot, stormLawFlag(alerting));
   // R28: what the assistant is waiting on Mike for — under the alarms, above the
   // run, its place set before the read. Empty (off, not set up, nothing waiting) it hides ('.slot:empty').
   const assistSlot = el('div', 'slot assist');
@@ -2609,6 +2795,8 @@ async function renderToday() {
   const instr = el('div');
   instr.style.display = 'contents';
   v.appendChild(instr);
+  // Direction B P12: the feeds card — under the day and its instruments, above the notices it folds.
+  v.appendChild(feeds.el);
   // Yard check needs no data, so it renders before the brief fetch: with the
   // links cut the brief returns early, and this is its only way in.
   const yardBtn = el('button', 'hudbtn');
@@ -2657,25 +2845,29 @@ async function renderToday() {
       for (const o of q.open.slice(0, 3)) loopsPanel.appendChild(loopCard(o));
       if (q.open.length > 3) {
         const more = el('button', 'hudbtn', 'All ' + q.open.length + ' open loops →');
-        more.addEventListener('click', () => switchTab('followups'));
+        more.addEventListener('click', () => openPanel(DESK_VIEW.loops, 'queue-loops')); // where the hero's loops stat goes (P13 review)
         loopsPanel.appendChild(more);
       }
     }
   }).catch(() => {});
-  api('/api/properties').then((p) => {
+  // Direction B P12 review: each tile's read comes to its kind for the feeds card (null when it read), and a
+  // dead tile is worded once the links are known — the same word the card uses (never "cut" for "not set up").
+  feeds.note('Coming due', dueTile, api('/api/properties').then((p) => {
     // A dead forecast feed stays '\u2013' \u2014 null is not zero (\u00a71B honesty).
     if (Array.isArray(p.comingDue)) {
       setTile(dueTile, p.comingDue.length, p.comingDue.length ? 'warn' : 'ok-t');
       goTile(dueTile, () => openPanel('book'));
     } else tileWhy(dueTile, 'forecast unreadable');
-  }).catch((e) => { if (e.code !== 401) tileWhy(dueTile, FEED_TAG[feedKind(e)]); });
-  api('/api/agents/runs?limit=5').then((r) => {
+    return Array.isArray(p.comingDue) ? null : 'unread'; // a body without its list is a read that failed
+  }).catch((e) => (e.code === 401 ? null : LINKS_READY.then(() => { tileWhy(dueTile, FEED_TAG[feedKind(e)]); return feedKind(e); }))));
+  feeds.note('Agent runs', agentTile, api('/api/agents/runs?limit=5').then((r) => {
     setTile(agentTile, r.runs.length, r.runs.some(x => x.status === 'error') ? 'warn' : 'ok-t');
     goTile(agentTile, () => openPanel('agents'));
     // R32: these runs live in memory and were not saved — the tile says so.
     if (r.runLog === 'not_saved_read_only') tileWhy(agentTile, 'not saved — read-only');
-  }).catch((e) => { if (e.code !== 401) tileWhy(agentTile, FEED_TAG[feedKind(e)]); });
-  api('/api/money').then((m) => {
+    return null;
+  }).catch((e) => (e.code === 401 ? null : LINKS_READY.then(() => { tileWhy(agentTile, FEED_TAG[feedKind(e)]); return feedKind(e); }))));
+  feeds.note('Overdue and to bill', owedTile, api('/api/money').then((m) => {
     // Overdue is past-due invoices, the legal gate's held ones included —
     // still owed, just never nudged. Unbilled work is its own tile, and an
     // invoice Arbo cannot date is named, never counted as either.
@@ -2690,14 +2882,27 @@ async function renderToday() {
     if (nb) billTile.appendChild(el('small', '', '+' + nb + ' no agreed figure'));
     goTile(owedTile, () => openPanel(DESK_VIEW.money, 'queue-money'));
     goTile(billTile, () => openPanel(DESK_VIEW.money, 'queue-money'));
+    return null;
   }).catch((e) => {
-    if (e.code === 401) return;
-    tileWhy(owedTile, FEED_TAG[feedKind(e)]);
-    tileWhy(billTile, FEED_TAG[feedKind(e)]);
-  });
+    if (e.code === 401) return null;
+    return LINKS_READY.then(() => {
+      tileWhy(owedTile, FEED_TAG[feedKind(e)]);
+      tileWhy(billTile, FEED_TAG[feedKind(e)]);
+      return feedKind(e);
+    });
+  }));
   // Direction B P11: the emergency read below, handed to Before you roll — never a second read.
   let emgDone;
   const emgP = new Promise((res) => { emgDone = res; });
+  // Direction B P12: a leads read Arbo could not make goes through the feeds card — folded when it is a
+  // gap on purpose, kept here when it failed; the emergencies tile names it either way (setEmergencies).
+  feeds.place(emgSlot, emgP.then((r) => {
+    if (!r || !r.gap) return null;
+    const n = feedLine(r.gap, 'Emergency leads', 'That doesn’t mean there are none.');
+    n.dataset.off = feedKind(r.gap);
+    n.dataset.feedName = 'Emergency leads';
+    return n;
+  }));
   // Safety flags fill the first row exactly (one: all of it, two: half each), so the six tiles stay one even row on a wide screen.
   const layoutFlags = () => {
     const flags = hud.querySelectorAll('.wide');
@@ -2728,8 +2933,7 @@ async function renderToday() {
     emgDone(r);
     if (!r) return;
     if (r.gap) {
-      emgSlot.appendChild(feedLine(r.gap, 'Emergency leads', 'That doesn’t mean there are none.'));
-      setEmergencies('leads', FEED_TAG[feedKind(r.gap)]);
+      setEmergencies('leads', FEED_TAG[feedKind(r.gap)]); // its named line goes through the feeds card (above)
       return;
     }
     setEmergencies('leads', r.list.length);
@@ -2741,14 +2945,15 @@ async function renderToday() {
       emgSlot.appendChild(more);
     }
   });
-  rollSlot.appendChild(beforeYouRoll(emgP, alerting.then(() => STORM_READ)));
+  rollSlot.appendChild(beforeYouRoll(emgP, alerting.then(() => STORM_READ), feeds.note));
   const locSlot = el('div', 'slot plain');
   v.appendChild(locSlot);
-  // A failed read gets a titled card (data-feed); the live ON/OFF strip stays plain.
-  locationStrip().then((b) => { if (!b) return; if (b.dataset.feed) locSlot.className = 'slot'; locSlot.appendChild(b); });
+  // A failed read gets a titled card (data-feed) where it stays; the live ON/OFF strip stays plain.
+  // Direction B P12: tracking cut on purpose folds into the feeds card (its slot, empty, hides).
+  feeds.place(locSlot, locationStrip().then((b) => { if (!b) return b; if (b.dataset.feed) locSlot.className = 'slot'; return b; }));
   const recSlot = el('div', 'slot');
   v.appendChild(recSlot);
-  receptionStrip().then((b) => { if (b) recSlot.appendChild(b); });
+  feeds.place(recSlot, receptionStrip());
   // The Phone line button lives ABOVE the brief fetch on purpose: the first version
   // sat in the post-brief section, and with the data links cut the brief's
   // early return meant the button never rendered — on production, exactly.
@@ -2763,7 +2968,7 @@ async function renderToday() {
   // and anything below that line never renders in production.
   const inboxSlot = el('div', 'slot');
   v.appendChild(inboxSlot);
-  inboxIntentPanel().then((b) => { if (b) inboxSlot.appendChild(b); });
+  feeds.place(inboxSlot, inboxIntentPanel());
   // R24 customer notes, R22 text outreach and Sona via Quo — above the brief
   // fetch, same links-cut lesson. Their three slots are placed here, before any
   // read, so the order never depends on which read lands first ('.slot:empty'
@@ -2775,19 +2980,24 @@ async function renderToday() {
   v.appendChild(outreachSlot);
   const sonaSlot = el('div', 'slot');
   v.appendChild(sonaSlot);
-  fillQuoSlots([studyPanel(5), outreachPanel(false), sonaPanel(3, false)], [studySlot, outreachSlot, sonaSlot]);
+  fillQuoSlots([studyPanel(5), outreachPanel(false), sonaPanel(3, false)], [studySlot, outreachSlot, sonaSlot], feeds.place);
   // R19: website forms delivered straight from Resend — above the brief
   // fetch for the same links-cut-early-return reason as everything here.
   const formsSlot = el('div', 'slot');
   v.appendChild(formsSlot);
-  websiteFormsPanel().then((b) => { if (b) formsSlot.appendChild(b); });
+  feeds.place(formsSlot, websiteFormsPanel());
   const start = new Date(); start.setHours(0, 0, 0, 0);
   const end = new Date(start); end.setDate(end.getDate() + 1);
+  // Direction B P12: the schedule's place on the feeds card is taken now, before the brief is read, so the
+  // card says "Reading…" until it lands. A schedule Arbo can't read keeps its card in the day (data-keep) and
+  // is counted on the feeds card; every way out settles it (null: nothing to count).
+  let schedDone;
+  feeds.place(day, new Promise((res) => { schedDone = res; }));
   let brief;
   try {
     brief = await api('/api/brief?from=' + start.toISOString() + '&to=' + end.toISOString());
   } catch (e) {
-    if (e.code === 401) return showKeywall();
+    if (e.code === 401) { schedDone(null); return showKeywall(); }
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
     const k = feedKind(e);
     const why = FEED_TAG[k];
@@ -2804,9 +3014,13 @@ async function renderToday() {
     calBtn.style.margin = '14px 0 0';
     calBtn.addEventListener('click', () => { switchTab('cal'); renderCalendar(); });
     sc.appendChild(calBtn);
-    day.appendChild(sc);
+    sc.dataset.off = k;
+    sc.dataset.feedName = 'Schedule';
+    sc.dataset.keep = '1';
+    schedDone(sc);
     return;
   }
+  schedDone(null);
   const s = brief.summary;
   // H4: the brief reads Arbo's own estimate and job rows; Mike's Google Calendar is not read (his call).
   const onlyArbo = brief.scheduleSource === 'arbo_tables_only';
@@ -4284,7 +4498,7 @@ async function renderPerformance() {
   v.replaceChildren();
   // R26: the R25 desks' heading, above the read so a dead feed keeps it.
   const head = el('div', 'viewhead');
-  head.appendChild(el('div', 'eyebrow', 'Analyst'));
+  head.appendChild(el('div', 'eyebrow', DESK_LINE.perf));
   head.appendChild(el('h1', '', 'Which areas & campaigns pay'));
   head.appendChild(el('p', '', 'Each area rated by revenue per crew-hour, and what each campaign cost per booked job.'));
   v.appendChild(head);
@@ -5348,8 +5562,60 @@ $('bd-go').addEventListener('click', async () => {
   }
   out.appendChild(el('div', 'internal-tag',
     'Arbo never places the order and holds no card — you click, you buy.'));
-  renderFollowUps();
+  // Direction B P13: the unit lives on Fleet now, and Today's Before you roll names a unit DOWN or HELD.
+  renderFleetView();
+  renderToday();
 });
+
+// ---------- Money, Fleet, Crew & safety (Direction B P13; R29 #1: the Queue split by the job it holds) ----------
+// Each is a screen of its own, with its R26 desk name as the small line above its title (DESK_LINE),
+// drawn before any read. Then it calls the panels the Queue held, unchanged, each in a slot of its
+// own — every panel still names its own dead feed in its own words (§1B), and one that throws takes
+// none of the others down. "Reading…" sits under the panels on a first draw until all have read. A
+// newer draw owns the screen (DESK_GEN); an older one's panels fill slots no longer on it.
+// The slot ids are where Today's taps, Before you roll and the agents' proposals land (DESK_VIEW).
+const DESK_LINE = { followups: 'Chief of Staff', money: 'Yard Boss', fleet: 'Yard Boss', safety: 'Crew Chief', perf: 'Analyst' };
+const DESK_GEN = {};
+async function deskView(view, sub, panels) {
+  const gen = DESK_GEN[view] = (DESK_GEN[view] || 0) + 1;
+  const v = $('view-' + view);
+  // P13 review: the minute redraw must not collapse the screen and throw its scroll to the top (renderCalls' hold).
+  v.style.minHeight = v.offsetHeight + 'px';
+  const first = !v.hasChildNodes();
+  v.replaceChildren();
+  const head = el('div', 'viewhead');
+  head.appendChild(el('div', 'eyebrow', DESK_LINE[view]));
+  head.appendChild(el('h1', '', VIEW_TITLES[view]));
+  head.appendChild(el('p', '', sub));
+  v.appendChild(head);
+  const runs = panels.map(([id, render]) => {
+    const slot = el('div');
+    if (id) slot.id = id;
+    v.appendChild(slot);
+    return render(slot);
+  });
+  const reading = first ? v.appendChild(readingLine()) : null;
+  await Promise.allSettled(runs);
+  if (gen !== DESK_GEN[view]) return; // a newer draw owns the screen, and its hold
+  if (reading) reading.remove();
+  v.style.minHeight = '';
+}
+// §4.8 money: unbilled work and unpaid invoices.
+function renderMoneyView() {
+  return deskView('money', 'What is past due, and finished work ready to bill. Arbo recommends — you decide.', [['queue-money', renderMoney]]);
+}
+// §6E fleet: every unit, what is down or held (R26) — a scheduling constraint — and the Bouncie line (R31).
+function renderFleetView() {
+  return deskView('fleet', 'Every unit, what is down or held, and breakdowns. Only you sign a held unit back on.', [['queue-fleet', renderFleet]]);
+}
+// §6V safety leads: a lapsed rescue card outranks everything else on the desk; its blind spots and
+// aerial stops come first (renderSafety). Then the people and cards on file (§4), training (§6M.5),
+// lessons waiting on Mike's name (§4.7) and the reference library (§6U).
+function renderSafetyView() {
+  return deskView('safety', 'Credentials and near misses first, then the roster, training, safety lessons and the library. Arbo recommends — you decide.', [
+    ['queue-safety', renderSafety], [null, renderRoster], [null, renderTrainingBoard], [null, renderVetting], [null, renderLibraryDesk],
+  ]);
+}
 
 // ---------- Follow-ups (§16–20 queue: ARBOR recommends, you approve) ----------
 const FU_LABEL = {
@@ -5365,22 +5631,26 @@ let FU_GEN = 0;
 async function renderFollowUps() {
   const gen = ++FU_GEN;
   const v = $('view-followups');
+  // P13 review: the minute redraw must not collapse the screen and throw its scroll to the top (renderCalls' hold);
+  // the height goes once both reads below have landed (release), and only by the newest draw.
+  v.style.minHeight = v.offsetHeight + 'px';
   const first = !v.hasChildNodes(); // Direction B P3: readingLine() where the read lands, on a first draw only
   v.replaceChildren();
-  // R26: the R25 desks' heading. The Yard Boss desk is this screen's fleet & money part.
+  // R26: the R25 desks' heading. Direction B P13: the Queue is split by the job it holds (R29 #1) —
+  // this is Follow-ups (Chief of Staff); Money, Fleet and Crew & safety are screens of their own (deskView).
   const head = el('div', 'viewhead');
-  head.appendChild(el('div', 'eyebrow', 'Chief of Staff'));
-  head.appendChild(el('h1', '', 'What’s still open'));
-  head.appendChild(el('p', '', 'Open loops, safety, recommended sends, the crew, money and the fleet. Arbo recommends — you decide.'));
+  head.appendChild(el('div', 'eyebrow', DESK_LINE.followups));
+  head.appendChild(el('h1', '', VIEW_TITLES.followups));
+  head.appendChild(el('p', '', 'Open loops and recommended sends. Arbo recommends — you decide.'));
   v.appendChild(head);
-  // Every panel reads its own feed and names its own failure, so they are all
+  // Both panels read their own feed and name their own failure, so both are
   // built BEFORE the follow-ups read. One missing feed must never blank the
-  // whole Queue — the safety board still leads it (§1B).
-  // §1E open loops lead the Queue: the things the day silently dropped.
+  // whole screen (§1B).
+  // §1E open loops lead: the things the day silently dropped.
   const loopsSlot = el('div');
   loopsSlot.id = 'queue-loops'; // two columns on a wide screen (CSS)
   v.appendChild(loopsSlot);
-  api('/api/queue').then((qq) => {
+  const loopsP = api('/api/queue').then((qq) => {
     if (!qq.open.length) {
       loopsSlot.appendChild(el('div', 'storm-muted', 'No open loops' + (qq.checkedAtIso ? ' as of ' + fmtTime(qq.checkedAtIso) : '') + '.'));
       return;
@@ -5390,62 +5660,30 @@ async function renderFollowUps() {
   }).catch(async (e) => {
     if (e.code === 401) return;
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
-    // One line, not a dashed card: the safety stop below must stay on the first screen.
+    // One line, not a dashed card: the recommended sends below stay on the first screen.
     loopsSlot.appendChild(el('div', 'panel-title', 'Open loops'));
     loopsSlot.appendChild(feedLine(e, 'Open loops', 'That is not a sign that nothing is open.'));
   });
-  // §6V safety leads the Queue: a lapsed rescue card outranks an unpaid bill.
-  const safetySlot = el('div');
-  safetySlot.id = 'queue-safety'; // where Today's taps land (Direction B P10, DESK_VIEW)
-  v.appendChild(safetySlot);
-  renderSafety(safetySlot);
-  // The sends the Queue is named for come next — not after every admin desk.
-  // Their own slot, so the read below fills this place whenever it lands.
+  // The sends this screen is named for come next, in their own slot, so the
+  // read below fills this place whenever it lands.
   const fuSlot = el('div');
   v.appendChild(fuSlot);
-  // §4: the safety board above checks people against cards. This is the only
-  // place either one can be put on file.
-  const rosterSlot = el('div');
-  v.appendChild(rosterSlot);
-  renderRoster(rosterSlot);
-  // §6M.5: a man nobody has ever tested is an open loop too.
-  const trainSlot = el('div');
-  v.appendChild(trainSlot);
-  renderTrainingBoard(trainSlot);
-  // §4.7: a safety lesson waiting on Mike's name is an open loop too.
-  const vetSlot = el('div');
-  v.appendChild(vetSlot);
-  renderVetting(vetSlot);
-  // §6U: an entry the crew cannot see because nobody signed it off is an open
-  // loop too — and this is the only place the library can be written at all.
-  const libSlot = el('div');
-  v.appendChild(libSlot);
-  renderLibraryDesk(libSlot);
-  // §4.8 money: unbilled work and unpaid invoices are open loops too.
-  const moneySlot = el('div');
-  moneySlot.id = 'queue-money';
-  v.appendChild(moneySlot);
-  renderMoney(moneySlot);
-  // §6E fleet: a DOWN unit is a scheduling constraint, so it belongs in the
-  // Queue next to the other open loops.
-  const fleetSlot = el('div');
-  fleetSlot.id = 'queue-fleet';
-  v.appendChild(fleetSlot);
-  renderFleet(fleetSlot);
   fuSlot.appendChild(el('div', 'panel-title', 'Recommended sends'));
   const note = el('div', 'zip-run');
   note.appendChild(document.createTextNode('Arbo recommends — nothing sends without you.'));
   fuSlot.appendChild(note);
   const reading = first ? fuSlot.appendChild(readingLine()) : null;
+  const release = () => loopsP.then(() => { if (gen === FU_GEN) v.style.minHeight = ''; });
   // Only the recommended sends wait on this read; a failure darkens only them.
   let q;
   try {
     q = await api('/api/followups').finally(() => { if (reading) reading.remove(); });
   } catch (e) {
     if (gen !== FU_GEN) return;
-    if (e.code === 401) return showKeywall();
+    if (e.code === 401) return showKeywall(); // the key wall owns the screen; the next draw takes the hold over
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
     fuSlot.appendChild(feedState(e, 'Follow-ups', 'an empty queue'));
+    release();
     return;
   }
   if (gen !== FU_GEN) return;
@@ -5497,6 +5735,7 @@ async function renderFollowUps() {
     s.appendChild(document.createTextNode('No consent on file or STOP on record — these never send.'));
     fuSlot.appendChild(s);
   }
+  release();
 }
 
 // ---------- Shell ----------
@@ -6085,7 +6324,8 @@ function sysSet(key, level, text) { if (SYS) SYS(key, level, text); }
 // Loops for the hero — its own read, so the hero fills even when the
 // schedule feed is cut and the brief returns early.
 function heroLoops() {
-  api('/api/queue').then((q) => {
+  // Direction B P12 review: hands back what the read came to, for Today's feeds card — null when it read.
+  return api('/api/queue').then((q) => {
     const n = q.open.length;
     const urgent = q.open.some(o => o.severity === 'urgent');
     if (HERO) {
@@ -6095,6 +6335,7 @@ function heroLoops() {
       HERO.go('loops', () => openPanel(DESK_VIEW.loops, 'queue-loops'));
     }
     sysSet('loops', urgent ? 'down' : n ? 'warn' : 'ok', n + ' open');
+    return null;
   }).catch((e) => LINKS_READY.then(() => {
     // The server says which gap it is — cut, not simulated, not set up, or
     // unreadable — and the hero subline says it in that one word.
@@ -6102,6 +6343,7 @@ function heroLoops() {
     const why = FEED_TAG[k];
     if (HERO) { HERO.ring('loops', null); HERO.legend('loops', '–'); HERO.stat('loops', '–', '', 'loops ' + why); }
     sysSet('loops', k === 'unread' ? 'down' : 'warn', why);
+    return e.code === 401 ? null : k;
   }));
 }
 
@@ -6147,7 +6389,12 @@ function renderMore() {
   tile('i-lidar', 'Measure', 'LiDAR scan → DBH', () => { switchTab('measure'); renderMeasure(); });
   tile('i-permit', 'Permits', '4 cities, sourced', () => { switchTab('permits'); renderPermits(); });
   tile('i-book', 'Book', 'Estimates & prep', () => switchTab('book'));
-  tile('i-queue', 'Queue', 'Follow-ups & loops', () => switchTab('followups'));
+  // Direction B P13: the Queue split by the job it holds (R29 #1) — four desks, four tiles. Review: no two
+  // tiles share an icon — Fleet is a truck, Crew & safety a safety cone (the Assistant keeps the shield).
+  tile('i-queue', 'Follow-ups', 'Loops & sends', () => switchTab('followups'));
+  tile('i-flag', 'Money', 'Owed & to bill', () => switchTab('money'));
+  tile('i-truck', 'Fleet', 'Units & holds', () => switchTab('fleet'));
+  tile('i-cone', 'Crew & safety', 'Certs & training', () => switchTab('safety'));
   tile('i-numbers', 'Numbers', 'Which areas & ads pay', () => switchTab('perf'));
   // R26: look only — the crew's page, on this app's key, and it cannot sign,
   // file or clock in. Same tab on purpose: an installed iPhone app keeps its
@@ -6543,13 +6790,14 @@ const REPORT_STATUS = { ok: ['OK', 'good'], degraded: ['MISSING INPUTS', 'watch'
 // Brief numbering (#2, §4.8, R7…) stays in the data and off the screen.
 const noRefs = (s) => s.replace(/^#\d+\s*/, '').replace(/\s*\((?:R\d+|§)[^)]*\)/g, '');
 // A proposal opens the screen where Mike acts on it: [button, tab]. A kind with no screen stays plain text.
+// Direction B P13: the Queue's proposals open the desk that holds their panel.
 const PROPOSAL_GO = {
   call_review: ['Open Calls →', 'calls'],
   route_fix: ['Open the Calendar →', 'cal'], weather_hold_review: ['Open the Calendar →', 'cal'],
-  decide_open_loops: ['Open the Queue →', 'followups'], fix_credentials: ['Open the Queue →', 'followups'],
-  lesson_draft: ['Open the Queue →', 'followups'], vet_reference: ['Open the Queue →', 'followups'],
-  collections_review: ['Open the Queue →', 'followups'], parts_review: ['Open the Queue →', 'followups'],
-  signback_review: ['Open the Queue →', 'followups'],
+  decide_open_loops: ['Open Follow-ups →', 'followups'],
+  collections_review: ['Open Money →', 'money'],
+  parts_review: ['Open Fleet →', 'fleet'], signback_review: ['Open Fleet →', 'fleet'],
+  fix_credentials: ['Open Crew & safety →', 'safety'], lesson_draft: ['Open Crew & safety →', 'safety'], vet_reference: ['Open Crew & safety →', 'safety'],
   area_review: ['Open Numbers →', 'perf'],
 };
 // Direction B P6 (spec: "Agents lists its proposals at the top"): every desk's
@@ -7028,7 +7276,12 @@ async function renderLearn() {
   }
 }
 
-const VIEW_TITLES = { learn: 'Learn', measure: 'Measure', agents: 'Agents', permits: 'Permits', today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Book', followups: 'Queue', calls: 'Calls', perf: 'Numbers', settings: 'Settings', more: 'More', assistant: 'Assistant' };
+const VIEW_TITLES = { learn: 'Learn', measure: 'Measure', agents: 'Agents', permits: 'Permits', today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Book', followups: 'Follow-ups', money: 'Money', fleet: 'Fleet', safety: 'Crew & safety', calls: 'Calls', perf: 'Numbers', settings: 'Settings', more: 'More', assistant: 'Assistant' };
+// Direction B P13: a link that names no screen of its own — #queue (never a link before) opens More, where the Queue's four desks sit.
+const VIEW_ALIAS = { queue: 'more' };
+// Direction B P13: which dock tab lights for each screen — one table (the plan's DOCK_OF), today's dock until P19.
+// Settings opens from the header gear and lights none.
+const DOCK_OF = { today: 'today', leads: 'leads', calls: 'calls', cal: 'cal', book: 'more', followups: 'more', money: 'more', fleet: 'more', safety: 'more', perf: 'more', more: 'more', permits: 'more', agents: 'more', measure: 'more', learn: 'more', assistant: 'more' };
 
 // The line under ARBO. Today's hero already carries the date, so Today shows
 // the name alone; every screen says SIMULATION while the data is practice data.
@@ -7045,20 +7298,34 @@ function setAppSub() {
   else $('appsub').replaceChildren(date, ' · Art-is-Tree');
 }
 
+// P13 review: the app bar says a screen's title whole. Beside ‹ Back, Talk, the gear and ↻ a 390 px bar
+// leaves it about 97 px — "Follow-ups" and "Crew & safety" were cut to "Follow…" / "Crew …". A long title
+// steps down on one line (the bar's 21 px → 16), then takes two lines (17 → 14); past that floor it is
+// drawn as before — one line at 21 px, cut short by the "…" rule (a 320 px phone, as before).
+function fitTitle() {
+  const t = $('apptitle');
+  const fits = (px, two) => {
+    t.style.fontSize = px === 21 ? '' : px + 'px';
+    t.classList.toggle('two', two);
+    // Wide enough — and on two lines, no third one hidden by the clamp (half a line of slack for the glyphs).
+    return t.scrollWidth <= t.clientWidth && (!two || t.scrollHeight < t.clientHeight + px / 2);
+  };
+  for (let px = 21; px >= 16; px--) if (fits(px, false)) return;
+  for (let px = 17; px >= 14; px--) if (fits(px, true)) return;
+  fits(21, false);
+}
+
 function switchTab(which) {
   navPush(which);
-  for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf', 'settings', 'more', 'permits', 'agents', 'measure', 'learn', 'assistant']) {
-    $('view-' + t).classList.toggle('active', which === t);
-    const tb = $('tab-' + t); // Settings opens from the header gear — it has no nav tab
-    if (tb) tb.classList.toggle('active', which === t);
-  }
-  // Book, Queue, Numbers and the R25 desks sit behind More in the dock. Settings
-  // opens from the header gear, so it lights no dock tab.
-  $('tab-more').classList.toggle('active', ['book', 'followups', 'perf', 'more', 'permits', 'agents', 'measure', 'learn', 'assistant'].indexOf(which) !== -1);
+  // Direction B P13: every screen is a VIEW_TITLES key, and one DOCK_OF table says which dock tab
+  // lights (Book, Numbers, the desks and the R25 desks sit behind More; Settings lights none).
+  for (const t of Object.keys(VIEW_TITLES)) $('view-' + t).classList.toggle('active', which === t);
+  for (const t of new Set(Object.values(DOCK_OF))) $('tab-' + t).classList.toggle('active', DOCK_OF[which] === t);
   $('apptitle').textContent = VIEW_TITLES[which] || 'ARBO';
   CUR_TAB = which;
   setAppSub();
   navShowBack();
+  fitTitle(); // after Back is shown or hidden: that changes the room the title has
   window.scrollTo(0, 0);
 }
 
@@ -7363,7 +7630,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && TAL
 // browser's back all walk the same steps. With no step behind (a reload, a
 // home-screen shortcut, the crew preview's way back) a More desk lands on More
 // and anything else on Today.
-const NAV_PARENT = { book: 'more', followups: 'more', perf: 'more', permits: 'more', agents: 'more', measure: 'more', learn: 'more', assistant: 'more', settings: 'today' };
+const NAV_PARENT = { book: 'more', followups: 'more', money: 'more', fleet: 'more', safety: 'more', perf: 'more', permits: 'more', agents: 'more', measure: 'more', learn: 'more', assistant: 'more', settings: 'today' };
 const SHEETS = ['twin', 'yard', 'bd', 'talk', 'approval', 'photo', 'maps'];
 let NAV_QUIET = false; // true while a back step is drawn — drawing it must not add a new step
 function navPush(which) {
@@ -7454,7 +7721,7 @@ for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf'])
 $('tab-more').addEventListener('click', () => { renderMore(); switchTab('more'); });
 
 // The screens ↻ redraws. The minute timer redraws them too, unless one holds typed text.
-const TIMED = { today: renderToday, leads: renderLeads, cal: renderCalendar, book: renderBook, followups: renderFollowUps, calls: renderCalls, perf: renderPerformance };
+const TIMED = { today: renderToday, leads: renderLeads, cal: renderCalendar, book: renderBook, followups: renderFollowUps, money: renderMoneyView, fleet: renderFleetView, safety: renderSafetyView, calls: renderCalls, perf: renderPerformance };
 function refreshAll() { for (const t in TIMED) TIMED[t](); }
 // ↻ and the key screen also redraw a More desk that is on screen — refreshAll never draws those.
 function refreshActiveMoreView() {
@@ -7498,13 +7765,17 @@ $('refresh').addEventListener('click', () => {
 });
 $('settings-btn').addEventListener('click', () => { switchTab('settings'); renderSettings(); });
 
+// The title's room changes with the phone's width, and the bar's font lands after the first paint (font-display: swap).
+window.addEventListener('resize', fitTitle);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitTitle);
 $('dateline').textContent = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
 setAppSub();
 LINKS_READY.then(setAppSub);
 netState();
 // Home-screen shortcuts open a section directly (/app#calls, /app#cal).
 {
-  const want = (location.hash || '').slice(1);
+  const asked = (location.hash || '').slice(1);
+  const want = Object.prototype.hasOwnProperty.call(VIEW_ALIAS, asked) ? VIEW_ALIAS[asked] : asked; // Direction B P13: #queue → More
   if (want && Object.prototype.hasOwnProperty.call(VIEW_TITLES, want) && want !== 'settings') {
     if (want === 'more') renderMore();
     if (want === 'permits') renderPermits();

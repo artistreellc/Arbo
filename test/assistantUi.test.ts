@@ -909,9 +909,11 @@ describe('R28 — the desk in the shell: More tile, title, Back, ↻ and start-u
     expect(pageConst<Record<string, string>>('VIEW_TITLES').assistant).toBe('Assistant');
     expect(pageConst<Record<string, string>>('NAV_PARENT').assistant).toBe('more');
     expect(oneLine('const NAV_DRAW = {')).toContain('assistant: () => renderAssistant()');
+    // Direction B P13: switchTab draws every VIEW_TITLES key, and DOCK_OF says the Assistant lights More.
     const sw = fnSrc('switchTab');
-    expect(sw).toContain("'measure', 'learn', 'assistant']) {");
-    expect(sw).toContain("['book', 'followups', 'perf', 'more', 'permits', 'agents', 'measure', 'learn', 'assistant'].indexOf(which) !== -1");
+    expect(sw).toContain('for (const t of Object.keys(VIEW_TITLES))');
+    expect(sw).toContain('DOCK_OF[which]');
+    expect(pageConst<Record<string, string>>('DOCK_OF').assistant).toBe('more');
     expect(fnSrc('refreshActiveMoreView')).toContain('assistant: renderAssistant');
     expect(html).toContain("    if (want === 'learn') renderLearn();\n    if (want === 'assistant') renderAssistant();\n");
   });
