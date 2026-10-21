@@ -61,7 +61,7 @@ describe('Today-screen intent panel (source pins)', () => {
   const html = readFileSync(new URL('../src/app/index.html', import.meta.url), 'utf8');
 
   it('renders ABOVE the brief fetch — the links-cut early return must not hide it', () => {
-    const panel = html.indexOf('inboxIntentPanel().then');
+    const panel = html.indexOf('feeds.place(inboxSlot, inboxIntentPanel());'); // Direction B P12: through Today's feeds card
     const brief = html.indexOf("api('/api/brief?from=");
     expect(panel).toBeGreaterThan(-1);
     expect(brief).toBeGreaterThan(-1);

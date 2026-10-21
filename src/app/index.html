@@ -2702,6 +2702,10 @@ function goTile(t, fn) {
 async function renderToday() {
   const v = $('view-today');
   v.replaceChildren();
+  // Direction B P12: Today's feeds card. Every panel slot below hands its read to feeds.place —
+  // a feed cut on purpose, not in the practice data or not set up folds into the card; one Arbo
+  // couldn't read stays in its place and is counted too. Made before any read is handed to it.
+  const feeds = feedsCard('today');
   v.appendChild(buildHero());
   // Direction B P11: Before you roll sits directly under the hero. It is filled
   // (and its reads start) below, before the brief's await — that await ends
@@ -2730,7 +2734,7 @@ async function renderToday() {
   v.appendChild(emgSlot);
   const lawSlot = el('div', 'slot plain');
   v.appendChild(lawSlot);
-  stormLawFlag(alerting).then((b) => { if (b) lawSlot.appendChild(b); });
+  feeds.place(lawSlot, stormLawFlag(alerting));
   // R28: what the assistant is waiting on Mike for — under the alarms, above the
   // run, its place set before the read. Empty (off, not set up, nothing waiting) it hides ('.slot:empty').
   const assistSlot = el('div', 'slot assist');
@@ -2746,6 +2750,8 @@ async function renderToday() {
   const instr = el('div');
   instr.style.display = 'contents';
   v.appendChild(instr);
+  // Direction B P12: the feeds card — under the day and its instruments, above the notices it folds.
+  v.appendChild(feeds.el);
   // Yard check needs no data, so it renders before the brief fetch: with the
   // links cut the brief returns early, and this is its only way in.
   const yardBtn = el('button', 'hudbtn');
@@ -2835,6 +2841,15 @@ async function renderToday() {
   // Direction B P11: the emergency read below, handed to Before you roll — never a second read.
   let emgDone;
   const emgP = new Promise((res) => { emgDone = res; });
+  // Direction B P12: a leads read Arbo could not make goes through the feeds card — folded when it is a
+  // gap on purpose, kept here when it failed; the emergencies tile names it either way (setEmergencies).
+  feeds.place(emgSlot, emgP.then((r) => {
+    if (!r || !r.gap) return null;
+    const n = feedLine(r.gap, 'Emergency leads', 'That doesn’t mean there are none.');
+    n.dataset.off = feedKind(r.gap);
+    n.dataset.feedName = 'Emergency leads';
+    return n;
+  }));
   // Safety flags fill the first row exactly (one: all of it, two: half each), so the six tiles stay one even row on a wide screen.
   const layoutFlags = () => {
     const flags = hud.querySelectorAll('.wide');
@@ -2865,8 +2880,7 @@ async function renderToday() {
     emgDone(r);
     if (!r) return;
     if (r.gap) {
-      emgSlot.appendChild(feedLine(r.gap, 'Emergency leads', 'That doesn’t mean there are none.'));
-      setEmergencies('leads', FEED_TAG[feedKind(r.gap)]);
+      setEmergencies('leads', FEED_TAG[feedKind(r.gap)]); // its named line goes through the feeds card (above)
       return;
     }
     setEmergencies('leads', r.list.length);
@@ -2881,11 +2895,12 @@ async function renderToday() {
   rollSlot.appendChild(beforeYouRoll(emgP, alerting.then(() => STORM_READ)));
   const locSlot = el('div', 'slot plain');
   v.appendChild(locSlot);
-  // A failed read gets a titled card (data-feed); the live ON/OFF strip stays plain.
-  locationStrip().then((b) => { if (!b) return; if (b.dataset.feed) locSlot.className = 'slot'; locSlot.appendChild(b); });
+  // A failed read gets a titled card (data-feed) where it stays; the live ON/OFF strip stays plain.
+  // Direction B P12: tracking cut on purpose folds into the feeds card (its slot, empty, hides).
+  feeds.place(locSlot, locationStrip().then((b) => { if (!b) return b; if (b.dataset.feed) locSlot.className = 'slot'; return b; }));
   const recSlot = el('div', 'slot');
   v.appendChild(recSlot);
-  receptionStrip().then((b) => { if (b) recSlot.appendChild(b); });
+  feeds.place(recSlot, receptionStrip());
   // The Phone line button lives ABOVE the brief fetch on purpose: the first version
   // sat in the post-brief section, and with the data links cut the brief's
   // early return meant the button never rendered — on production, exactly.
@@ -2900,7 +2915,7 @@ async function renderToday() {
   // and anything below that line never renders in production.
   const inboxSlot = el('div', 'slot');
   v.appendChild(inboxSlot);
-  inboxIntentPanel().then((b) => { if (b) inboxSlot.appendChild(b); });
+  feeds.place(inboxSlot, inboxIntentPanel());
   // R24 customer notes, R22 text outreach and Sona via Quo — above the brief
   // fetch, same links-cut lesson. Their three slots are placed here, before any
   // read, so the order never depends on which read lands first ('.slot:empty'
@@ -2912,19 +2927,24 @@ async function renderToday() {
   v.appendChild(outreachSlot);
   const sonaSlot = el('div', 'slot');
   v.appendChild(sonaSlot);
-  fillQuoSlots([studyPanel(5), outreachPanel(false), sonaPanel(3, false)], [studySlot, outreachSlot, sonaSlot]);
+  fillQuoSlots([studyPanel(5), outreachPanel(false), sonaPanel(3, false)], [studySlot, outreachSlot, sonaSlot], feeds.place);
   // R19: website forms delivered straight from Resend — above the brief
   // fetch for the same links-cut-early-return reason as everything here.
   const formsSlot = el('div', 'slot');
   v.appendChild(formsSlot);
-  websiteFormsPanel().then((b) => { if (b) formsSlot.appendChild(b); });
+  feeds.place(formsSlot, websiteFormsPanel());
   const start = new Date(); start.setHours(0, 0, 0, 0);
   const end = new Date(start); end.setDate(end.getDate() + 1);
+  // Direction B P12: the schedule's place on the feeds card is taken now, before the brief is read, so the
+  // card says "Reading…" until it lands. A schedule Arbo can't read keeps its card in the day (data-keep) and
+  // is counted on the feeds card; every way out settles it (null: nothing to count).
+  let schedDone;
+  feeds.place(day, new Promise((res) => { schedDone = res; }));
   let brief;
   try {
     brief = await api('/api/brief?from=' + start.toISOString() + '&to=' + end.toISOString());
   } catch (e) {
-    if (e.code === 401) return showKeywall();
+    if (e.code === 401) { schedDone(null); return showKeywall(); }
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
     const k = feedKind(e);
     const why = FEED_TAG[k];
@@ -2941,9 +2961,13 @@ async function renderToday() {
     calBtn.style.margin = '14px 0 0';
     calBtn.addEventListener('click', () => { switchTab('cal'); renderCalendar(); });
     sc.appendChild(calBtn);
-    day.appendChild(sc);
+    sc.dataset.off = k;
+    sc.dataset.feedName = 'Schedule';
+    sc.dataset.keep = '1';
+    schedDone(sc);
     return;
   }
+  schedDone(null);
   const s = brief.summary;
   // H4: the brief reads Arbo's own estimate and job rows; Mike's Google Calendar is not read (his call).
   const onlyArbo = brief.scheduleSource === 'arbo_tables_only';

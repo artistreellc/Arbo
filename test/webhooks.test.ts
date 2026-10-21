@@ -199,7 +199,7 @@ describe('app surfaces (source pins — §1B named states, links-cut placement)'
   const html = readFileSync(new URL('../src/app/index.html', import.meta.url), 'utf8');
 
   it('the website-forms panel renders ABOVE the brief fetch and names the unwired state', () => {
-    const panel = html.indexOf('websiteFormsPanel().then');
+    const panel = html.indexOf('feeds.place(formsSlot, websiteFormsPanel());'); // Direction B P12: through Today's feeds card
     const brief = html.indexOf("api('/api/brief?from=");
     expect(panel).toBeGreaterThan(-1);
     expect(panel).toBeLessThan(brief);

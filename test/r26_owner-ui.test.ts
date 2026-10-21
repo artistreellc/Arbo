@@ -459,8 +459,9 @@ describe('R26 qa-x10 — Today: the place on screen and the emergencies count', 
     // Links cut, the brief returns early: anything after it never renders in production.
     expect(today.indexOf('emergencyLeads().then(')).toBeGreaterThan(-1);
     expect(today.indexOf('emergencyLeads().then(')).toBeLessThan(briefFetch);
-    expect(today.indexOf('stormLawFlag(alerting).then(')).toBeGreaterThan(-1);
-    expect(today.indexOf('stormLawFlag(alerting).then(')).toBeLessThan(briefFetch);
+    // Direction B P12: the law flag's slot is filled through Today's feeds card.
+    expect(today.indexOf('feeds.place(lawSlot, stormLawFlag(alerting));')).toBeGreaterThan(-1);
+    expect(today.indexOf('feeds.place(lawSlot, stormLawFlag(alerting));')).toBeLessThan(briefFetch);
   });
 
   it('the law flag learns whether NWS has an alert out from the storm banner’s own read — never a second one', () => {
@@ -472,7 +473,9 @@ describe('R26 qa-x10 — Today: the place on screen and the emergencies count', 
   });
 
   it('an unread leads feed is named on Today in the shared feed words', () => {
-    expect(today).toContain("emgSlot.appendChild(feedLine(r.gap, 'Emergency leads', 'That doesn’t mean there are none.'));");
+    // Direction B P12: the line goes through Today's feeds card (folded when cut, kept in emgSlot when it failed).
+    expect(today).toContain('feeds.place(emgSlot, emgP.then((r) => {');
+    expect(today).toContain("const n = feedLine(r.gap, 'Emergency leads', 'That doesn’t mean there are none.');");
     const line = feedLine(fail(503, 'link_cut'), 'Emergency leads', 'That doesn’t mean there are none.');
     expect(line.className).toBe('feed-state cut');
     expect(line.textContent).toBe('Emergency leads: cut on purpose. That doesn’t mean there are none.');

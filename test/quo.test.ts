@@ -547,7 +547,7 @@ describe('Quo HTTP surface and screens', () => {
   it('the Sona panel sits above the brief fetch and names rule slips', () => {
     const html = readFileSync(new URL('../src/app/index.html', import.meta.url), 'utf8');
     // Today reads it through the shared Quo fold (QA round 3: fillQuoSlots).
-    const panel = html.indexOf('sonaPanel(3, false)], [studySlot, outreachSlot, sonaSlot]);');
+    const panel = html.indexOf('sonaPanel(3, false)], [studySlot, outreachSlot, sonaSlot], feeds.place);'); // Direction B P12: with Today's feeds card
     expect(panel).toBeGreaterThan(-1);
     expect(panel).toBeLessThan(html.indexOf("api('/api/brief?from="));
     expect(html).toContain('SONA BROKE A RULE');
