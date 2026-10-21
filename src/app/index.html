@@ -214,6 +214,10 @@ main{padding:8px 16px 16px;max-width:680px;margin:0 auto}
 .hstat small{display:block;font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(244,239,224,.9);margin-top:3px}
 .hstat small:empty{display:none}
 .hstat.hot{border-color:rgba(255,160,143,.45)}.hstat.hot small{color:#FFA08F}
+/* Direction B P10: a stat opens what it counts; a '–' is a gap — dashed, and it opens nothing. */
+button.hstat{font:inherit;text-align:left;color:inherit;width:100%;min-height:44px}
+.hstat[aria-disabled="false"]{cursor:pointer}.hstat[aria-disabled="true"]:active{transform:none}
+.hstat.gap{border-style:dashed;border-color:rgba(255,255,255,.3);background:transparent}
 .ring-legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:12px;font-size:12px;color:rgba(244,239,224,.75)}
 .ring-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px}
 
@@ -353,6 +357,7 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
   border-radius:12px;border:1px solid color-mix(in srgb,var(--emergency) 40%,transparent);background:var(--card);color:inherit;font:inherit;font-weight:600;text-align:left}
 .storm .sliplink::after,.card .sliplink::after{content:'\203A';font-size:22px;line-height:1;flex:none}
 .card.flash{animation:cardflash 1.8s var(--ease)}
+.flash:not(.card){animation:cardflash 1.8s var(--ease);border-radius:var(--r-md)} /* Direction B P10: a panel a tap landed on */
 @keyframes cardflash{0%,40%{box-shadow:0 0 0 3px var(--emergency)}100%{box-shadow:none}}
 .storm-muted{color:var(--ink-3);font-size:13.5px;line-height:1.55;margin-bottom:12px;text-wrap:pretty}
 /* Direction B P3: what a read in flight looks like — a plain line, never an empty screen. */
@@ -457,6 +462,9 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 .tile.hot{border-color:color-mix(in srgb,var(--emergency) 35%,transparent)} .tile.hot b{color:var(--emergency)}
 .tile.warn{border-color:color-mix(in srgb,var(--warning) 35%,transparent)} .tile.warn b{color:var(--warning)}
 .tile.ok-t b{color:var(--ok)}
+/* Direction B P10: a tile opens what it counts; a tile whose feed failed is dashed and opens nothing. */
+.tile.go:not(.gap){cursor:pointer}.tile.go:not(.gap):active{transform:scale(.975)}
+.tile.gap{border-style:dashed;border-color:var(--border);box-shadow:none;background:transparent}
 .tile::after{content:'';position:absolute;left:0;right:0;top:0;height:3px;background:var(--forest);opacity:.18}
 .tile.hot::after{background:var(--emergency);opacity:.7}.tile.warn::after{background:var(--gold-5);opacity:.7}
 .hud .wide{grid-column:1 / -1}
@@ -2379,6 +2387,38 @@ async function renderAssistant() {
 }
 
 // ---------- Today (Morning Brief) ----------
+// Direction B P10: where Today's taps land. The four back-office desks still live on
+// the Queue; P13 splits it and re-points them here, in one place.
+const DESK_VIEW = { loops: 'followups', money: 'followups', fleet: 'followups', safety: 'followups' };
+// Open a screen and land on one panel of it — openSonaCall's way: switch, look
+// (again while the screen draws), scroll, flash. A desk never drawn is drawn first
+// (the step-back draw). A miss still lands on the right screen. `target` is an
+// element id or a function that finds it.
+function openPanel(view, target) {
+  if (CUR_TAB !== view) {
+    if (NAV_DRAW[view] && !$('view-' + view).hasChildNodes()) NAV_DRAW[view]();
+    switchTab(view);
+  }
+  if (!target) return;
+  let tries = 0;
+  const look = () => {
+    const t = typeof target === 'function' ? target() : document.getElementById(target);
+    if (t) {
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      t.classList.remove('flash'); void t.offsetWidth; t.classList.add('flash');
+      return;
+    }
+    if (++tries < 30) setTimeout(look, 150);
+  };
+  look();
+}
+// A Today tile opens what it counts. A tile still showing '–' (a feed not read) opens nothing.
+function goTile(t, fn) {
+  t.setAttribute('role', 'button');
+  t.tabIndex = 0;
+  t.classList.add('go');
+  t.addEventListener('click', () => { if (t.querySelector('b').textContent !== '–') fn(); });
+}
 async function renderToday() {
   const v = $('view-today');
   v.replaceChildren();
@@ -2390,9 +2430,12 @@ async function renderToday() {
   LINKS_READY.then(() => { if (LINKS === 'readonly') roSlot.appendChild(el('div', 'storm-muted', 'Read-only: Arbo is reading your real records and saving nothing. Anything that would save says so.')); });
   heroLoops();
   const stormSlot = el('div', 'slot plain');
+  stormSlot.id = 'today-storm'; // where the hero's weather alerts land (Direction B P10)
   v.appendChild(stormSlot);
   // true when the banner drew a card: the NWS feed named at least one alert. The law flag reuses it.
   const alerting = stormBanner().then((b) => { if (b) stormSlot.appendChild(b); return !!b; });
+  // Direction B P10: weather alerts above 0 open the storm card; a real 0 stays inert (a fact, not a gap).
+  alerting.then((on) => { if (on && HERO) HERO.go('alerts', () => openPanel('today', 'today-storm')); });
   // R26: an EMERGENCY lead sits right under the storm alert and above the run,
   // then the owner's storm price-law flag. Their places are set before any read;
   // the leads read starts below, once the tiles it counts into exist. The alarm
@@ -2457,7 +2500,7 @@ async function renderToday() {
     if (cls) t.classList.add(cls);
   };
   // A tile whose feed failed keeps its '–' and says why in one small line.
-  const tileWhy = (t, why) => { if (t.querySelector('small')) return; t.appendChild(el('small', '', why)); };
+  const tileWhy = (t, why) => { if (t.querySelector('small')) return; t.appendChild(el('small', '', why)); if (t.querySelector('b').textContent === '–') t.classList.add('gap'); };
   // Each instrument fills independently; a dead feed shows '–' and why, never a fake 0.
   // The loops feed fills its panel only — heroLoops names it when it is dead.
   api('/api/queue').then((q) => {
@@ -2473,11 +2516,14 @@ async function renderToday() {
   }).catch(() => {});
   api('/api/properties').then((p) => {
     // A dead forecast feed stays '\u2013' \u2014 null is not zero (\u00a71B honesty).
-    if (Array.isArray(p.comingDue)) setTile(dueTile, p.comingDue.length, p.comingDue.length ? 'warn' : 'ok-t');
-    else tileWhy(dueTile, 'forecast unreadable');
+    if (Array.isArray(p.comingDue)) {
+      setTile(dueTile, p.comingDue.length, p.comingDue.length ? 'warn' : 'ok-t');
+      goTile(dueTile, () => openPanel('book'));
+    } else tileWhy(dueTile, 'forecast unreadable');
   }).catch((e) => { if (e.code !== 401) tileWhy(dueTile, FEED_TAG[feedKind(e)]); });
   api('/api/agents/runs?limit=5').then((r) => {
     setTile(agentTile, r.runs.length, r.runs.some(x => x.status === 'error') ? 'warn' : 'ok-t');
+    goTile(agentTile, () => openPanel('agents'));
     // R32: these runs live in memory and were not saved — the tile says so.
     if (r.runLog === 'not_saved_read_only') tileWhy(agentTile, 'not saved — read-only');
   }).catch((e) => { if (e.code !== 401) tileWhy(agentTile, FEED_TAG[feedKind(e)]); });
@@ -2494,6 +2540,8 @@ async function renderToday() {
     const nb = (m.blocked || []).length;
     setTile(billTile, m.drafts.length, (m.drafts.length || nb) ? 'warn' : 'ok-t');
     if (nb) billTile.appendChild(el('small', '', '+' + nb + ' no agreed figure'));
+    goTile(owedTile, () => openPanel(DESK_VIEW.money, 'queue-money'));
+    goTile(billTile, () => openPanel(DESK_VIEW.money, 'queue-money'));
   }).catch((e) => {
     if (e.code === 401) return;
     tileWhy(owedTile, FEED_TAG[feedKind(e)]);
@@ -2513,7 +2561,11 @@ async function renderToday() {
     emg[half] = val;
     const n = (typeof emg.stops === 'number' ? emg.stops : 0) + (typeof emg.leads === 'number' ? emg.leads : 0);
     if (!n) return;
-    if (!emgTile) emgTile = tile(n, '', 'hot wide');
+    if (!emgTile) {
+      emgTile = tile(n, '', 'hot wide');
+      // Direction B P10: the first emergency card — an EMERGENCY lead's above the run, else the run's emergency stop.
+      goTile(emgTile, () => openPanel('today', () => emgSlot.querySelector('.card') || day.querySelector('[data-emg]')));
+    }
     emgTile.querySelector('b').textContent = String(n);
     emgTile.querySelector('span').textContent = n === 1 ? 'emergency' : 'emergencies';
     const gap = typeof emg.stops === 'string' ? 'schedule ' + emg.stops : typeof emg.leads === 'string' ? 'leads ' + emg.leads : '';
@@ -2608,8 +2660,13 @@ async function renderToday() {
   // H4: the top numbers count Arbo's own bookings too \u2014 labelled so, never "0 jobs today" over a calendar Arbo does not read.
   if (onlyArbo) { jobsTile.querySelector('span').textContent = 'jobs in Arbo'; estTile.querySelector('span').textContent = 'estimates in Arbo'; }
   setTile(jobsTile, s.jobs || 0); setTile(estTile, s.estimates || 0);
+  // Direction B P10: jobs, estimates and the hero's stops open the run — or, with none, the schedule card.
+  const runAt = brief.stops.length ? 'today-run' : 'today-schedule';
+  goTile(jobsTile, () => openPanel('today', runAt));
+  goTile(estTile, () => openPanel('today', runAt));
   // A safety flag takes the first slot of the grid: emergencies (stops and leads, setEmergencies), then flagged stops.
   if (s.redFlagCount) hud.prepend(tile(s.redFlagCount, s.redFlagCount === 1 ? 'flagged stop' : 'flagged stops', 'hot wide'));
+  if (s.redFlagCount) goTile(hud.firstChild, () => openPanel('today', () => day.querySelector('.card.emergency'))); // the first flagged stop
   setEmergencies('stops', s.emergencies || 0);
   layoutFlags();
   {
@@ -2622,6 +2679,7 @@ async function renderToday() {
       const flagNote = s.emergencies ? plural(s.emergencies, 'emergency', 'emergencies') : s.redFlagCount ? s.redFlagCount + ' flagged' : '';
       HERO.stat('stops', s.totalStops, (s.emergencies || s.redFlagCount) ? 'hot' : '', plural(s.totalStops, 'stop') + (onlyArbo ? ' in Arbo today' : ' today'), flagNote);
       HERO.ring('stops', s.totalStops ? passed / s.totalStops : 0);
+      HERO.go('stops', () => openPanel('today', runAt));
       // Clock time past each stop's slot — nothing records a stop as done (D85).
       // The run is in route order, not clock order: the next stop is the earliest time still ahead.
       const next = timed.filter((st) => Date.parse(st.timeIso) >= nowMs).sort((a, b) => Date.parse(a.timeIso) - Date.parse(b.timeIso))[0];
@@ -2651,10 +2709,13 @@ async function renderToday() {
       calBtn.addEventListener('click', () => { switchTab('cal'); renderCalendar(); });
       none.appendChild(calBtn);
     }
+    none.id = 'today-schedule';
     day.appendChild(none);
     return;
   }
-  day.appendChild(el('div', 'panel-title', 'Today’s run'));
+  const runTitle = el('div', 'panel-title', 'Today’s run');
+  runTitle.id = 'today-run';
+  day.appendChild(runTitle);
   // §9 route view: the whole day, one tap, in the maps app you already use.
   {
     const addrs = brief.stops.map(stopAddress).filter(Boolean);
@@ -2669,6 +2730,7 @@ async function renderToday() {
   }
   for (const stop of brief.stops) {
     const c = el('div', 'card' + (stop.redFlags.length ? ' emergency' : ''));
+    if (stop.redFlags.includes('EMERGENCY')) c.dataset.emg = '1'; // where the emergencies tile lands (Direction B P10)
     const top = el('div', 'toprow');
     const who = el('div', 'who');
     who.appendChild(el('span', 'ordernum', String(stop.order)));
@@ -5166,6 +5228,7 @@ async function renderFollowUps() {
   });
   // §6V safety leads the Queue: a lapsed rescue card outranks an unpaid bill.
   const safetySlot = el('div');
+  safetySlot.id = 'queue-safety'; // where Today's taps land (Direction B P10, DESK_VIEW)
   v.appendChild(safetySlot);
   renderSafety(safetySlot);
   // The sends the Queue is named for come next — not after every admin desk.
@@ -5192,11 +5255,13 @@ async function renderFollowUps() {
   renderLibraryDesk(libSlot);
   // §4.8 money: unbilled work and unpaid invoices are open loops too.
   const moneySlot = el('div');
+  moneySlot.id = 'queue-money';
   v.appendChild(moneySlot);
   renderMoney(moneySlot);
   // §6E fleet: a DOWN unit is a scheduling constraint, so it belongs in the
   // Queue next to the other open loops.
   const fleetSlot = el('div');
+  fleetSlot.id = 'queue-fleet';
   v.appendChild(fleetSlot);
   renderFleet(fleetSlot);
   fuSlot.appendChild(el('div', 'panel-title', 'Recommended sends'));
@@ -5740,15 +5805,25 @@ function buildHero() {
   grid.appendChild(ring.svg);
   box.appendChild(grid);
   const stats = el('div', 'hero-stats');
-  const stat = (label) => {
-    const s = el('div', 'hstat');
+  // Direction B P10: each stat is a button that opens what it counts (HERO.go names
+  // where). A '–' is a gap — dashed, inert, its feed word on its name — never a tap.
+  const go = {};
+  const gap = {};
+  const labels = {};
+  const live = (key) => cells[key].setAttribute('aria-disabled', go[key] && !gap[key] ? 'false' : 'true');
+  const stat = (key, label) => {
+    const s = el('button', 'hstat');
+    s.type = 'button';
     s.appendChild(el('b', 'num', '–'));
     s.appendChild(el('span', '', label));
     s.appendChild(el('small')); // HERO.stat's note: why the number is coloured
+    s.setAttribute('aria-disabled', 'true'); // nothing to open until its read lands
+    s.addEventListener('click', () => { if (go[key] && !gap[key]) go[key](); });
+    labels[key] = label;
     stats.appendChild(s);
     return s;
   };
-  const cells = { stops: stat('stops today'), loops: stat('open loops'), alerts: stat('weather alerts') };
+  const cells = { stops: stat('stops', 'stops today'), loops: stat('loops', 'open loops'), alerts: stat('alerts', 'weather alerts') };
   box.appendChild(stats);
   const legend = el('div', 'ring-legend');
   const leg = {};
@@ -5780,11 +5855,16 @@ function buildHero() {
     stat: function (key, value, cls, fact, note) {
       const c = cells[key];
       c.querySelector('b').textContent = String(value);
-      c.className = 'hstat' + (cls ? ' ' + cls : '');
+      gap[key] = String(value) === '–';
+      c.className = 'hstat' + (gap[key] ? ' gap' : '') + (cls ? ' ' + cls : '');
       c.querySelector('small').textContent = note || ''; // no note: the line is empty and hidden
+      // A gap says its feed word on its name as well as in the subline (§1B): "open loops — loops cut".
+      c.setAttribute('aria-label', gap[key] ? labels[key] + ' — ' + fact : String(value) + ' ' + labels[key] + (note ? ', ' + note : ''));
       facts[key] = String(value) === '–' ? fact : null; // a real number is on the tile; the subline names only the dashes (§1B)
       say();
+      live(key);
     },
+    go: function (key, fn) { go[key] = fn; live(key); },
     ring: ring.set,
     legend: function (key, text) { leg[key](text); },
   };
@@ -5838,6 +5918,7 @@ function heroLoops() {
       HERO.stat('loops', n, urgent ? 'hot' : n ? 'warn' : '', plural(n, 'open loop'));
       HERO.ring('loops', Math.min(n, 10) / 10);
       HERO.legend('loops', String(n) + ' open');
+      HERO.go('loops', () => openPanel(DESK_VIEW.loops, 'queue-loops'));
     }
     sysSet('loops', urgent ? 'down' : n ? 'warn' : 'ok', n + ' open');
   }).catch((e) => LINKS_READY.then(() => {
