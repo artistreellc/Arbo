@@ -311,6 +311,7 @@ describe('T5: one cause, one card, plain words', () => {
     expect((await outreach(cut)).dataset.quoOff).toBeUndefined();
     const sona = (state: string) => pageFn<(n: number, t: boolean) => Promise<FakeEl>>('sonaPanel', {
       ...deps, api: async () => ({ status: { registration: { state, detail: 'Registering with Quo…' }, reading: true, quoRecord: {} }, calls: [] }),
+      sonaSlipBox: () => null, // Direction B P16: the red flag's one builder (no slips here; its own tests: navBack, directionB_leadsHub)
     })(3, false);
     const off = await sona('not_configured');
     expect(off.dataset.quoOff).toBe('1');
@@ -325,8 +326,11 @@ describe('T5: one cause, one card, plain words', () => {
     const fold = src('fillQuoSlots');
     expect(fold).toContain('bs.every((b) => b && b.dataset.quoOff)');
     expect(fold).toContain("el('div', 'panel-title', 'Quo')");
-    expect(fold).toContain("el('div', 'feed-state unset', 'Quo isn’t connected to Arbo yet — Arbo can’t read your customer threads, can’t text anyone, and Sona’s calls aren’t reaching Arbo. That doesn’t mean there are no customer threads or Sona calls.')");
-    expect(fold.match(/That doesn’t mean/g)).toHaveLength(1);
+    // Direction B P16: the body is one builder, quoOffLine (the Leads head says the same words in the flag's place).
+    expect(fold).toContain('q.appendChild(quoOffLine(links));');
+    const words = src('quoOffLine');
+    expect(words).toContain("el('div', 'feed-state unset', 'Quo isn’t connected to Arbo yet — Arbo can’t read your customer threads, can’t text anyone, and Sona’s calls aren’t reaching Arbo. That doesn’t mean there are no customer threads or Sona calls.')");
+    expect(words.match(/That doesn’t mean/g)).toHaveLength(1);
     // Direction B P12: Today hands the fold its feeds card's place (the one Quo card folds into it when off).
     expect(today).toContain('fillQuoSlots([studyPanel(5), outreachPanel(false), sonaPanel(3, false)], [studySlot, outreachSlot, sonaSlot], feeds.place);');
     // The slots are placed before any read, in a fixed order.

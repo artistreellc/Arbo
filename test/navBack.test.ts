@@ -197,7 +197,7 @@ describe('Back retraces every tab tapped, in order (Direction B P1)', () => {
     const drawn: string[] = [];
     const navDrawLine = oneLine('NAV_DRAW');
     const renders = [...new Set([...navDrawLine.matchAll(/\b(render[A-Z]\w*)\(/g)].map((m) => m[1]!))];
-    const core = new Function('$', 'history', 'window', 'setAppSub', 'talkEnd', 'photoLetGo', 'fitTitle', ...renders, `
+    const core = new Function('$', 'history', 'window', 'setAppSub', 'talkEnd', 'photoLetGo', 'fitTitle', 'leadsHeadOn', ...renders, `
       let CUR_TAB = 'today'; let NAV_QUIET = false; const TALK = { on: false }; let PHOTO_OPEN = null;
       ${oneLine('VIEW_TITLES')}
       ${oneLine('DOCK_OF')}
@@ -207,7 +207,7 @@ describe('Back retraces every tab tapped, in order (Direction B P1)', () => {
       ${['switchTab', 'navPush', 'navShowBack', 'navShow', 'navBack', 'sheetOpened', 'closeSheet'].map(fnText).join('\n')}
       ${pop}
       return { switchTab, navBack, sheetOpened, tab: () => CUR_TAB };`)(
-      $, history, window, () => {}, () => {}, () => {}, () => {} /* fitTitle (P13 review) */, ...renders.map((r) => () => drawn.push(r)),
+      $, history, window, () => {}, () => {}, () => {}, () => {} /* fitTitle (P13 review) */, () => {} /* leadsHeadOn (P16) */, ...renders.map((r) => () => drawn.push(r)),
     ) as { switchTab: (w: string) => void; navBack: () => void; sheetOpened: (id: string) => void; tab: () => string };
     history.replaceState({ v: 'today', d: 0 }, '', '#today'); // the boot step
     const openSheet = (id: string) => { $(id)!.classList.add!('show'); core.sheetOpened(id); };
@@ -259,7 +259,9 @@ describe('the red Sona flags say which call and open it', () => {
   });
 
   it('the banner is a list of tappable rows — who, when, which rule — each opening that call', () => {
-    const p = html.slice(html.indexOf('async function sonaPanel('), html.indexOf('const holdText = {', html.indexOf('async function sonaPanel(')));
+    // Direction B P16: the banner is one builder now, sonaSlipBox — Today's Sona panel and the Leads head share it (same text).
+    const p = html.slice(html.indexOf('function sonaSlipBox('), html.indexOf('async function sonaPanel('));
+    expect(html.slice(html.indexOf('async function sonaPanel('), html.indexOf('const holdText = {', html.indexOf('async function sonaPanel(')))).toContain('const box = sonaSlipBox(d);');
     expect(p).toContain("const row = el('button', 'sliplink', (f.name || c.from || 'Caller') + ' · ' + fmtTime(c.at) + ' · ' + rules);");
     expect(p).toContain("row.addEventListener('click', () => openSonaCall(c.callId));");
     expect(p).toContain("' only in Quo now.'"); // a counted call Arbo no longer holds is said, not hidden

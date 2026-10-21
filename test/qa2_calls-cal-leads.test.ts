@@ -96,6 +96,22 @@ const plural = (n: number, one: string, many?: string) => n + ' ' + (n === 1 ? o
 const fmtWhen = (v: unknown) => (v ? 'WHEN(' + String(v) + ')' : '');
 const chipsIn = (n: Node) => n.all().filter((x) => x.has('badge')).map((x) => x.textContent + '=' + x.dataset.tone);
 const flush = () => new Promise((r) => setTimeout(r, 0));
+// Direction B P16: the page's feed kinds (practice data), and Calls & texts' feeds card as a stand-in with the
+// page's fold rule — a feed cut on purpose, not in the practice data or not set up goes INTO the card; one that
+// could not be read stays in its slot (the card itself is pinned in directionB_feeds).
+const feedKind = (e: { code?: number; message?: string } | null) => (e && e.code === 503 && e.message === 'not_simulated' ? 'sim' : e && e.code === 503 && e.message === 'link_cut' ? 'cut' : 'unread');
+const FEED_WORDS: Record<string, string> = { sim: 'not in the practice data', cut: 'cut on purpose', unread: 'couldn’t read it' };
+function feedsStub() {
+  const card = el('div', 'card feeds');
+  return {
+    el: card,
+    place: (slot: Node, x: unknown) => Promise.resolve(x as Node | null).then((n) => {
+      if (!n) return;
+      if (['cut', 'sim', 'unset'].includes(n.dataset.off ?? '') && n.dataset.keep !== '1') card.appendChild(n); else slot.appendChild(n);
+    }),
+    note: () => Promise.resolve(),
+  };
+}
 
 describe('Leads: the file-it pair, Undo and the chip rows (run, not just read)', () => {
   type Lead = Record<string, unknown>;
@@ -322,27 +338,45 @@ describe('Calls: one own-line card, and a redraw that holds its height (run, not
       fillQuoSlots: pageFn('fillQuoSlots', { el, LINKS_READY: Promise.resolve('live') }),
       showKeywall: keywall, LINKS_READY: Promise.resolve('simulation'),
       state: (t: string, m: string) => el('div', 'state', t + ' ' + m),
-      feedLine: (_e: unknown, what: string, tail?: string) => el('div', 'feed-state sim', what + ': not in the practice data.' + (tail ? ' ' + tail : '')),
+      feedLine: (e: { code?: number; message?: string }, what: string, tail?: string) => el('div', 'feed-state ' + feedKind(e), what + ': ' + FEED_WORDS[feedKind(e)] + '.' + (tail ? ' ' + tail : '')),
       showSaveFail: () => {},
+      feedsCard: () => card, feedKind, // Direction B P16
     });
+    const card = feedsStub();
     const ownSlot = () => v.children.find((n) => n.children[0]?.textContent === 'Arbo’s own line')!;
-    return { v, renderCalls, study, keywall, ownSlot };
+    return { v, renderCalls, study, keywall, ownSlot, card: () => card.el };
   }
   const notSimulated = () => { throw Object.assign(new Error('not_simulated'), { code: 503 }); };
 
+  // Direction B P16: a call log Arbo could not read is still one line in the own-line card, with that card's one
+  // "not zero calls". One cut on purpose / not in the practice data — like the transcripts cut while Sona answers
+  // (R21) — is that same line in Calls & texts' feeds card instead, and the own-line card leaves no empty title.
   it('a call log Arbo could not read is one line in the card, with the card’s one "not zero calls"', async () => {
-    const s = mount(notSimulated);
+    const s = mount(() => { throw new Error('Failed to fetch'); });
     await s.renderCalls();
     await flush();
     const own = s.ownSlot();
     expect(own.has('slot')).toBe(true);
-    expect(own.children.map((n) => n.className)).toEqual(['panel-title', '', 'feed-state sim']);
-    expect(own.children[1]!.text()).toBe('Call transcripts: disconnected while Sona handles calls. Sona answers on the Quo line — its status is in the Quo card above.');
-    expect(own.children[2]!.text()).toBe('Call log: not in the practice data. This is not zero calls.');
+    expect(own.children.map((n) => n.className)).toEqual(['panel-title', '', 'feed-state unread']);
+    expect(own.children[1]!.children).toEqual([]); // the transcripts, cut on purpose, went into the feeds card
+    expect(own.children[2]!.text()).toBe('Call log: couldn’t read it. This is not zero calls.');
     expect(own.text().match(/not zero/g)).toHaveLength(1);
     // Every section of the screen is a card; nothing floats loose on the page.
     expect(s.v.children.every((n) => n.has('slot'))).toBe(true);
     expect(s.v.all().some((n) => n.has('state'))).toBe(false);
+  });
+
+  it('a call log not in the practice data and transcripts cut on purpose: both lines in the feeds card, words kept, no empty own-line card', async () => {
+    const s = mount(notSimulated);
+    await s.renderCalls();
+    s.study.resolve(); // every read has landed: the page lets go of its held height and tidies the own-line card
+    await flush();
+    expect(s.ownSlot()).toBeUndefined(); // no title left alone in an empty card
+    const lines = s.card().children.map((n) => n.text());
+    expect(lines).toContain('Call transcripts: disconnected while Sona handles calls. Sona answers on the Quo line — its status is in the Quo card above.');
+    expect(lines).toContain('Call log: not in the practice data. This is not zero calls.');
+    expect(s.card().text().match(/not zero calls/g)).toHaveLength(1);
+    expect(s.v.children.every((n) => n.has('slot'))).toBe(true);
   });
 
   it('holds the page height through the redraw, and lets go once every slot has landed', async () => {
@@ -404,7 +438,9 @@ describe('Calls: one own-line card, and a redraw that holds its height (run, not
     // The height lets go once every slot has landed — after the swap, never before it.
     // (P3 review: the swap is skipped when Mike tapped the old page meanwhile — keepsPage;
     // the height still lets go on that path too.)
-    expect(calls).toContain("const release = () => Promise.allSettled(fills).then(() => {\n    if (reading) reading.remove();\n    if (!first && !keepsPage(v, taps0, byTimer)) v.replaceChildren(...page.childNodes);\n    v.style.minHeight = '';\n  });");
+    // Direction B P16: the feeds card goes up with its page (never ahead of it), and the own-line card with both its
+    // feeds folded keeps no title alone — both before the swap, so the swap is still one replaceChildren.
+    expect(calls).toContain("const release = () => Promise.allSettled(fills).then(() => {\n    if (reading) reading.remove();\n    const swap = !first && !keepsPage(v, taps0, byTimer);\n    if (first || swap) feedsAt.appendChild(feeds.el);\n    if (ownSlot.children.length === 2 && !trSlot.hasChildNodes()) ownSlot.replaceChildren();\n    if (swap) v.replaceChildren(...page.childNodes);\n    v.style.minHeight = '';\n  });");
     const tail = calls.slice(calls.indexOf('const release'));
     const returns = [...tail.matchAll(/\breturn\b/g)].map((m) => tail.slice(Math.max(0, m.index! - 24), m.index!));
     expect(returns).toHaveLength(3);
@@ -416,7 +452,7 @@ describe('Calls: one own-line card, and a redraw that holds its height (run, not
     const calls = fnSrc('renderCalls');
     expect(calls).not.toContain('since deploy');
     expect(calls).toContain('Business cell: nothing relayed from your iPhone since Arbo last restarted. If the Shortcut is set up, text yourself to test it.');
-    expect(calls).toContain("trSlot.appendChild(el('div', 'feed-state unset', 'Call transcripts: not set up yet.'));");
+    expect(calls).toContain("await feeds.place(trSlot, off('feed-state unset', 'Call transcripts: not set up yet.', 'unset', 'Call transcripts'));"); // P16: through the feeds card
     expect(calls).not.toContain('toLocaleString');
     expect(calls).not.toContain('badge(');
     expect(calls).toContain("plural(tr.turns, 'turn')");
