@@ -1,0 +1,380 @@
+<!doctype html>
+<!--
+  Arbo — Map (Maps wave A, docs/MAPS_PLAN.md; Mike, 2026-10-20: "the map … needs
+  to start tightening up"). The owner app's one shared map, in a same-origin frame
+  the shell makes once (the calendar frame's pattern, R2). Its own page ON PURPOSE:
+  Leaflet's source uses innerHTML and names its own site, which the shell's laws
+  forbid — Arbo's code here still follows them (test/mapPage.test.ts):
+    · text by textContent only; Leaflet's string APIs get DOM nodes, never strings;
+    · the key comes from the shell (parent.arboMapKey), rides x-arbor-key, never storage;
+    · only OpenStreetMap's tiles and DEQ's images are fetched from another host;
+    · §1B: a layer that can't draw says why, in words — never an empty map.
+  Nothing is written anywhere and nothing is posted to Arbo; coordinates live in
+  this page's memory only.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Arbo — Map</title>
+<link rel="stylesheet" href="/map/leaflet.css">
+<style>
+@font-face{font-family:'Instrument Sans';src:url('/fonts/instrument-sans.woff2') format('woff2');font-weight:400 700;font-style:normal;font-display:swap}
+:root{
+  color-scheme:light;
+  --paper:#F7F5F0;--paper-2:#EFEBE1;--card:#FFFFFF;
+  --ink-1:#13201A;--ink-2:#3B4A43;--ink-3:#5A675F;--ink-4:#8B958F;
+  --forest:#1B4D3E;--on-forest:#FFFFFF;--warning:#A87A0A;--gold:#C9971C;
+  --border:rgba(19,32,26,.12);--hairline:rgba(19,32,26,.075);
+  --sans:'Instrument Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  --shadow:0 1px 2px rgba(8,26,20,.18),0 6px 16px -8px rgba(8,26,20,.42);
+}
+html.night{
+  color-scheme:dark;
+  --paper:#0B1512;--paper-2:#101D18;--card:#13221C;
+  --ink-1:#EAF1EC;--ink-2:#C5D2CA;--ink-3:#98A99F;--ink-4:#6E8077;
+  --forest:#5FB08F;--on-forest:#0B1512;--warning:#E6B84A;--gold:#DDB24C;
+  --border:rgba(234,241,236,.13);--hairline:rgba(234,241,236,.075);
+  --shadow:0 8px 22px -8px rgba(0,0,0,.7);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%;background:var(--paper)}
+body{font-family:var(--sans);font-size:16px;line-height:1.45;color:var(--ink-1);background:var(--paper);-webkit-tap-highlight-color:transparent;
+  display:flex;flex-direction:column;min-height:100vh;overflow-x:hidden}
+#top{padding:8px 12px 0}
+#chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:6px}
+#chips::-webkit-scrollbar{display:none}
+.chip{flex:0 0 auto;min-height:44px;padding:0 14px;border-radius:999px;border:1px solid var(--border);background:var(--card);color:var(--ink-2);font:600 14px/1 var(--sans);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--forest);border-color:var(--forest);color:var(--on-forest)}
+.line{display:flex;align-items:center;gap:8px;min-height:32px;padding:4px 0 4px 18px;position:relative;font-size:13.5px;font-weight:600;line-height:1.45;color:var(--ink-2);text-wrap:pretty}
+.line::before{content:'';position:absolute;left:1px;top:calc(50% - 4px);width:8px;height:8px;border-radius:50%;background:var(--warning)}
+.line.cut::before,.line.sim::before{background:var(--ink-4)}
+.line.unread::before{background:none;border:2px solid var(--warning)}
+.line > span{flex:1 1 auto;min-width:0}
+.line a{color:var(--forest);font-weight:700}
+.retry{flex:0 0 auto;min-width:44px;min-height:44px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--ink-1);font:700 18px/1 var(--sans);cursor:pointer}
+#facts{padding:0 12px}
+.muted{color:var(--ink-3);font-size:13.5px;line-height:1.5;padding:4px 0}
+.factbtn{display:block;width:100%;min-height:44px;text-align:left;border:0;background:none;color:var(--ink-1);font:600 14px/1.4 var(--sans);padding:6px 0;cursor:pointer}
+.factbtn[aria-expanded]::after{content:' ›';color:var(--ink-3)}
+.factbtn[aria-expanded="true"]::after{content:' ⌄'}
+.missing{list-style:none;padding:0 0 6px}
+.missing li{font-size:13.5px;color:var(--ink-2);padding:3px 0}
+#mapbox{position:relative;flex:1 0 auto;display:flex;min-height:560px;margin:6px 12px 0;border-radius:16px;overflow:hidden;border:1px solid var(--hairline)}
+#map{flex:1 1 auto;min-height:560px;background:var(--paper-2)}
+.leaflet-container{font-family:var(--sans);background:var(--paper-2)}
+html.night .leaflet-tile-pane{filter:brightness(.62) contrast(1.15) saturate(.7)}
+#osm{position:absolute;right:0;bottom:0;z-index:1000;padding:3px 8px;border-top-left-radius:10px;background:rgba(255,255,255,.88);color:#1B4D3E;font:600 12px/1.4 var(--sans);text-decoration:none}
+html.night #osm{background:rgba(11,21,18,.85);color:#C5D2CA}
+#legend{padding:8px 12px 16px}
+.key{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink-2);padding:3px 0}
+.key .pin{flex:0 0 auto;transform:scale(.8)}
+.hud{display:block;width:100%;min-height:48px;margin:8px 0 4px;border:0;border-radius:14px;background:var(--forest);color:var(--on-forest);font:700 15px/1.2 var(--sans);cursor:pointer}
+.pinwrap{background:none;border:0}
+.pin{display:flex;align-items:center;justify-content:center;min-width:30px;height:30px;padding:0 6px;border-radius:15px;font:700 13px/1 var(--sans);box-shadow:var(--shadow)}
+.pin.exact{background:var(--forest);color:var(--on-forest);border:2px solid var(--card)}
+.pin.area{background:var(--card);color:var(--ink-1);border:3px dashed var(--forest)}
+.pin.practice{background:var(--card);color:var(--ink-1);border:3px dashed var(--ink-4)}
+.pop{min-width:200px;max-width:260px}
+.pop b{display:block;font-size:13px;color:var(--ink-3);margin-bottom:4px}
+.pop button{display:block;width:100%;min-height:44px;margin-top:6px;padding:6px 10px;text-align:left;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--ink-1);font:600 14px/1.35 var(--sans);cursor:pointer}
+.pop small{display:block;font-weight:500;color:var(--ink-3)}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--card);color:var(--ink-1)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<!--ARBO:SPRITE-->
+<div id="top">
+  <div id="chips" role="group" aria-label="Map layers"></div>
+  <div id="status" role="status" aria-live="polite"></div>
+</div>
+<div id="facts"></div>
+<div id="mapbox">
+  <div id="map" role="region" aria-label="Map"></div>
+  <a id="osm" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a>
+</div>
+<div id="legend"></div>
+<script type="application/json" id="map-zips"><!--ARBO:ZIPS--></script>
+<script type="application/json" id="map-deq"><!--ARBO:DEQ--></script>
+<script src="/map/leaflet.js"></script>
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+};
+
+// Every sentence the map says, in one place (Spanish later, R27). None of them says "clear".
+const MAP_SAYS = {
+  nameToday: 'Today',
+  namePermits: 'Permit areas',
+  nameLeads: 'Leads & jobs',
+  nameTrucks: 'Trucks',
+  permitsSoon: 'Permit areas aren’t drawn yet — the next map build adds Virginia DEQ’s RPA layer. No shading here is not a “no”.',
+  leadsSoon: 'Leads & jobs aren’t on the map yet — the next map build adds them. Your leads are on the Leads tab.',
+  trucksSoon: 'Trucks aren’t on the map yet — that layer is still to be built. Office → Fleet lists each truck.',
+  todaySoon: 'Today’s stops aren’t drawn yet — Calendar lists them.',
+  outsideShell: 'Open Map from Arbo.',
+  openArbo: 'Open Arbo',
+  noKey: 'Open Arbo and enter the key first.',
+  refused: 'Arbo didn’t take this phone’s key — open Arbo and enter it again. Nothing is drawn; this is not an empty map.',
+  noAppKey: 'Arbo’s server has no app key set yet, so nothing can be read. Nothing is drawn; this is not an empty map.',
+  codeFailed: 'The map’s own code didn’t load — check your signal, then tap ↻. Nothing is drawn; this is not an empty map.',
+  tilesFailed: 'Street map didn’t load (OpenStreetMap) — pins are still placed; this is not an empty map.',
+  offline: 'No signal — the street map needs one.',
+  retry: 'Try again',
+};
+
+const LAYERS = ['today', 'permits', 'leads', 'trucks'];
+const LAYER_NAME = { today: MAP_SAYS.nameToday, permits: MAP_SAYS.namePermits, leads: MAP_SAYS.nameLeads, trucks: MAP_SAYS.nameTrucks };
+// A layer not built yet says so when it is switched on — never an empty map.
+const LAYER_SOON = { today: MAP_SAYS.todaySoon, permits: MAP_SAYS.permitsSoon, leads: MAP_SAYS.leadsSoon, trucks: MAP_SAYS.trucksSoon };
+// The layers this build draws: each reads its own feed and names its own gaps.
+const LAYER_READ = {};
+const LAYER_CLEAR = {};
+
+const OSM_TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+// Filled at serve time (src/server/appPage.ts) from their one source each.
+function inlined(id) {
+  try { return JSON.parse($(id).textContent); } catch (e) { return null; }
+}
+const ZIPS = inlined('map-zips') || { zips: {}, noArea: [], checked: null, box: { south: 36.53, west: -76.58, north: 36.99, east: -75.84 } };
+const BOX = ZIPS.box;
+
+let ON = readLayers();
+let MAP = null;
+let TILES = null;
+const TILE = { errors: 0, loaded: 0 };
+// The status list: one line per gap, never one for a layer Mike switched off.
+const GAPS = { code: [], key: [], net: [], tiles: [], today: [], permits: [], leads: [], trucks: [] };
+
+function readLayers() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('arboMapLayers') || 'null'); } catch (e) { saved = null; }
+  const on = { today: true, permits: false, leads: false, trucks: false };
+  if (saved && typeof saved === 'object') for (const l of LAYERS) if (typeof saved[l] === 'boolean') on[l] = saved[l];
+  return on;
+}
+function saveLayers() {
+  try { localStorage.setItem('arboMapLayers', JSON.stringify(ON)); } catch (e) { /* storage blocked: the choice lasts this visit */ }
+}
+
+// Night follows the shell's own setting (arboTheme), and the phone's when it is Auto.
+function nightOn() {
+  let pref = 'auto';
+  try { pref = localStorage.getItem('arboTheme') || 'auto'; } catch (e) { pref = 'auto'; }
+  if (pref === 'dark') return true;
+  if (pref === 'light') return false;
+  return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+}
+function applyNight() {
+  document.documentElement.classList.toggle('night', nightOn());
+}
+
+// The key, from the shell that framed this page — it works even when the shell holds it for the visit only.
+// null = not inside Arbo's shell; '' = the shell has no key yet.
+function shellKey() {
+  try {
+    if (window.parent === window || typeof window.parent.arboMapKey !== 'function') return null;
+    return String(window.parent.arboMapKey() || '');
+  } catch (e) {
+    return null;
+  }
+}
+
+// One read of Arbo's /api with the shell's key. A refusal or a failure is named by `why`, never an empty answer.
+async function mapGet(path) {
+  const key = shellKey();
+  if (key === null) throw Object.assign(new Error('outside'), { why: 'outsideShell' });
+  if (!key) throw Object.assign(new Error('nokey'), { why: 'noKey' });
+  let res;
+  try {
+    res = await fetch(path, { headers: { 'x-arbor-key': key } });
+  } catch (e) {
+    throw Object.assign(new Error('unreachable'), { why: 'unread' });
+  }
+  let body = null;
+  try { body = await res.json(); } catch (e) { body = null; }
+  if (res.status === 401 || res.status === 429) throw Object.assign(new Error('refused'), { why: body && body.error === 'no_app_key' ? 'noAppKey' : 'refused' });
+  if (!res.ok || !body || typeof body !== 'object') throw Object.assign(new Error('unread'), { why: 'unread', code: res.status });
+  return body;
+}
+
+// A read refused at the door is said once, for the whole map, in the key's own words.
+function keyGap(e) {
+  if (!e || !MAP_SAYS[e.why] || e.why === 'unread') return false;
+  GAPS.key = [{ cls: e.why === 'outsideShell' ? 'unset' : 'unread', text: MAP_SAYS[e.why], link: e.why === 'outsideShell' }];
+  drawStatus();
+  return true;
+}
+
+function toShell(msg) {
+  if (window.parent === window) return;
+  window.parent.postMessage(msg, location.origin);
+}
+
+function drawChips() {
+  const box = $('chips');
+  box.replaceChildren();
+  for (const l of LAYERS) {
+    const b = el('button', 'chip', LAYER_NAME[l]);
+    b.type = 'button';
+    b.setAttribute('aria-pressed', ON[l] ? 'true' : 'false');
+    b.addEventListener('click', () => setLayer(l, !ON[l]));
+    box.appendChild(b);
+  }
+}
+
+function setLayer(l, on) {
+  ON[l] = on;
+  saveLayers();
+  drawChips();
+  if (on) readLayer(l);
+  else {
+    GAPS[l] = [];
+    if (LAYER_CLEAR[l]) LAYER_CLEAR[l]();
+    drawStatus();
+    drawFacts();
+    drawLegend();
+  }
+}
+
+function readLayer(l) {
+  if (!ON[l]) return;
+  if (LAYER_READ[l]) { LAYER_READ[l](); return; }
+  GAPS[l] = [{ cls: 'unset', text: LAYER_SOON[l] }];
+  drawStatus();
+}
+function readAll() {
+  for (const l of LAYERS) readLayer(l);
+}
+
+function drawStatus() {
+  const box = $('status');
+  box.replaceChildren();
+  const order = ['code', 'key', 'net', 'tiles', ...LAYERS.filter((l) => ON[l])];
+  for (const slot of order) {
+    for (const g of GAPS[slot]) {
+      const row = el('div', 'line ' + g.cls);
+      row.appendChild(el('span', '', g.text));
+      if (g.link) {
+        const a = el('a', '', MAP_SAYS.openArbo);
+        a.href = '/app#map';
+        a.target = '_top';
+        row.appendChild(a);
+      }
+      if (g.retry) {
+        const r = el('button', 'retry', '↻');
+        r.type = 'button';
+        r.setAttribute('aria-label', MAP_SAYS.retry);
+        r.addEventListener('click', g.retry);
+        row.appendChild(r);
+      }
+      box.appendChild(row);
+    }
+  }
+}
+
+// Facts and legend belong to the layers drawn; each layer adds its own (FACTS / KEYS).
+const FACTS = {};
+const KEYS = {};
+function drawFacts() {
+  const box = $('facts');
+  box.replaceChildren();
+  for (const l of LAYERS) if (ON[l] && FACTS[l]) for (const n of FACTS[l]()) box.appendChild(n);
+}
+function drawLegend() {
+  const box = $('legend');
+  box.replaceChildren();
+  for (const l of LAYERS) if (ON[l] && KEYS[l]) for (const n of KEYS[l]()) box.appendChild(n);
+}
+
+// The street map. §1B: three failures and none loaded is named; so is no signal.
+function tilesState() {
+  GAPS.tiles = TILE.errors >= 3 && TILE.loaded === 0 ? [{ cls: 'unread', text: MAP_SAYS.tilesFailed, retry: retryTiles }] : [];
+  GAPS.net = navigator.onLine === false ? [{ cls: 'unread', text: MAP_SAYS.offline }] : [];
+  drawStatus();
+}
+function retryTiles() {
+  TILE.errors = 0;
+  TILE.loaded = 0;
+  if (TILES) TILES.redraw();
+  tilesState();
+}
+
+// The pan limit: the four cities and every placed pin, padded — no placed pin is ever out of reach.
+function panBox(box, stops) {
+  let s = box.south, w = box.west, n = box.north, e = box.east;
+  for (const p of stops) {
+    if (typeof p.lat !== 'number' || typeof p.lon !== 'number') continue;
+    s = Math.min(s, p.lat); n = Math.max(n, p.lat);
+    w = Math.min(w, p.lon); e = Math.max(e, p.lon);
+  }
+  const pad = 0.05;
+  return [[s - pad, w - pad], [n + pad, e + pad]];
+}
+function setPanLimit(stops) {
+  if (MAP) MAP.setMaxBounds(panBox(BOX, stops));
+}
+
+// Messages from the shell: only from the shell that framed this page, on this origin.
+function onShellMessage(e) {
+  if (e.origin !== location.origin || e.source !== window.parent) return;
+  const m = e.data;
+  if (!m || typeof m !== 'object') return;
+  if (m.type === 'layer' && LAYERS.includes(m.layer)) {
+    if (ON[m.layer]) readLayer(m.layer);
+    else setLayer(m.layer, true);
+    return;
+  }
+  if (m.type === 'refresh') {
+    GAPS.key = [];
+    retryTiles();
+    readAll();
+  }
+}
+
+// The frame is hidden (0 × 0) while another screen shows; when Map comes back, its layers read again.
+let WAS_HIDDEN = false;
+function onResize() {
+  const hidden = window.innerWidth === 0 || window.innerHeight === 0;
+  if (WAS_HIDDEN && !hidden) readAll();
+  WAS_HIDDEN = hidden;
+}
+
+function boot() {
+  applyNight();
+  drawChips();
+  window.addEventListener('message', onShellMessage);
+  window.addEventListener('resize', onResize);
+  window.addEventListener('storage', (e) => { if (e.key === 'arboTheme') applyNight(); });
+  if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyNight);
+  window.addEventListener('online', () => { retryTiles(); readAll(); });
+  window.addEventListener('offline', tilesState);
+  if (shellKey() === null) keyGap({ why: 'outsideShell' });
+  if (typeof L === 'undefined') {
+    GAPS.code = [{ cls: 'unread', text: MAP_SAYS.codeFailed, retry: () => location.reload() }];
+    drawStatus();
+  } else {
+    MAP = L.map('map', { attributionControl: false, zoomControl: true, minZoom: 10, maxZoom: 18, maxBoundsViscosity: 1 });
+    MAP.fitBounds([[BOX.south, BOX.west], [BOX.north, BOX.east]]);
+    setPanLimit([]);
+    TILES = L.tileLayer(OSM_TILES, { minZoom: 10, maxZoom: 18 });
+    TILES.on('tileerror', () => { TILE.errors++; tilesState(); });
+    TILES.on('tileload', () => { TILE.loaded++; tilesState(); });
+    TILES.addTo(MAP);
+    tilesState();
+  }
+  toShell({ type: 'ready' });
+  readAll();
+}
+boot();
+</script>
+</body>
+</html>

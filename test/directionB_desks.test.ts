@@ -114,7 +114,8 @@ describe('the four desks are screens of their own (P13)', () => {
   });
 
   it('#queue — never a link before — is an alias for More, where the four desks sit', () => {
-    expect(constVal('VIEW_ALIAS')).toEqual({ queue: 'more' });
+    // Maps wave A (D106) adds the four Map deep links; #queue → More is unchanged.
+    expect(constVal('VIEW_ALIAS')).toEqual({ queue: 'more', 'map-today': 'map', 'map-permits': 'map', 'map-leads': 'map', 'map-trucks': 'map' });
     const boot = html.slice(html.indexOf('// Home-screen shortcuts open a section directly'), html.indexOf('\nrefreshAll();'));
     expect(boot).toContain('startView(location.hash);'); // Direction B P19: the boot reads the hash through startView
     expect(fnSrc('startView')).toContain('VIEW_ALIAS');

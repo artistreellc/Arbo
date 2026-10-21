@@ -564,6 +564,11 @@ nav button .dot.p-unread::after{background:var(--card);box-shadow:inset 0 0 0 2p
 #gcal-frame{width:100%;height:calc(100vh - 250px);min-height:440px;border:1px solid var(--hairline);border-radius:var(--r-lg);background:var(--card);box-shadow:var(--shadow-card)}
 .cal-open{display:flex;align-items:center;justify-content:center;min-height:48px;border-radius:16px;background:var(--card);border:1px solid var(--border);color:var(--forest);font-size:14px;font-weight:700;text-decoration:none;margin-top:10px}
 .cal-src{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:10px}
+/* Maps wave A (M0): the Map screen is one same-origin frame (/map), made once; the strip keeps the iOS edge swipe in the shell. */
+#view-map{position:relative}
+#view-map.view.active{display:block} /* stacks like the phone on a wide screen too (an id outweighs the wide .view.active grid) */
+#map-frame{display:block;width:100%;height:calc(100vh - 176px);height:calc(100dvh - 176px - env(safe-area-inset-top) - env(safe-area-inset-bottom));min-height:560px;border:1px solid var(--hairline);border-radius:var(--r-lg);background:var(--paper)}
+.map-edge{position:absolute;left:0;top:0;bottom:0;width:16px;z-index:2}
 .cal-day{margin-bottom:14px}
 .cal-daylabel{display:flex;align-items:baseline;gap:8px;font-family:var(--serif);font-size:16px;font-weight:600;color:var(--ink-1);padding:6px 0;border-bottom:1px solid var(--hairline);margin-bottom:8px}
 .cal-day.today .cal-daylabel{color:var(--gold-6)}
@@ -867,6 +872,7 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
   <div id="leads-head" class="hubhead"></div>
   <div id="view-leads" class="view"></div>
   <div id="view-cal" class="view"></div>
+  <div id="view-map" class="view"></div>
   <div id="view-book" class="view"></div>
   <div id="view-estimate" class="view"></div>
   <div id="view-followups" class="view"></div>
@@ -3869,7 +3875,9 @@ function openMapsStop(s) {
   const no = el('button', 'minibtn wide-btn', 'No');
   no.type = 'button';
   no.addEventListener('click', () => closeSheet('maps'));
-  $('maps-body').replaceChildren(el('div', 'panel-title', 'Open in Google Maps?'), el('div', 'maps-who', s.title || 'No title'), el('div', 'storm-muted', s.address), yes, no);
+  // Maps wave A: a stop tapped on the map carries what its pin said (a ZIP area, why it is not in the route).
+  const parts = [el('div', 'panel-title', 'Open in Google Maps?'), el('div', 'maps-who', s.title || 'No title'), s.note ? el('div', 'storm-muted', s.note) : null, el('div', 'storm-muted', s.address), yes, no];
+  $('maps-body').replaceChildren(...parts.filter(Boolean));
   $('maps').classList.add('show'); sheetOpened('maps');
 }
 function openMapsDay(d) {
@@ -4097,6 +4105,86 @@ function renderCalendar() {
   routePlannerPanel(v);
   renderTodayStops();
 }
+
+// ---------- Map (Maps wave A, docs/MAPS_PLAN.md: M0 the one shared map) ----------
+// Mike, 2026-10-20: "the map … needs to start tightening up". The map is its own page (/map) in a
+// same-origin frame made once by renderMap — the calendar frame's pattern (R2) — because Leaflet can
+// never sit in this shell (its source builds HTML from strings and names its own site). The shell keeps its
+// laws, the dock, ‹ Back and the sheets; a stop tapped on the map opens R35's own "Open in Google
+// Maps?" sheet, so mapsDirUrl stays the page's only Google Maps link builder. A layer is chosen by
+// message, never the frame's hash (a hash change in a frame is a history step Back would undo).
+// Where Map belongs follows the layer it was opened for: Trucks lights Office and steps back to
+// Fleet; Leads keeps Leads lit. Messages from the frame: only from it, on this origin, three kinds.
+const MAP_HOME = { today: 'cal', permits: 'estimate', leads: 'leads', trucks: 'fleet' };
+const MAP_LAYER_OF = { 'map-today': 'today', 'map-permits': 'permits', 'map-leads': 'leads', 'map-trucks': 'trucks' };
+// The longest string a frame message may carry; anything longer opens nothing.
+const MAP_MAX = 300;
+let MAP_READY = false; // the frame has said it is listening
+let MAP_HELD = null; // a layer chosen before the frame was ready
+// The frame reads /api with the shell's key — even one held for this visit only (storage blocked).
+window.arboMapKey = () => KEY;
+function mapPost(msg) {
+  const f = $('map-frame');
+  if (f && MAP_READY && f.contentWindow) f.contentWindow.postMessage(msg, location.origin);
+}
+function mapAim(layer) {
+  if (!Object.prototype.hasOwnProperty.call(MAP_HOME, layer)) return;
+  NAV_PARENT.map = MAP_HOME[layer];
+  DOCK_OF.map = DOCK_OF[MAP_HOME[layer]];
+  if (MAP_READY) mapPost({ type: 'layer', layer: layer });
+  else MAP_HELD = layer;
+}
+function openMap(layer) {
+  mapAim(layer);
+  renderMap();
+  switchTab('map');
+}
+function renderMap() {
+  if ($('map-frame')) return;
+  const f = document.createElement('iframe');
+  f.id = 'map-frame';
+  f.title = 'Map';
+  f.src = '/map';
+  // The iOS edge swipe starts in the shell, not on the map (STANDALONE's swipe-back below).
+  const edge = el('div', 'map-edge');
+  edge.setAttribute('aria-hidden', 'true');
+  $('view-map').replaceChildren(f, edge);
+}
+function refreshMap() {
+  mapPost({ type: 'refresh' });
+}
+function mapMessage(e) {
+  const f = $('map-frame');
+  if (!f || e.origin !== location.origin || !e.source || e.source !== f.contentWindow) return;
+  const m = e.data;
+  if (!m || typeof m !== 'object') return;
+  const short = (s) => typeof s === 'string' && s.length <= MAP_MAX;
+  if (m.type === 'ready') {
+    MAP_READY = true;
+    if (MAP_HELD) { const l = MAP_HELD; MAP_HELD = null; mapPost({ type: 'layer', layer: l }); }
+    return;
+  }
+  if (m.type === 'stop') {
+    if (!short(m.title) || !short(m.address) || !m.address.trim() || (m.note !== undefined && !short(m.note))) return;
+    openMapsStop({ title: m.title, address: m.address, note: m.note || '' });
+    return;
+  }
+  if (m.type === 'day') { mapDay(); return; }
+  if (m.type === 'lead' && typeof m.id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(m.id)) openPanel('leads', 'lead-' + m.id);
+}
+// Route the whole day from the map: Calendar's own answer, into R35's own day sheet.
+async function mapDay() {
+  let d;
+  try { d = await api('/api/route/today'); }
+  catch (e) {
+    if (e.code === 401) { showKeywall(); return; }
+    readOnlyToast('Couldn’t read today’s route just now — tap ↻ and try again.');
+    return;
+  }
+  if (d && d.plan && Array.isArray(d.plan.order) && d.plan.order.length) openMapsDay(d);
+  else readOnlyToast('Nothing to route today — Calendar says why for each stop.');
+}
+window.addEventListener('message', mapMessage);
 
 // ---------- Estimate (Direction B P15; R29 #1 and #4: "Before you write it up") ----------
 // Prep starts from the address (a lead's, P18), then the tools for the estimate. The head and the prep
@@ -8144,12 +8232,12 @@ async function renderLearn() {
   }
 }
 
-const VIEW_TITLES = { learn: 'Teach Arbo', measure: 'Measure', agents: 'Agents', permits: 'Permit rules', today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Properties on file', estimate: 'Estimate', followups: 'Follow-ups', money: 'Money', fleet: 'Fleet', safety: 'Crew & safety', calls: 'Calls & texts', perf: 'Numbers', settings: 'Settings', more: 'Office', assistant: 'Assistant' };
+const VIEW_TITLES = { learn: 'Teach Arbo', measure: 'Measure', agents: 'Agents', permits: 'Permit rules', today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Properties on file', estimate: 'Estimate', followups: 'Follow-ups', money: 'Money', fleet: 'Fleet', safety: 'Crew & safety', calls: 'Calls & texts', perf: 'Numbers', settings: 'Settings', more: 'Office', assistant: 'Assistant', map: 'Map' };
 // Direction B P13: a link that names no screen of its own — #queue (never a link before) opens More, where the Queue's four desks sit.
-const VIEW_ALIAS = { queue: 'more' };
+const VIEW_ALIAS = { queue: 'more', 'map-today': 'map', 'map-permits': 'map', 'map-leads': 'map', 'map-trucks': 'map' };
 // Direction B P13/P19: which dock tab lights for each screen — one table, the plan's DOCK_OF (the dock is
 // Today · Leads · Calendar · Estimate · Office). Settings opens from the sliders button and lights none.
-const DOCK_OF = { today: 'today', leads: 'leads', calls: 'leads', cal: 'cal', estimate: 'estimate', book: 'estimate', permits: 'estimate', measure: 'estimate', more: 'more', followups: 'more', money: 'more', fleet: 'more', safety: 'more', perf: 'more', agents: 'more', learn: 'more', assistant: 'more' };
+const DOCK_OF = { today: 'today', leads: 'leads', calls: 'leads', cal: 'cal', estimate: 'estimate', book: 'estimate', permits: 'estimate', measure: 'estimate', more: 'more', followups: 'more', money: 'more', fleet: 'more', safety: 'more', perf: 'more', agents: 'more', learn: 'more', assistant: 'more', map: 'cal' };
 
 // The line under ARBO. Today's hero already carries the date, so Today shows
 // the name alone; every screen says SIMULATION while the data is practice data.
@@ -8500,7 +8588,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && TAL
 // home-screen shortcut, the crew preview's way back) a screen lands on its hub —
 // an Office desk on Office, an Estimate tool on Estimate, Calls & texts on Leads
 // (Direction B P19) — and anything else on Today.
-const NAV_PARENT = { calls: 'leads', book: 'estimate', followups: 'more', money: 'more', fleet: 'more', safety: 'more', perf: 'more', permits: 'estimate', agents: 'more', measure: 'estimate', learn: 'more', assistant: 'more', settings: 'today', estimate: 'today' };
+const NAV_PARENT = { calls: 'leads', book: 'estimate', followups: 'more', money: 'more', fleet: 'more', safety: 'more', perf: 'more', permits: 'estimate', agents: 'more', measure: 'estimate', learn: 'more', assistant: 'more', settings: 'today', estimate: 'today', map: 'cal' };
 const SHEETS = ['twin', 'yard', 'bd', 'talk', 'approval', 'photo', 'maps'];
 let NAV_QUIET = false; // true while a back step is drawn — drawing it must not add a new step
 function navPush(which) {
@@ -8521,7 +8609,7 @@ function navShowBack() {
 }
 // A screen drawn by stepping back keeps what it showed (an agents run, a typed
 // ZIP); only one never drawn yet is drawn now. More is always redrawn, as its tab does.
-const NAV_DRAW = { more: () => renderMore(), settings: () => renderSettings(), permits: () => renderPermits(), agents: () => renderAgents(), measure: () => renderMeasure(), learn: () => renderLearn(), assistant: () => renderAssistant() };
+const NAV_DRAW = { more: () => renderMore(), settings: () => renderSettings(), permits: () => renderPermits(), agents: () => renderAgents(), measure: () => renderMeasure(), learn: () => renderLearn(), assistant: () => renderAssistant(), map: () => renderMap() };
 // Direction B P19: where a link lands — the home-screen shortcuts (/app#calls, /app#cal), crew.html's way back
 // (/app#more) and every #screen. An alias lands on its screen (#queue → Office); Settings (it opens from the
 // sliders button) and a hash that names no screen land on Today. Drawn the way a step back draws (navShow), so a
@@ -8530,6 +8618,7 @@ const NAV_DRAW = { more: () => renderMore(), settings: () => renderSettings(), p
 function startView(hash) {
   const asked = String(hash || '').replace(/^#/, '');
   const want = Object.prototype.hasOwnProperty.call(VIEW_ALIAS, asked) ? VIEW_ALIAS[asked] : asked;
+  if (want === 'map') mapAim(MAP_LAYER_OF[asked]); // Maps wave A: #map-trucks lands on Map with Trucks on, lit and stepping back where Trucks belong
   if (want && want !== 'today' && want !== 'settings' && Object.prototype.hasOwnProperty.call(VIEW_TITLES, want)) navShow(want);
   try { history.replaceState({ v: CUR_TAB, d: 0 }, '', '#' + CUR_TAB); } catch (e) { /* ignore */ }
 }
@@ -8605,8 +8694,9 @@ $('tab-more').addEventListener('click', () => { renderMore(); switchTab('more');
 const TIMED = { today: renderToday, leads: renderLeads, cal: renderCalendar, estimate: renderEstimate, book: renderBook, followups: renderFollowUps, money: renderMoneyView, fleet: renderFleetView, safety: renderSafetyView, calls: renderCalls, perf: renderPerformance };
 function refreshAll() { for (const t in TIMED) TIMED[t](); renderLeadsHead(); }
 // ↻ and the key screen also redraw a More desk that is on screen — refreshAll never draws those.
+// Map (Maps wave A): ↻ reaches its frame as a refresh message; the frame itself is never reloaded.
 function refreshActiveMoreView() {
-  const r = { settings: renderSettings, permits: renderPermits, agents: renderAgents, measure: renderMeasure, learn: renderLearn, assistant: renderAssistant, more: renderMore };
+  const r = { settings: renderSettings, permits: renderPermits, agents: renderAgents, measure: renderMeasure, learn: renderLearn, assistant: renderAssistant, more: renderMore, map: () => refreshMap() };
   for (const t in r) {
     if ($('view-' + t).classList.contains('active')) { r[t](); return; }
   }

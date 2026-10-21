@@ -22,6 +22,7 @@
     "@elevenlabs/convai-widget-embed": "^0.18.2",
     "@supabase/supabase-js": "^2.47.10",
     "dotenv": "^16.4.7",
+    "leaflet": "1.9.4",
     "tsx": "^4.19.2",
     "zod": "^3.24.1"
   },

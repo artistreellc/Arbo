@@ -117,6 +117,30 @@ const DEQ_CBPA: Omit<GisLayer, 'meaning'> = {
   lastVerified: '2026-08-01',
 };
 
+/**
+ * Maps wave A (docs/MAPS_PLAN.md M0, M2): the map's Permit areas layer draws
+ * this same layer from this same MapServer — one source for both. The base is
+ * DEQ_CBPA.url minus "/33"; test/mapPage.test.ts fails if the two drift apart.
+ */
+export const DEQ_RPA_LAYER = 33;
+export const DEQ_MAPSERVER_BASE = DEQ_CBPA.url.replace(new RegExp(`/${DEQ_RPA_LAYER}$`), '');
+
+/**
+ * Layer 33's scale range and the service's image limits — what the map's
+ * export request must respect (M2). NOT READ YET: the build sandbox cannot
+ * reach *.virginia.gov (D37). Read `${DEQ_MAPSERVER_BASE}/33?f=json`
+ * (minScale, maxScale) and `${DEQ_MAPSERVER_BASE}?f=json` (maxImageWidth,
+ * maxImageHeight) from Railway or a phone, record them here with the date,
+ * before M2 merges. A null is unknown — never a default the map guesses.
+ */
+export const DEQ_RPA_LIMITS: { minScale: number | null; maxScale: number | null; maxImageWidth: number | null; maxImageHeight: number | null; checked: string | null } = {
+  minScale: null,
+  maxScale: null,
+  maxImageWidth: null,
+  maxImageHeight: null,
+  checked: null,
+};
+
 const cbpaMeaning = (city: string): string =>
   `This address sits in a Chesapeake Bay preservation layer — tree removal here likely needs the City of ${city} sign-off BEFORE the quote or the cut.`;
 

@@ -130,6 +130,8 @@ These are `SLOW::ARBO` files. Read every line of one before editing it.
 | `src/integrations/tomtom.ts` | a read-only `peek(query)` |
 | `src/ops/routePlanner.ts` | `export` on `addressOf`, nothing else |
 | `src/permitting/gis/layers.ts` | export the DEQ MapServer base; record layer 33's scale and image limits |
+| `src/app/sw.js` | `/map` network-first, the two Leaflet files cache-first; `PRECACHE` and `neverCache` unchanged (named in M0; added to this table when M0 was built, D106) |
+| `package.json`, `package-lock.json` | `leaflet` 1.9.4 in `dependencies`, exact; the lockfile written by npm (added with M0, D106) |
 
 Not edited:
 - `api.ts`, `locationIntel.ts`, `simSource.ts`, `address.ts` and `bouncie.ts`.
