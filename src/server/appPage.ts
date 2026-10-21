@@ -48,6 +48,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { FOUR_CITY_BOX, ZCTA_SOURCE, ZIP_CENTROIDS, ZIP_NO_AREA } from '../lib/zipCentroids.js';
+import { DEQ_MAPSERVER_BASE, DEQ_RPA_LAYER, DEQ_RPA_LIMITS } from '../permitting/gis/layers.js';
 
 const cache = new Map<string, string>();
 
@@ -108,4 +110,50 @@ export function loadTalkWidgetJs(): string {
     cache.set('__talk_widget__', js);
   }
   return js;
+}
+
+/** JSON that is safe inside a <script> block: no "<" can end it early. */
+function scriptJson(v: unknown): string {
+  return JSON.stringify(v).replace(/</g, '\\u003c');
+}
+
+/**
+ * The Map page (Maps wave A, M0 — docs/MAPS_PLAN.md). Its own file ON PURPOSE:
+ * Leaflet's source uses innerHTML and names its own site, which the cockpit
+ * shell's laws forbid (test/appUi.test.ts), so the map runs in a same-origin
+ * frame the shell makes once — the calendar frame's pattern (R2). At serve
+ * time three markers are filled, each from its one source: the sprite, the ZIP
+ * table (src/lib/zipCentroids.ts) and the DEQ values (layers.ts). The page
+ * itself carries no customer data; it reads /api with the shell's key.
+ */
+export function loadMapHtml(): string {
+  let html = cache.get('__map__');
+  if (html === undefined) {
+    const zips = scriptJson({ zips: ZIP_CENTROIDS, noArea: ZIP_NO_AREA, checked: ZCTA_SOURCE.checked, box: FOUR_CITY_BOX });
+    const deq = scriptJson({ base: DEQ_MAPSERVER_BASE, layer: DEQ_RPA_LAYER, limits: DEQ_RPA_LIMITS });
+    html = withSprite(load('map.html')).replace('<!--ARBO:ZIPS-->', () => zips).replace('<!--ARBO:DEQ-->', () => deq);
+    cache.set('__map__', html);
+  }
+  return html;
+}
+
+const LEAFLET_FILES = new Set(['leaflet.js', 'leaflet.css']);
+
+/**
+ * Leaflet 1.9.4 (BSD-2-Clause), served from OUR server like the ElevenLabs
+ * widget — the pinned npm package, no third-party CDN. Exactly two names; any
+ * other is null (a 404), so no path can walk out of the package. Leaflet's
+ * licence rides at the top of each file, as its BSD terms ask of a copy.
+ */
+export function loadLeafletFile(name: string): string | null {
+  if (!LEAFLET_FILES.has(name)) return null;
+  const key = '__leaflet__' + name;
+  let text = cache.get(key);
+  if (text === undefined) {
+    const dir = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'node_modules', 'leaflet');
+    const licence = readFileSync(join(dir, 'LICENSE'), 'utf8');
+    text = `/*! Leaflet's licence, kept with the copy Arbo serves:\n${licence}*/\n${readFileSync(join(dir, 'dist', name), 'utf8')}`;
+    cache.set(key, text);
+  }
+  return text;
 }

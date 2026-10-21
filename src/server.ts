@@ -189,7 +189,7 @@ import { createTodayStops } from './ops/todayStops.js';
 import { etInstant, etRfc3339 } from './lib/etDay.js';
 import { withinWorkingHours } from './ops/locationIntel.js';
 import type { Alerter } from './reception/receptionist.js';
-import { loadAppHtml, loadCrewHtml, loadTalkHtml, loadTalkWidgetJs } from './server/appPage.js';
+import { loadAppHtml, loadCrewHtml, loadLeafletFile, loadMapHtml, loadTalkHtml, loadTalkWidgetJs } from './server/appPage.js';
 import { emitSafe } from './binder/eventBus.js';
 import { runAgentSweep, startAgentScheduler } from './agents/sweep.js';
 import {
@@ -605,6 +605,11 @@ const consoleAlerter: Alerter = {
   },
 };
 
+// Maps wave A (M0, docs/MAPS_PLAN.md): the Map page's CSP — the browser holds the same
+// host list test/mapPage.test.ts scans for. Images from Arbo, OpenStreetMap's tiles and
+// DEQ's RPA layer; data only from Arbo; framed only by Arbo's own shell.
+const MAP_CSP = "default-src 'self'; img-src 'self' data: blob: https://tile.openstreetmap.org https://gisdata.deq.virginia.gov; connect-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-ancestors 'self'";
+
 /**
  * The one request handler, used by node:http on Railway and locally.
  *
@@ -914,6 +919,21 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
       if (req.method === 'GET' && url.pathname === '/app') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
         return res.end(loadAppHtml());
+      }
+      // Maps wave A (M0): the Map page the shell frames — open like /app, carrying no data
+      // (it reads /api with the shell's key). No referrer-policy on purpose: OpenStreetMap's
+      // tile policy asks for an accurate Referer.
+      if (req.method === 'GET' && url.pathname === '/map') {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'content-security-policy': MAP_CSP });
+        return res.end(loadMapHtml());
+      }
+      // Leaflet from Arbo's own node_modules — exactly two files. Anything else under /map/ is a 404.
+      if (url.pathname.startsWith('/map/')) {
+        const name = url.pathname.slice('/map/'.length);
+        const text = req.method === 'GET' ? loadLeafletFile(name) : null;
+        if (text === null) return send(404, { error: 'not_found' });
+        res.writeHead(200, { 'content-type': name.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8', 'cache-control': 'public, max-age=86400' });
+        return res.end(text);
       }
       // §9 / iOS: both doors install to the iPhone home screen and open
       // full-screen. Two manifests because they are two different apps — Mike
