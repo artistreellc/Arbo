@@ -529,6 +529,23 @@ describe('Calls & texts: the old Calls screen, Sona first (P16)', () => {
     expect(fnSrc('sonaPanel')).toContain('sonaSlipBox(d, done)'); // P17: with the calls Mike called back
   });
 
+  it('a Sona card\'s Transcript toggle is a 44 px tap target — Sona first puts it on the first screen of Calls & texts (browser check)', async () => {
+    const document = { createElement: (t: string) => new N(t), createTextNode: (t: string) => { const n = new N('#text'); n.textContent = t; return n; }, getElementById: () => null };
+    const panel = await (new Function('document', 'api', 'openSonaCall', `
+      const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+      const fmtTime = (x) => 'T(' + x + ')';
+      ${['FEED_WORD', 'Cap', 'RETRY', 'TONE'].map(constSrc).join('\n')}
+      const SONA_DONE_KEY = 'arboSonaHandled'; const SONA_DONE_MS = 1; const localStorage = { getItem: () => null, setItem: () => {} };
+      ${['plural', 'badge', 'chip', 'slipRuleLabel', 'feedKind', 'feedLine', 'sonaHandled', 'sonaCalledBack', 'sonaSlipBox', 'sonaPanel'].map(fnSrc).join('\n')}
+      return sonaPanel(20, true);`)(document, async () => quo([call('Q1', { slips: [SLIP], dialogue: [{ speaker: 'agent', text: 'SIM words' }] })]), () => {}) as Promise<N>);
+    const det = panel.all().filter((n) => n.tag === 'details');
+    expect(det).toHaveLength(1);
+    expect(det[0]!.has('sona-tr')).toBe(true);
+    expect(det[0]!.children[0]!.tag).toBe('summary');
+    // 44 px tall by padding, so it stays a list item and keeps its disclosure marker.
+    expect(css).toContain('.sona-tr > summary{min-height:44px;box-sizing:border-box;padding:10px 0;cursor:pointer}');
+  });
+
   it('openSonaCall\'s target view holds the [data-sona-call] cards (sonaPanel(20, true) fills a slot of view-calls)', () => {
     expect(fnSrc('openSonaCall')).toContain("switchTab('calls');");
     expect(fnSrc('openSonaCall')).toContain("document.querySelectorAll('#view-calls [data-sona-call]')");
