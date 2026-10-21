@@ -143,7 +143,7 @@ const NORFOLK: CityRuleset = {
     note: 'RPA removals expect ~3-to-1 replacement; confirm current ratio with Environmental Services.',
   },
   contacts: [
-    { name: 'Seamus McCarthy', role: 'Environmental Service Manager', email: 'seamus.mccarthy@norfolk.gov', phone: '757-664-4363', note: 'Office handling the 8562 Circle Drive CBPA case.' },
+    { name: 'Seamus McCarthy', role: 'Environmental Service Manager', email: 'seamus.mccarthy@norfolk.gov', phone: '757-664-4363', note: 'Office handling the 4303 Withheld Drive CBPA case.' },
     { name: 'Jack Erwin', role: 'City Arborist (CBPA)', email: 'Jack.Erwin@norfolk.gov', note: 'Route Norfolk CBPA tree questions here.' },
     { name: 'Environmental Services', role: 'Office', email: '', phone: '757-664-4752' },
   ],

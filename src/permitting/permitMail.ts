@@ -62,9 +62,9 @@ const CITY_DOMAINS: Array<{ domain: string; city: ServiceCity }> = [
 ];
 
 // Case-reference formats seen in the real mail:
-//   2025-DSC-021566   VB Accela PPR record (§6B.4)
-//   2025-UTIL-10415   VB Accela utility permit
-//   J04-021654-RPA    VB internal RPA reference
+//   2025-DSC-000303   VB Accela PPR record (§6B.4)
+//   2025-UTIL-00404   VB Accela utility permit
+//   J04-000505-RPA    VB internal RPA reference
 const CASE_REF_RE = /\b(20\d{2}-[A-Z]{3,5}-\d{4,7}|J\d{2}-\d{5,7}-RPA)\b/g;
 
 export type PermitMailKind =
@@ -115,14 +115,14 @@ export function extractCaseRefs(text: string): string[] {
 
 /**
  * Address from the VB review-letter subject pattern
- * ("…, <Name> Residence, 1220 Americus Avenue, Accela Record: …") or a plain
- * street-address subject ("8562 Circle drive", "1211 South Fairwater Dr").
+ * ("…, <Name> Residence, 1220 Sample Avenue, Accela Record: …") or a plain
+ * street-address subject ("4303 Withheld drive", "4404 South Mockupter Dr").
  */
 export function extractSubjectAddress(subject: string): string | null {
   const residence = subject.match(/Residence,\s*([^,]+?),\s*Accela Record/i);
   if (residence) return residence[1]!.trim();
   // Street-type must be a standalone word (a leading \s guard) — otherwise
-  // "Ter" matches inside "Fairwater" and truncates the capture.
+  // "Ter" matches inside "Mockupter" and truncates the capture.
   const plain = subject.match(/\b(\d{1,6}\s+[A-Za-z][A-Za-z.' ]*?\s(?:Ave(?:nue)?|St(?:reet)?|Dr(?:ive)?|Rd|Road|Ln|Lane|Ct|Court|Blvd|Cir(?:cle)?|Arch|Way|Pl(?:ace)?|Ter(?:race)?))\b/i);
   return plain ? plain[1]!.trim() : null;
 }

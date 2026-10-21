@@ -95,7 +95,7 @@ export function createLiveGisProvider(options: LiveGisOptions): GisProvider {
           continue;
         }
         // Proximity tier for RPA layers (D37): the geocoded street point can
-        // sit 150–300 m from a rear-lot buffer (proven on the Circle Drive
+        // sit 150–300 m from a rear-lot buffer (proven on the Withheld Drive
         // case). A probe-only hit is the softer PROXIMITY overlay → the
         // screen reads REVIEW_NEEDED, not PERMIT_LIKELY.
         if (layer.kind === 'CBPA_RPA') {

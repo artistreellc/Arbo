@@ -231,9 +231,9 @@ describe('geo — a pin with no accuracy is not a good pin', () => {
   });
 
   it('coordinates with no accuracy figure are UNKNOWN, not good', () => {
-    // D37: the geocoder put Circle Drive on the street centreline and the RPA
+    // D37: the geocoder put Withheld Drive on the street centreline and the RPA
     // hugged the rear of the lot. A confident-looking point is the hazard.
-    const g = { ...emptyGeoRecord(), treeLat: 36.93, treeLng: -76.26 };
+    const g = { ...emptyGeoRecord(), treeLat: 36.85, treeLng: -76.28 };
     const q = geoQuality(g);
     expect(q.quality).toBe('unknown');
     expect(q.line).toMatch(/not as a survey point/i);
@@ -316,13 +316,13 @@ describe('the RA holds it all together, and never leaks a customer (§4.3)', () 
     r.customer = {
       ...emptyCustomerContext(),
       contactInstructions: 'CALL FIRST — Sandra Whitfield, 757-555-0199',
-      siteEntryNotes: 'Gate code 4417, back of 8562 Circle Drive',
+      siteEntryNotes: 'Gate code 0000, back of 4303 Withheld Drive',
       statedConcern: 'limb over the neighbour\'s shed',
     };
     r.observation = { ...emptyObservation(), observedBy: 'Mike', freeNotes: 'Owner is Sandra, tenant called' };
     const line = raLogLine(r);
     // Everything above is exactly the material §4.3 keeps out of logs.
-    expect(line).not.toMatch(/Sandra|Whitfield|757|4417|Circle Drive|shed|tenant/i);
+    expect(line).not.toMatch(/Sandra|Whitfield|757|0000|Withheld Drive|shed|tenant/i);
     expect(line).toContain('ra=ra1');
     expect(line).toContain('tree=t1');
     expect(line).toMatch(/cust=3\/8/);

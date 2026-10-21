@@ -47,7 +47,7 @@
 // engine is STRUCTURALLY INCAPABLE of telling Mike "you're clear, no permit
 // needed." Its three outputs are the ONLY outputs — and the lowest of them,
 // NO_OVERLAY_VERIFY, still says "verify with the city." A false "clear" is
-// exactly what produced the real 8562 Circle Drive violation this engine exists
+// exactly what produced the real 4303 Withheld Drive violation this engine exists
 // to prevent.
 //
 // Mirrors the receptionist output guard: the classification lives in code, over

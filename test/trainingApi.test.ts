@@ -138,7 +138,7 @@ describe('GET /api/crew/quiz', () => {
 
   it('rejects a bad crew id or context instead of guessing', async () => {
     const api = createApi(src());
-    expect((await api.crewQuiz('dave', 'clock_in_gate')).status).toBe(400);
+    expect((await api.crewQuiz('simhazel', 'clock_in_gate')).status).toBe(400);
     expect((await api.crewQuiz(CREW, 'whatever')).status).toBe(400);
   });
 });

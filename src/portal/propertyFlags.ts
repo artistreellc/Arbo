@@ -51,7 +51,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 // The permit engine (src/permitting/screening.ts) is STRUCTURALLY INCAPABLE
 // of saying "you're clear" — that is §6B.3, and it exists because a false
-// clear produced the real 8562 Circle Drive CBPA violation. This file shows
+// clear produced the real 4303 Withheld Drive CBPA violation. This file shows
 // the same findings to the CUSTOMER, who is a much softer reader than Mike:
 // a homeowner who sees "Flood zone: No" files it as settled and never thinks
 // about it again.

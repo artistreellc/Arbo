@@ -79,12 +79,12 @@ Warn and ask to re-shoot when:
 Extract: Name, Address, City + Zip, Phone, Date of estimate, service checkboxes A–H, Job Proposed Total, Crew needed, and **signature present? / date signed present?** Handwriting confidence is scored per field; low-confidence fields are shown for correction, never silently guessed. **Never invent a dollar total.**
 
 ### 4. Auto-naming (the file title convention)
-Generated title: `<street> <city-abbrev> <total>` — street lowercase without house number, city abbreviation (Nor / VB / Ches / Ports), total as plain digits, no `$`. Example: `gallahad dr VB 3100`.
+Generated title: `<street> <city-abbrev> <total>` — street lowercase without house number, city abbreviation (Nor / VB / Ches / Ports), total as plain digits, no `$`. Example: `testbed dr VB 3100`.
 Hard rules the tool enforces (all are real errors from the current folder):
-- Street-first, never client-name-first (fix the "Moore Holland VB $1400" pattern).
-- No `$` in the title, no run-together typos ("YeatesbVB").
+- Street-first, never client-name-first (fix the "Simspruce Testbed VB $1400" pattern).
+- No `$` in the title, no run-together typos ("SimrowanbVB").
 - Never file under a scanner default name ("Adobe Scan Jul 26…").
-- Client name is spell-checked against the extracted form text (the "Cove"/"Condo" class of typo) — title text must match what's written on the form.
+- Client name is spell-checked against the extracted form text (the "Sim Larch"/"Sim Larsh" class of typo) — title text must match what's written on the form.
 - Always include the file extension.
 
 ### 5. Confirm screen (human in the loop)

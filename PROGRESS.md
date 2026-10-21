@@ -244,7 +244,7 @@ screen that is **structurally incapable of saying "you're clear."**
 | 4.14 | **Sage won-recolor (D36, resolves O5)** — `markEstimateWonOnCalendar()` flips a won estimate's event to Sage 2 (the only path that writes it); `CalendarApi.updateEventColor` (PATCH); `estimate.calendar_event_id` via migration 0004 (**applied live**); `convertEstimateToJob` returns the event id; D26 rollback file updated to keep the now-legit column | ☑ | `scheduling.test.ts` (won-recolor + never-Sage-on-new-bookings) |
 | 4.15 | **GIS endpoints verified + DEQ RPA layer LIVE (D37)** — layer 33 metadata/coverage/point-evidence verified over connector infra; proximity tier (direct → PERMIT_LIKELY, 300 m probe → `CBPA_RPA_PROXIMITY` → REVIEW_NEEDED); keyless Census geocoder default; `createDefaultGisProvider()` now always returns a provider | ☑ | `gis.test.ts` (20) |
 | 4.16 | **D26 drift removed from the live DB** — roll-forward migration `0005` applied via the DDL tooling; verified live (tables/columns) | ☑ | live `list_tables` + column checks |
-| 4.17 | **Permit-history mining (§5A #35, D38)** — `permitMail.ts` classifier (city domains, Accela case-ref formats incl. DSC/UTIL/J##-RPA, VB review-letter address pattern, kinds: ppr_review / cbpa_case / intake_request / duplicate_warning / payment); migration `0006_permit_correspondence` (**applied live**); **22 real cases mined from the live inbox and indexed** — incl. the brief's own 2025-DSC-021160 example, the VOIDED duplicate 2025-DSC-022094, both Norfolk CBPA violation cases, the Britannica Admin Variance chain, and the DWR eagles-nest coordination; VB ruleset enriched (Accela-help contact, Admin Variance path, DWR coordination) | ☑ | `permitMail.test.ts` (7); 22 rows live |
+| 4.17 | **Permit-history mining (§5A #35, D38)** — `permitMail.ts` classifier (city domains, Accela case-ref formats incl. DSC/UTIL/J##-RPA, VB review-letter address pattern, kinds: ppr_review / cbpa_case / intake_request / duplicate_warning / payment); migration `0006_permit_correspondence` (**applied live**); **22 real cases mined from the live inbox and indexed** — incl. the brief's own 2025-DSC-000101 example, the VOIDED duplicate 2025-DSC-000202, both Norfolk CBPA violation cases, the VB admin-variance chain, and the DWR eagles-nest coordination; VB ruleset enriched (Accela-help contact, Admin Variance path, DWR coordination) | ☑ | `permitMail.test.ts` (7); 22 rows live |
 
 ## O4 RESOLVED — color map learned from the live calendar (2026-08-01)
 
@@ -286,14 +286,14 @@ connected Zapier webhook infrastructure (2026-08-01):
   cities. Layer **flipped to `live`**. (Layer 32 — the original candidate —
   turned out to be a non-queryable GROUP layer; corrected. The
   candidate-vs-live gate caught exactly what it was built to catch.)
-- **The Circle Drive lesson (D37):** the known violation address geocodes to
+- **The Withheld Drive lesson (D37):** the known violation address geocodes to
   the street centerline; direct point-intersects = 0 hits, 75 m = 0,
   150 m = 0, **300 m = 1**. A bare point test would have missed the real
   case. The provider now runs two tiers: direct hit → `CBPA_RPA`
   (PERMIT_LIKELY on removals); probe-only hit within 300 m →
   `CBPA_RPA_PROXIMITY` (REVIEW_NEEDED). Inland control at 300 m: 0 hits.
 - **Keyless geocoding:** US Census geocoder (verified live — it resolved
-  Circle Drive) is the default when no Google Maps key is set, so the whole
+  Withheld Drive) is the default when no Google Maps key is set, so the whole
   §6B screen pipeline runs live with **zero paid credentials**.
 
 **Deferred to deploy / later (named, not silent):** live city GIS layer wiring

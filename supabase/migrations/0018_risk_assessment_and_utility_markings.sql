@@ -86,7 +86,7 @@ create table if not exists risk_assessment (
 
   -- ── Geo. accuracy_meters is its own column because a point with no
   --    accuracy figure looks exactly as authoritative as a good fix and is
-  --    not — D37 (Circle Drive) is the evidence.
+  --    not — D37 (Withheld Drive) is the evidence.
   captured_lat  double precision,
   captured_lng  double precision,
   accuracy_meters numeric,

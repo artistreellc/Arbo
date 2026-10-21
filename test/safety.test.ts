@@ -250,9 +250,9 @@ describe('safety API', () => {
       emit: async (_t, payload) => { emitted = payload; return true; },
     }));
     await api.reportNearMiss({
-      reportedBy: CREW_UUID, description: 'Dave nearly dropped a limb on Steve', occurredOn: TODAY,
+      reportedBy: CREW_UUID, description: 'Sim Hazel nearly dropped a limb on Steve', occurredOn: TODAY,
     });
-    expect(JSON.stringify(emitted)).not.toMatch(/Dave|Steve/);
+    expect(JSON.stringify(emitted)).not.toMatch(/Sim Hazel|Steve/);
     expect(emitted).toMatchObject({ hazardCategory: 'struck_by' });
   });
 
@@ -267,7 +267,7 @@ describe('safety API', () => {
     const api = createApi(safetySource({
       fileNearMiss: async () => { wrote = true; return { id: 'x' }; },
     }));
-    const res = await api.reportNearMiss({ reportedBy: 'dave', description: 'Limb fell' });
+    const res = await api.reportNearMiss({ reportedBy: 'simhazel', description: 'Limb fell' });
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({ error: 'bad_reporter_id' });
     expect(wrote).toBe(false);

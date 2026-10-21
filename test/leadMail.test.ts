@@ -180,7 +180,8 @@ describe('lead-mail classifier (§5A #12) — real provider formats', () => {
   });
 });
 
-// Both formats below are the REAL 2026-08-02 messages, trimmed. They were
+// Both formats below are shaped like the real 2026-08-02 messages, trimmed;
+// every value is SIM (no customer data in the repo, §4.3). They were
 // invisible to the classifier until then: the web-form alert had no branch at
 // all, and the LSA rule matched a sender address Google does not actually use.
 const WEB_FORM_BODY = `CallRail
@@ -194,11 +195,11 @@ Referrer Domain: https://www.treeleadstoday.com/
 Campaign: TSP National Lead Gen Facebook
 
 Form Contents:
-Name:: Stephen Kennedy
-Email:: kencas1@cox.net
-Phone Number:: (757) 408-1124
+Name:: Sim Maple
+Email:: sim.maple@example.com
+Phone Number:: (757) 555-0141
 Zip Code:: 23454
-Service Requested:: Tree Trimming & Pruning - tree is in backyard needs trimming / Address: 2620 Meckley Court`;
+Service Requested:: Tree Trimming & Pruning - tree is in backyard needs trimming / Address: 4101 Mockup Court`;
 
 const LSA_BODY = `Local Services By
 Google<https://c.gle/xxx>
@@ -209,9 +210,9 @@ New event
 Potential Customer sent you a message
 
 1000 works if possible
-Name is Dave
-9276 Buckman Ave
-253-590-3328
+Name is Sim Willow
+4202 Sandbox Ave
+757-555-0142
 
 To connect with this customer
 
@@ -230,15 +231,15 @@ describe('CallRail WEB FORM (§5A #12) — the alert that had no branch', () => 
   });
 
   it('pulls every field the double-colon layout carries', () => {
-    expect(r.lead.name).toBe('Stephen Kennedy');
-    expect(r.lead.phone).toBe('(757) 408-1124');
-    expect(r.lead.email).toBe('kencas1@cox.net');
+    expect(r.lead.name).toBe('Sim Maple');
+    expect(r.lead.phone).toBe('(757) 555-0141');
+    expect(r.lead.email).toBe('sim.maple@example.com');
     expect(r.lead.zip).toBe('23454');
     expect(r.lead.source).toBe('Tree Service Pros');
   });
 
   it('splits the street address out of the service-request free text', () => {
-    expect(r.lead.address).toBe('2620 Meckley Court');
+    expect(r.lead.address).toBe('4101 Mockup Court');
     expect(r.lead.details).toBe('Tree Trimming & Pruning - tree is in backyard needs trimming');
     expect(r.lead.details).not.toMatch(/Address:/);
   });
@@ -287,7 +288,7 @@ describe('CallRail WEB FORM (§5A #12) — the alert that had no branch', () => 
 
 describe('Google LSA (§5A #12) — the sender address the old rule never matched', () => {
   const r = classifyLeadMail({
-    from: 'customer-request-6487787313@awexpress.google.com',
+    from: 'customer-request-0000000001@awexpress.google.com',
     subject: "Potential Customer's new request",
     body: LSA_BODY,
   });
@@ -303,9 +304,9 @@ describe('Google LSA (§5A #12) — the sender address the old rule never matche
   });
 
   it('extracts the hand-typed name, phone, and street', () => {
-    expect(r.lead.name).toBe('Dave');
-    expect(r.lead.phone).toBe('253-590-3328');
-    expect(r.lead.address).toBe('9276 Buckman Ave');
+    expect(r.lead.name).toBe('Sim Willow');
+    expect(r.lead.phone).toBe('757-555-0142');
+    expect(r.lead.address).toBe('4202 Sandbox Ave');
   });
 
   it('never mistakes a budget line for a street address', () => {
@@ -315,7 +316,7 @@ describe('Google LSA (§5A #12) — the sender address the old rule never matche
     const noStreet = classifyLeadMail({
       from: 'customer-request-1@awexpress.google.com',
       subject: "Potential Customer's new request",
-      body: LSA_BODY.replace('9276 Buckman Ave\n', ''),
+      body: LSA_BODY.replace('4202 Sandbox Ave\n', ''),
     });
     expect(noStreet.lead.address).toBeUndefined();
   });
@@ -335,9 +336,9 @@ describe('Google LSA (§5A #12) — the sender address the old rule never matche
   });
 });
 
-// Both shapes are the REAL 2026-08-01/02 messages. The read-only sweep found
-// NINE lead-shaped emails in two days matching no rule; HomeAdvisor and Yelp
-// were two entire channels Arbo could not see.
+// Both are shaped like the real 2026-08-01/02 messages; every value is SIM.
+// The read-only sweep found NINE lead-shaped emails in two days matching no
+// rule; HomeAdvisor and Yelp were two entire channels Arbo could not see.
 const HA_BODY = `A homeowner in Norfolk needs a pro for Trees - Trim.
 
 There's a new Opportunity near you
@@ -345,7 +346,7 @@ Respond quickly if you're interested.
 
 Trees - Trim
 Norfolk, VA
-Lead #: 327955820
+Lead #: 123456789
 View all details`;
 
 const YELP_BODY = `Job Requested
@@ -431,7 +432,7 @@ describe('HomeAdvisor parser still works for the day Mike switches it back on', 
   });
 
   it('keeps their lead number so Mike can find it in their app', () => {
-    expect(on().lead.externalRef).toBe('327955820');
+    expect(on().lead.externalRef).toBe('123456789');
     expect(on().lead.details).toMatch(/HomeAdvisor app/);
   });
 
@@ -449,15 +450,15 @@ describe('HomeAdvisor parser still works for the day Mike switches it back on', 
 
 describe('Yelp (§5A #12) — per-thread reply sender, and often not tree work', () => {
   const r = classifyLeadMail({
-    from: 'reply+1666185633f144e281d3b9529549db55@messaging.yelp.com',
-    subject: 'Message from Chase C. for Art-Is-Tree',
+    from: 'reply+0123456789abcdef0123456789abcdef@messaging.yelp.com',
+    subject: 'Message from Sim R. for Art-Is-Tree',
     body: YELP_BODY,
   });
 
   it('matches on the yelp messaging domain, not a fixed address', () => {
     expect(r.isLeadNotification).toBe(true);
     expect(r.provider).toBe('yelp');
-    expect(r.lead.name).toBe('Chase C.');
+    expect(r.lead.name).toBe('Sim R.');
   });
 
   it('resolves the city from the postal code', () => {

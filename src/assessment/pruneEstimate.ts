@@ -229,7 +229,7 @@ export function emptyCustomerContext(): CustomerContext {
  *    pin somebody will trust to the metre. `accuracyMeters` is therefore its
  *    own field and null means "we do not know how good this is" — which is a
  *    different fact from a good fix, and D37 is the proof: the geocoder put
- *    8562 Circle Drive on the street centreline, the RPA hugged the rear of
+ *    4303 Withheld Drive on the street centreline, the RPA hugged the rear of
  *    the lot, and only a 300 m probe found the overlay. A confident-looking
  *    point was the thing that nearly missed a real violation.
  * 2. NO OVERLAY FINDINGS LIVE HERE. Whether the property is in the CBPA is

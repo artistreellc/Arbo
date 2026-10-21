@@ -50,22 +50,22 @@ import { classifyPermitMail, extractCaseRefs, extractSubjectAddress } from '../s
 describe('case-ref extraction (real Accela formats)', () => {
   it('finds DSC, UTIL, and RPA reference formats, deduped', () => {
     const text =
-      'PPR received … Accela Record: 2025-DSC-021566. See also 2025-DSC-021566, ' +
-      'utility permit 2025-UTIL-10415 and internal ref J04-021654-RPA.';
-    expect(extractCaseRefs(text)).toEqual(['2025-DSC-021566', '2025-UTIL-10415', 'J04-021654-RPA']);
+      'PPR received … Accela Record: 2025-DSC-000303. See also 2025-DSC-000303, ' +
+      'utility permit 2025-UTIL-00404 and internal ref J04-000505-RPA.';
+    expect(extractCaseRefs(text)).toEqual(['2025-DSC-000303', '2025-UTIL-00404', 'J04-000505-RPA']);
   });
 });
 
 describe('subject address extraction', () => {
   it('parses the VB review-letter subject pattern', () => {
     expect(
-      extractSubjectAddress('Tree Removal Request, Doe Residence, 1220 Sample Avenue, Accela Record: 2025-DSC-021566'),
+      extractSubjectAddress('Tree Removal Request, Doe Residence, 1220 Sample Avenue, Accela Record: 2025-DSC-000303'),
     ).toBe('1220 Sample Avenue');
   });
 
   it('parses plain street-address subjects (Norfolk case style)', () => {
-    expect(extractSubjectAddress('RE: 8562 Circle drive')).toBe('8562 Circle drive');
-    expect(extractSubjectAddress('1211 South Fairwater Dr')).toBe('1211 South Fairwater Dr');
+    expect(extractSubjectAddress('RE: 4303 Withheld drive')).toBe('4303 Withheld drive');
+    expect(extractSubjectAddress('4404 South Mockupter Dr')).toBe('4404 South Mockupter Dr');
   });
 
   it('returns null when no address is present', () => {
@@ -78,13 +78,13 @@ describe('classifyPermitMail — the real correspondence shapes', () => {
     const r = classifyPermitMail({
       from: 'sheederi@vbgov.com',
       to: ['owner@example.com', 'artistreeofvirginia@gmail.com'],
-      subject: 'Tree Removal Request, Doe Residence, 1220 Sample Avenue, Accela Record: 2025-DSC-021566',
+      subject: 'Tree Removal Request, Doe Residence, 1220 Sample Avenue, Accela Record: 2025-DSC-000303',
       body: 'The Virginia Beach Department of Planning and Community Development staff has reviewed the Preliminary Project Request (PPR) received…',
     });
     expect(r.isCityCorrespondence).toBe(true);
     expect(r.city).toBe('Virginia Beach');
     expect(r.kind).toBe('ppr_review');
-    expect(r.caseRefs).toEqual(['2025-DSC-021566']);
+    expect(r.caseRefs).toEqual(['2025-DSC-000303']);
     expect(r.address).toBe('1220 Sample Avenue');
     expect(r.cityContacts).toContain('sheederi@vbgov.com');
   });
@@ -93,12 +93,12 @@ describe('classifyPermitMail — the real correspondence shapes', () => {
     const r = classifyPermitMail({
       from: 'seamus.mccarthy@norfolk.gov',
       cc: ['Jack.Erwin@norfolk.gov'],
-      subject: 'RE: 8562 Circle drive',
+      subject: 'RE: 4303 Withheld drive',
       body: 'As discussed, this is a CBPA tree violation. Please send me the contractor and owners information and we will set up a meeting onsite.',
     });
     expect(r.city).toBe('Norfolk');
     expect(r.kind).toBe('cbpa_case');
-    expect(r.address).toBe('8562 Circle drive');
+    expect(r.address).toBe('4303 Withheld drive');
     expect(r.cityContacts).toEqual(['seamus.mccarthy@norfolk.gov', 'Jack.Erwin@norfolk.gov']);
   });
 
@@ -106,10 +106,10 @@ describe('classifyPermitMail — the real correspondence shapes', () => {
     const r = classifyPermitMail({
       from: 'PBurns@vbgov.com',
       subject: 'RE: 101 Sample St',
-      body: 'Since there are two records for the same location … I am going to VOID Accela record 2025-DSC-022094.',
+      body: 'Since there are two records for the same location … I am going to VOID Accela record 2025-DSC-000202.',
     });
     expect(r.kind).toBe('duplicate_warning');
-    expect(r.caseRefs).toEqual(['2025-DSC-022094']);
+    expect(r.caseRefs).toEqual(['2025-DSC-000202']);
   });
 
   it('intake request (forms/photos/map needed) → intake_request', () => {

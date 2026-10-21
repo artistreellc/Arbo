@@ -50,7 +50,7 @@
 //   1. NO_OVERLAY_VERIFY means "we checked the GIS layers and found nothing."
 //      If the GIS provider is missing or fails, the screen did NOT run — the
 //      outcome is PENDING, never a fabricated no-overlay result. ARBOR never
-//      bluffs (§3.18); a fake "no overlay" is a quiet Circle Drive.
+//      bluffs (§3.18); a fake "no overlay" is a quiet Withheld Drive.
 //   2. The screen is auxiliary to lead capture: a screening or persistence
 //      failure must NEVER lose the lead (§3.21 — the unanswered call is the
 //      biggest leak; a lead lost to a GIS hiccup is the same leak). Failures

@@ -54,7 +54,7 @@ export type FetchFn = (url: string) => Promise<{ ok: boolean; status: number; js
 /**
  * True when the WGS84 point intersects any feature of the layer.
  * `distanceMeters` widens the test to "within N meters" — the proximity tier
- * (D37): geocoders return street-centerline points, and the verified Circle
+ * (D37): geocoders return street-centerline points, and the verified Withheld
  * Drive case showed the rear-lot RPA sits 150–300 m from that point.
  */
 export async function pointIntersectsLayer(

@@ -64,7 +64,7 @@ d('permit track end-to-end (live Supabase)', () => {
   const cleanup: string[] = [];
 
   it('screens → persists a permit → advances the lifecycle', async () => {
-    const property = await upsertProperty({ address: '8562 Circle Drive', city: 'Norfolk', zip: '23503' });
+    const property = await upsertProperty({ address: '4303 Withheld Drive', city: 'Norfolk', zip: '23503' });
     cleanup.push(property.id);
 
     const screen = await screenProperty(
@@ -80,10 +80,10 @@ d('permit track end-to-end (live Supabase)', () => {
     expect(latest?.in_rpa).toBe(true);
     expect(latest?.status).toBe('needed');
 
-    await updatePermitStatus(permit.id, 'applied', { formRef: '2025-DSC-021160' });
+    await updatePermitStatus(permit.id, 'applied', { formRef: '2025-DSC-000101' });
     const applied = await getLatestPermitForProperty(property.id);
     expect(applied?.status).toBe('applied');
-    expect(applied?.form_ref).toBe('2025-DSC-021160');
+    expect(applied?.form_ref).toBe('2025-DSC-000101');
   });
 
   it('the DB rejects a bare "clear" screen status (CHECK mirrors the type)', async () => {

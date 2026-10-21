@@ -328,7 +328,7 @@ function parseCallRailWebForm(input: LeadMailInput): LeadMailResult {
  *   keys     name · phone · email · address · serviceNeeded · urgency · message
  *
  * WHAT IT DOES NOT CARRY: city, state, ZIP. The address is a bare street line
- * ("4500 Medford Ct"), so `inServiceArea` stays NULL — unknown, never false.
+ * ("4505 Facsimile Ct"), so `inServiceArea` stays NULL — unknown, never false.
  * Same rule as LSA: a form with no city is not an out-of-area form.
  */
 function decodeEntities(text: string): string {
@@ -464,7 +464,7 @@ function parseLsaRequest(input: LeadMailInput): LeadMailResult {
     .map((l) => l.trim())
     .filter((l) => l && !/^</.test(l));
   const joined = lines.join('\n');
-  // "Name is Dave" is the observed hand-typed shape; fall back to nothing
+  // "Name is Sim Willow" is the observed hand-typed shape; fall back to nothing
   // rather than guessing which line is a name.
   const name = joined.match(/\bName is\s+([A-Za-z][A-Za-z.'-]*(?:\s+[A-Za-z][A-Za-z.'-]*)?)/i)?.[1]?.trim();
   const phone = joined.match(/\b(\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/)?.[0]?.trim();
