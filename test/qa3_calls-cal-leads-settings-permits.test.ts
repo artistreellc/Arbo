@@ -70,6 +70,7 @@ class Node {
     this.children = [];
     for (const n of ns) this.appendChild(n);
   }
+  hasChildNodes(): boolean { return this.children.length > 0; } // Direction B P3: a first draw says "Reading…"
   setAttribute(): void {}
   addEventListener(_type: string, f: () => unknown): void { this.handlers.push(f); }
   async click(): Promise<void> { await Promise.all(this.handlers.map((h) => h())); }
@@ -127,7 +128,7 @@ describe('Calls: a transcripts or call-notes read that failed is named, never an
       return r();
     };
     const renderCalls = pageFn<() => Promise<void>>('renderCalls', {
-      $: () => v, el, api, chip, plural, fmtWhen, fmtTime: fmtWhen,
+      $: () => v, el, api, chip, plural, fmtWhen, fmtTime: fmtWhen, readingLine: () => el('div', 'reading', 'Reading…'), tapCount: () => 0, keepsPage: () => false, TIMER_REDRAW: false, 
       studyPanel: async () => null, outreachPanel: async () => null, sonaPanel: async () => null,
       // The Quo panels fold through the shared helper (QA3 quo-fold); a no-op here.
       fillQuoSlots: () => Promise.resolve(),
@@ -224,7 +225,7 @@ describe('Leads: a spam Undo holds the minute timer for about 2 minutes, not for
     const permitChip = pageFn<(s: string) => Node>('permitChip', { chip, PERMIT_STATE });
     const permitBadge = pageFn<(l: unknown) => Node | null>('permitBadge', { permitChip });
     const renderLeads = pageFn<() => Promise<void>>('renderLeads', {
-      $: () => v, el, api, chip, fmtWhen, permitBadge, leadsTabBadge: () => {},
+      $: () => v, el, api, chip, fmtWhen, permitBadge, leadsTabBadge: () => {}, readingLine: () => el('div', 'reading', 'Reading…'), tapCount: () => 0, keepsPage: () => false, TIMER_REDRAW: false, 
       icon: (id: string) => el('svg', 'ico ' + id),
       showKeywall: () => {}, LINKS_READY: Promise.resolve('simulation'),
       state: (t: string) => el('div', 'state', t), feedState: (_e: unknown, w: string) => el('div', 'state', w),

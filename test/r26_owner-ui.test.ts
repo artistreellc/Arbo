@@ -71,6 +71,7 @@ class N {
   drop(n: N): void { this.children = this.children.filter((c) => c !== n); }
   remove(): void { this.parent?.drop(this); this.parent = null; }
   replaceChildren(...ns: N[]): void { this.children = []; for (const n of ns) this.appendChild(n); }
+  hasChildNodes(): boolean { return this.children.length > 0 || this.textContent !== ''; } // Direction B P3: a first draw says "Reading…"
   setAttribute(k: string, v: string): void { this.attrs[k] = v; }
   removeAttribute(k: string): void { delete this.attrs[k]; if (k === 'title') this.title = ''; }
   addEventListener(_t: string, f: () => unknown): void { this.handlers.push(f); }
@@ -190,7 +191,7 @@ describe('R26 qa-x7 / qa-x13 — Book, Queue, Numbers and Settings carry the des
   it('Book — eyebrow Arborist, drawn before the properties read (a dead feed keeps it)', async () => {
     const v = el('div');
     const book = pageFn<() => Promise<void>>('renderBook', {
-      $: () => v, el, estimatePrepPanel: () => el('div', 'card', 'prep'), api: async () => { throw fail(503, 'link_cut'); },
+      $: () => v, el, readingLine: () => el('div', 'reading', 'Reading…'), estimatePrepPanel: () => el('div', 'card', 'prep'), api: async () => { throw fail(503, 'link_cut'); },
       showKeywall: () => {}, LINKS_READY: Promise.resolve('cut'), feedState: (_e: unknown, w: string) => el('div', 'state', w),
     });
     await book();
@@ -201,7 +202,7 @@ describe('R26 qa-x7 / qa-x13 — Book, Queue, Numbers and Settings carry the des
   it('Numbers — eyebrow Analyst, above the read', async () => {
     const v = el('div');
     const perf = pageFn<() => Promise<void>>('renderPerformance', {
-      $: () => v, el, api: async () => { throw fail(503, 'link_cut'); }, showKeywall: () => {}, LINKS_READY: Promise.resolve('cut'),
+      $: () => v, el, readingLine: () => el('div', 'reading', 'Reading…'), api: async () => { throw fail(503, 'link_cut'); }, showKeywall: () => {}, LINKS_READY: Promise.resolve('cut'),
       state: (t: string) => el('div', 'state', t), FEED_WORD, feedKind, feedSays: () => '',
     });
     await perf();
@@ -214,7 +215,7 @@ describe('R26 qa-x7 / qa-x13 — Book, Queue, Numbers and Settings carry the des
     const v = el('div');
     const stub = () => {};
     const queue = pageFn<() => Promise<void>>('renderFollowUps', {
-      FU_GEN: 0, $: () => v, el, api: async () => { throw fail(503, 'link_cut'); }, fmtTime: () => '', loopCard: () => el('div'),
+      FU_GEN: 0, $: () => v, el, readingLine: () => el('div', 'reading', 'Reading…'), api: async () => { throw fail(503, 'link_cut'); }, fmtTime: () => '', loopCard: () => el('div'),
       LINKS_READY: Promise.resolve('cut'), feedLine, renderSafety: stub, renderRoster: stub, renderTrainingBoard: stub,
       renderVetting: stub, renderLibraryDesk: stub, renderMoney: stub, renderFleet: stub, showKeywall: stub,
       feedState: (_e: unknown, w: string) => el('div', 'state', w), state: () => el('div'), chip, FU_LABEL: {}, showSaveFail: stub, document,
@@ -577,7 +578,7 @@ describe('R26 — Leads flags a Spanish speaker and keeps the tab badge current'
     const badge = vi.fn();
     const reread = vi.fn(); // emergencyLeads: the re-read that re-badges the tab
     const render = pageFn<() => Promise<void>>('renderLeads', {
-      $: () => v, el, api: async () => { if (leads instanceof Error) throw leads; return { leads }; }, chip, fmtWhen: () => '',
+      $: () => v, el, readingLine: () => el('div', 'reading', 'Reading…'), tapCount: () => 0, keepsPage: () => false, TIMER_REDRAW: false, api: async () => { if (leads instanceof Error) throw leads; return { leads }; }, chip, fmtWhen: () => '',
       permitBadge: () => null, leadsTabBadge: badge, icon: (id: string) => el('svg', 'ico ' + id),
       showKeywall: () => {}, LINKS_READY: Promise.resolve('simulation'), state: (t: string) => el('div', 'state', t),
       feedState: (_e: unknown, w: string) => el('div', 'state', w), feedLine, showSaveFail: () => {}, emergencyLeads: reread,

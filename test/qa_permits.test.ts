@@ -157,7 +157,8 @@ describe('Measure desk (QA round)', () => {
   });
 
   it('the sign-off is readable: ink-3, balanced wrap', () => {
-    expect(html).toContain('.internal-tag{font-size:11px;font-weight:700;letter-spacing:.12em;line-height:1.5;color:var(--ink-3);text-transform:uppercase;text-wrap:balance;margin-top:12px}');
+    // Direction B P2: the 12 px floor raised it from 11 px; ink-3 and the balanced wrap are unchanged.
+    expect(html).toContain('.internal-tag{font-size:12px;font-weight:700;letter-spacing:.12em;line-height:1.5;color:var(--ink-3);text-transform:uppercase;text-wrap:balance;margin-top:12px}');
   });
 });
 

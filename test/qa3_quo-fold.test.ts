@@ -29,12 +29,17 @@ class FakeEl {
   dataset: Record<string, string> = {};
   style: Record<string, string> = {};
   offsetHeight = 0;
+  parent: FakeEl | null = null;
   private text = '';
   constructor(readonly tag: string) {}
   get textContent(): string { return this.text + this.children.map((c) => c.textContent).join(''); }
   set textContent(t: string) { this.text = t; this.children = []; }
-  appendChild(n: FakeEl): FakeEl { this.children.push(n); return n; }
+  appendChild(n: FakeEl): FakeEl { this.children.push(n); n.parent = this; return n; }
   replaceChildren(...n: FakeEl[]): void { this.text = ''; this.children = [...n]; }
+  // Direction B P3: a first draw says "Reading…" in a card of its own, and takes it away once every read has landed.
+  hasChildNodes(): boolean { return this.children.length > 0 || this.text !== ''; }
+  remove(): void { if (this.parent) this.parent.children = this.parent.children.filter((c) => c !== this); this.parent = null; }
+  setAttribute(): void {}
   addEventListener(): void {}
 }
 const el = (tag: string, cls?: string, text?: string): FakeEl => {
@@ -156,7 +161,7 @@ describe('item 5: Calls folds the same way Today does — one shared helper, no 
       throw new Error('unexpected read ' + path);
     };
     const renderCalls = pageFn<() => Promise<void>>('renderCalls', {
-      $: () => v, el, api, fillQuoSlots,
+      $: () => v, el, api, fillQuoSlots, readingLine: () => el('div', 'reading', 'Reading…'), tapCount: () => 0, keepsPage: () => false, TIMER_REDRAW: false, 
       studyPanel: async () => panel('Where each customer stands', quoOff[0]),
       outreachPanel: async () => panel('Text outreach', quoOff[1]),
       sonaPanel: async () => panel('Sona calls (Quo)', quoOff[2]),

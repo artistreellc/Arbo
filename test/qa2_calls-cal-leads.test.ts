@@ -69,6 +69,7 @@ class Node {
     this.children = [];
     for (const n of ns) this.appendChild(n);
   }
+  hasChildNodes(): boolean { return this.children.length > 0; } // Direction B P3: a first draw says "Reading…"
   setAttribute(k: string, v: string): void { this.attrs[k] = v; }
   addEventListener(_type: string, f: () => unknown): void { this.handlers.push(f); }
   async click(): Promise<void> { await Promise.all(this.handlers.map((h) => h())); }
@@ -117,7 +118,7 @@ describe('Leads: the file-it pair, Undo and the chip rows (run, not just read)',
     };
     const permitBadge = pageFn<(l: Lead) => Node | null>('permitBadge', { permitChip });
     const renderLeads = pageFn<() => Promise<void>>('renderLeads', {
-      $: () => v, el, api, chip, fmtWhen, plural, permitBadge, leadsTabBadge: () => {},
+      $: () => v, el, api, chip, fmtWhen, plural, permitBadge, leadsTabBadge: () => {}, readingLine: () => el('div', 'reading', 'Reading…'), tapCount: () => 0, keepsPage: () => false, TIMER_REDRAW: false,
       icon: (id: string) => el('svg', 'ico ' + id),
       showKeywall: () => {}, LINKS_READY: Promise.resolve(links),
       // The page's state(title, msg): the title is the box's own text, the message a child.
@@ -315,7 +316,7 @@ describe('Calls: one own-line card, and a redraw that holds its height (run, not
       throw new Error('unexpected read ' + path);
     };
     const renderCalls = pageFn<() => Promise<void>>('renderCalls', {
-      $: () => v, el, api, chip, plural, fmtWhen, fmtTime: fmtWhen,
+      $: () => v, el, api, chip, plural, fmtWhen, fmtTime: fmtWhen, readingLine: () => el('div', 'reading', 'Reading…'), tapCount: () => 0, keepsPage: () => false, TIMER_REDRAW: false,
       studyPanel: () => study.promise, outreachPanel: async () => null, sonaPanel: async () => null,
       fillQuoSlots: pageFn('fillQuoSlots', { el, LINKS_READY: Promise.resolve('live') }),
       showKeywall: keywall, LINKS_READY: Promise.resolve('simulation'),
@@ -388,15 +389,21 @@ describe('Calls: one own-line card, and a redraw that holds its height (run, not
     expect(top(cards[1]!)).toEqual(['WHEN(2026-10-17T13:00:00Z)', '2 turns']);
   });
 
-  it('source: the height is taken before the clear, and release() runs before every return after the log read', () => {
+  it('source: the height is taken before the page is touched, and release() runs before every return after the log read', () => {
     const calls = fnSrc('renderCalls');
     const hold = calls.indexOf("v.style.minHeight = v.offsetHeight + 'px';");
     expect(hold).toBeGreaterThan(-1);
-    expect(hold).toBeLessThan(calls.indexOf('v.replaceChildren();'));
+    // Direction B P3: a redraw no longer clears the page — it draws off screen and
+    // swaps in at release. The height is still taken before anything is drawn or swapped.
+    expect(hold).toBeLessThan(calls.indexOf('const first = !v.hasChildNodes();'));
+    expect(calls).not.toContain('v.replaceChildren();');
     expect(calls).toContain('const fills = [];');
     // QA round 3: the three Quo panels are one fill (fillQuoSlots), so 4, not 6.
     expect(calls.match(/fills\.push\(/g)).toHaveLength(4);
-    expect(calls).toContain("const release = () => Promise.allSettled(fills).then(() => { v.style.minHeight = ''; });");
+    // The height lets go once every slot has landed — after the swap, never before it.
+    // (P3 review: the swap is skipped when Mike tapped the old page meanwhile — keepsPage;
+    // the height still lets go on that path too.)
+    expect(calls).toContain("const release = () => Promise.allSettled(fills).then(() => {\n    if (reading) reading.remove();\n    if (!first && !keepsPage(v, taps0, byTimer)) v.replaceChildren(...page.childNodes);\n    v.style.minHeight = '';\n  });");
     const tail = calls.slice(calls.indexOf('const release'));
     const returns = [...tail.matchAll(/\breturn\b/g)].map((m) => tail.slice(Math.max(0, m.index! - 24), m.index!));
     expect(returns).toHaveLength(3);

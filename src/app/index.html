@@ -160,8 +160,11 @@ header.scrolled{border-bottom-color:var(--hairline)}
   background:radial-gradient(120% 120% at 30% 20%,#2A6B57 0%,#1B4D3E 45%,#0E2A21 100%);color:#E9C877;box-shadow:var(--shadow-pop)}
 .brand .micon{width:26px;height:26px}
 .brand > span{display:flex;flex-direction:column;line-height:1}
-.brand small{font-family:var(--sans);font-size:10.5px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:var(--gold-6);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.brand.has-back > span{min-width:0}.brand.has-back small{letter-spacing:.14em}
+.brand small{font-family:var(--sans);font-size:11.5px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:var(--gold-6);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand.has-back > span{min-width:0}.brand.has-back small{letter-spacing:.06em}
+/* The date is one atomic piece: a row too narrow for it loses it whole to the ellipsis, never "WED, OCT 2…" (another day).
+   The empty piece before it keeps the date from being the row's first box — a first box is clipped, not ellipsed. */
+.brand small .sub-date{display:inline-block}#appsub::before{content:'';display:inline-block}
 #dateline{display:none}
 .hbtns{display:flex;gap:8px}
 #refresh,#settings-btn,#back-btn,.iconbtn{
@@ -181,7 +184,7 @@ main{padding:8px 16px 16px;max-width:680px;margin:0 auto}
 .viewhead{margin:10px 2px 14px}
 .viewhead h1{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1.08;letter-spacing:-.01em;color:var(--ink-1);font-variation-settings:'opsz' 72}
 .viewhead p{color:var(--ink-3);font-size:14.5px;margin-top:6px}
-.eyebrow{font-size:11px;font-weight:650;letter-spacing:.18em;text-transform:uppercase;color:var(--gold-6)}
+.eyebrow{font-size:12px;font-weight:650;letter-spacing:.18em;text-transform:uppercase;color:var(--gold-6)}
 
 /* ── Today hero ──────────────────────────────────────────────────────── */
 .hero{
@@ -205,10 +208,10 @@ main{padding:8px 16px 16px;max-width:680px;margin:0 auto}
 .hero-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px}
 .hstat{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.10);border-radius:16px;padding:10px 12px}
 .hstat b{display:block;font-family:var(--serif);font-weight:600;font-size:26px;line-height:1;font-variant-numeric:tabular-nums;color:#FBF8EF}
-.hstat span{display:block;font-size:10.5px;font-weight:650;letter-spacing:.12em;text-transform:uppercase;color:rgba(244,239,224,.7);margin-top:6px}
+.hstat span{display:block;font-size:10.5px;font-weight:650;letter-spacing:.12em;text-transform:uppercase;color:rgba(244,239,224,.9);margin-top:6px}
 .hstat.warn b{color:#F2CF73}.hstat.hot b{color:#FFA08F}
 /* A coloured number says why on its own tile (HERO.stat's note): a count, never a name. Empty, it takes no room. */
-.hstat small{display:block;font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(244,239,224,.7);margin-top:3px}
+.hstat small{display:block;font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(244,239,224,.9);margin-top:3px}
 .hstat small:empty{display:none}
 .hstat.hot{border-color:rgba(255,160,143,.45)}.hstat.hot small{color:#FFA08F}
 .ring-legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:12px;font-size:12px;color:rgba(244,239,224,.75)}
@@ -255,7 +258,7 @@ main{padding:8px 16px 16px;max-width:680px;margin:0 auto}
 .card .addr a{color:var(--forest);text-decoration:none;font-weight:600}
 .card .scope{font-size:14.5px;color:var(--ink-2);margin-bottom:8px;line-height:1.5}
 .badges{display:flex;flex-wrap:wrap;gap:6px}
-.badge{font-size:10.5px;font-weight:700;letter-spacing:.09em;border-radius:var(--r-pill);padding:4px 10px;border:1px solid transparent;text-transform:uppercase;line-height:1.3}
+.badge{font-size:12px;font-weight:700;letter-spacing:.09em;border-radius:var(--r-pill);padding:4px 10px;border:1px solid transparent;text-transform:uppercase;line-height:1.3}
 .b-job{background:var(--forest);color:var(--paper)}
 .b-est{border-color:color-mix(in srgb,var(--canopy) 45%,transparent);color:var(--canopy);background:var(--f-50)}
 .b-emg{background:var(--emergency);color:#fff}
@@ -293,7 +296,7 @@ nav{
   backdrop-filter:saturate(1.5) blur(22px);-webkit-backdrop-filter:saturate(1.5) blur(22px);
   border:1px solid var(--border);box-shadow:var(--shadow-float)}
 nav button{flex:1 1 0;min-width:0;min-height:56px;border:0;background:none;border-radius:19px;color:var(--ink-3);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;font-weight:650;letter-spacing:.01em;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:12px;font-weight:650;letter-spacing:.01em;
   -webkit-user-select:none;user-select:none}
 nav button .navpill{display:flex;flex-direction:column;align-items:center;gap:3px;color:inherit;max-width:100%}
 nav button .navpill span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
@@ -316,7 +319,7 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
   border-radius:var(--r-lg);border:1px solid var(--hairline);background:var(--card);box-shadow:var(--shadow-card);text-align:left;color:var(--ink-1)}
 .gtile .ico{width:26px;height:26px;color:var(--forest)}
 .gtile b{font-family:var(--serif);font-weight:600;font-size:16.5px;line-height:1.1}
-.gtile small{display:block;color:var(--ink-3);font-size:11.5px;font-weight:500;margin-top:3px;line-height:1.3}
+.gtile small{display:block;color:var(--ink-3);font-size:12px;font-weight:500;margin-top:3px;line-height:1.3}
 .gtile.active{border-color:color-mix(in srgb,var(--forest) 45%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--forest) 30%,transparent),var(--shadow-card)}
 .gtile:disabled{box-shadow:none;background:color-mix(in srgb,var(--card) 60%,transparent)}.gtile:disabled .ico,.gtile:disabled b{opacity:.5}
 .install-card{display:none;margin-top:14px}
@@ -352,6 +355,8 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 .card.flash{animation:cardflash 1.8s var(--ease)}
 @keyframes cardflash{0%,40%{box-shadow:0 0 0 3px var(--emergency)}100%{box-shadow:none}}
 .storm-muted{color:var(--ink-3);font-size:13.5px;line-height:1.55;margin-bottom:12px;text-wrap:pretty}
+/* Direction B P3: what a read in flight looks like — a plain line, never an empty screen. */
+.reading{color:var(--ink-3);font-size:14px;font-weight:600;padding:14px 2px;margin-bottom:12px}
 /* A feed Arbo could not read (§1B) — its own row, never styled like a help tip.
    The dot follows FEED_TONE: amber filled = not set up, grey = cut or not simulated
    (a gap on purpose), hollow amber = couldn't read it (unknown, not danger). */
@@ -382,7 +387,7 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 .actbtn.danger{background:var(--card);color:var(--emergency);border:1px solid color-mix(in srgb,var(--emergency) 45%,transparent);box-shadow:none}
 .actbtn.danger.armed{background:var(--emergency-bg)}
 .card.callback{box-shadow:inset 3px 0 0 var(--clay),var(--shadow-card)}
-.cb-label{color:var(--clay);font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin-bottom:2px}
+.cb-label{color:var(--clay);font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin-bottom:2px}
 .actions{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
 .callbtn{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;min-height:50px;border-radius:var(--r-pill);
   background:linear-gradient(180deg,#245F4D,#1B4D3E);color:#fff;font-size:15px;font-weight:700;text-decoration:none;box-shadow:var(--shadow-pop);border:0;padding:0 18px}
@@ -432,8 +437,8 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 .hud{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
 .tile{background:var(--card);border:1px solid var(--hairline);border-radius:var(--r-md);padding:13px 13px 11px;box-shadow:var(--shadow-card);position:relative;overflow:hidden}
 .tile b{display:block;font-family:var(--serif);font-variant-numeric:tabular-nums;font-size:28px;font-weight:600;line-height:1;color:var(--ink-1);font-variation-settings:'opsz' 60}
-.tile span{display:block;font-size:10.5px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin-top:7px}
-.tile small{display:block;font-size:10px;color:var(--ink-3);margin-top:3px;line-height:1.2}
+.tile span{display:block;font-size:12px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin-top:7px}
+.tile small{display:block;font-size:12px;color:var(--ink-3);margin-top:3px;line-height:1.2}
 .tile.accent b{color:var(--gold-6)}
 .tile.hot{border-color:color-mix(in srgb,var(--emergency) 35%,transparent)} .tile.hot b{color:var(--emergency)}
 .tile.warn{border-color:color-mix(in srgb,var(--warning) 35%,transparent)} .tile.warn b{color:var(--warning)}
@@ -445,12 +450,12 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 .panel-title::after{content:'';flex:1;min-width:24px;height:1px;background:linear-gradient(90deg,color-mix(in srgb,var(--gold-5) 45%,transparent),transparent)}
 .loop-card{box-shadow:inset 3px 0 0 var(--gold-5),var(--shadow-card)}
 .loop-card.urgent{box-shadow:inset 3px 0 0 var(--emergency),var(--shadow-card)}
-.loop-kind{font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
+.loop-kind{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
 .loop-card.urgent .loop-kind{color:var(--emergency)}
 
 /* ── Forms ───────────────────────────────────────────────────────────── */
 .card .field,.field{margin-bottom:12px}
-.field label,#yard label,#bd label{display:block;font-size:11px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin-bottom:6px}
+.field label,#yard label,#bd label{display:block;font-size:12px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin-bottom:6px}
 .field input[type=text],.field input[type=date],.field input[type=number],.field select,.field textarea,
 #yard input,#yard select,#bd input[type=text],.input{
   width:100%;min-height:52px;border:1px solid var(--border);border-radius:14px;background:var(--card);color:var(--ink-1);
@@ -470,16 +475,16 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 .verdict.v-lose{border-color:color-mix(in srgb,var(--emergency) 45%,transparent)}.verdict.v-lose .vhead{color:var(--emergency)}
 .verdict.v-verify{border-color:var(--border)}.verdict.v-verify .vhead{color:var(--ink-2)}
 .verdict .drv{font-size:13.5px;color:var(--ink-3);margin-top:8px;line-height:1.5}
-.internal-tag{font-size:11px;font-weight:700;letter-spacing:.12em;line-height:1.5;color:var(--ink-3);text-transform:uppercase;text-wrap:balance;margin-top:12px}
+.internal-tag{font-size:12px;font-weight:700;letter-spacing:.12em;line-height:1.5;color:var(--ink-3);text-transform:uppercase;text-wrap:balance;margin-top:12px}
 
 /* ── Calendar ────────────────────────────────────────────────────────── */
 #gcal-frame{width:100%;height:calc(100vh - 250px);min-height:440px;border:1px solid var(--hairline);border-radius:var(--r-lg);background:var(--card);box-shadow:var(--shadow-card)}
 .cal-open{display:flex;align-items:center;justify-content:center;min-height:48px;border-radius:16px;background:var(--card);border:1px solid var(--border);color:var(--forest);font-size:14px;font-weight:700;text-decoration:none;margin-top:10px}
-.cal-src{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:10px}
+.cal-src{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:10px}
 .cal-day{margin-bottom:14px}
 .cal-daylabel{display:flex;align-items:baseline;gap:8px;font-family:var(--serif);font-size:16px;font-weight:600;color:var(--ink-1);padding:6px 0;border-bottom:1px solid var(--hairline);margin-bottom:8px}
 .cal-day.today .cal-daylabel{color:var(--gold-6)}
-.cal-day.today .cal-daylabel::after{content:'TODAY';font-family:var(--sans);font-size:10px;background:var(--forest);color:var(--paper);border-radius:var(--r-pill);padding:2px 8px;letter-spacing:.1em}
+.cal-day.today .cal-daylabel::after{content:'TODAY';font-family:var(--sans);font-size:12px;background:var(--forest);color:var(--paper);border-radius:var(--r-pill);padding:2px 8px;letter-spacing:.1em}
 .cal-empty{font-size:14px;color:var(--ink-3);padding:4px 0 10px}
 .cal-ev{display:flex;gap:12px;align-items:flex-start;background:var(--card);border:1px solid var(--hairline);border-radius:var(--r-md);padding:12px 14px;margin-bottom:8px;box-shadow:inset 3px 0 0 var(--forest),var(--shadow-card)}
 .cal-ev.est{box-shadow:inset 3px 0 0 var(--gold-5),var(--shadow-card)}
@@ -508,7 +513,7 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
   header{padding-left:32px;padding-right:32px}.hrow{max-width:1056px}
   .view.active{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
   .view > *{grid-column:auto}
-  .view .viewhead,.view .hero,.view .systems,.view .sect,.view .zip-run,.view .state,.view .panel-title,.view .storm,.view .storm-muted,.view .feed-state,.view .routebtn,.view .hudbtn,.view .hud,.view .grid-tiles{grid-column:1 / -1}
+  .view .viewhead,.view .hero,.view .systems,.view .sect,.view .zip-run,.view .state,.view .panel-title,.view .storm,.view .storm-muted,.view .feed-state,.view .reading,.view .routebtn,.view .hudbtn,.view .hud,.view .grid-tiles{grid-column:1 / -1}
   #view-today .hud{grid-template-columns:repeat(6,1fr)}
   #view-today .hud .wide{grid-column:span 2}
   #view-today .routebtn{justify-self:start;padding:0 24px}
@@ -613,7 +618,7 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 #approval-close{flex:none} /* a long title never squeezes the X below a 44px target */
 .approval-meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 2px 16px;font-size:13px;font-weight:600;color:var(--ink-3)}
 .adetail{margin:0 2px 14px}
-.adetail .lab{font-size:11px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
+.adetail .lab{font-size:12px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
 .adetail .val{font-size:16px;line-height:1.45;color:var(--ink-1);white-space:pre-wrap;overflow-wrap:anywhere}
 /* A body or a long message scrolls in its own box, so the two buttons stay near. */
 .adetail .val.box{max-height:min(46vh,420px);overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--card);border:1px solid var(--hairline);border-radius:var(--r-md);padding:12px 14px;font-size:15px}
@@ -626,7 +631,7 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 .gtile .count{position:absolute;top:10px;right:10px;min-width:22px;height:22px;padding:0 6px;border-radius:var(--r-pill);background:var(--gold-5);color:#221A02;
   font-size:12px;font-weight:700;line-height:22px;text-align:center;font-variant-numeric:tabular-nums}
 /* A 320px phone: three columns of tiles fit only with a little less padding and title — "Assistant" is the longest word. */
-@media (max-width:359px){.gtile{padding:12px 9px}.gtile b{font-size:15px}}
+@media (max-width:359px){.gtile{padding:12px 9px}.gtile b{font-size:15px}.tile{padding:12px 8px 10px}.tile span{letter-spacing:.02em}}
 /* The state line drops under its chip when they cannot share a row, so a variable name never breaks mid-word. */
 .asst-state{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;font-size:15px;font-weight:600;color:var(--ink-1);margin-bottom:10px}
 .asst-state .badge{flex:none}
@@ -875,6 +880,14 @@ function state(title, msg) {
   box.appendChild(el('b', '', title));
   box.appendChild(document.createTextNode(msg));
   return box;
+}
+// Direction B P3 (spec: "Loading screens say 'Reading…' instead of looking empty").
+// Shown where a read's content will land, on a screen's first draw only; the read
+// landing takes it away, and a read that fails puts the named feed in its place (§1B).
+function readingLine() {
+  const n = el('div', 'reading', 'Reading…');
+  n.setAttribute('role', 'status');
+  return n;
 }
 
 // ---------- Feed state: ONE wording for a read that failed (§1B) ----------
@@ -1868,7 +1881,7 @@ async function receptionStrip() {
   const wrap = el('div');
   wrap.appendChild(el('div', 'panel-title', 'Arbo’s phone line'));
   // R21: Arbo's own line is cut on purpose while Sona handles calls — a
-  // named state, not an alarm, and Talk to Arbo goes away with it. The
+  // named state, not an alarm, and the Phone line button goes away with it. The
   // vendors (ElevenLabs, Twilio) are named on Settings, not here.
   if (s.linkCut) {
     const tb = document.getElementById('talk-btn');
@@ -2481,10 +2494,12 @@ async function renderToday() {
   const recSlot = el('div', 'slot');
   v.appendChild(recSlot);
   receptionStrip().then((b) => { if (b) recSlot.appendChild(b); });
-  // Talk to Arbo lives ABOVE the brief fetch on purpose: the first version
+  // The Phone line button lives ABOVE the brief fetch on purpose: the first version
   // sat in the post-brief section, and with the data links cut the brief's
   // early return meant the button never rendered — on production, exactly.
-  const talkBtn = el('button', 'hudbtn', 'Talk to Arbo');
+  // Mike renamed the old receptionist page "Phone line (off while Sona answers)"
+  // (2026-10-20); "Talk" means only the R30 header button.
+  const talkBtn = el('button', 'hudbtn', 'Phone line');
   talkBtn.id = 'talk-btn';
   talkBtn.addEventListener('click', () => window.open('/talk', '_blank', 'noopener'));
   v.appendChild(talkBtn);
@@ -2686,17 +2701,26 @@ $('y-go').addEventListener('click', async () => {
 // ---------- Leads ----------
 async function renderLeads() {
   const v = $('view-leads');
-  v.replaceChildren();
+  // Direction B P3: the first draw says "Reading…" instead of a blank screen. A
+  // redraw (the minute timer, ↻) leaves the cards up while it reads, then swaps
+  // the new list in with one replaceChildren, so nothing blinks — unless Mike
+  // tapped the cards meanwhile (keepsPage): then they stay as he left them.
+  const first = !v.hasChildNodes();
+  const taps0 = tapCount(v), byTimer = TIMER_REDRAW;
+  const kept = () => !first && keepsPage(v, taps0, byTimer);
+  if (first) v.replaceChildren(readingLine());
+  const out = []; // the new list, put on screen in one go
   let data;
   try {
     data = await api('/api/leads?limit=50');
   } catch (e) {
-    if (e.code === 401) return showKeywall();
+    if (e.code === 401) { v.replaceChildren(); return showKeywall(); }
     // §1B: a lead feed Arbo could not read is NAMED, never headed "no leads".
     // The boot /health read decides whether db_not_configured means cut.
     await LINKS_READY;
     leadsTabBadge(e); // the tab says it too (R26)
-    v.appendChild(feedState(e, 'Leads', 'an empty inbox'));
+    if (kept()) return; // the tab names it now; the page says it on the next redraw
+    v.replaceChildren(feedState(e, 'Leads', 'an empty inbox'));
     return;
   }
   leadsTabBadge(null, data.leads.filter((l) => l.isEmergency && l.status !== 'qualified').length); // the same count as emergencyLeads
@@ -2706,8 +2730,9 @@ async function renderLeads() {
   const practice = (await LINKS_READY) === 'simulation';
   const notFed = 'Arbo doesn’t receive new leads yet — Sona’s are in Quo, and website and ad leads are in Gmail. This is not an empty inbox.';
   if (!data.leads.length) {
+    if (kept()) return;
     // R4: Mike handles the leads — this screen promises no ingestion.
-    v.appendChild(practice ? state('No new leads', 'Nothing waiting right now.') : state('New leads are not in Arbo', notFed));
+    v.replaceChildren(practice ? state('No new leads', 'Nothing waiting right now.') : state('New leads are not in Arbo', notFed));
     return;
   }
   // R32: a lead older than 14 days (the server marks it `older`) is
@@ -2715,7 +2740,7 @@ async function renderLeads() {
   // date, and carries no alarm, no call-back label and no Call back button.
   // Whether anyone is contacted is Mike's call, never Arbo's.
   if (!data.leads.some((l) => !l.older)) {
-    v.appendChild(practice
+    out.push(practice
       ? state('No new leads', 'Nothing new waiting right now. Older leads are below, for the record.')
       : state('New leads are not in Arbo', notFed + ' Older rows from the database are below, for the record.'));
   }
@@ -2729,8 +2754,8 @@ async function renderLeads() {
   for (const lead of leads) {
     if (lead.older && !olderTitled) {
       olderTitled = true;
-      v.appendChild(el('div', 'panel-title', 'Older leads — more than 14 days old'));
-      v.appendChild(el('div', 'storm-muted', 'Shown for the record with the day each came in. Not new work, and nothing here asks you to call anyone.'));
+      out.push(el('div', 'panel-title', 'Older leads — more than 14 days old'));
+      out.push(el('div', 'storm-muted', 'Shown for the record with the day each came in. Not new work, and nothing here asks you to call anyone.'));
     }
     const c = el('div', 'card' + (lead.isEmergency ? ' emergency' : '') + (lead.needsCallback ? ' callback' : ''));
     c.id = 'lead-' + lead.id; // where Today's emergency card lands (openLead)
@@ -2864,8 +2889,10 @@ async function renderLeads() {
     row.appendChild(good);
     row.appendChild(mark('i-close', 'Spam', 'File as spam or wrong number', 'bad', 'spam'));
     c.appendChild(row);
-    v.appendChild(c);
+    out.push(c);
   }
+  if (kept()) return;
+  v.replaceChildren(...out);
 }
 
 // ---------- Today's stops (R35) — read from the calendar, planned, one tap to Google Maps ----------
@@ -3206,6 +3233,7 @@ function estimatePrepPanel() {
 
 async function renderBook() {
   const v = $('view-book');
+  const first = !v.hasChildNodes(); // Direction B P3: readingLine() where the read lands, on a first draw only
   v.replaceChildren();
   // R26: the R25 desks' heading — the desk that owns this screen, then what it is for.
   const head = el('div', 'viewhead');
@@ -3217,9 +3245,10 @@ async function renderBook() {
   // links cut that fetch 503s and returns early, and anything below it
   // never renders in production (the talk-button lesson, again).
   v.appendChild(estimatePrepPanel());
+  const reading = first ? v.appendChild(readingLine()) : null;
   let data;
   try {
-    data = await api('/api/properties');
+    data = await api('/api/properties').finally(() => { if (reading) reading.remove(); });
   } catch (e) {
     if (e.code === 401) return showKeywall();
     // §1B: a Book Arbo could not read is NAMED, never headed "empty".
@@ -3353,22 +3382,30 @@ async function renderCalls() {
   const v = $('view-calls');
   v.style.minHeight = v.offsetHeight + 'px'; // a timed redraw must not collapse the page and throw the scroll to the top
   const fills = []; // every slot's fill; the height is let go once they have all landed
-  v.replaceChildren();
+  // Direction B P3: the first draw goes straight on screen, each slot filling as
+  // its read lands, under one "Reading…" card until they all have. A redraw (the
+  // minute timer, ↻) is drawn off screen and swapped in with one replaceChildren
+  // once every read has landed — the old page stays up meanwhile, so nothing blinks.
+  const first = !v.hasChildNodes();
+  const taps0 = tapCount(v), byTimer = TIMER_REDRAW; // a tap meanwhile keeps the old page (keepsPage)
+  const page = first ? v : el('div');
+  let reading = null;
+  if (first) { reading = el('div', 'slot'); reading.appendChild(readingLine()); v.appendChild(reading); }
   // R24 customer notes — every customer thread, read-only.
   const studyFull = el('div', 'slot');
-  v.appendChild(studyFull);
+  page.appendChild(studyFull);
   // R22 text outreach — the full list: who is ready, who was texted.
   const outreachFull = el('div', 'slot');
-  v.appendChild(outreachFull);
+  page.appendChild(outreachFull);
   // Sona via Quo — every call, with transcripts.
   const sonaCallsSlot = el('div', 'slot');
-  v.appendChild(sonaCallsSlot);
+  page.appendChild(sonaCallsSlot);
   // The three fill together, so a Quo that is not connected is ONE card here too, as on Today.
   fills.push(fillQuoSlots([studyPanel(60), outreachPanel(true), sonaPanel(20, true)], [studyFull, outreachFull, sonaCallsSlot]));
   // Texts + photos sent to the Arbo number (Mike, 2026-09-24). Receive only.
   // '.texts': the business-cell line hangs under the Arbo-line row's text (two peer lines).
   const txSlot = el('div', 'slot texts');
-  v.appendChild(txSlot);
+  page.appendChild(txSlot);
   fills.push((async () => {
     let t;
     try { t = await api('/api/webhooks/texts'); }
@@ -3429,7 +3466,7 @@ async function renderCalls() {
   // Notes from calls Mike ANSWERED — iPhone records + transcribes, the
   // Share-sheet Shortcut relays them here. Arbo cannot hear his cell.
   const cnSlot = el('div', 'slot');
-  v.appendChild(cnSlot);
+  page.appendChild(cnSlot);
   fills.push((async () => {
     let n;
     try { n = await api('/api/relay/call-notes'); }
@@ -3452,7 +3489,7 @@ async function renderCalls() {
   // Arbo's own receptionist line, one card: its title, the transcript status
   // line, the transcripts, then the call log.
   const ownSlot = el('div', 'slot');
-  v.appendChild(ownSlot);
+  page.appendChild(ownSlot);
   ownSlot.appendChild(el('div', 'panel-title', 'Arbo’s own line'));
   // R19: post-call transcripts pushed by ElevenLabs, when that link is up.
   const trSlot = el('div');
@@ -3492,7 +3529,11 @@ async function renderCalls() {
     }
   })());
   // The held height goes once every slot has landed, on every way out below.
-  const release = () => Promise.allSettled(fills).then(() => { v.style.minHeight = ''; });
+  const release = () => Promise.allSettled(fills).then(() => {
+    if (reading) reading.remove();
+    if (!first && !keepsPage(v, taps0, byTimer)) v.replaceChildren(...page.childNodes);
+    v.style.minHeight = '';
+  });
   let data;
   try {
     data = await api('/api/review/backlog?all=1&limit=20');
@@ -3838,6 +3879,7 @@ function rosterComposer(listSlot) {
   const level = document.createElement('input');
   level.type = 'text';
   level.placeholder = 'Skill level 1–10';
+  level.inputMode = 'numeric'; // still a text box: a typo reaches the server's own refusal
   row.appendChild(name);
   row.appendChild(role);
   row.appendChild(level);
@@ -3943,6 +3985,7 @@ function mixLine(mix) {
 }
 async function renderPerformance() {
   const v = $('view-perf');
+  const first = !v.hasChildNodes(); // Direction B P3: readingLine() where the read lands, on a first draw only
   v.replaceChildren();
   // R26: the R25 desks' heading, above the read so a dead feed keeps it.
   const head = el('div', 'viewhead');
@@ -3950,9 +3993,10 @@ async function renderPerformance() {
   head.appendChild(el('h1', '', 'Which areas & campaigns pay'));
   head.appendChild(el('p', '', 'Each area rated by revenue per crew-hour, and what each campaign cost per booked job.'));
   v.appendChild(head);
+  const reading = first ? v.appendChild(readingLine()) : null;
   let p;
   try {
-    p = await api('/api/performance');
+    p = await api('/api/performance').finally(() => { if (reading) reading.remove(); });
   } catch (e) {
     if (e.code === 401) return showKeywall();
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
@@ -4333,6 +4377,7 @@ function libraryComposer(queueSlot) {
   add('cons', 'Downsides (one per line)', true);
   add('standardRefs', 'Clause refs, e.g. Z133 §8.1');
   add('skillLevel', 'Skill level 1–10');
+  fields.skillLevel.inputMode = 'numeric'; // the number keyboard on the phone; still a text box
   add('sourceLink', 'Source link (https://…) — optional');
 
   const btn = el('button', 'actbtn', 'Save as draft');
@@ -4920,6 +4965,7 @@ function fleetComposer(listSlot) {
   const vin = mk('VIN or serial');
   const height = mk('Height in inches (optional)');
   const weight = mk('Loaded weight in lbs (optional)');
+  height.inputMode = 'numeric'; weight.inputMode = 'numeric'; // the number keyboard; still text, so a typo reaches the server's refusal
   c.appendChild(row);
   const btn = el('button', 'actbtn', 'Add the unit');
   const out = el('div', 'errline', '');
@@ -5023,6 +5069,7 @@ let FU_GEN = 0;
 async function renderFollowUps() {
   const gen = ++FU_GEN;
   const v = $('view-followups');
+  const first = !v.hasChildNodes(); // Direction B P3: readingLine() where the read lands, on a first draw only
   v.replaceChildren();
   // R26: the R25 desks' heading. The Yard Boss desk is this screen's fleet & money part.
   const head = el('div', 'viewhead');
@@ -5090,10 +5137,11 @@ async function renderFollowUps() {
   const note = el('div', 'zip-run');
   note.appendChild(document.createTextNode('Arbo recommends — nothing sends without you.'));
   fuSlot.appendChild(note);
+  const reading = first ? fuSlot.appendChild(readingLine()) : null;
   // Only the recommended sends wait on this read; a failure darkens only them.
   let q;
   try {
-    q = await api('/api/followups');
+    q = await api('/api/followups').finally(() => { if (reading) reading.remove(); });
   } catch (e) {
     if (gen !== FU_GEN) return;
     if (e.code === 401) return showKeywall();
@@ -5784,7 +5832,8 @@ function renderMore() {
   // file or clock in. Same tab on purpose: an installed iPhone app keeps its
   // own saved data, so a new tab might not have the key.
   tile('i-crew', 'Crew', 'What the crew sees', () => { location.href = '/crew?preview=1'; });
-  const talk = tile('i-message', 'Talk', 'Voice with Arbo', () => window.open('/talk', '_blank', 'noopener'));
+  // The old receptionist page, renamed "Phone line" by Mike (2026-10-20); "Talk" is only the R30 header button.
+  const talk = tile('i-message', 'Phone line', 'Arbo’s receptionist', () => window.open('/talk', '_blank', 'noopener'));
   // R21: the same switch Today reads. While Arbo's own line is cut the tile
   // says so instead of opening a page that can only say "off". A status Arbo
   // could not read leaves the tile as it is.
@@ -5899,6 +5948,7 @@ let PERMIT_GEN = 0;
 async function renderPermits() {
   const gen = ++PERMIT_GEN;
   const v = $('view-permits');
+  const first = !v.hasChildNodes(); // Direction B P3: readingLine() where the read lands, on a first draw only
   v.replaceChildren();
   const head = el('div', 'viewhead');
   head.appendChild(el('div', 'eyebrow', 'Permit Desk'));
@@ -5975,8 +6025,9 @@ async function renderPermits() {
   runCheck();
 
   // The facts, by topic.
+  const reading = first ? v.appendChild(readingLine()) : null;
   let db;
-  try { db = await api('/api/permits/db?city=' + encodeURIComponent(PERMIT_CITY)); } catch (e) {
+  try { db = await api('/api/permits/db?city=' + encodeURIComponent(PERMIT_CITY)).finally(() => { if (reading) reading.remove(); }); } catch (e) {
     if (gen !== PERMIT_GEN) return;
     if (e.code === 401) return showKeywall();
     v.appendChild(state('Permit base — ' + FEED_WORD[feedKind(e)], 'Arbo could not read its permit base right now. That is not the same as “no rules”.'));
@@ -6128,14 +6179,16 @@ let AGENT_GEN = 0;
 async function renderAgents() {
   const gen = ++AGENT_GEN;
   const v = $('view-agents');
+  const first = !v.hasChildNodes(); // Direction B P3: readingLine() where the read lands, on a first draw only
   v.replaceChildren();
   const head = el('div', 'viewhead');
   head.appendChild(el('div', 'eyebrow', 'The brain'));
   head.appendChild(el('h1', '', 'Eight desks, one rulebook'));
   head.appendChild(el('p', '', 'Each section of Arbo has an agent. They read and propose — you decide. None of them can send, spend, or touch the calendar.'));
   v.appendChild(head);
+  const reading = first ? v.appendChild(readingLine()) : null;
   let roster;
-  try { roster = await api('/api/agents/sections'); } catch (e) {
+  try { roster = await api('/api/agents/sections').finally(() => { if (reading) reading.remove(); }); } catch (e) {
     if (gen !== AGENT_GEN) return;
     if (e.code === 401) return showKeywall();
     v.appendChild(feedState(e, 'The agent roster', 'an empty roster'));
@@ -6415,14 +6468,16 @@ let LEARN_GEN = 0;
 async function renderLearn() {
   const gen = ++LEARN_GEN;
   const v = $('view-learn');
+  const first = !v.hasChildNodes(); // Direction B P3: readingLine() where the read lands, on a first draw only
   v.replaceChildren();
   const head = el('div', 'viewhead');
   head.appendChild(el('div', 'eyebrow', 'Training ground'));
   head.appendChild(el('h1', '', 'Teach the brain'));
   head.appendChild(el('p', '', 'Every problem a caller, a crew or a permit office can throw at a tree service — played against Arbo with made-up people. What it gets wrong becomes a lesson for you to approve. Nothing changes itself.'));
   v.appendChild(head);
+  const reading = first ? v.appendChild(readingLine()) : null;
   let cat, st;
-  try { [cat, st] = await Promise.all([api('/api/sim/catalog'), api('/api/sim/state')]); } catch (e) {
+  try { [cat, st] = await Promise.all([api('/api/sim/catalog'), api('/api/sim/state')]).finally(() => { if (reading) reading.remove(); }); } catch (e) {
     if (gen !== LEARN_GEN) return;
     if (e.code === 401) return showKeywall();
     v.appendChild(feedState(e, 'The training ground', 'an empty catalog'));
@@ -6553,7 +6608,11 @@ const APPSUB_DATE = new Date().toLocaleDateString([], { weekday: 'short', month:
 let CUR_TAB = 'today';
 function setAppSub() {
   const sim = LINKS === 'simulation' ? 'SIMULATION · ' : '';
-  $('appsub').textContent = CUR_TAB === 'today' ? sim + 'Art-is-Tree' : sim ? sim + APPSUB_DATE : APPSUB_DATE + ' · Art-is-Tree';
+  if (CUR_TAB === 'today') { $('appsub').textContent = sim + 'Art-is-Tree'; return; }
+  // The date in its own atomic piece (.sub-date): shown whole or not at all.
+  const date = el('span', 'sub-date', APPSUB_DATE);
+  if (sim) $('appsub').replaceChildren(sim, date);
+  else $('appsub').replaceChildren(date, ' · Art-is-Tree');
 }
 
 function switchTab(which) {
@@ -6981,13 +7040,27 @@ function holdsTyping(v) {
   if ([...v.querySelectorAll('.lead-filed')].some((n) => Date.now() - Number(n.dataset.at) < 120000)) return true;
   return [...v.querySelectorAll('input, textarea')].some((n) => n.value && !/^(checkbox|radio|file)$/.test(n.type));
 }
+// Direction B P3 review: Leads and Calls keep the old page up while a redraw
+// reads, so Mike can tap it meanwhile — a spam Undo, a "Good lead ✓", Mark
+// reviewed. The redraw's swap must not throw that tap away with a list read
+// before it. A capture listener counts every tap on the view (before the
+// button's own handler, so a tap that starts a redraw does not hold it).
+function tapCount(v) { return Number(v.dataset.taps || 0); }
+// At the swap: keep the page as Mike left it when he tapped it since the redraw
+// began, or — on the minute timer's redraw — when it now holds something
+// (holdsTyping: the spam he filed while it read). The next redraw brings it up
+// to date. ↻ still redraws a held page ("…or until you tap ↻"); a first draw always lands.
+function keepsPage(v, taps0, byTimer) { return tapCount(v) !== taps0 || (byTimer && holdsTyping(v)); }
+let TIMER_REDRAW = false; // true while autoRefresh starts its redraws; each reads it before its first await
 // The refresh Arbo does on its own: every minute, back on screen, back online.
 // Today always redraws (storm banner, schedule ring, loops); a screen holding
 // typed text waits for ↻. Settings is never on it, so a half-typed ZIP survives.
 function autoRefresh() {
   if (document.hidden || $('keywall').classList.contains('show')) return;
-  for (const t in TIMED) if (!holdsTyping($('view-' + t))) TIMED[t]();
+  TIMER_REDRAW = true;
+  try { for (const t in TIMED) if (!holdsTyping($('view-' + t))) TIMED[t](); } finally { TIMER_REDRAW = false; }
 }
+for (const t of ['leads', 'calls']) $('view-' + t).addEventListener('click', (e) => { e.currentTarget.dataset.taps = String(tapCount(e.currentTarget) + 1); }, true);
 $('refresh').addEventListener('click', () => {
   $('refresh').classList.remove('spin'); void $('refresh').offsetWidth; $('refresh').classList.add('spin');
   refreshAll();

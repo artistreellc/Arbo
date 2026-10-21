@@ -144,6 +144,103 @@ describe('the Back button', () => {
   });
 });
 
+// Direction B, P1: the whole step-back loop run together — the page's own
+// switchTab, navPush, navBack, navShow, sheetOpened, closeSheet and popstate
+// handler share one CUR_TAB, against a history whose back() fires popstate.
+describe('Back retraces every tab tapped, in order (Direction B P1)', () => {
+  const oneLine = (name: string) => {
+    const m = new RegExp(`^const ${name} = .*;$`, 'm').exec(html);
+    if (!m) throw new Error('no one-line const ' + name);
+    return m[0];
+  };
+  const fnText = (name: string) => {
+    const m = new RegExp(`^(?:async )?function ${name}\\([\\s\\S]*?^\\}$`, 'm').exec(html);
+    if (!m) throw new Error('no function ' + name);
+    return m[0];
+  };
+  const pop = html.slice(html.indexOf("window.addEventListener('popstate'"), html.indexOf("$('back-btn').addEventListener"));
+  const SHEET_IDS = new Function(`return ${oneLine('SHEETS').replace(/^const SHEETS = /, '').replace(/;$/, '')};`)() as string[];
+
+  function navCore() {
+    type Fake = { hidden: boolean; textContent: string; on: Set<string>; kids: number; classList: Record<string, (c: string, f?: boolean) => unknown>; closest: () => Fake; hasChildNodes: () => boolean };
+    const nodes = new Map<string, Fake>();
+    const $ = (id: string): Fake | null => {
+      if (!html.includes(`id="${id}"`)) return null;
+      if (!nodes.has(id)) {
+        const n: Fake = {
+          hidden: false, textContent: '', on: new Set(), kids: 0,
+          classList: {
+            toggle: (c, f) => { if (f ?? !n.on.has(c)) n.on.add(c); else n.on.delete(c); },
+            add: (c) => n.on.add(c), remove: (c) => n.on.delete(c), contains: (c) => n.on.has(c),
+          },
+          closest: () => n, hasChildNodes: () => n.kids > 0,
+        };
+        nodes.set(id, n);
+      }
+      return nodes.get(id)!;
+    };
+    const listeners: Record<string, (ev: { state: unknown }) => void> = {};
+    const stack: Array<{ state: Record<string, unknown> | null; url: string }> = [{ state: null, url: '/app' }];
+    let at = 0;
+    const history = {
+      get state() { return stack[at]!.state; },
+      pushState(s: Record<string, unknown>, _t: string, url: string) { stack.splice(at + 1); stack.push({ state: s, url }); at++; },
+      replaceState(s: Record<string, unknown>, _t: string, url?: string) { stack[at] = { state: s, url: url ?? stack[at]!.url }; },
+      back() { if (at > 0) { at--; listeners.popstate!({ state: stack[at]!.state }); } },
+      get depth() { return at; },
+    };
+    const window = { scrollY: 0, scrollTo: () => {}, addEventListener: (t: string, f: (ev: { state: unknown }) => void) => { listeners[t] = f; } };
+    const drawn: string[] = [];
+    const navDrawLine = oneLine('NAV_DRAW');
+    const renders = [...new Set([...navDrawLine.matchAll(/\b(render[A-Z]\w*)\(/g)].map((m) => m[1]!))];
+    const core = new Function('$', 'history', 'window', 'setAppSub', 'talkEnd', 'photoLetGo', ...renders, `
+      let CUR_TAB = 'today'; let NAV_QUIET = false; const TALK = { on: false }; let PHOTO_OPEN = null;
+      ${oneLine('VIEW_TITLES')}
+      ${oneLine('NAV_PARENT')}
+      ${oneLine('SHEETS')}
+      ${navDrawLine}
+      ${['switchTab', 'navPush', 'navShowBack', 'navShow', 'navBack', 'sheetOpened', 'closeSheet'].map(fnText).join('\n')}
+      ${pop}
+      return { switchTab, navBack, sheetOpened, tab: () => CUR_TAB };`)(
+      $, history, window, () => {}, () => {}, () => {}, ...renders.map((r) => () => drawn.push(r)),
+    ) as { switchTab: (w: string) => void; navBack: () => void; sheetOpened: (id: string) => void; tab: () => string };
+    history.replaceState({ v: 'today', d: 0 }, '', '#today'); // the boot step
+    const openSheet = (id: string) => { $(id)!.classList.add!('show'); core.sheetOpened(id); };
+    const sheetShown = (id: string) => $(id)!.on.has('show');
+    return { ...core, history, openSheet, sheetShown, backHidden: () => $('back-btn')!.hidden };
+  }
+
+  it('Today → Leads → Calendar → More, then Back three times: Calendar, Leads, Today — never straight to Today', () => {
+    const n = navCore();
+    n.switchTab('leads'); n.switchTab('cal'); n.switchTab('more');
+    expect(n.tab()).toBe('more');
+    expect(n.history.depth).toBe(3);
+    n.navBack();
+    expect(n.tab()).toBe('cal');
+    n.navBack();
+    expect(n.tab()).toBe('leads');
+    n.navBack();
+    expect(n.tab()).toBe('today');
+    expect(n.history.depth).toBe(0);
+    expect(n.backHidden()).toBe(true); // back on the screen the app opened on, with nothing behind
+  });
+
+  it('every sheet the page knows — the R35 maps sheet included — closes before a step back', () => {
+    expect(SHEET_IDS).toContain('maps');
+    for (const id of SHEET_IDS) {
+      const n = navCore();
+      n.switchTab('leads'); n.switchTab('cal');
+      n.openSheet(id);
+      expect(n.sheetShown(id), id).toBe(true);
+      n.navBack();
+      expect(n.sheetShown(id), id + ' closed').toBe(false);
+      expect(n.tab(), id + ': the screen under it stays').toBe('cal');
+      n.navBack();
+      expect(n.tab(), id + ': the next Back steps back').toBe('leads');
+    }
+  });
+});
+
 describe('the red Sona flags say which call and open it', () => {
   const label = pageFn<(r: string) => string>('slipRuleLabel');
 

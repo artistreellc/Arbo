@@ -910,11 +910,12 @@ Defaults Claude used where Mike did not say (he may change any):
 - Not in Talk yet (each one more tool, on Mike's word): who is waiting on
   Mike from the R24 customer study, and R28 approvals.
 
-Open — Mike's call, not a build's: **two things are called "Talk"**. The new
-header button is this ruling. The More tile "Talk / Voice with Arbo" and
-Today's "Talk to Arbo" button still open the old receptionist page (R21: off
-while Sona answers calls). Renaming those (e.g. "Phone line / Arbo's
-receptionist") is an R21 surface, so it waits for Mike's word.
+Was open — Mike's call: **two things are called "Talk"**. Closed 2026-10-20:
+Mike renamed the old receptionist page "Phone line (off while Sona answers)"
+(docs/DIRECTION_B.md, the follow-up answers), and Direction B P4 built it —
+the More tile and Today's button say "Phone line", and "Talk" means only this
+ruling's header button. The page itself is still R21's: off while Sona
+answers calls.
 
 Open — Mike's call, not a build's: whether the **installed home-screen app**
 can listen on his iPhone is not something Apple has promised. If it cannot,

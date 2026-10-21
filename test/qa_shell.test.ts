@@ -99,7 +99,7 @@ describe('the Talk pages', () => {
       const res = await fetch(`http://127.0.0.1:${(srv.address() as { port: number }).port}/talk`);
       expect(res.status).toBe(503);
       const page = await res.text();
-      for (const want of ['Talk to Arbo is off', 'Nothing was deleted', "url(/fonts/fraunces.woff2)", '#F7F5F0', '#1B4D3E', 'prefers-color-scheme:dark', 'href="/app"']) {
+      for (const want of ['Phone line is off', 'Nothing was deleted', "url(/fonts/fraunces.woff2)", '#F7F5F0', '#1B4D3E', 'prefers-color-scheme:dark', 'href="/app"']) {
         expect(page, `talk-off page lost ${want}`).toContain(want);
       }
     } finally {
@@ -266,9 +266,14 @@ describe('refresh', () => {
 
 describe('the header', () => {
   it('Today drops the duplicate date; every other tab keeps it; simulation says so everywhere', () => {
-    const sub = { textContent: '' };
+    // A stand-in for the subline: the date is its own piece (review UI 2), so it takes replaceChildren too.
+    const sub = {
+      textContent: '',
+      replaceChildren(...xs: Array<string | { textContent: string }>) { this.textContent = xs.map((x) => (typeof x === 'string' ? x : x.textContent)).join(''); },
+    };
+    const el = (_tag: string, _cls: string, text: string) => ({ textContent: text });
     const line = (LINKS: string | null, CUR_TAB: string) => {
-      pageFn<() => void>('setAppSub', { $: () => sub, LINKS, CUR_TAB, APPSUB_DATE: 'Sun, Oct 18' })();
+      pageFn<() => void>('setAppSub', { $: () => sub, el, LINKS, CUR_TAB, APPSUB_DATE: 'Sun, Oct 18' })();
       return sub.textContent;
     };
     expect(line(null, 'today')).toBe('Art-is-Tree');
