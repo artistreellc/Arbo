@@ -105,6 +105,20 @@ describe('Navigate on each stop (P7)', () => {
     expect(block, 'named right under the button, and even when no stop has a street (no button at all)').toContain('\n    const left = routeLeftOut(brief.stops);\n    if (left) day.appendChild(left);');
   });
 
+  // Found re-checking the review in the browser: a stop with no street still drew its
+  // address as a Google Maps link — to ", Norfolk, VA", the middle of the city. With no
+  // street there is nothing to drive to: the city shows as plain text, no link.
+  it('a stop with no street: the city as plain text, never a Maps link to the middle of town', () => {
+    const mapsLink = pageFn<(a: string, c: string) => N>('mapsLink', { el, mapsDirUrl: (a: string[]) => 'maps:' + a.join('|') });
+    const none = mapsLink('', 'Norfolk');
+    expect(none.tag).toBe('span');
+    expect(none.href).toBe('');
+    expect(none.text()).toBe('Norfolk');
+    const some = mapsLink('101 Simulation Row', 'Virginia Beach');
+    expect(some.tag).toBe('a');
+    expect(some.href).toBe('maps:101 Simulation Row, Virginia Beach, VA');
+  });
+
   it('the button is at least 48 px tall and spans the card', () => {
     expect(html).toMatch(/\.navbtn\{[^}]*width:100%/);
     expect(html).toMatch(/\.navbtn\{[^}]*min-height:52px/);

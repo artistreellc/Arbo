@@ -1041,6 +1041,7 @@ function fmtTime(iso) {
 
 // mapsDirUrl (R35) is the page's one Google Maps link builder (Direction B P7).
 function mapsLink(address, city) {
+  if (!address) return el('span', '', city || ''); // no street, nothing to drive to: never a link to the middle of town (P7 review)
   const a = el('a', '', address + (city ? ', ' + city : ''));
   a.href = mapsDirUrl([address + ', ' + city + ', VA']);
   a.target = '_blank';
