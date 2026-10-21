@@ -2412,9 +2412,17 @@ const ROLL_ROWS = { safety: 'Crew & safety', fleet: 'Fleet', leads: 'Emergency l
 // Every unreadable read is its own named row; cut and not set up share one muted
 // line; the chip counts only real items; "Nothing to check" only when every read
 // succeeded and there is no blind spot (§1B). No <details>: Today is on the timer.
+// Review (b-wave-1b): Today redraws every minute, and a card rebuilt as a bare
+// "Reading…" fell ~650 px for as long as NWS took — a tap meant for a row landed on
+// what slid under it. So a redraw keeps this card, rows and all, until its own reads
+// land (P3's swap); only a first draw says "Reading…". The newest draw owns the card.
+let ROLL_BOX = null;
+let ROLL_GEN = 0;
 function beforeYouRoll(emgP, stormP) {
-  const box = el('div', 'card roll');
-  box.appendChild(readingLine());
+  const gen = ++ROLL_GEN;
+  const box = ROLL_BOX || el('div', 'card roll');
+  ROLL_BOX = box;
+  if (!box.hasChildNodes()) box.appendChild(readingLine());
   const settle = (p) => p.then((v) => ({ v: v }), (e) => ({ e: e }));
   // A body without the lists it should carry is a read that failed, never "nothing to check" (§1B).
   const lists = (o, keys) => { if (!o || keys.some((k) => !Array.isArray(o[k]))) throw new Error('unreadable'); return o; };
@@ -2428,11 +2436,13 @@ function beforeYouRoll(emgP, stormP) {
   };
   const names = (a) => (a.length === 1 ? a[0] : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]);
   const draw = () => {
+    if (gen !== ROLL_GEN) return; // a newer redraw owns the card
     if (Object.values(res).some((r) => r === null || (r.e && r.e.code === 401))) { box.replaceChildren(); box.remove(); return; }
     const rows = [];
     const unread = [];
     const off = { cut: [], sim: [], unset: [] };
-    let n = 0;
+    let n = 0; // real items only: a blind spot is a "cannot see", counted on its own (blind)
+    let blind = 0;
     // One small heading per feed, then its rows: a full-width tap each.
     const row = (k, text, go) => {
       if (!rows.some((r) => r.dataset.roll === k)) { const h = el('div', 'loop-kind roll-group', ROLL_ROWS[k]); h.dataset.roll = k; rows.push(h); }
@@ -2451,7 +2461,7 @@ function beforeYouRoll(emgP, stormP) {
           row(k, who + ' can’t go aerial', () => openPanel(DESK_VIEW.safety, () => [...document.querySelectorAll('#view-' + DESK_VIEW.safety + ' [data-crew]')].find((x) => x.dataset.crew === id)));
           n++;
         }
-        for (const b of r.v.blindSpots) { row(k, '⚠ CANNOT SEE · ' + b, () => openPanel(DESK_VIEW.safety, 'queue-safety')); n++; }
+        for (const b of r.v.blindSpots) { row(k, '⚠ CANNOT SEE · ' + b, () => openPanel(DESK_VIEW.safety, 'queue-safety')); blind++; }
       } else if (k === 'fleet') {
         for (const u of r.v.units.filter((x) => x.status === 'held' || x.status === 'down')) {
           row(k, u.name + ' is ' + UNIT_STATUS[u.status][0] + (u.status === 'held' ? ' · ' + (u.holdReason || 'brake/steering defect') : ''),
@@ -2471,7 +2481,7 @@ function beforeYouRoll(emgP, stormP) {
     const out = [];
     const head = el('div', 'roll-head');
     head.appendChild(el('div', 'who', 'Before you roll'));
-    const said = [n ? n + ' to check' : '', unread.length ? unread.length + ' couldn’t read' : ''].filter(Boolean).join(' · ');
+    const said = [n ? n + ' to check' : '', unread.length ? unread.length + ' couldn’t read' : '', blind ? blind + ' can’t see' : ''].filter(Boolean).join(' · ');
     if (said) { const c = chip(said, n ? 'stop' : 'watch'); c.classList.add('roll-count'); head.appendChild(c); }
     out.push(head, ...rows);
     for (const k of unread) {
@@ -2485,6 +2495,8 @@ function beforeYouRoll(emgP, stormP) {
           stormBanner().then((b) => {
             const slot = document.getElementById('today-storm');
             if (b && slot && !slot.hasChildNodes()) slot.appendChild(b);
+            // As the first read does: alerts found, the hero's weather stat opens the storm card (review: it stayed inert).
+            if (b && HERO) HERO.go('alerts', () => openPanel('today', 'today-storm'));
             res.weather = !STORM_READ ? { e: null } : STORM_READ.error ? { e: STORM_READ.error } : { v: STORM_READ };
             draw();
           });
@@ -2495,7 +2507,7 @@ function beforeYouRoll(emgP, stormP) {
     }
     const kinds = ['cut', 'sim', 'unset'].filter((k) => off[k].length);
     if (kinds.length) out.push(el('div', 'feed-state ' + (off.unset.length ? 'unset' : 'cut') + ' roll-off', kinds.map((k) => names(off[k]) + ': ' + FEED_WORD[k] + '.').join(' ')));
-    if (!n && !unread.length && !kinds.length) out.push(el('div', 'storm-muted', 'Nothing to check before you roll.'));
+    if (!n && !blind && !unread.length && !kinds.length) out.push(el('div', 'storm-muted', 'Nothing to check before you roll.'));
     box.replaceChildren(...out);
   };
   Promise.all(Object.keys(ROLL_ROWS).map((k) => got[k].then((r) => { res[k] = r; }))).then(() => LINKS_READY).then(draw);
