@@ -180,6 +180,10 @@ header.scrolled{border-bottom-color:var(--hairline)}
 main{padding:8px 16px 16px;max-width:680px;margin:0 auto}
 .view{display:none}
 .view.active{display:block;animation:viewin .32s var(--ease)}
+/* P13 review: a desk holds its height through the minute redraw (deskView, renderFollowUps). On a phone its last card's
+   margin would collapse out of the view and out of the held height (the page moved 12 px at its bottom); as its own
+   formatting context the view keeps it. Layout-neutral: main's padding already stopped that margin. */
+@media (max-width:899px){#view-followups.active,#view-money.active,#view-fleet.active,#view-safety.active{display:flow-root}}
 @keyframes viewin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .viewhead{margin:10px 2px 14px}
 .viewhead h1{font-family:var(--serif);font-weight:600;font-size:30px;line-height:1.08;letter-spacing:-.01em;color:var(--ink-1);font-variation-settings:'opsz' 72}
