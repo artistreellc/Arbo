@@ -371,6 +371,21 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 .feed-state.cut::before,.feed-state.sim::before{background:var(--ink-4)}
 .feed-state.unread::before{background:none;border:2px solid var(--warning)}
 .texts .feed-state + .storm-muted{padding-left:18px}
+/* Direction B P12: one feeds card per screen — its headline is a button that opens every feed it folded or counted.
+   The dot is the worst kind it holds (the feed-state dots). A button, never a <details>: Today redraws every minute. */
+.card.feeds{padding:4px 14px}
+.feeds[hidden],.feeds-list[hidden]{display:none}
+.feeds-head{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:48px;border:0;background:none;padding:6px 0;font:inherit;text-align:left;color:var(--ink-2)}
+.feeds-head .feed-state{margin:0;font-size:14.5px}
+.feeds-head::after{content:'';flex:none;width:8px;height:8px;border-right:2px solid var(--forest);border-bottom:2px solid var(--forest);transform:rotate(45deg);margin:0 6px 4px 0;transition:transform .2s}
+.feeds-head[aria-expanded="true"]::after{transform:rotate(-135deg);margin-bottom:-4px}
+.feeds-list{border-top:1px solid var(--hairline);padding:2px 0 6px}
+.feeds-item{padding:12px 0 0}
+.feeds-name{font-size:14.5px;font-weight:700;color:var(--ink-1);margin-bottom:6px}
+.feeds-item .panel-title{display:none} /* the name line above says it, with its state word */
+.feeds-item .feed-state,.feeds-item .storm-muted{margin-bottom:6px}
+.card.feeds .reading{padding:12px 2px;margin:0}
+@media (min-width:900px){.view .feeds{grid-column:1 / -1}}
 .loc-strip{display:flex;align-items:center;gap:12px;margin-bottom:12px;font-size:14px;color:var(--ink-2)}
 .loc-strip .badge{flex:none;min-width:92px;text-align:center;white-space:nowrap}
 .fleet-track{margin-top:10px}
@@ -976,6 +991,81 @@ function saveFailText(e) {
 }
 function showSaveFail(box, e) { const n = box.querySelector(':scope > .save-err') || box.appendChild(el('div', 'errline save-err')); n.textContent = saveFailText(e); return n; }
 
+// ---------- The feeds card (Direction B P12; R29 #1: one feeds card per screen that still names every dead feed, §1B) ----------
+// A screen hands each panel's answer — the node, or the read's promise — to place(slot, x):
+//  · a wrapper that only reports a feed cut on purpose, not in the practice data or not set up
+//    (data-off = cut | sim | unset, with data-feed-name) folds INTO the card;
+//  · one Arbo couldn't read (data-off = unread), or one kept in its place (data-keep: a partial
+//    read rides with it, or the schedule card), stays where it would show — and is counted too;
+//  · anything else goes to its slot, as it always did.
+// The card counts only the reads its screen hands it — never /health/feeds (two sources could
+// disagree) — and a read still in flight is "Reading…", never counted as working. It opens with a
+// button (aria-expanded), never a <details>: its screens redraw every minute, and an open <details>
+// holds the redraw (holdsTyping). Open stays open through a redraw (this launch only), and a redraw
+// keeps the last card up until its own reads land (P11's swap). Nothing off and nothing reading:
+// no card at all — never a calm line.
+const FEEDS_SAID = { cut: 'cut on purpose', sim: 'not in the practice data', unset: 'not set up', unread: 'couldn’t read' }; // the headline's words (the spec's), in its order
+const FEEDS_OPEN = {}; // per screen: the card is open
+const FEEDS_BOX = {}; // per screen: its one card, kept across redraws
+const FEEDS_GEN = {}; // per screen: the newest draw owns the card
+function feedsCard(key) {
+  const gen = FEEDS_GEN[key] = (FEEDS_GEN[key] || 0) + 1;
+  const box = FEEDS_BOX[key] || el('div', 'card feeds');
+  FEEDS_BOX[key] = box;
+  const first = !box.dataset.drawn; // only a first draw shows readingLine(); a redraw waits for its reads, then swaps
+  const got = []; // { at, kind, name, node } — node only when it folds into the card
+  let waiting = 0;
+  let order = 0;
+  const draw = () => {
+    if (gen !== FEEDS_GEN[key] || (!first && waiting)) return;
+    if (!waiting) box.dataset.drawn = '1';
+    if (!got.length && !waiting) { box.replaceChildren(); box.hidden = true; return; }
+    box.hidden = false;
+    const out = [];
+    if (got.length) {
+      const feeds = got.slice().sort((a, b) => a.at - b.at); // the screen's order, never the order the reads landed
+      const n = {};
+      for (const f of feeds) n[f.kind] = (n[f.kind] || 0) + 1;
+      const worst = n.unread ? 'unread' : n.unset ? 'unset' : n.sim ? 'sim' : 'cut';
+      const btn = el('button', 'feeds-head');
+      btn.type = 'button';
+      btn.appendChild(el('span', 'feed-state ' + worst, plural(feeds.length, 'feed') + ' off: ' + Object.keys(FEEDS_SAID).filter((k) => n[k]).map((k) => n[k] + ' ' + FEEDS_SAID[k]).join(', ')));
+      const list = el('div', 'feeds-list');
+      list.id = 'feeds-' + key;
+      // Every feed by name, with its state word — the folded wrapper's own words under it, or where to find it.
+      for (const f of feeds) {
+        const item = el('div', 'feeds-item');
+        item.appendChild(el('div', 'feeds-name', f.name + ' — ' + FEED_WORD[f.kind]));
+        item.appendChild(f.node || el('div', 'storm-muted', 'Shown in its own place on this screen.'));
+        list.appendChild(item);
+      }
+      const show = (open) => { btn.setAttribute('aria-expanded', open ? 'true' : 'false'); list.hidden = !open; };
+      btn.setAttribute('aria-controls', list.id);
+      show(!!FEEDS_OPEN[key]);
+      btn.addEventListener('click', () => { FEEDS_OPEN[key] = !FEEDS_OPEN[key]; show(FEEDS_OPEN[key]); });
+      out.push(btn, list);
+    }
+    if (waiting) out.push(readingLine());
+    box.replaceChildren(...out);
+  };
+  const place = (slot, x) => {
+    const at = order++;
+    waiting++;
+    draw();
+    return Promise.resolve(x).then((node) => {
+      if (!node) return; // a 401 (the key wall's) or a panel with nothing to say
+      const kind = node.dataset && node.dataset.off;
+      if (Object.prototype.hasOwnProperty.call(FEEDS_SAID, kind)) {
+        const stays = kind === 'unread' || node.dataset.keep === '1';
+        got.push({ at: at, kind: kind, name: node.dataset.feedName || 'A feed', node: stays ? null : node });
+        if (!stays) return;
+      }
+      slot.appendChild(node);
+    }).catch(() => { /* a panel that threw places nothing, as before */ }).finally(() => { waiting--; draw(); });
+  };
+  return { el: box, place: place };
+}
+
 // ONE status -> colour table. Every chip says what it means with one of five tones (alarm > stop > watch > good > info).
 // TONE WORDS (the canonical list) — a new chip finds its word here, or the nearest kin of it:
 //   alarm = EMERGENCY, POWER LINES, the power-line CALL FIRST, NO AERIAL WORK (nothing is stronger); the assistant's
@@ -1136,6 +1226,9 @@ async function locationStrip() {
     // titled card of its own (data-feed tells renderToday to give it one).
     const w = el('div');
     w.dataset.feed = '1';
+    // Direction B P12: what it reports, for the feeds card — a gap on purpose folds in, a failed read stays here.
+    w.dataset.off = feedKind(e);
+    w.dataset.feedName = 'Location tracking';
     w.appendChild(el('div', 'panel-title', 'Location tracking'));
     w.appendChild(feedLine(e, 'Location tracking', feedKind(e) === 'unread' ? 'It may still be on.' : 'No check-ins are being recorded.'));
     return w;
@@ -1186,7 +1279,13 @@ async function inboxIntentPanel() {
   };
   let d;
   try { d = await api('/api/inbox/intents'); }
-  catch (e) { return e.code === 401 ? null : feedLine(e, 'Inbox'); }
+  catch (e) {
+    if (e.code === 401) return null;
+    const n = feedLine(e, 'Inbox');
+    n.dataset.off = feedKind(e); // Direction B P12: the feeds card folds or counts it
+    n.dataset.feedName = 'Inbox';
+    return n;
+  }
   if (d.pipeline === 'not_started') return null;
   const wrap = el('div');
   const title = el('div', 'panel-title', 'Inbox');
@@ -1203,8 +1302,10 @@ async function inboxIntentPanel() {
       : (!r || r === 'inbox watch has not completed a pass') ? 'Arbo hasn’t finished its first inbox check yet.'
       : 'Arbo couldn’t read Gmail on its last check' + (d.gmailUnavailableSince ? ' (not since ' + fmtTime(d.gmailUnavailableSince) + ')' : '') + '.';
     wrap.appendChild(el('div', 'feed-state ' + (sim ? 'sim' : unset ? 'unset' : 'unread'), why + ' That doesn’t mean no mail came in.'));
+    wrap.dataset.off = sim ? 'sim' : unset ? 'unset' : 'unread'; // Direction B P12: for the feeds card
+    wrap.dataset.feedName = 'Inbox';
     const gl0 = gmailGapLine(d.gmailGap);
-    if (gl0) wrap.appendChild(gl0);
+    if (gl0) { wrap.appendChild(gl0); wrap.dataset.keep = '1'; } // mail known unread never folds away (partial reads stay in place)
     return wrap;
   }
   const gapLine = gmailGapLine(d.gmailGap);
@@ -1518,6 +1619,8 @@ async function studyPanel(limit) {
       ? el('div', 'feed-state unset', 'Quo isn\u2019t connected to Arbo yet \u2014 Arbo can\u2019t read your customer threads. That doesn\u2019t mean there are none.')
       : feedLine(e, 'Customer notes', 'That doesn\u2019t mean there are none.'));
     if (quoOff) w.dataset.quoOff = '1'; // fillQuoSlots folds the three Quo cards into one when all three say this
+    w.dataset.off = quoOff ? 'unset' : feedKind(e); // Direction B P12: for the feeds card
+    w.dataset.feedName = 'Customer notes';
     return w;
   }
   const st = d.status;
@@ -1571,10 +1674,14 @@ async function studyPanel(limit) {
 // any read so the order never depends on which lands first. When all three say
 // Quo isn't connected, ONE titled card says it once. Otherwise each panel fills
 // its own slot, and a read that throws empties only its own ('.slot:empty').
-function fillQuoSlots(reads, slots) {
+// Direction B P12: a screen with a feeds card hands its place(slot, x); every
+// slot is handed over now, before the reads land, so the card knows they are in
+// flight. Without one (Calls), each answer is appended, as it always was.
+function fillQuoSlots(reads, slots, place) {
+  const put = place || ((slot, x) => x.then((b) => { if (b) slot.appendChild(b); }));
   // LINKS_READY too: in practice mode the gap is "not in the practice data",
   // not a real outage — the same words Inbox and Website forms use there.
-  return Promise.all([Promise.allSettled(reads), LINKS_READY]).then(([rs, links]) => {
+  const got = Promise.all([Promise.allSettled(reads), LINKS_READY]).then(([rs, links]) => {
     const bs = rs.map((r) => (r.status === 'fulfilled' ? r.value : null));
     if (bs.every((b) => b && b.dataset.quoOff)) {
       const q = el('div');
@@ -1582,11 +1689,13 @@ function fillQuoSlots(reads, slots) {
       q.appendChild(links === 'simulation'
         ? el('div', 'feed-state sim', Cap(FEED_WORD.sim) + ' — no real customer threads, texts or Sona calls show here; those stay in Quo.') // "real": the PRACTICE text under Calls › Texts is made up
         : el('div', 'feed-state unset', 'Quo isn’t connected to Arbo yet — Arbo can’t read your customer threads, can’t text anyone, and Sona’s calls aren’t reaching Arbo. That doesn’t mean there are no customer threads or Sona calls.'));
-      slots[0].appendChild(q);
-      return;
+      q.dataset.off = links === 'simulation' ? 'sim' : 'unset'; // Direction B P12: one feed on the feeds card
+      q.dataset.feedName = 'Quo';
+      return slots.map((s, i) => (i ? null : q)); // the first slot carries it; the others stay empty
     }
-    bs.forEach((b, i) => { if (b) slots[i].appendChild(b); });
+    return bs;
   });
+  return Promise.all(slots.map((s, i) => put(s, got.then((bs) => bs[i]))));
 }
 
 // ---------- Sona via Quo (Mike, 2026-09-24: "let sona handle it for a while while arbo learns from it") ----------
@@ -1629,6 +1738,8 @@ async function sonaPanel(limit, withTranscripts) {
     const w = el('div');
     w.appendChild(el('div', 'panel-title', 'Sona calls (Quo)'));
     w.appendChild(feedLine(e, 'Sona (Quo)'));
+    w.dataset.off = feedKind(e); // Direction B P12: for the feeds card
+    w.dataset.feedName = 'Sona calls';
     return w;
   }
   const wrap = el('div');
@@ -1638,6 +1749,8 @@ async function sonaPanel(limit, withTranscripts) {
     // Its own sentence here, so fillQuoSlots can fold it into one Quo card (quoOff).
     wrap.appendChild(el('div', 'feed-state unset', 'Waiting on Quo — Sona’s calls are not reaching Arbo.'));
     wrap.dataset.quoOff = '1';
+    wrap.dataset.off = 'unset'; // Direction B P12: for the feeds card
+    wrap.dataset.feedName = 'Sona calls';
     return wrap;
   }
   if (st.registration.state !== 'ok') {
@@ -1795,6 +1908,8 @@ async function outreachPanel(full) {
       ? el('div', 'feed-state unset', 'Waiting on Quo — nothing can be texted.')
       : feedLine(e, 'Text outreach'));
     if (quoOff) wrap0.dataset.quoOff = '1'; // fillQuoSlots folds the three Quo cards into one when all three say this
+    wrap0.dataset.off = quoOff ? 'unset' : feedKind(e); // Direction B P12: for the feeds card
+    wrap0.dataset.feedName = 'Text outreach';
     return wrap0;
   }
   const st = d.status;
@@ -1910,17 +2025,26 @@ async function outreachPanel(full) {
 async function websiteFormsPanel() {
   let d;
   try { d = await api('/api/webhooks/forms'); }
-  catch (e) { return e.code === 401 ? null : feedLine(e, 'Website forms'); }
+  catch (e) {
+    if (e.code === 401) return null;
+    const n = feedLine(e, 'Website forms');
+    n.dataset.off = feedKind(e); // Direction B P12: the feeds card folds or counts it
+    n.dataset.feedName = 'Website forms';
+    return n;
+  }
   const wrap = el('div');
   wrap.appendChild(el('div', 'panel-title', 'Website forms'));
   if (!d.wired) {
     // §1B: an unwired feed is NAMED. The emailed copy of each form still
     // reaches Gmail — whether Arbo can read Gmail is the Inbox card's job.
     // In practice mode it is a gap on purpose, said in the practice words.
-    wrap.appendChild((await LINKS_READY) === 'simulation'
+    const sim = (await LINKS_READY) === 'simulation';
+    wrap.appendChild(sim
       ? el('div', 'feed-state sim', Cap(FEED_WORD.sim) + '. Real ones still arrive in your Gmail inbox.')
       : el('div', 'feed-state unset',
         'Website forms aren’t connected to Arbo yet. They still arrive in your Gmail inbox.'));
+    wrap.dataset.off = sim ? 'sim' : 'unset'; // Direction B P12: for the feeds card
+    wrap.dataset.feedName = 'Website forms';
     return wrap;
   }
   if (!d.forms.length) {
@@ -1956,6 +2080,8 @@ async function receptionStrip() {
     if (e.code === 401) return null;
     // Every path opens with the card's title, so the card is never headless.
     const w = el('div');
+    w.dataset.off = feedKind(e); // Direction B P12: for the feeds card
+    w.dataset.feedName = 'Arbo’s phone line';
     w.appendChild(el('div', 'panel-title', 'Arbo’s phone line'));
     w.appendChild(el('div', 'feed-state ' + feedKind(e), 'Reception: status unavailable right now.'));
     return w;
@@ -1969,6 +2095,8 @@ async function receptionStrip() {
     const tb = document.getElementById('talk-btn');
     if (tb) tb.remove();
     wrap.appendChild(el('div', 'feed-state cut', 'Off on purpose — disconnected while Sona handles calls. Nothing was deleted.'));
+    wrap.dataset.off = 'cut'; // Direction B P12: a line cut on purpose folds into the feeds card
+    wrap.dataset.feedName = 'Arbo’s phone line';
     return wrap;
   }
   if (!s.configured) {
@@ -2088,12 +2216,21 @@ async function stormLawFlag(alerting) {
   catch (e) {
     if (e.code === 401 || e.code === 404) return null;
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
-    return feedKind(e) === 'unset' ? null : feedLine(e, 'Storm price law');
+    if (feedKind(e) === 'unset') return null;
+    const n = feedLine(e, 'Storm price law');
+    n.dataset.off = feedKind(e); // Direction B P12: the feeds card folds or counts it
+    n.dataset.feedName = 'Storm price law';
+    return n;
   }
   const note = typeof d.governorNote === 'string' && d.governorNote ? d.governorNote : 'Governor declarations are not in any feed Arbo can read.';
   if (d.state === 'none') return (await alerting) === true ? el('div', 'storm-muted', 'Storm price law: no open FEMA declaration. ' + note) : null;
   // 'unreadable', or a state this page does not know: named, never read as "no declaration" (§1B).
-  if (d.state !== 'active') return feedLine(null, 'Storm price law');
+  if (d.state !== 'active') {
+    const n = feedLine(null, 'Storm price law');
+    n.dataset.off = 'unread'; // Direction B P12: counted on the feeds card, shown here
+    n.dataset.feedName = 'Storm price law';
+    return n;
+  }
   const box = el('div', 'late');
   box.appendChild(document.createTextNode('Virginia post-disaster price law in effect — check with counsel'));
   for (const x of Array.isArray(d.declarations) ? d.declarations : []) {

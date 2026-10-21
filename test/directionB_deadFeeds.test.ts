@@ -108,6 +108,10 @@ type Panels = {
   renderSafety: (slot: FNode) => Promise<void>; renderFleetList: (slot: FNode) => Promise<boolean>; renderMoney: (slot: FNode) => Promise<void>;
   stormBanner: () => Promise<unknown>; heroLoops: () => void;
   beforeYouRoll?: (emgP: Promise<unknown>, stormP: Promise<unknown>) => FNode;
+  // Direction B P12: the Today panels the feeds card folds, and the card itself.
+  inboxIntentPanel?: () => Promise<FNode | null>; websiteFormsPanel?: () => Promise<FNode | null>;
+  studyPanel?: (limit: number) => Promise<FNode | null>; outreachPanel?: (full: boolean) => Promise<FNode | null>;
+  feedsCard?: (key: string) => { el: FNode; place: (slot: FNode, x: unknown) => Promise<void> };
 };
 /** The page's helpers and the panels under test, built together with one stand-in document. */
 function kit(fail: (typeof FAILS)[number]) {
@@ -135,6 +139,12 @@ function kit(fail: (typeof FAILS)[number]) {
   const targets = ['renderLeads', 'emergencyLeads', 'sonaPanel', 'renderSafety', 'renderFleetList', 'renderMoney', 'stormBanner', 'heroLoops'];
   // Direction B P11: Before you roll, with the tables it reads.
   if (/^function beforeYouRoll\(/m.test(html)) { consts.push('DESK_VIEW', 'UNIT_STATUS', 'ROLL_ROWS'); targets.push('beforeYouRoll'); }
+  // Direction B P12: the panels Today folds into its feeds card, and the card.
+  if (/^function feedsCard\(/m.test(html)) {
+    consts.push('FEEDS_SAID', 'FEEDS_OPEN', 'FEEDS_BOX', 'FEEDS_GEN');
+    if (!helpers.includes('readingLine')) helpers.push('readingLine');
+    targets.push('inboxIntentPanel', 'websiteFormsPanel', 'studyPanel', 'outreachPanel', 'feedsCard');
+  }
   const built = new Function('document', 'api', 'HERO', 'sysSet', 'showKeywall', 'linksIn', `
     let LINKS = linksIn;
     let TIMER_REDRAW = false;
@@ -224,6 +234,35 @@ describe.each(FAILS)('a read that died: $kind', (fail) => {
     expect(k.paths.filter((p) => p === '/api/safety' || p === '/api/fleet/units')).toEqual(['/api/safety', '/api/fleet/units']);
   });
 
+  // Direction B P12: the Today panels the feeds card folds — each names its feed, and marks its
+  // wrapper with the kind and the feed's name, so the card can count it and name it.
+  it.each([
+    ['inboxIntentPanel', 'Inbox', []], ['websiteFormsPanel', 'Website forms', []],
+    ['studyPanel', 'Customer notes', [5]], ['outreachPanel', 'Text outreach', [false]], ['sonaPanel', 'Sona calls', [3, false]],
+  ] as const)('%s (P12): named, marked off with its kind, never a calm line', async (name, feed, args) => {
+    const k = kit(fail);
+    const run = (k as unknown as Record<string, (...a: unknown[]) => Promise<FNode | null>>)[name]!;
+    const w = (await run(...args))!;
+    expectNamed(w.textContent, fail.kind, name);
+    expect(w.dataset.off, name).toBe(fail.kind);
+    expect(w.dataset.feedName, name).toBe(feed);
+  });
+
+  it('the feeds card (P12): every dead panel counted under its own word and named — never a calm line, never a 0', async () => {
+    const k = kit(fail);
+    const card = k.feedsCard!('today');
+    const panels = [k.inboxIntentPanel!(), k.websiteFormsPanel!(), k.studyPanel!(5), k.outreachPanel!(false), k.sonaPanel(3, false)];
+    const slots = panels.map(() => new FNode('div'));
+    panels.forEach((p, i) => card.place(slots[i]!, p));
+    for (let i = 0; i < 8; i++) await flush();
+    const said = { cut: 'cut on purpose', sim: 'not in the practice data', unset: 'not set up', unread: 'couldn’t read' }[fail.kind];
+    expect(card.el.textContent).toContain('5 feeds off: 5 ' + said);
+    for (const n of ['Inbox', 'Website forms', 'Customer notes', 'Text outreach', 'Sona calls']) expect(card.el.textContent).toContain(n + ' — ' + FEED_WORD[fail.kind]);
+    expectNamed(card.el.textContent, fail.kind, 'the feeds card');
+    // Folded (cut, not simulated, not set up): their slots are empty. Unread: each stays where it would show.
+    expect(slots.every((s) => s.children.length === (fail.kind === 'unread' ? 1 : 0))).toBe(true);
+  });
+
   it('Open loops (the hero stat): a dash and the feed tag, never 0 open', async () => {
     const k = kit(fail);
     k.heroLoops();
@@ -238,7 +277,8 @@ describe.each(FAILS)('a read that died: $kind', (fail) => {
 // Every render*/…Panel function in the page is listed here: covered above, or
 // exempt with the reason. A new one (each later package) must join one list.
 describe('the dead-feed harness knows every panel in the page', () => {
-  const COVERED = ['renderLeads', 'sonaPanel', 'renderSafety', 'renderFleetList', 'renderMoney'];
+  const COVERED = ['renderLeads', 'sonaPanel', 'renderSafety', 'renderFleetList', 'renderMoney',
+    'inboxIntentPanel', 'studyPanel', 'outreachPanel', 'websiteFormsPanel']; // P12 joined the four Today panels
   const EXEMPT: Record<string, string> = {
     renderToday: 'a page of panels; its dead-feed lines are pinned in qa_today, qa2_today and qa3_today-rest (emergencyLeads, stormBanner, heroLoops are covered above)',
     renderAssistant: 'R28 desk; its gaps are pinned in assistantUi',
@@ -264,10 +304,6 @@ describe('the dead-feed harness knows every panel in the page', () => {
     renderAgents: 'not seeded in P1; pinned in qa_agents (joins with P6)',
     renderMeasure: 'a form — reads only on a file; pinned in qa2_permits-measure-crew',
     renderLearn: 'not seeded in P1; pinned in qa_agents_learn_round2',
-    inboxIntentPanel: 'not seeded in P1; pinned in qa_today and qa3_today-rest (joins with P12)',
-    studyPanel: 'not seeded in P1; pinned in qa2_calls-cal-leads (joins with P12)',
-    outreachPanel: 'not seeded in P1; pinned in outreach and qa2_today (joins with P12)',
-    websiteFormsPanel: 'not seeded in P1; pinned in qa_today and webhooks (joins with P12)',
     openPanel: 'P10 navigation, not a panel: it opens a screen and lands on one of its panels — no read of its own (directionB_todayTaps)',
   };
   it('every render* and *Panel function is covered or exempt with a reason — never both', () => {
