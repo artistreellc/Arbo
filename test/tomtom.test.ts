@@ -219,4 +219,22 @@ describe('the client keeps the day’s geocodes in memory', () => {
     await client.geocode('SIM-1 Simulation Row');
     expect(urls).toHaveLength(3);
   });
+
+  // Maps wave A (M1): the map draws an exact pin only where the planner already placed the address.
+  it('peek reads the day’s memory and never asks TomTom: placed, couldn’t place, not asked, another day', async () => {
+    let day = '2026-10-21';
+    const { fn, urls } = fake((u) => (u.includes('Nowhere') ? { body: { results: [] } } : { body: placed(36.8, -76.1) }));
+    const client = createTomTomClient(KEY, { fetchFn: fn, today: () => day });
+    expect(client.peek('SIM-1 Simulation Row')).toBeUndefined(); // not asked today
+    await client.geocode('SIM-1 Simulation Row');
+    await client.geocode('SIM-9 Nowhere Lane');
+    const asked = urls.length;
+    expect(client.peek('SIM-1 Simulation Row')).toEqual({ lat: 36.8, lon: -76.1 });
+    expect(client.peek('SIM-9 Nowhere Lane')).toBeNull(); // asked, and TomTom placed it nowhere
+    expect(client.peek('SIM-2 Never Asked')).toBeUndefined();
+    expect(urls).toHaveLength(asked); // peeking asked TomTom nothing
+    day = '2026-10-22';
+    expect(client.peek('SIM-1 Simulation Row')).toBeUndefined(); // yesterday's memory is not today's
+    expect(urls).toHaveLength(asked);
+  });
 });

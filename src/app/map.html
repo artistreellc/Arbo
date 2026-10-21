@@ -72,7 +72,8 @@ html.night #osm{background:rgba(11,21,18,.85);color:#C5D2CA}
 .key .pin{flex:0 0 auto;transform:scale(.8)}
 .hud{display:block;width:100%;min-height:48px;margin:8px 0 4px;border:0;border-radius:14px;background:var(--forest);color:var(--on-forest);font:700 15px/1.2 var(--sans);cursor:pointer}
 .pinwrap{background:none;border:0}
-.pin{display:flex;align-items:center;justify-content:center;min-width:30px;height:30px;padding:0 6px;border-radius:15px;font:700 13px/1 var(--sans);box-shadow:var(--shadow)}
+.pinwrap .pin{position:absolute;left:0;top:0;transform:translate(-50%,-50%);cursor:pointer}
+.pin{display:flex;align-items:center;justify-content:center;min-width:34px;height:34px;padding:0 8px;border-radius:17px;font:700 14px/1 var(--sans);white-space:nowrap;box-shadow:var(--shadow)}
 .pin.exact{background:var(--forest);color:var(--on-forest);border:2px solid var(--card)}
 .pin.area{background:var(--card);color:var(--ink-1);border:3px dashed var(--forest)}
 .pin.practice{background:var(--card);color:var(--ink-1);border:3px dashed var(--ink-4)}
@@ -118,7 +119,23 @@ const MAP_SAYS = {
   permitsSoon: 'Permit areas aren’t drawn yet — the next map build adds Virginia DEQ’s RPA layer. No shading here is not a “no”.',
   leadsSoon: 'Leads & jobs aren’t on the map yet — the next map build adds them. Your leads are on the Leads tab.',
   trucksSoon: 'Trucks aren’t on the map yet — that layer is still to be built. Office → Fleet lists each truck.',
-  todaySoon: 'Today’s stops aren’t drawn yet — Calendar lists them.',
+  practice: 'PRACTICE DATA — pins sit in their ZIP area; these are not real places.',
+  todayFailed: 'Today’s stops: couldn’t read them just now. This is not an empty day.',
+  emptyDay: 'Nothing on your Google Calendar today.',
+  countsOne: '{on} of {n} event on the map',
+  countsMany: '{on} of {n} events on the map',
+  countsMissing: ' · {k} not on the map',
+  orderOnly: 'Order only — straight lines, not roads. Google Maps draws the road.',
+  ends: 'Where the day starts and ends isn’t drawn — Calendar’s plan says where the route starts and ends.',
+  exact: 'Exact spot — TomTom placed it for today’s route',
+  zipArea: 'ZIP area — not the exact spot',
+  practicePin: 'Practice pin — not a real place',
+  outside: 'placed outside the four cities',
+  stopN: 'stop {n} in the plan',
+  stopsHere: '{k} stops here — tap one to open it',
+  routeDay: 'Route the whole day in Google Maps',
+  tooLong: 'This address is too long to open from the map — open it from Calendar.',
+  noTitle: 'No title',
   outsideShell: 'Open Map from Arbo.',
   openArbo: 'Open Arbo',
   noKey: 'Open Arbo and enter the key first.',
@@ -133,7 +150,7 @@ const MAP_SAYS = {
 const LAYERS = ['today', 'permits', 'leads', 'trucks'];
 const LAYER_NAME = { today: MAP_SAYS.nameToday, permits: MAP_SAYS.namePermits, leads: MAP_SAYS.nameLeads, trucks: MAP_SAYS.nameTrucks };
 // A layer not built yet says so when it is switched on — never an empty map.
-const LAYER_SOON = { today: MAP_SAYS.todaySoon, permits: MAP_SAYS.permitsSoon, leads: MAP_SAYS.leadsSoon, trucks: MAP_SAYS.trucksSoon };
+const LAYER_SOON = { permits: MAP_SAYS.permitsSoon, leads: MAP_SAYS.leadsSoon, trucks: MAP_SAYS.trucksSoon };
 // The layers this build draws: each reads its own feed and names its own gaps.
 const LAYER_READ = {};
 const LAYER_CLEAR = {};
@@ -175,6 +192,7 @@ function nightOn() {
 }
 function applyNight() {
   document.documentElement.classList.toggle('night', nightOn());
+  if (TODAY.d) drawToday(TODAY.d); // the route line takes the theme's own colour
 }
 
 // The key, from the shell that framed this page — it works even when the shell holds it for the visit only.
@@ -316,7 +334,8 @@ function panBox(box, stops) {
     s = Math.min(s, p.lat); n = Math.max(n, p.lat);
     w = Math.min(w, p.lon); e = Math.max(e, p.lon);
   }
-  const pad = 0.05;
+  // Padded enough that a pin near the edge can still be panned clear of a popup listing its stops.
+  const pad = 0.25;
   return [[s - pad, w - pad], [n + pad, e + pad]];
 }
 function setPanLimit(stops) {
@@ -340,19 +359,229 @@ function onShellMessage(e) {
   }
 }
 
-// The frame is hidden (0 × 0) while another screen shows; when Map comes back, its layers read again.
-let WAS_HIDDEN = false;
-function onResize() {
-  const hidden = window.innerWidth === 0 || window.innerHeight === 0;
-  if (WAS_HIDDEN && !hidden) readAll();
-  WAS_HIDDEN = hidden;
+// ═══ TODAY (M1): today's calendar stops, numbered in R35's planned order ═══
+// /api/map/today places each stop from what Arbo already holds: an exact pin only where TomTom's
+// day memory has it (the planner placed it), a hollow ZIP-area pin otherwise, and every stop it
+// can't place is named. The map opens on the four cities and never zooms to a pin by itself.
+const TODAY = { seq: 0, d: null, layer: null, open: false };
+
+function clock12(s) {
+  if (typeof s !== 'string' || !/^\d{1,2}:\d{2}$/.test(s)) return '';
+  const [h, m] = s.split(':').map(Number);
+  return ((h + 11) % 12 + 1) + ':' + String(m).padStart(2, '0') + (h < 12 ? ' AM' : ' PM');
+}
+// Time order inside a pin's list: booked time, then the plan's number; no time last.
+function byTime(a, b) {
+  if (a.time !== b.time) return a.time === null ? 1 : b.time === null ? -1 : a.time < b.time ? -1 : 1;
+  if (a.n !== b.n) return a.n === null ? 1 : b.n === null ? -1 : a.n - b.n;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+// One marker per point: stops in one ZIP area share a hollow marker that lists them all, so no
+// stop hides under another. An exact pin is never merged with a ZIP-area one.
+function mapGroups(stops) {
+  const out = [];
+  const at = new Map();
+  for (const s of stops) {
+    const exact = s.placedBy === 'tomtom';
+    const k = (exact ? 'x' : 'a') + ':' + s.lat + ',' + s.lon;
+    let g = at.get(k);
+    if (!g) {
+      g = { lat: s.lat, lon: s.lon, exact: exact, practice: s.placedBy === 'practice', stops: [] };
+      at.set(k, g);
+      out.push(g);
+    }
+    g.stops.push(s);
+  }
+  for (const g of out) g.stops.sort(byTime);
+  return out;
+}
+// The dashed line: numbered pins only, in the plan's order — order, not roads.
+function routeLine(stops) {
+  const pts = stops.filter((s) => s.n !== null).sort((a, b) => a.n - b.n).map((s) => [s.lat, s.lon]);
+  return pts.length >= 2 ? pts : [];
+}
+// A pin's words: its plan numbers; a pin with no number shows none (never a count that reads as one).
+function pinText(g) {
+  return g.stops.filter((s) => s.n !== null).map((s) => s.n).sort((a, b) => a - b).join('·');
+}
+function pinNode(g) {
+  const n = el('span', 'pin ' + (g.exact ? 'exact' : g.practice ? 'practice' : 'area'));
+  n.textContent = pinText(g);
+  return n;
+}
+function countsLine(d) {
+  const c = d.counts;
+  if (!c || typeof c.events !== 'number' || c.events === 0) return null;
+  const t = (c.events === 1 ? MAP_SAYS.countsOne : MAP_SAYS.countsMany).replace('{on}', String(c.onMap)).replace('{n}', String(c.events));
+  return t + (c.notOnMap ? MAP_SAYS.countsMissing.replace('{k}', String(c.notOnMap)) : '');
+}
+// Gaps for the status list: the practice banner, a calendar not read (R35's own line, with ↻), TomTom's own line.
+function todayLines(d) {
+  const out = [];
+  if (d.practice) out.push({ cls: 'sim', text: MAP_SAYS.practice, retry: false });
+  if (d.state !== 'ok' && d.state !== 'practice') out.push({ cls: d.state === 'google_not_connected' ? 'unset' : 'unread', text: d.line, retry: true });
+  if (d.tomtomLine) out.push({ cls: /^TomTom couldn/.test(d.tomtomLine) ? 'unread' : 'unset', text: d.tomtomLine, retry: false });
+  return out;
+}
+// Facts above the map, not gaps: the empty day — said only after a good read.
+function todayFacts(d) {
+  const read = d.state === 'ok' || d.state === 'practice';
+  return read && d.counts && d.counts.events === 0 ? [MAP_SAYS.emptyDay] : [];
+}
+// The plan's own line, under the map with the legend (it keeps the map's first screen for the map).
+function planNote(d) {
+  const read = d.state === 'ok' || d.state === 'practice';
+  return read && d.planLine && d.counts && d.counts.events > 0 ? d.planLine : null;
+}
+function stopNote(s) {
+  const parts = [];
+  if (s.n !== null) parts.push(MAP_SAYS.stopN.replace('{n}', String(s.n)));
+  if (s.placedBy === 'zip') parts.push(MAP_SAYS.zipArea);
+  if (s.placedBy === 'practice') parts.push(MAP_SAYS.practicePin);
+  if (s.outside) parts.push(MAP_SAYS.outside);
+  if (s.why) parts.push(s.why);
+  return parts.join(' · ');
+}
+// A stop opens R35's own "Open in Google Maps?" sheet in the shell — the shell builds the link.
+function openStop(s, g) {
+  if (typeof s.address !== 'string' || s.address.length > 300) {
+    if (MAP) L.popup().setLatLng([g.lat, g.lon]).setContent(el('div', 'pop', MAP_SAYS.tooLong)).openOn(MAP);
+    return;
+  }
+  toShell({ type: 'stop', title: String(s.title || MAP_SAYS.noTitle).slice(0, 300), address: s.address, note: stopNote(s).slice(0, 300) });
+}
+function groupNode(g) {
+  const box = el('div', 'pop');
+  box.appendChild(el('b', '', MAP_SAYS.stopsHere.replace('{k}', String(g.stops.length)) + (g.exact ? '' : ' · ' + (g.practice ? MAP_SAYS.practicePin : MAP_SAYS.zipArea))));
+  for (const s of g.stops) {
+    const b = el('button', '', [s.n !== null ? s.n : null, clock12(s.time), s.title || MAP_SAYS.noTitle].filter(Boolean).join(' · '));
+    b.type = 'button';
+    const small = [s.city, s.why, s.outside ? MAP_SAYS.outside : null].filter(Boolean).join(' · ');
+    if (small) b.appendChild(el('small', '', small));
+    b.addEventListener('click', () => openStop(s, g));
+    box.appendChild(b);
+  }
+  return box;
+}
+function groupMarker(g) {
+  const label = g.stops.map((s) => [s.n !== null ? MAP_SAYS.stopN.replace('{n}', String(s.n)) : null, s.title || MAP_SAYS.noTitle].filter(Boolean).join(', ')).join('; ');
+  const m = L.marker([g.lat, g.lon], { icon: L.divIcon({ html: pinNode(g), className: 'pinwrap', iconSize: [0, 0] }), title: label, alt: label, keyboard: true, riseOnHover: true });
+  if (g.stops.length === 1) m.on('click', () => openStop(g.stops[0], g));
+  else m.bindPopup(groupNode(g));
+  return m;
+}
+function forestColor() {
+  return getComputedStyle(document.documentElement).getPropertyValue('--forest').trim() || '#1B4D3E';
+}
+function clearToday() {
+  TODAY.d = null;
+  if (TODAY.layer) TODAY.layer.clearLayers();
+  GAPS.today = [];
+  setPanLimit([]);
+  drawFacts();
+  drawLegend();
+}
+function drawToday(d) {
+  if (TODAY.layer) TODAY.layer.clearLayers();
+  TODAY.d = d;
+  GAPS.today = todayLines(d).map((g) => ({ cls: g.cls, text: g.text, retry: g.retry ? readToday : null }));
+  if (MAP && TODAY.layer) {
+    const line = routeLine(d.stops);
+    if (line.length) TODAY.layer.addLayer(L.polyline(line, { color: forestColor(), weight: 3, opacity: 0.85, dashArray: '6 8', interactive: false }));
+    for (const g of mapGroups(d.stops)) TODAY.layer.addLayer(groupMarker(g));
+    setPanLimit(d.stops);
+  }
+  drawStatus();
+  drawFacts();
+  drawLegend();
+}
+async function readToday() {
+  const seq = ++TODAY.seq;
+  let d;
+  try {
+    d = await mapGet('/api/map/today');
+    if (!Array.isArray(d.stops) || !Array.isArray(d.notOnMap) || !d.counts) throw Object.assign(new Error('shape'), { why: 'unread' });
+  } catch (e) {
+    if (seq !== TODAY.seq || !ON.today) return;
+    clearToday();
+    if (!keyGap(e)) GAPS.today = [{ cls: 'unread', text: MAP_SAYS.todayFailed, retry: readToday }];
+    drawStatus();
+    return;
+  }
+  if (seq !== TODAY.seq || !ON.today) return;
+  GAPS.key = [];
+  drawToday(d);
+}
+FACTS.today = () => {
+  const d = TODAY.d;
+  if (!d) return [];
+  const out = [];
+  const c = countsLine(d);
+  if (c && d.notOnMap.length) {
+    // A tap lists the stops not on the map, each with why.
+    const b = el('button', 'factbtn', c);
+    b.type = 'button';
+    b.setAttribute('aria-expanded', TODAY.open ? 'true' : 'false');
+    b.addEventListener('click', () => { TODAY.open = !TODAY.open; drawFacts(); });
+    out.push(b);
+    if (TODAY.open) {
+      const ul = el('ul', 'missing');
+      for (const m of d.notOnMap) ul.appendChild(el('li', '', (m.title || MAP_SAYS.noTitle) + ' — ' + m.why));
+      out.push(ul);
+    }
+  } else if (c) out.push(el('div', 'muted', c));
+  for (const f of todayFacts(d)) out.push(el('div', 'muted', f));
+  return out;
+};
+KEYS.today = () => {
+  const d = TODAY.d;
+  if (!d) return [];
+  const out = [];
+  if (d.canRoute) {
+    const b = el('button', 'hud', MAP_SAYS.routeDay);
+    b.type = 'button';
+    b.addEventListener('click', () => toShell({ type: 'day' }));
+    out.push(b);
+  }
+  const plan = planNote(d);
+  if (plan) out.push(el('div', 'muted', plan));
+  // What the pins and the line mean — only when there are pins to explain.
+  if (!d.stops.length) return out;
+  const key = (g, text) => {
+    const row = el('div', 'key');
+    row.appendChild(pinNode(g));
+    row.appendChild(el('span', '', text));
+    return row;
+  };
+  out.push(key({ exact: true, stops: [{ n: 1 }] }, MAP_SAYS.exact));
+  out.push(key({ exact: false, stops: [{ n: 2 }] }, MAP_SAYS.zipArea));
+  if (d.practice) out.push(key({ practice: true, stops: [{ n: 3 }] }, MAP_SAYS.practicePin));
+  out.push(el('div', 'muted', MAP_SAYS.orderOnly));
+  out.push(el('div', 'muted', MAP_SAYS.ends));
+  return out;
+};
+LAYER_READ.today = readToday;
+LAYER_CLEAR.today = clearToday;
+
+// While another screen shows, the shell's Map view loses its 'active' class (the frame keeps its size and
+// gets no event of its own). Same origin, so the frame watches that class: when Map comes back, its layers read again.
+function watchShown() {
+  let view = null;
+  try { view = window.frameElement ? window.frameElement.closest('.view') : null; } catch (e) { view = null; }
+  if (!view) return;
+  let shown = view.classList.contains('active');
+  new MutationObserver(() => {
+    const now = view.classList.contains('active');
+    if (now && !shown) readAll();
+    shown = now;
+  }).observe(view, { attributes: true, attributeFilter: ['class'] });
 }
 
 function boot() {
   applyNight();
   drawChips();
   window.addEventListener('message', onShellMessage);
-  window.addEventListener('resize', onResize);
+  watchShown();
   window.addEventListener('storage', (e) => { if (e.key === 'arboTheme') applyNight(); });
   if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyNight);
   window.addEventListener('online', () => { retryTiles(); readAll(); });
@@ -362,13 +591,16 @@ function boot() {
     GAPS.code = [{ cls: 'unread', text: MAP_SAYS.codeFailed, retry: () => location.reload() }];
     drawStatus();
   } else {
-    MAP = L.map('map', { attributionControl: false, zoomControl: true, minZoom: 10, maxZoom: 18, maxBoundsViscosity: 1 });
+    // Zoom buttons bottom-left: a popup listing a ZIP area's stops opens upward and must not sit under them.
+    MAP = L.map('map', { attributionControl: false, zoomControl: false, minZoom: 10, maxZoom: 18, maxBoundsViscosity: 1 });
+    L.control.zoom({ position: 'bottomleft' }).addTo(MAP);
     MAP.fitBounds([[BOX.south, BOX.west], [BOX.north, BOX.east]]);
     setPanLimit([]);
     TILES = L.tileLayer(OSM_TILES, { minZoom: 10, maxZoom: 18 });
     TILES.on('tileerror', () => { TILE.errors++; tilesState(); });
     TILES.on('tileload', () => { TILE.loaded++; tilesState(); });
     TILES.addTo(MAP);
+    TODAY.layer = L.layerGroup().addTo(MAP);
     tilesState();
   }
   toShell({ type: 'ready' });

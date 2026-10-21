@@ -238,6 +238,13 @@ export async function tomtomRoute(
 export interface TomTomClient {
   geocode(query: string): Promise<LatLon | null>;
   route(points: LatLon[], opts: { bestOrder: boolean; departAtIso?: string }): Promise<TomTomRoute>;
+  /**
+   * Maps wave A (M1): READ ONLY — what today's memory holds for exactly this
+   * query, without asking TomTom anything. A point = the planner placed it;
+   * null = TomTom placed it nowhere; undefined = not asked today. The map draws
+   * an exact pin only from this, so it sends no address anywhere new.
+   */
+  peek(query: string): LatLon | null | undefined;
 }
 
 /**
@@ -279,5 +286,10 @@ export function createTomTomClient(
       return p;
     },
     route: (points, o) => tomtomRoute(points, apiKey, o, fetchFn, timeoutMs),
+    // Never fetches and never resets the memory: yesterday's answers are simply not today's.
+    peek(query) {
+      if (today() !== day || !places.has(query)) return undefined;
+      return places.get(query) ?? null;
+    },
   };
 }

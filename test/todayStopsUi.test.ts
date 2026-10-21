@@ -172,6 +172,8 @@ describe('Today’s stops on the Calendar tab', () => {
       feedLine: (_e: unknown, what: string, tail: string) => el('div', 'feed-state unread', what + ': couldn’t read it. ' + tail),
       todayStopRow: pageFn('todayStopRow', { el, clock12, openMapsStop: (s: unknown) => opened.push(s) }),
       openMapsDay: (d: unknown) => opened.push(d),
+      // Maps wave A (M1): the header carries a Map button that opens Today's stops on the map.
+      todayStopsHead: pageFn('todayStopsHead', { el, openMap: (l: string) => opened.push('map:' + l) }),
       PLAN_LINE_CLASS: new Function(`return ${/^const PLAN_LINE_CLASS = (\{.*\});$/m.exec(html)![1]}`)(),
       TODAY_SEQ: 0,
     });
@@ -183,6 +185,19 @@ describe('Today’s stops on the Calendar tab', () => {
     stops: [STOP, { ...STOP, id: 's2', time: '17:30', title: 'SIM-Cedar call', city: null, address: null, why: 'No address on the event', plan: null }],
     plan: { engine: 'zip', kind: 'estimate', line: 'ZIP estimates — not a mapped route · 1 stop', note: 'SIM note', warnings: ['Plan runs past 8pm (ends 21:30)'], order: ['s1'], driveMinutes: 0 },
   };
+
+  it('the header: "Today’s stops" and a Map button that opens Today on the map — after a read and after a failed one (Maps wave A)', async () => {
+    for (const answer of [OK, Object.assign(new Error('x'), { code: 503 })]) {
+      const m = mount(answer);
+      await m.render();
+      const head = m.box.children[0]!;
+      expect(head.children[0]!.textContent).toBe('Today’s stops');
+      const b = head.children[1]!;
+      expect([b.tag, b.type, b.textContent]).toEqual(['button', 'button', 'Map']);
+      await b.click();
+      expect(m.opened).toEqual(['map:today']);
+    }
+  });
 
   it('lists each stop: its time, the event title, the city — a stop with no address says so and has no Maps button', async () => {
     const m = mount(OK);

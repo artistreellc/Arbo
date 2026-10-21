@@ -564,9 +564,10 @@ nav button .dot.p-unread::after{background:var(--card);box-shadow:inset 0 0 0 2p
 #gcal-frame{width:100%;height:calc(100vh - 250px);min-height:440px;border:1px solid var(--hairline);border-radius:var(--r-lg);background:var(--card);box-shadow:var(--shadow-card)}
 .cal-open{display:flex;align-items:center;justify-content:center;min-height:48px;border-radius:16px;background:var(--card);border:1px solid var(--border);color:var(--forest);font-size:14px;font-weight:700;text-decoration:none;margin-top:10px}
 .cal-src{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:10px}
-/* Maps wave A (M0): the Map screen is one same-origin frame (/map), made once; the strip keeps the iOS edge swipe in the shell. */
 #view-map{position:relative}
-#view-map.view.active{display:block} /* stacks like the phone on a wide screen too (an id outweighs the wide .view.active grid) */
+.stops-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:22px 0 12px}
+.stops-head .panel-title{margin:0 2px}
+#view-map.view.active{display:block}
 #map-frame{display:block;width:100%;height:calc(100vh - 176px);height:calc(100dvh - 176px - env(safe-area-inset-top) - env(safe-area-inset-bottom));min-height:560px;border:1px solid var(--hairline);border-radius:var(--r-lg);background:var(--paper)}
 .map-edge{position:absolute;left:0;top:0;bottom:0;width:16px;z-index:2}
 .cal-day{margin-bottom:14px}
@@ -3875,7 +3876,6 @@ function openMapsStop(s) {
   const no = el('button', 'minibtn wide-btn', 'No');
   no.type = 'button';
   no.addEventListener('click', () => closeSheet('maps'));
-  // Maps wave A: a stop tapped on the map carries what its pin said (a ZIP area, why it is not in the route).
   const parts = [el('div', 'panel-title', 'Open in Google Maps?'), el('div', 'maps-who', s.title || 'No title'), s.note ? el('div', 'storm-muted', s.note) : null, el('div', 'storm-muted', s.address), yes, no];
   $('maps-body').replaceChildren(...parts.filter(Boolean));
   $('maps').classList.add('show'); sheetOpened('maps');
@@ -3930,6 +3930,17 @@ function todayStopRow(s) {
   }
   return row;
 }
+// Maps wave A M1: Today's stops on the map.
+function todayStopsHead() {
+  const head = el('div', 'stops-head');
+  head.appendChild(el('div', 'panel-title', 'Today’s stops'));
+  const b = el('button', 'minibtn', 'Map');
+  b.type = 'button';
+  b.setAttribute('aria-label', 'Today’s stops on the map');
+  b.addEventListener('click', () => openMap('today'));
+  head.appendChild(b);
+  return head;
+}
 // How the plan line reads: a live plan is a plain note; estimates and gaps wear the feed-state dot.
 const PLAN_LINE_CLASS = { live: 'storm-muted', estimate: 'feed-state unset', estimate_failed: 'feed-state unread', none: 'feed-state cut', practice: 'feed-state sim' };
 let TODAY_SEQ = 0; // a slow answer never draws over a newer one
@@ -3941,11 +3952,11 @@ async function renderTodayStops() {
   try { d = await api('/api/route/today'); }
   catch (e) {
     if (e.code === 401 || seq !== TODAY_SEQ) return;
-    box.replaceChildren(el('div', 'panel-title', 'Today’s stops'), feedLine(e, 'Today’s stops', 'This is not an empty day.'));
+    box.replaceChildren(todayStopsHead(), feedLine(e, 'Today’s stops', 'This is not an empty day.'));
     return;
   }
   if (seq !== TODAY_SEQ) return;
-  const out = [el('div', 'panel-title', 'Today’s stops')];
+  const out = [todayStopsHead()];
   if (d.practice) out.push(el('div', 'feed-state sim', 'Practice stops — SIM names on streets that do not exist. TomTom and Google are not asked in practice mode; your real calendar is below.'));
   const tomtomLine = d.tomtom && d.tomtom.line ? el('div', 'feed-state ' + (d.tomtom.state === 'failed' ? 'unread' : 'unset'), d.tomtom.line) : null;
   if (d.state !== 'ok' && d.state !== 'practice') {
@@ -4106,22 +4117,12 @@ function renderCalendar() {
   renderTodayStops();
 }
 
-// ---------- Map (Maps wave A, docs/MAPS_PLAN.md: M0 the one shared map) ----------
-// Mike, 2026-10-20: "the map … needs to start tightening up". The map is its own page (/map) in a
-// same-origin frame made once by renderMap — the calendar frame's pattern (R2) — because Leaflet can
-// never sit in this shell (its source builds HTML from strings and names its own site). The shell keeps its
-// laws, the dock, ‹ Back and the sheets; a stop tapped on the map opens R35's own "Open in Google
-// Maps?" sheet, so mapsDirUrl stays the page's only Google Maps link builder. A layer is chosen by
-// message, never the frame's hash (a hash change in a frame is a history step Back would undo).
-// Where Map belongs follows the layer it was opened for: Trucks lights Office and steps back to
-// Fleet; Leads keeps Leads lit. Messages from the frame: only from it, on this origin, three kinds.
+// ---------- Map (Maps wave A M0, docs/MAPS_PLAN.md): /map framed once; layers by message, never the hash ----------
 const MAP_HOME = { today: 'cal', permits: 'estimate', leads: 'leads', trucks: 'fleet' };
 const MAP_LAYER_OF = { 'map-today': 'today', 'map-permits': 'permits', 'map-leads': 'leads', 'map-trucks': 'trucks' };
-// The longest string a frame message may carry; anything longer opens nothing.
 const MAP_MAX = 300;
-let MAP_READY = false; // the frame has said it is listening
-let MAP_HELD = null; // a layer chosen before the frame was ready
-// The frame reads /api with the shell's key — even one held for this visit only (storage blocked).
+let MAP_READY = false;
+let MAP_HELD = null;
 window.arboMapKey = () => KEY;
 function mapPost(msg) {
   const f = $('map-frame');
@@ -4145,7 +4146,6 @@ function renderMap() {
   f.id = 'map-frame';
   f.title = 'Map';
   f.src = '/map';
-  // The iOS edge swipe starts in the shell, not on the map (STANDALONE's swipe-back below).
   const edge = el('div', 'map-edge');
   edge.setAttribute('aria-hidden', 'true');
   $('view-map').replaceChildren(f, edge);
@@ -4155,7 +4155,7 @@ function refreshMap() {
 }
 function mapMessage(e) {
   const f = $('map-frame');
-  if (!f || e.origin !== location.origin || !e.source || e.source !== f.contentWindow) return;
+  if (!f || e.origin !== location.origin || e.source !== f.contentWindow) return;
   const m = e.data;
   if (!m || typeof m !== 'object') return;
   const short = (s) => typeof s === 'string' && s.length <= MAP_MAX;
@@ -4172,7 +4172,7 @@ function mapMessage(e) {
   if (m.type === 'day') { mapDay(); return; }
   if (m.type === 'lead' && typeof m.id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(m.id)) openPanel('leads', 'lead-' + m.id);
 }
-// Route the whole day from the map: Calendar's own answer, into R35's own day sheet.
+// Route the whole day: Calendar's own answer, R35's own sheet.
 async function mapDay() {
   let d;
   try { d = await api('/api/route/today'); }
@@ -8618,7 +8618,7 @@ const NAV_DRAW = { more: () => renderMore(), settings: () => renderSettings(), p
 function startView(hash) {
   const asked = String(hash || '').replace(/^#/, '');
   const want = Object.prototype.hasOwnProperty.call(VIEW_ALIAS, asked) ? VIEW_ALIAS[asked] : asked;
-  if (want === 'map') mapAim(MAP_LAYER_OF[asked]); // Maps wave A: #map-trucks lands on Map with Trucks on, lit and stepping back where Trucks belong
+  if (want === 'map') mapAim(MAP_LAYER_OF[asked]); // Maps wave A
   if (want && want !== 'today' && want !== 'settings' && Object.prototype.hasOwnProperty.call(VIEW_TITLES, want)) navShow(want);
   try { history.replaceState({ v: CUR_TAB, d: 0 }, '', '#' + CUR_TAB); } catch (e) { /* ignore */ }
 }
@@ -8694,7 +8694,7 @@ $('tab-more').addEventListener('click', () => { renderMore(); switchTab('more');
 const TIMED = { today: renderToday, leads: renderLeads, cal: renderCalendar, estimate: renderEstimate, book: renderBook, followups: renderFollowUps, money: renderMoneyView, fleet: renderFleetView, safety: renderSafetyView, calls: renderCalls, perf: renderPerformance };
 function refreshAll() { for (const t in TIMED) TIMED[t](); renderLeadsHead(); }
 // ↻ and the key screen also redraw a More desk that is on screen — refreshAll never draws those.
-// Map (Maps wave A): ↻ reaches its frame as a refresh message; the frame itself is never reloaded.
+// Map: ↻ reaches its frame by message (never a reload).
 function refreshActiveMoreView() {
   const r = { settings: renderSettings, permits: renderPermits, agents: renderAgents, measure: renderMeasure, learn: renderLearn, assistant: renderAssistant, more: renderMore, map: () => refreshMap() };
   for (const t in r) {

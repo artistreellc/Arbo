@@ -164,7 +164,11 @@ function lastVaZip(address: string): string | null {
   return all.length > 0 ? all[all.length - 1]![1]! : null;
 }
 
-type Row = TodayStop & { zip: string | null };
+/** A stop as the server holds it: with the ZIP the planner used (the phone's copy drops it — strip()). */
+export type TodayStopFull = TodayStop & { zip: string | null };
+/** Today's stops before strip() — for the map (Maps wave A, M1), which places a stop by its ZIP area. */
+export type TodayStopsFull = Omit<TodayStopsView, 'stops'> & { stops: TodayStopFull[] };
+type Row = TodayStopFull;
 
 const CITY_NAMES: readonly string[] = [...SERVICE_CITIES, ...OFF_FOCUS_CITIES];
 /**
@@ -248,9 +252,9 @@ export function createTodayStops(deps: TodayStopsDeps) {
   // Only GOOD answers are kept: a failed read or a failed plan is asked again on the next read.
   let cal: { day: string; atMs: number; events: CalendarEvent[] } | null = null;
   let planned: { stopsKey: string; anchorsKey: string; atMs: number; plan: BestPlan; held: boolean } | null = null;
-  let inflight: Promise<TodayStopsView> | null = null;
+  let inflight: Promise<TodayStopsFull> | null = null;
 
-  async function build(): Promise<TodayStopsView> {
+  async function build(): Promise<TodayStopsFull> {
     const now = deps.now();
     const nowMs = now.getTime();
     const day = etToday(now);
@@ -284,18 +288,18 @@ export function createTodayStops(deps: TodayStopsDeps) {
 
     const dayStartMs = w.startUtc.getTime();
     const rows = events.map((e, i) => toRow(e, i, dayStartMs, dayKind));
-    const view: TodayStopsView = { ...base, state: practice ? 'practice' : 'ok', line: null, practice, stops: rows, plan: null, tomtom };
-    if (rows.length === 0) return strip(view);
+    const view: TodayStopsFull = { ...base, state: practice ? 'practice' : 'ok', line: null, practice, stops: rows, plan: null, tomtom };
+    if (rows.length === 0) return view;
 
     if (dayKind === 'sunday') {
       const order = rows.filter((r) => r.address && !r.allDay && !r.ongoing).map((r) => r.id);
       view.plan = { engine: null, kind: 'none', line: SUNDAY_LINE, note: '', warnings: [], order, driveMinutes: null };
-      return strip(view);
+      return view;
     }
     const routable = rows.filter((r) => r.why === null);
     if (routable.length === 0) {
       view.plan = { engine: null, kind: 'none', line: NOTHING_TO_ROUTE, note: '', warnings: [], order: [], driveMinutes: null };
-      return strip(view);
+      return view;
     }
 
     const input: PlanInput = { stops: routable.map(toPlanStop), day: dayKind };
@@ -361,19 +365,31 @@ export function createTodayStops(deps: TodayStopsDeps) {
       order: p.visits.map((v) => v.id).filter((id): id is string => typeof id === 'string'),
       driveMinutes: p.driveMinutes,
     };
-    return strip(view);
+    return view;
+  }
+
+  // One build at a time, shared by Calendar's read and the map's — the same calendar read, the same plan memory.
+  function shared(): Promise<TodayStopsFull> {
+    if (!inflight) inflight = build().finally(() => { inflight = null; });
+    return inflight;
   }
 
   return {
     /** Today's stops, as the Calendar tab shows them. Concurrent reads share one build. */
     read(): Promise<TodayStopsView> {
-      if (!inflight) inflight = build().finally(() => { inflight = null; });
-      return inflight;
+      return shared().then(strip);
+    },
+    /**
+     * Maps wave A (M1): the same answer before strip() — each stop keeps its ZIP —
+     * for the map's server-side placing (src/ops/mapToday.ts) only. Never sent to the phone as it is.
+     */
+    readRows(): Promise<TodayStopsFull> {
+      return shared();
     },
   };
 }
 
 /** The phone gets what it shows — the ZIP the planner used stays on Arbo's side. */
-function strip(view: TodayStopsView): TodayStopsView {
+function strip(view: TodayStopsFull): TodayStopsView {
   return { ...view, stops: view.stops.map(({ id, time, allDay, ongoing, title, city, address, why, plan }) => ({ id, time, allDay, ongoing, title, city, address, why, plan })) };
 }
