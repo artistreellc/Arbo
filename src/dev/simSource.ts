@@ -171,6 +171,11 @@ export function createSimSource(): DataSource {
     newLeads: async (limit: number) => SIM_LEADS.slice(0, limit),
 
     crewJobs: async () => SIM_JOBS,
+    // R9 (CREW_PLAN C2): sim-job-1 has a signed contract on file and sim-job-2
+    // does not, so the practice crew day draws one work-order card AND the
+    // named held line ("1 job on today's sheet is on hold"). The unreadable
+    // contract list ("Can't confirm today's jobs") is a test source's case now.
+    jobsWithFiledContract: async (ids: string[]) => new Set(ids.filter((id) => id === 'sim-job-1')),
 
     units: async () => SIM_UNITS,
     unitParts: async (unitId: string) => (unitId === 'sim-unit-1'
