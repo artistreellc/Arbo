@@ -125,3 +125,18 @@ describe('the old receptionist page is "Phone line" (P4)', () => {
     });
   });
 });
+
+describe('the rulings doc no longer calls the rename open (review UI 4)', () => {
+  const rulings = readFileSync(new URL('../docs/OWNER_RULINGS.md', import.meta.url), 'utf8');
+  it('R30\'s "two things are called Talk" item is closed by Mike\'s rename, which P4 built', () => {
+    const at = rulings.indexOf('**two things are called "Talk"**');
+    expect(at).toBeGreaterThan(-1);
+    const item = rulings.slice(at, rulings.indexOf('\n\n', at));
+    expect(item).toContain('Closed 2026-10-20');
+    expect(item).toContain('docs/DIRECTION_B.md');
+    expect(item).toContain('"Phone line (off while Sona answers)"');
+    expect(item).toContain('Direction B P4');
+    expect(rulings.slice(at - 200, at)).not.toMatch(/Open — Mike's call, not a build's: $/);
+  });
+});
+
