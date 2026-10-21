@@ -62,7 +62,8 @@ type Reads = { safety: () => Promise<unknown>; fleet: () => Promise<unknown>; le
 const SAFE_OK = { aerialBlocked: [], blindSpots: [], certProblems: [], nearMisses: [] };
 const FLEET_OK = { units: [{ id: 'u1', name: 'Unit 1', status: 'up', schedulable: true }], down: 0, held: 0 };
 
-function kit(r: Reads) {
+function kit(r: Reads, keep: { box?: unknown; gen?: number } = {}) {
+  let cur = r;
   const ids = new Map<string, N>();
   const document = {
     createElement: (t: string) => new N(t),
@@ -74,25 +75,33 @@ function kit(r: Reads) {
   let stormCalls = 0;
   const api = async (path: string) => {
     paths.push(path);
-    if (path === '/api/safety') return r.safety();
-    if (path === '/api/fleet/units') return r.fleet();
+    if (path === '/api/safety') return cur.safety();
+    if (path === '/api/fleet/units') return cur.fleet();
     throw new Error('Before you roll read ' + path);
   };
   const consts = ['$', 'el', 'FEED_WORD', 'Cap', 'FEED_TAG', 'FEED_SAYS', 'RETRY', 'TONE', 'DESK_VIEW', 'UNIT_STATUS', 'ROLL_ROWS'];
   const helpers = ['readingLine', 'feedKind', 'chip', 'badge', 'plural'];
-  const build = new Function('document', 'api', 'openPanel', 'stormBanner', 'linksIn', 'storeRead', `
+  // The hero, as far as Before you roll touches it: where a tap on a stat goes.
+  const heroGo: Record<string, () => void> = {};
+  const HERO = { go: (key: string, fn: () => void) => { heroGo[key] = fn; } };
+  let stormCard: N | null = null;
+  const build = new Function('document', 'api', 'openPanel', 'stormBanner', 'linksIn', 'storeRead', 'HERO', 'keepIn', `
     let LINKS = linksIn;
     const LINKS_READY = Promise.resolve(linksIn);
     let STORM_READ = null;
+    let ROLL_BOX = keepIn.box || null; // the card a redraw keeps up (P11 review)
+    let ROLL_GEN = keepIn.gen || 0;
     ${consts.map(constSrc).join('\n')}
     ${helpers.map(fnSrc).join('\n')}
     ${fnSrc('beforeYouRoll')}
     return { beforeYouRoll, setStorm: (v) => { STORM_READ = v; } };`)(
     document, api, (view: string, target: unknown) => opened.push([view, target]),
-    () => { stormCalls++; return Promise.resolve(null); }, r.links ?? 'readonly', null,
+    () => { stormCalls++; return Promise.resolve(stormCard); }, r.links ?? 'readonly', null, HERO, keep,
   ) as { beforeYouRoll: (emgP: Promise<unknown>, stormP: Promise<unknown>) => N; setStorm: (v: unknown) => void };
   const box = build.beforeYouRoll(Promise.resolve(r.leads), Promise.resolve(r.storm));
-  return { box, opened, paths, stormCalls: () => stormCalls, setStorm: build.setStorm };
+  /** Today's minute redraw: Before you roll is asked again, with these reads. */
+  const again = (r2: Reads, emgP: Promise<unknown> = Promise.resolve(r2.leads), stormP: Promise<unknown> = Promise.resolve(r2.storm)) => { cur = r2; return build.beforeYouRoll(emgP, stormP); };
+  return { box, opened, paths, stormCalls: () => stormCalls, setStorm: build.setStorm, again, heroGo, setStormCard: (c: N | null) => { stormCard = c; } };
 }
 const rows = (box: N) => box.all().filter((n) => n.has('roll-row'));
 const head = (box: N) => box.all().find((n) => n.has('roll-count'))?.textContent ?? '';
@@ -119,12 +128,31 @@ describe('Before you roll (P11)', () => {
     expect(k.box.textContent).not.toContain('Nothing to check');
   });
 
-  it('a blind spot is its own "⚠ CANNOT SEE" row, and keeps the clean line away', async () => {
-    const k = kit({ safety: async () => ({ ...SAFE_OK, blindSpots: ['The roster could not be read for 1 crew member.'] }), fleet: async () => FLEET_OK, leads: { list: [] }, storm: { alerts: 0, events: [] } });
+  // Review (b-wave-1b, correctness minor / UI 4): a blind spot is a "cannot see", not an
+  // item — the plan counts only real items in N. It was counted, so an empty crew
+  // roster in production ("Crew roster — nobody is on it yet") made a red "1 TO CHECK"
+  // nothing could clear. It is counted on its own, amber: "1 can’t see".
+  it('a blind spot is its own "⚠ CANNOT SEE" row, keeps the clean line away, and is never counted as an item', async () => {
+    const k = kit({ safety: async () => ({ ...SAFE_OK, blindSpots: ['Crew roster — nobody is on it yet'] }), fleet: async () => FLEET_OK, leads: { list: [] }, storm: { alerts: 0, events: [] } });
     await flush();
     expect(rows(k.box).map((r) => r.textContent)).toEqual([expect.stringContaining('⚠ CANNOT SEE')]);
-    expect(head(k.box)).toBe('1 to check');
+    expect(head(k.box)).toBe('1 can’t see');
+    expect(head(k.box)).not.toMatch(/to check/);
+    const c = k.box.all().find((n) => n.has('roll-count'))!;
+    expect(c.has('t-watch'), 'amber (TONE.watch), not the red of a real item').toBe(true);
+    expect(c.has('t-stop')).toBe(false);
     expect(k.box.textContent).not.toContain('Nothing to check');
+  });
+
+  it('real items and blind spots side by side: N counts the items only', async () => {
+    const k = kit({
+      safety: async () => ({ ...SAFE_OK, blindSpots: ['Near misses — not in the practice data'] }),
+      fleet: async () => ({ units: [{ id: 'u3', name: 'Unit 3', status: 'down', schedulable: false }] }),
+      leads: { list: [] }, storm: { error: unread() },
+    });
+    await flush();
+    expect(head(k.box)).toBe('1 to check · 1 couldn’t read · 1 can’t see');
+    expect(k.box.all().find((n) => n.has('roll-count'))!.has('t-stop')).toBe(true);
   });
 
   it('safety unreadable: a named row of its own, counted as couldn’t read — never the clean line (§1B)', async () => {
@@ -216,6 +244,94 @@ describe('Before you roll (P11)', () => {
     expect(t).toContain(word);
     expect(t).not.toMatch(/\b0\s+(?:to check|units?|crew|emergenc\w*|alerts?)\b/i);
     expect(t).not.toMatch(/Nothing to check|All clear|no weather alerts/i);
+  });
+});
+
+// Review (b-wave-1b, UI 7 / correctness minor): ↻ Try again on the weather drew the storm
+// card and the hero's amber count, but never told the hero stat where to go — a solid
+// "1" that did nothing (aria-disabled stayed true) until the next minute.
+describe('↻ on the weather: a retry that finds alerts makes the hero\'s weather stat open the storm card', () => {
+  it('the retry wires HERO.go(\'alerts\') to the storm card, as the first read does', async () => {
+    const k = kit({ safety: async () => SAFE_OK, fleet: async () => FLEET_OK, leads: { list: [] }, storm: { error: unread() } });
+    await flush();
+    const again = k.box.all().find((n) => n.tag === 'button' && n.has('roll-retry'))!;
+    k.setStorm({ alerts: 1, events: ['Severe Thunderstorm Warning'] });
+    k.setStormCard(new N('div'));
+    again.click();
+    await flush();
+    expect(k.heroGo.alerts, 'the hero stat has somewhere to go').toBeTypeOf('function');
+    k.heroGo.alerts!();
+    expect(k.opened).toEqual([['today', 'today-storm']]);
+    expect(rows(k.box).map((r) => r.textContent)).toEqual([expect.stringContaining('Severe Thunderstorm Warning')]);
+  });
+
+  it('a retry that reads no alerts gives the stat nothing to open (a real 0 stays inert)', async () => {
+    const k = kit({ safety: async () => SAFE_OK, fleet: async () => FLEET_OK, leads: { list: [] }, storm: { error: unread() } });
+    await flush();
+    k.setStorm({ alerts: 0, events: [] });
+    k.box.all().find((n) => n.tag === 'button' && n.has('roll-retry'))!.click();
+    await flush();
+    expect(k.heroGo.alerts).toBeUndefined();
+  });
+});
+
+// Review (b-wave-1b, UI 1): Today redraws every minute, and each redraw rebuilt this
+// card as a bare "Reading…" line until all four reads settled (NWS on a phone: ~1.5 s).
+// The card fell from 736 to 87 px, everything under it jumped ~650 px, and a tap meant
+// for a row landed on an EMERGENCY lead's Call back. A redraw now keeps the card and its
+// rows up — P3's swap — until its own reads land; a first draw still says "Reading…".
+describe('a redraw keeps the rows up until its own reads land (P3\'s swap)', () => {
+  const ALDER = { ...SAFE_OK, aerialBlocked: ['c1'], certProblems: [{ crewMemberId: 'c1', crewMemberName: 'SIM-Alder', type: 'aerial_rescue', state: 'lapsed', blocksAerialWork: true }] };
+  const HELD = { units: [{ id: 'u3', name: 'Unit 3', status: 'held', schedulable: false, holdReason: 'brake/steering defect' }] };
+
+  it('the redraw hands back the same card with the old rows still up — no "Reading…" — then swaps in the new ones', async () => {
+    const k = kit({ safety: async () => ALDER, fleet: async () => FLEET_OK, leads: { list: [] }, storm: { alerts: 0, events: [] } });
+    await flush();
+    const before = rows(k.box);
+    expect(before.map((r) => r.textContent)).toEqual([expect.stringContaining('SIM-Alder can’t go aerial')]);
+    let release!: (v: unknown) => void;
+    const box2 = k.again({ safety: () => new Promise((res) => { release = res; }), fleet: async () => HELD, leads: { list: [] }, storm: { alerts: 0, events: [] } });
+    expect(box2, 'the same card, never a new one').toBe(k.box);
+    await flush();
+    expect(rows(k.box), 'the old rows, the very same buttons, while the new reads are out').toEqual(before);
+    expect(k.box.textContent).not.toContain('Reading…');
+    before[0]!.click(); // a tap meanwhile still lands where its row said
+    expect(k.opened.map(([v]) => v)).toEqual(['followups']);
+    release(SAFE_OK);
+    await flush();
+    expect(rows(k.box).map((r) => r.textContent)).toEqual([expect.stringContaining('Unit 3 is HELD')]);
+  });
+
+  it('an older draw that lands late never paints over a newer one', async () => {
+    let releaseOld!: (v: unknown) => void;
+    const k = kit({ safety: () => new Promise((res) => { releaseOld = res; }), fleet: async () => FLEET_OK, leads: { list: [] }, storm: { alerts: 0, events: [] } });
+    k.again({ safety: async () => SAFE_OK, fleet: async () => HELD, leads: { list: [] }, storm: { alerts: 0, events: [] } });
+    await flush();
+    expect(rows(k.box).map((r) => r.textContent)).toEqual([expect.stringContaining('Unit 3 is HELD')]);
+    releaseOld(ALDER);
+    await flush();
+    expect(rows(k.box).map((r) => r.textContent), 'the newer draw still owns the card').toEqual([expect.stringContaining('Unit 3 is HELD')]);
+  });
+
+  it('a first draw (nothing kept) says "Reading…" where the card will be', () => {
+    const k = kit({ safety: () => new Promise(() => {}), fleet: async () => FLEET_OK, leads: { list: [] }, storm: { alerts: 0, events: [] } });
+    expect(k.box.textContent).toBe('Reading…');
+  });
+
+  it('after a 401 took the card away, the next draw starts from "Reading…" again', async () => {
+    const k = kit({ safety: () => Promise.reject(Object.assign(new Error('unauthorized'), { code: 401 })), fleet: async () => FLEET_OK, leads: { list: [] }, storm: { alerts: 0, events: [] } });
+    await flush();
+    expect(k.box.textContent).toBe('');
+    const box2 = k.again({ safety: () => new Promise(() => {}), fleet: async () => FLEET_OK, leads: { list: [] }, storm: { alerts: 0, events: [] } });
+    expect(box2.textContent).toBe('Reading…');
+  });
+
+  it('static: the card is kept in ROLL_BOX and every draw checks it still owns it (ROLL_GEN)', () => {
+    const src = fnSrc('beforeYouRoll');
+    expect(html).toMatch(/^let ROLL_BOX = null;/m);
+    expect(html).toMatch(/^let ROLL_GEN = 0;/m);
+    expect(src).toContain('const gen = ++ROLL_GEN;');
+    expect(src).toMatch(/if \(gen !== ROLL_GEN\) return;/);
   });
 });
 

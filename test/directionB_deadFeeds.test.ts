@@ -140,6 +140,8 @@ function kit(fail: (typeof FAILS)[number]) {
     let TIMER_REDRAW = false;
     const LINKS_READY = Promise.resolve(linksIn);
     let STORM_READ = null; // Direction B P11: stormBanner keeps its outcome for Before you roll
+    let ROLL_BOX = null; // P11 review: the card a redraw keeps up, and the draw that owns it
+    let ROLL_GEN = 0;
     ${consts.map(constSrc).join('\n')}
     ${[...helpers, ...targets].map(fnSrc).join('\n')}
     return { ${targets.join(', ')} };`)(
