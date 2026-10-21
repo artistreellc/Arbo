@@ -115,3 +115,42 @@ describe('the served map page follows the shell\'s laws in its own code (M0)', (
     expect(script).toContain("window.addEventListener('message', onShellMessage);");
   });
 });
+
+// UI review round (D106): the frame fits its own window — the whole map, its attribution, its zoom buttons and
+// "Route the whole day" are on the first screen; the notes card rides over the map, never pushing it down.
+describe('the map page fits its frame (UI review)', () => {
+  const css = page.slice(page.indexOf('<style>'), page.indexOf('</style>'));
+  const rule = (sel: string) => {
+    const m = new RegExp(`(?:^|\\n|\\})${sel.replace(/[.#*+?^${}()|[\]\\]/g, '\\$&')}\\{([^}]*)\\}`).exec(css);
+    if (!m) throw new Error('no CSS rule ' + sel);
+    return m[1]!;
+  };
+  it('the page never scrolls: body fills the frame, the map box takes what the chips leave', () => {
+    expect(rule('html,body')).toContain('height:100%');
+    expect(rule('body')).toContain('overflow:hidden');
+    expect(rule('body')).not.toContain('min-height:100vh');
+    expect(rule('#mapbox')).toMatch(/flex:1 1 auto/);
+    expect(rule('#mapbox')).toContain('min-height:0');
+    expect(rule('#map')).toMatch(/position:absolute;inset:0/);
+  });
+  it('the notes card, the off-view button, Route the day and the attribution all sit inside the map box', () => {
+    const box = page.slice(page.indexOf('<div id="mapbox">'), page.indexOf('<script type="application/json"'));
+    for (const id of ['map', 'card', 'status', 'facts', 'legend', 'offview', 'hud', 'osm']) expect(box, id).toContain(`id="${id}"`);
+    expect(rule('#card')).toContain('position:absolute');
+    expect(rule('#card')).toContain('overflow-y:auto');
+    expect(rule('#hud')).toContain('position:absolute');
+  });
+  it('44 px tap targets: pins, the stop list\'s ×, the zoom buttons (themed for Night)', () => {
+    expect(rule('.pin')).toContain('min-width:44px');
+    expect(rule('.pin')).toContain('height:44px');
+    expect(rule('#mapbox a.leaflet-popup-close-button')).toMatch(/width:44px;height:44px/);
+    expect(rule('#mapbox .leaflet-bar a')).toMatch(/width:44px;height:44px/);
+    expect(rule('#mapbox .leaflet-bar a')).toContain('background:var(--card)');
+  });
+  it('the opening view shows all four cities: the zoom floor comes from the box, not a fixed 10', () => {
+    expect(script).toContain('zoomSnap: 0.25');
+    expect(fnSrc('openView')).toContain('getBoundsZoom');
+    expect(fnSrc('openView')).toContain('setMinZoom');
+    expect(script).not.toMatch(/minZoom: 10\b/);
+  });
+});

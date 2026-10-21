@@ -40,45 +40,62 @@ html.night{
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html{-webkit-text-size-adjust:100%;background:var(--paper)}
-body{font-family:var(--sans);font-size:16px;line-height:1.45;color:var(--ink-1);background:var(--paper);-webkit-tap-highlight-color:transparent;
-  display:flex;flex-direction:column;min-height:100vh;overflow-x:hidden}
-#top{padding:8px 12px 0}
+/* The page is exactly its frame (the band between the shell's app bar and dock) and never scrolls: the chips, then
+   the map in all the rest — the notes card, Route the day, the zoom buttons and the attribution ride on the map. */
+html,body{height:100%}
+body{font-family:var(--sans);font-size:16px;line-height:1.45;color:var(--ink-1);background:var(--paper);-webkit-tap-highlight-color:transparent;display:flex;flex-direction:column;overflow:hidden}
+#top{flex:0 0 auto;padding:8px 8px 0}
 #chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:6px}
 #chips::-webkit-scrollbar{display:none}
 .chip{flex:0 0 auto;min-height:44px;padding:0 14px;border-radius:999px;border:1px solid var(--border);background:var(--card);color:var(--ink-2);font:600 14px/1 var(--sans);cursor:pointer}
 .chip[aria-pressed="true"]{background:var(--forest);border-color:var(--forest);color:var(--on-forest)}
-.line{display:flex;align-items:center;gap:8px;min-height:32px;padding:4px 0 4px 18px;position:relative;font-size:13.5px;font-weight:600;line-height:1.45;color:var(--ink-2);text-wrap:pretty}
+.line{display:flex;align-items:center;gap:8px;min-height:28px;padding:3px 0 3px 16px;position:relative;font-size:13px;font-weight:600;line-height:1.35;color:var(--ink-2);text-wrap:pretty}
 .line::before{content:'';position:absolute;left:1px;top:calc(50% - 4px);width:8px;height:8px;border-radius:50%;background:var(--warning)}
 .line.cut::before,.line.sim::before{background:var(--ink-4)}
 .line.unread::before{background:none;border:2px solid var(--warning)}
 .line > span{flex:1 1 auto;min-width:0}
 .line a{color:var(--forest);font-weight:700}
 .retry{flex:0 0 auto;min-width:44px;min-height:44px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--ink-1);font:700 18px/1 var(--sans);cursor:pointer}
-#facts{padding:0 12px}
-.muted{color:var(--ink-3);font-size:13.5px;line-height:1.5;padding:4px 0}
-.factbtn{display:block;width:100%;min-height:44px;text-align:left;border:0;background:none;color:var(--ink-1);font:600 14px/1.4 var(--sans);padding:6px 0;cursor:pointer}
+.muted{color:var(--ink-3);font-size:13px;line-height:1.4;padding:3px 0}
+.counts{display:flex;align-items:center;gap:8px}
+.counts > :first-child{flex:1 1 auto;min-width:0}
+.factbtn{display:block;width:100%;min-height:44px;text-align:left;border:0;background:none;color:var(--ink-1);font:600 13.5px/1.35 var(--sans);padding:4px 0;cursor:pointer}
+.keybtn{flex:0 0 auto;min-width:44px;min-height:44px;padding:0 12px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--forest);font:700 13.5px/1 var(--sans);cursor:pointer}
+.keybtn[aria-expanded="true"]{background:var(--forest);border-color:var(--forest);color:var(--on-forest)}
 .factbtn[aria-expanded]::after{content:' ›';color:var(--ink-3)}
 .factbtn[aria-expanded="true"]::after{content:' ⌄'}
 .missing{list-style:none;padding:0 0 6px}
 .missing li{font-size:13.5px;color:var(--ink-2);padding:3px 0}
-#mapbox{position:relative;flex:1 0 auto;display:flex;min-height:560px;margin:6px 12px 0;border-radius:16px;overflow:hidden;border:1px solid var(--hairline)}
-#map{flex:1 1 auto;min-height:560px;background:var(--paper-2)}
+#mapbox{position:relative;flex:1 1 auto;min-height:0;margin:0 8px 8px;border-radius:16px;overflow:hidden;border:1px solid var(--hairline)}
+#map{position:absolute;inset:0;background:var(--paper-2)}
+/* The notes card: every gap, the counts and the key, over the top of the map (it scrolls inside, never the page). */
+#card{position:absolute;z-index:1000;top:8px;left:8px;right:8px;max-height:calc(100% - 150px);overflow-y:auto;overscroll-behavior:contain;padding:4px 10px;border-radius:14px;border:1px solid var(--border);background:var(--card);box-shadow:var(--shadow)}
+#card[hidden],#offview[hidden]{display:none}
+#offview{position:absolute;z-index:1000;right:8px;top:8px;max-width:calc(100% - 16px);min-height:44px;padding:0 14px;border-radius:22px;border:1px solid var(--border);background:var(--card);color:var(--forest);font:700 13.5px/1.2 var(--sans);box-shadow:var(--shadow);cursor:pointer}
+#hud{position:absolute;z-index:1000;left:62px;right:8px;bottom:28px}
+#hud:empty{display:none}
 .leaflet-container{font-family:var(--sans);background:var(--paper-2)}
 html.night .leaflet-tile-pane{filter:brightness(.62) contrast(1.15) saturate(.7)}
 #osm{position:absolute;right:0;bottom:0;z-index:1000;padding:3px 8px;border-top-left-radius:10px;background:rgba(255,255,255,.88);color:#1B4D3E;font:600 12px/1.4 var(--sans);text-decoration:none}
 html.night #osm{background:rgba(11,21,18,.85);color:#C5D2CA}
-#legend{padding:8px 12px 16px}
-.key{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink-2);padding:3px 0}
-.key .pin{flex:0 0 auto;transform:scale(.8)}
-.hud{display:block;width:100%;min-height:48px;margin:8px 0 4px;border:0;border-radius:14px;background:var(--forest);color:var(--on-forest);font:700 15px/1.2 var(--sans);cursor:pointer}
+#legend{padding:0 0 4px}
+.key{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink-2);padding:2px 0}
+.key .pin{flex:0 0 auto;transform:scale(.7);margin:-6px}
+.hud{display:block;width:100%;min-height:48px;padding:6px 12px;border:0;border-radius:14px;background:var(--forest);color:var(--on-forest);font:700 14px/1.25 var(--sans);box-shadow:var(--shadow);cursor:pointer}
+/* Leaflet's zoom buttons and a stop list's ×: 44 px, in the app's colours by Day and Night. */
+#mapbox .leaflet-bar{border:1px solid var(--border);box-shadow:var(--shadow)}
+#mapbox .leaflet-bar a{width:44px;height:44px;line-height:44px;font:700 22px/44px var(--sans);background:var(--card);color:var(--ink-1);border-bottom-color:var(--border)}
+#mapbox .leaflet-bar a.leaflet-disabled{background:var(--paper-2);color:var(--ink-4)}
+#mapbox a.leaflet-popup-close-button{width:44px;height:44px;font:400 26px/44px var(--sans);color:var(--ink-3)}
+#mapbox .leaflet-popup-content{margin:10px 12px}
 .pinwrap{background:none;border:0}
 .pinwrap .pin{position:absolute;left:0;top:0;transform:translate(-50%,-50%);cursor:pointer}
-.pin{display:flex;align-items:center;justify-content:center;min-width:34px;height:34px;padding:0 8px;border-radius:17px;font:700 14px/1 var(--sans);white-space:nowrap;box-shadow:var(--shadow)}
+.pin{display:flex;align-items:center;justify-content:center;min-width:44px;height:44px;padding:0 9px;border-radius:22px;font:700 15px/1 var(--sans);white-space:nowrap;box-shadow:var(--shadow)}
 .pin.exact{background:var(--forest);color:var(--on-forest);border:2px solid var(--card)}
 .pin.area{background:var(--card);color:var(--ink-1);border:3px dashed var(--forest)}
 .pin.practice{background:var(--card);color:var(--ink-1);border:3px dashed var(--ink-4)}
-.pop{min-width:200px;max-width:260px}
-.pop b{display:block;font-size:13px;color:var(--ink-3);margin-bottom:4px}
+.pop{overflow-wrap:anywhere}
+.pop b{display:block;font-size:13px;color:var(--ink-3);margin-bottom:4px;padding-right:30px}
 .pop button{display:block;width:100%;min-height:44px;margin-top:6px;padding:6px 10px;text-align:left;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--ink-1);font:600 14px/1.35 var(--sans);cursor:pointer}
 .pop small{display:block;font-weight:500;color:var(--ink-3)}
 .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--card);color:var(--ink-1)}
@@ -89,14 +106,18 @@ html.night #osm{background:rgba(11,21,18,.85);color:#C5D2CA}
 <!--ARBO:SPRITE-->
 <div id="top">
   <div id="chips" role="group" aria-label="Map layers"></div>
-  <div id="status" role="status" aria-live="polite"></div>
 </div>
-<div id="facts"></div>
 <div id="mapbox">
   <div id="map" role="region" aria-label="Map"></div>
+  <div id="card" hidden>
+    <div id="status" role="status" aria-live="polite"></div>
+    <div id="facts"></div>
+    <div id="legend"></div>
+  </div>
+  <button id="offview" type="button" hidden></button>
+  <div id="hud"></div>
   <a id="osm" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a>
 </div>
-<div id="legend"></div>
 <script type="application/json" id="map-zips"><!--ARBO:ZIPS--></script>
 <script type="application/json" id="map-deq"><!--ARBO:DEQ--></script>
 <script src="/map/leaflet.js"></script>
@@ -128,6 +149,11 @@ const MAP_SAYS = {
   orderOnly: 'Order only — straight lines, not roads. Google Maps draws the road.',
   ends: 'Where the day starts and ends isn’t drawn — Calendar’s plan says where the route starts and ends.',
   exact: 'Exact spot — TomTom placed it for today’s route',
+  exactShort: 'Exact spot',
+  key: 'Key',
+  keyName: 'What the pins and lines mean',
+  offOne: '1 stop is off this view — show all',
+  offMany: '{k} stops are off this view — show all',
   zipArea: 'ZIP area — not the exact spot',
   practicePin: 'Practice pin — not a real place',
   outside: 'placed outside the four cities',
@@ -145,6 +171,7 @@ const MAP_SAYS = {
   noAppKey: 'Arbo’s server has no app key set yet, so nothing can be read. Nothing is drawn; this is not an empty map.',
   codeFailed: 'The map’s own code didn’t load — check your signal, then tap ↻. Nothing is drawn; this is not an empty map.',
   tilesFailed: 'Street map didn’t load (OpenStreetMap) — pins are still placed; this is not an empty map.',
+  tilesFailedBare: 'Street map didn’t load (OpenStreetMap) — this is not an empty map.',
   offline: 'No signal — the street map needs one.',
   retry: 'Try again',
 };
@@ -170,6 +197,10 @@ let ON = readLayers();
 let MAP = null;
 let TILES = null;
 const TILE = { errors: 0, loaded: 0 };
+// The opening four-city view holds (refitted as the notes card grows or shrinks) until Mike first touches the map.
+let KEEP_VIEW = true;
+let KEY_OPEN = false;
+let POP_OPEN = false; // a stop list is open: the off-view button steps aside so it never covers the list
 // The status list: one line per gap, never one for a layer Mike switched off.
 const GAPS = { code: [], key: [], net: [], tiles: [], today: [], permits: [], leads: [], trucks: [] };
 
@@ -280,6 +311,8 @@ function readAll() {
 }
 
 function drawStatus() {
+  GAPS.tiles = tilesGap();
+  GAPS.net = navigator.onLine === false ? [{ cls: 'unread', text: MAP_SAYS.offline }] : [];
   const box = $('status');
   box.replaceChildren();
   const order = ['code', 'key', 'net', 'tiles', ...LAYERS.filter((l) => ON[l])];
@@ -303,6 +336,7 @@ function drawStatus() {
       box.appendChild(row);
     }
   }
+  syncCard();
 }
 
 // Facts and legend belong to the layers drawn; each layer adds its own (FACTS / KEYS).
@@ -312,17 +346,44 @@ function drawFacts() {
   const box = $('facts');
   box.replaceChildren();
   for (const l of LAYERS) if (ON[l] && FACTS[l]) for (const n of FACTS[l]()) box.appendChild(n);
+  syncCard();
+}
+// The key opens from its button beside the counts (keyButton); Route the day rides on the map (HUDS).
+const HUDS = {};
+function keyRows() {
+  const out = [];
+  for (const l of LAYERS) if (ON[l] && KEYS[l]) out.push(...KEYS[l]());
+  return out;
 }
 function drawLegend() {
   const box = $('legend');
-  box.replaceChildren();
-  for (const l of LAYERS) if (ON[l] && KEYS[l]) for (const n of KEYS[l]()) box.appendChild(n);
+  box.replaceChildren(...(KEY_OPEN ? keyRows() : []));
+  const hud = $('hud');
+  hud.replaceChildren();
+  for (const l of LAYERS) if (ON[l] && HUDS[l]) for (const n of HUDS[l]()) hud.appendChild(n);
+  syncCard();
+}
+function keyButton() {
+  const b = el('button', 'keybtn', MAP_SAYS.key);
+  b.type = 'button';
+  b.setAttribute('aria-label', MAP_SAYS.keyName);
+  b.setAttribute('aria-expanded', KEY_OPEN ? 'true' : 'false');
+  b.addEventListener('click', () => { KEY_OPEN = !KEY_OPEN; drawFacts(); drawLegend(); });
+  return b;
+}
+// The card shows only when it has something to say.
+function syncCard() {
+  $('card').hidden = !($('status').childElementCount || $('facts').childElementCount || $('legend').childElementCount);
 }
 
-// The street map. §1B: three failures and none loaded is named; so is no signal.
+// The street map. §1B: three failures and none loaded is named; so is no signal. "Pins are still placed" only when they are.
+function tileLine(pins) {
+  return pins ? MAP_SAYS.tilesFailed : MAP_SAYS.tilesFailedBare;
+}
+function tilesGap() {
+  return TILE.errors >= 3 && TILE.loaded === 0 ? [{ cls: 'unread', text: tileLine(placedCount() > 0), retry: retryTiles }] : [];
+}
 function tilesState() {
-  GAPS.tiles = TILE.errors >= 3 && TILE.loaded === 0 ? [{ cls: 'unread', text: MAP_SAYS.tilesFailed, retry: retryTiles }] : [];
-  GAPS.net = navigator.onLine === false ? [{ cls: 'unread', text: MAP_SAYS.offline }] : [];
   drawStatus();
 }
 function retryTiles() {
@@ -330,6 +391,65 @@ function retryTiles() {
   TILE.loaded = 0;
   if (TILES) TILES.redraw();
   tilesState();
+}
+function placedCount() {
+  return ON.today && TODAY.d ? TODAY.d.stops.length : 0;
+}
+
+// What the notes card and Route the day cover on the map, in the map's own pixels.
+function cardPad() {
+  const c = $('card');
+  return c.hidden ? 0 : c.offsetTop + c.offsetHeight;
+}
+function hudPad() {
+  const h = $('hud');
+  return h.childElementCount ? $('mapbox').clientHeight - h.offsetTop : 24;
+}
+// The opening view: all four cities in the map's clear part (under the card, above Route the day). The zoom floor is
+// whatever that takes on this phone (8 at the least, never above 10) — a fixed 10 cut Virginia Beach off a phone.
+function openView() {
+  if (!MAP) return;
+  const box = L.latLngBounds([BOX.south, BOX.west], [BOX.north, BOX.east]);
+  const tl = L.point(10, cardPad() + 10);
+  const br = L.point(10, hudPad() + 10);
+  // Floor down first (getBoundsZoom never answers below the floor, and lowering it never moves the map), fit, then
+  // floor up to the fit: raising the floor above the zoom shown would start an animated zoom of its own.
+  MAP.setMinZoom(8);
+  const z = Math.min(10, MAP.getBoundsZoom(box, false, tl.add(br)));
+  MAP.fitBounds(box, { paddingTopLeft: tl, paddingBottomRight: br, animate: false });
+  MAP.setMinZoom(z);
+}
+// Stops off the clear part of the map — outside it, under the card or under Route the day — are counted, never silent.
+function offViewCount(stops, toPt, w, top, bottom) {
+  let k = 0;
+  for (const s of stops) {
+    const p = toPt(s);
+    if (p.x < 0 || p.x > w || p.y < top || p.y > bottom) k++;
+  }
+  return k;
+}
+function offView() {
+  const b = $('offview');
+  if (!MAP || !ON.today || !TODAY.d || POP_OPEN) { b.hidden = true; return; }
+  const size = MAP.getSize();
+  const k = offViewCount(TODAY.d.stops, (s) => MAP.latLngToContainerPoint([s.lat, s.lon]), size.x, cardPad(), size.y - hudPad());
+  b.hidden = k === 0;
+  if (!k) return;
+  b.textContent = k === 1 ? MAP_SAYS.offOne : MAP_SAYS.offMany.replace('{k}', String(k));
+  b.style.top = (cardPad() + 8) + 'px';
+}
+// Mike's tap: every placed stop in the clear part of the map (the floor drops only as far as that takes).
+function showAll() {
+  if (!MAP || !TODAY.d || !TODAY.d.stops.length) return;
+  const b = L.latLngBounds(TODAY.d.stops.map((s) => [s.lat, s.lon]));
+  const tl = L.point(30, cardPad() + 30);
+  const br = L.point(30, hudPad() + 30);
+  const floor = MAP.getMinZoom();
+  KEEP_VIEW = false;
+  MAP.setMinZoom(5); // fitBounds never fits below the floor
+  MAP.fitBounds(b, { paddingTopLeft: tl, paddingBottomRight: br, maxZoom: 14, animate: false });
+  MAP.setMinZoom(Math.min(floor, MAP.getZoom()));
+  offView();
 }
 
 // The pan limit: the four cities and every placed pin, padded — no placed pin is ever out of reach.
@@ -340,8 +460,9 @@ function panBox(box, stops) {
     s = Math.min(s, p.lat); n = Math.max(n, p.lat);
     w = Math.min(w, p.lon); e = Math.max(e, p.lon);
   }
-  // Padded enough that a pin near the edge can still be panned clear of a popup listing its stops.
-  const pad = 0.25;
+  // Padded 1° — wider than the view at the lowest zoom, which would otherwise pull the four cities back under the
+  // notes card (a view bigger than its limit is centred on it) — and a pin near the edge pans clear of its list.
+  const pad = 1;
   return [[s - pad, w - pad], [n + pad, e + pad]];
 }
 function setPanLimit(stops) {
@@ -422,8 +543,8 @@ function byTime(a, b) {
   if (a.n !== b.n) return a.n === null ? 1 : b.n === null ? -1 : a.n - b.n;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
-// One marker per point: stops in one ZIP area share a hollow marker that lists them all, so no
-// stop hides under another. An exact pin is never merged with a ZIP-area one.
+// One group per point: stops in one ZIP area share a hollow marker that lists them all, so no
+// stop hides under another. An exact pin is never merged with a ZIP-area one at the same point here.
 function mapGroups(stops) {
   const out = [];
   const at = new Map();
@@ -441,6 +562,26 @@ function mapGroups(stops) {
   for (const g of out) g.stops.sort(byTime);
   return out;
 }
+// On screen: groups that would overlap at this zoom (pins are 44 px) share one marker listing them all, in time
+// order — two stops a street apart never hide one under the other. A marker holding anything but exact pins is
+// drawn hollow; its list says how each stop was placed. Redone at every zoom.
+function screenGroups(groups, toPx, gap) {
+  const out = [];
+  for (const g of groups) {
+    const p = toPx(g);
+    const hit = out.find((c) => Math.abs(c.x - p.x) < gap && Math.abs(c.y - p.y) < gap);
+    if (hit) hit.parts.push(g);
+    else out.push({ x: p.x, y: p.y, parts: [g] });
+  }
+  return out.map((c) => (c.parts.length === 1 ? c.parts[0] : {
+    lat: c.parts[0].lat,
+    lon: c.parts[0].lon,
+    exact: c.parts.every((g) => g.exact),
+    practice: c.parts.every((g) => g.practice),
+    stops: c.parts.flatMap((g) => g.stops).sort(byTime),
+  }));
+}
+const PIN_GAP = 52;
 // The dashed line: numbered pins only, in the plan's order — order, not roads.
 function routeLine(stops) {
   const pts = stops.filter((s) => s.n !== null).sort((a, b) => a.n - b.n).map((s) => [s.lat, s.lon]);
@@ -474,10 +615,28 @@ function todayFacts(d) {
   const read = d.state === 'ok' || d.state === 'practice';
   return read && d.counts && d.counts.events === 0 ? [MAP_SAYS.emptyDay] : [];
 }
-// The plan's own line, under the map with the legend (it keeps the map's first screen for the map).
+// The plan's own line, in the key (it keeps the notes card short over the map).
 function planNote(d) {
   const read = d.state === 'ok' || d.state === 'practice';
   return read && d.planLine && d.counts && d.counts.events > 0 ? d.planLine : null;
+}
+// How a stop was placed, in a list several stops share.
+function placeNote(s) {
+  return s.placedBy === 'tomtom' ? MAP_SAYS.exactShort : s.placedBy === 'practice' ? MAP_SAYS.practicePin : MAP_SAYS.zipArea;
+}
+// What the pins mean: only the kinds on the map now, with sample pins that carry no number (a "1" read as stop 1).
+function legendPins(stops) {
+  const has = (k) => stops.some((s) => s.placedBy === k);
+  const out = [];
+  if (has('tomtom')) out.push({ g: { exact: true, practice: false, stops: [] }, text: MAP_SAYS.exact });
+  if (has('zip')) out.push({ g: { exact: false, practice: false, stops: [] }, text: MAP_SAYS.zipArea });
+  if (has('practice')) out.push({ g: { exact: false, practice: true, stops: [] }, text: MAP_SAYS.practicePin });
+  return out;
+}
+// A stop list fits the map's width, a 320 px phone too (Leaflet adds 26 px of its own around it).
+function popupFits(w) {
+  const max = Math.max(150, Math.min(260, w - 48));
+  return { maxWidth: max, minWidth: Math.min(200, max) };
 }
 function stopNote(s) {
   const parts = [];
@@ -498,11 +657,11 @@ function openStop(s, g) {
 }
 function groupNode(g) {
   const box = el('div', 'pop');
-  box.appendChild(el('b', '', MAP_SAYS.stopsHere.replace('{k}', String(g.stops.length)) + (g.exact ? '' : ' · ' + (g.practice ? MAP_SAYS.practicePin : MAP_SAYS.zipArea))));
+  box.appendChild(el('b', '', MAP_SAYS.stopsHere.replace('{k}', String(g.stops.length))));
   for (const s of g.stops) {
     const b = el('button', '', [s.n !== null ? s.n : null, clock12(s.time), s.title || MAP_SAYS.noTitle].filter(Boolean).join(' · '));
     b.type = 'button';
-    const small = [s.city, s.why, s.outside ? MAP_SAYS.outside : null].filter(Boolean).join(' · ');
+    const small = [s.city, placeNote(s), s.why, s.outside ? MAP_SAYS.outside : null].filter(Boolean).join(' · ');
     if (small) b.appendChild(el('small', '', small));
     b.addEventListener('click', () => openStop(s, g));
     box.appendChild(b);
@@ -512,8 +671,21 @@ function groupNode(g) {
 function groupMarker(g) {
   const label = g.stops.map((s) => [s.n !== null ? MAP_SAYS.stopN.replace('{n}', String(s.n)) : null, s.title || MAP_SAYS.noTitle].filter(Boolean).join(', ')).join('; ');
   const m = L.marker([g.lat, g.lon], { icon: L.divIcon({ html: pinNode(g), className: 'pinwrap', iconSize: [0, 0] }), title: label, alt: label, keyboard: true, riseOnHover: true });
-  if (g.stops.length === 1) m.on('click', () => openStop(g.stops[0], g));
-  else m.bindPopup(groupNode(g));
+  if (g.stops.length === 1) {
+    m.on('click', () => openStop(g.stops[0], g));
+    return m;
+  }
+  // The list opens clear of the notes card and Route the day, and fits the map's width. This click runs before
+  // Leaflet's own (registered first), so the sizes are the map's as it is now.
+  const room = () => Object.assign(popupFits(MAP.getSize().x), {
+    autoPanPaddingTopLeft: L.point(10, cardPad() + 10),
+    autoPanPaddingBottomRight: L.point(10, hudPad() + 10),
+    maxHeight: Math.max(120, MAP.getSize().y - cardPad() - hudPad() - 60),
+  });
+  const pop = L.popup(room());
+  pop.setContent(groupNode(g));
+  m.on('click', () => Object.assign(pop.options, room()));
+  m.bindPopup(pop);
   return m;
 }
 function forestColor() {
@@ -526,20 +698,28 @@ function clearToday() {
   setPanLimit([]);
   drawFacts();
   drawLegend();
+  offView();
+}
+// The line and the pins at this zoom (pins that would overlap share a marker — redrawn on every zoom).
+function drawPins() {
+  if (!MAP || !TODAY.layer) return;
+  TODAY.layer.clearLayers();
+  const d = TODAY.d;
+  if (!d) return;
+  const line = routeLine(d.stops);
+  if (line.length) TODAY.layer.addLayer(L.polyline(line, { color: forestColor(), weight: 3, opacity: 0.85, dashArray: '6 8', interactive: false }));
+  const toPx = (g) => MAP.latLngToLayerPoint([g.lat, g.lon]);
+  for (const g of screenGroups(mapGroups(d.stops), toPx, PIN_GAP)) TODAY.layer.addLayer(groupMarker(g));
 }
 function drawToday(d) {
-  if (TODAY.layer) TODAY.layer.clearLayers();
   TODAY.d = d;
   GAPS.today = todayLines(d).map((g) => ({ cls: g.cls, text: g.text, retry: g.retry ? readToday : null }));
-  if (MAP && TODAY.layer) {
-    const line = routeLine(d.stops);
-    if (line.length) TODAY.layer.addLayer(L.polyline(line, { color: forestColor(), weight: 3, opacity: 0.85, dashArray: '6 8', interactive: false }));
-    for (const g of mapGroups(d.stops)) TODAY.layer.addLayer(groupMarker(g));
-    setPanLimit(d.stops);
-  }
+  drawPins();
+  setPanLimit(d.stops);
   drawStatus();
   drawFacts();
   drawLegend();
+  offView();
 }
 async function readToday() {
   const seq = ++TODAY.seq;
@@ -565,19 +745,24 @@ FACTS.today = () => {
   if (!d) return [];
   const out = [];
   const c = countsLine(d);
-  if (c && d.notOnMap.length) {
-    // A tap lists the stops not on the map, each with why.
-    const b = el('button', 'factbtn', c);
-    b.type = 'button';
-    b.setAttribute('aria-expanded', TODAY.open ? 'true' : 'false');
-    b.addEventListener('click', () => { TODAY.open = !TODAY.open; drawFacts(); });
-    out.push(b);
-    if (TODAY.open) {
+  if (c) {
+    // The counts, with the key beside them; a tap on the counts lists the stops not on the map, each with why.
+    const row = el('div', 'counts');
+    if (d.notOnMap.length) {
+      const b = el('button', 'factbtn', c);
+      b.type = 'button';
+      b.setAttribute('aria-expanded', TODAY.open ? 'true' : 'false');
+      b.addEventListener('click', () => { TODAY.open = !TODAY.open; drawFacts(); });
+      row.appendChild(b);
+    } else row.appendChild(el('div', 'muted', c));
+    if (keyRows().length) row.appendChild(keyButton());
+    out.push(row);
+    if (TODAY.open && d.notOnMap.length) {
       const ul = el('ul', 'missing');
       for (const m of d.notOnMap) ul.appendChild(el('li', '', (m.title || MAP_SAYS.noTitle) + ' — ' + m.why));
       out.push(ul);
     }
-  } else if (c) out.push(el('div', 'muted', c));
+  }
   for (const f of todayFacts(d)) out.push(el('div', 'muted', f));
   return out;
 };
@@ -585,28 +770,28 @@ KEYS.today = () => {
   const d = TODAY.d;
   if (!d) return [];
   const out = [];
-  if (d.canRoute) {
-    const b = el('button', 'hud', MAP_SAYS.routeDay);
-    b.type = 'button';
-    b.addEventListener('click', () => toShell({ type: 'day' }));
-    out.push(b);
-  }
   const plan = planNote(d);
   if (plan) out.push(el('div', 'muted', plan));
-  // What the pins and the line mean — only when there are pins to explain.
+  // What the pins and the line mean — only what is drawn.
   if (!d.stops.length) return out;
-  const key = (g, text) => {
+  for (const k of legendPins(d.stops)) {
     const row = el('div', 'key');
-    row.appendChild(pinNode(g));
-    row.appendChild(el('span', '', text));
-    return row;
-  };
-  out.push(key({ exact: true, stops: [{ n: 1 }] }, MAP_SAYS.exact));
-  out.push(key({ exact: false, stops: [{ n: 2 }] }, MAP_SAYS.zipArea));
-  if (d.practice) out.push(key({ practice: true, stops: [{ n: 3 }] }, MAP_SAYS.practicePin));
-  out.push(el('div', 'muted', MAP_SAYS.orderOnly));
+    row.appendChild(pinNode(k.g));
+    row.appendChild(el('span', '', k.text));
+    out.push(row);
+  }
+  if (routeLine(d.stops).length) out.push(el('div', 'muted', MAP_SAYS.orderOnly));
   out.push(el('div', 'muted', MAP_SAYS.ends));
   return out;
+};
+// Route the whole day rides on the map, above the attribution.
+HUDS.today = () => {
+  const d = TODAY.d;
+  if (!d || !d.canRoute) return [];
+  const b = el('button', 'hud', MAP_SAYS.routeDay);
+  b.type = 'button';
+  b.addEventListener('click', () => toShell({ type: 'day' }));
+  return [b];
 };
 LAYER_READ.today = readToday;
 LAYER_CLEAR.today = clearToday;
@@ -640,11 +825,24 @@ function boot() {
     drawStatus();
   } else {
     // Zoom buttons bottom-left: a popup listing a ZIP area's stops opens upward and must not sit under them.
-    MAP = L.map('map', { attributionControl: false, zoomControl: false, minZoom: 10, maxZoom: 18, maxBoundsViscosity: 1 });
+    MAP = L.map('map', { attributionControl: false, zoomControl: false, zoomSnap: 0.25, minZoom: 8, maxZoom: 18, maxBoundsViscosity: 1 });
     L.control.zoom({ position: 'bottomleft' }).addTo(MAP);
-    MAP.fitBounds([[BOX.south, BOX.west], [BOX.north, BOX.east]]);
+    for (const t of ['pointerdown', 'touchstart', 'wheel']) $('map').addEventListener(t, () => { KEEP_VIEW = false; }, { passive: true, capture: true });
+    MAP.on('zoomend', drawPins);
+    MAP.on('moveend', offView);
+    MAP.on('popupopen', () => { POP_OPEN = true; offView(); });
+    MAP.on('popupclose', () => { POP_OPEN = false; offView(); });
+    MAP.on('resize', () => { if (KEEP_VIEW) openView(); offView(); });
+    openView();
     setPanLimit([]);
-    TILES = L.tileLayer(OSM_TILES, { minZoom: 10, maxZoom: 18 });
+    // The card and Route the day change size as lines come and go: the opening view keeps every city clear of them.
+    if (window.ResizeObserver) {
+      const ro = new ResizeObserver(() => { if (KEEP_VIEW) openView(); offView(); });
+      ro.observe($('card'));
+      ro.observe($('hud'));
+    }
+    $('offview').addEventListener('click', showAll);
+    TILES = L.tileLayer(OSM_TILES, { minZoom: 8, maxZoom: 18 });
     TILES.on('tileerror', () => { TILE.errors++; tilesState(); });
     TILES.on('tileload', () => { TILE.loaded++; tilesState(); });
     TILES.addTo(MAP);
