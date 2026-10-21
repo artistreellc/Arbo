@@ -335,8 +335,16 @@ export interface DataSource {
     crewMemberId: string; context: string; itemIds: string[];
     startedAtIso: string; completedAtIso: string; payableMinutes: number; score: number | null;
   }): Promise<{ trainingEventId: string; timeEntryId: string }>;
-  /** §6M.8: today's published tailgate briefing, or null if none. */
-  todaysBriefing?(): Promise<{ id: string; body: string; standardRefs: string[] } | null>;
+  /**
+   * §6M.8: the published tailgate briefing for `day` (an ET date), or null if
+   * none. CREW_PLAN C4: only that day's — yesterday's is never served.
+   */
+  todaysBriefing?(day: string): Promise<{ id: string; body: string; standardRefs: string[] } | null>;
+  /**
+   * CREW_PLAN C4: when this crew member signed the briefing in [fromIso, toIso)
+   * — the server's own record, never the phone's clock. Null when not signed.
+   */
+  briefingSignedAt?(crewMemberId: string, fromIso: string, toIso: string): Promise<string | null>;
   /** §6V.4 gated briefing acknowledgment + its payable time entry (§4.6). */
   recordBriefingAck?(input: {
     crewMemberId: string; itemIds: string[];
@@ -493,6 +501,22 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
     if (r.standing === 'off') return { status: 403, body: { error: 'off_roster' } };
     if (r.standing === 'unknown') return { status: 400, body: { error: 'unknown_crew' } };
     return null;
+  };
+  // CREW_PLAN C4 (D109): has this crew member signed today's briefing? Read
+  // from the server's own training_event in the ET day's window — never the
+  // phone's start time. read:false names why (a gap word, link_cut or
+  // signoff_unreadable), so nobody reads an unread record as "not signed".
+  type SignedToday = { read: true; at: string | null } | { read: false; why: string };
+  const signedToday = async (crewMemberId: string, day: string): Promise<SignedToday> => {
+    if (!source.briefingSignedAt) return { read: false, why: gap(source.briefingSignedAt) ?? 'not_built' };
+    const { startUtc, endUtc } = etDayWindow(day);
+    try {
+      return { read: true, at: await source.briefingSignedAt(crewMemberId, startUtc.toISOString(), endUtc.toISOString()) };
+    } catch (err) {
+      const why = err instanceof LinkCutError ? 'link_cut' : 'signoff_unreadable';
+      console.error('[crew] sign-off read failed:', why); // the kind only (§4.3)
+      return { read: false, why };
+    }
   };
   return {
     /** GET /health — config versions + which integrations are wired. Never leaks values. */
@@ -1014,7 +1038,7 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * or customer contact: admin data is excluded by construction, not by
      * remembering to filter it (§8C.1).
      */
-    async crewWorkOrders(dateIso: string, briefingId: string | null = null): Promise<ApiResult> {
+    async crewWorkOrders(dateIso: string): Promise<ApiResult> {
       if (!source.ready() || !source.crewJobs) return { status: 503, body: { error: gap(source.crewJobs) } };
       // The crew's day is the HAMPTON ROADS day, not the server's UTC day —
       // a 9pm-ET open must not hand them tomorrow's sheet.
@@ -1066,7 +1090,9 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
         permitScreenPending: r.permitScreenPending === true,
         permitUnreadable: r.permitUnreadable === true,
         photoRefs: [],
-        briefingId,
+        // C4 (D109, D99 M11): the sign-off lock lives in the route now, so the
+        // unused briefingId parameter is gone; the payload's slot stays null.
+        briefingId: null,
       }));
       return {
         status: 200,
@@ -1109,13 +1135,43 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
      * Standards are cited BY CLAUSE, never reproduced (§6U.3). 404 when the
      * office hasn't published one — the crew is told, never given a blank.
      */
-    async crewBriefing(): Promise<ApiResult> {
+    async crewBriefing(crewMemberId = ''): Promise<ApiResult> {
       if (!source.ready() || !source.todaysBriefing) return { status: 503, body: { error: gap(source.todaysBriefing) } };
-      const brief = await source.todaysBriefing();
+      // C4 (D109): today's by the Hampton Roads day — yesterday's is never served.
+      const day = etToday();
+      const brief = await source.todaysBriefing(day);
       if (!brief) return { status: 404, body: { error: 'no_briefing_published' } };
       // The read time the gate will hold the crew to, so the page counts down
       // the server's number instead of guessing one (10–15 s by length).
-      return { status: 200, body: { ...brief, requiredSeconds: requiredReadSeconds(brief.body) } };
+      const body: Record<string, unknown> = { ...brief, requiredSeconds: requiredReadSeconds(brief.body) };
+      // C4: whether this crew member already signed today, from the server's
+      // own record, so a reload shows "Signed at …" instead of a second gate.
+      // signedCheck is 'read' only over a read that answered; otherwise it
+      // names why, and signedAt stays null — never "not signed" (§1B). The
+      // preview sends no crew code and gets neither field.
+      if (crewMemberId) {
+        const s: SignedToday = UUID_RE.test(crewMemberId) ? await signedToday(crewMemberId, day) : { read: false, why: 'bad_crew_id' };
+        body.signedAt = s.read ? s.at : null;
+        body.signedCheck = s.read ? 'read' : s.why;
+      }
+      return { status: 200, body };
+    },
+
+    /**
+     * M11 (CREW_PLAN C4, Q5; D99): the lock GET /api/crew/workorders runs for
+     * every key but the owner's — a crew phone reads its work orders only
+     * after signing today's briefing. In the route, not in crewWorkOrders, so
+     * Talk (which calls crewWorkOrders directly) is untouched. null = open.
+     */
+    async crewSignOffLock(crewMemberId: string): Promise<ApiResult | null> {
+      if (!crewMemberId) return { status: 403, body: { error: 'briefing_not_signed' } };
+      if (!UUID_RE.test(crewMemberId)) return { status: 400, body: { error: 'bad_crew_id' } };
+      if (!source.ready() || !source.briefingSignedAt) return { status: 503, body: { error: gap(source.briefingSignedAt) } };
+      const s = await signedToday(crewMemberId, etToday());
+      if (!s.read) {
+        return { status: 503, body: s.why === 'signoff_unreadable' ? { error: s.why, message: 'Arbo couldn’t check your sign-off — call the office.' } : { error: s.why } };
+      }
+      return s.at ? null : { status: 403, body: { error: 'briefing_not_signed' } };
     },
 
     /**
@@ -1151,17 +1207,32 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       // unreadable roster refuses by name (fail closed).
       const offRoster = await paidRosterRefusal(crewMemberId);
       if (offRoster) return offRoster;
+      // C4 (D109): the server owns the day. The sign-off is for TODAY's
+      // briefing as the server has it: another id (yesterday's, or one the
+      // office replaced) is a 409, and the gate and the record run on the
+      // server's own text — an edited body cannot shorten the read floor.
+      if (!source.todaysBriefing) return { status: 503, body: { error: gap(source.todaysBriefing) } };
+      const day = etToday();
+      const today = await source.todaysBriefing(day);
+      if (!today || today.id !== content.id) return { status: 409, body: { error: 'not_todays_briefing' } };
+      const served: BriefingContent = { id: today.id, body: today.body, standardRefs: today.standardRefs };
       const gateState = {
         scrolledToBottom: state.scrolledToBottom === true,
         checkboxTicked: state.checkboxTicked === true,
         secondsOnScreen: Number(state.secondsOnScreen ?? 0),
       };
-      const verdict = evaluateGate(content, gateState);
+      const verdict = evaluateGate(served, gateState);
       if (!verdict.unlocked) {
         // Not an error — the honest answer is "not yet, and here's what's left".
         return { status: 200, body: { unlocked: false, missing: verdict.missing, requiredSeconds: verdict.requiredSeconds } };
       }
-      const ack = buildAcknowledgment({ content, state: gateState, crewMemberId, startedAtIso, completedAtIso });
+      // C4: "already signed today" by the server's training_event.created_at
+      // in today's ET window — not the phone's started_at. Signed: the day
+      // opens with no new row. A check that cannot be read never blocks a
+      // first sign-off: it writes, and the answer names the unchecked state.
+      const signed = await signedToday(crewMemberId, day);
+      if (signed.read && signed.at) return { status: 200, body: { unlocked: true, duplicate: true, signedAt: signed.at } };
+      const ack = buildAcknowledgment({ content: served, state: gateState, crewMemberId, startedAtIso, completedAtIso });
       let saved;
       try {
         saved = await source.recordBriefingAck({
@@ -1172,13 +1243,22 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
           payableMinutes: ack.payableMinutes,
         });
       } catch (err) {
+        const code = (err as { code?: string }).code;
         // A code shaped like a UUID that matches nobody trips the crew foreign
         // key. Name it, so the crew hears "check your crew code", not "try again".
-        if ((err as { code?: string }).code === '23503') return { status: 400, body: { error: 'unknown_crew' } };
+        if (code === '23503') return { status: 400, body: { error: 'unknown_crew' } };
+        // C4: 0011's time_entry_ack_once refused the time row — this start is
+        // already logged (a reload, a retry, a send in parallel). A duplicate,
+        // not a 500 — and no event is written (the time row goes first).
+        // "Signed at" only if a read finds the server's record of it.
+        if (code === '23505') {
+          const again = await signedToday(crewMemberId, day);
+          return { status: 200, body: { unlocked: true, duplicate: true, ...(again.read && again.at ? { signedAt: again.at } : {}) } };
+        }
         throw err;
       }
       if (source.emit) await source.emit('briefing.acknowledged', { crewMemberId, trainingEventId: saved.trainingEventId });
-      return { status: 200, body: { unlocked: true, payableMinutes: ack.payableMinutes, ...saved } };
+      return { status: 200, body: { unlocked: true, payableMinutes: ack.payableMinutes, ...saved, ...(signed.read ? {} : { signedCheck: signed.why }) } };
     },
 
     /**

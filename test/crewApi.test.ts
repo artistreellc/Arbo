@@ -79,6 +79,9 @@ function crewSource(
     // Q7 refuses it unless the roster says the code is on it (fail closed with
     // no lookup). These fixtures are about the gate, so the code is on it.
     crewMember: async () => ({ name: 'SIM-Alder, Test', active: true }),
+    // Deliberately added (CREW_PLAN C4, D109): the server checks the sign-off
+    // against ITS briefing for today; these fixtures sign that same briefing.
+    todaysBriefing: async () => ({ id: '33333333-3333-3333-3333-333333333333', body: 'Watch the drop zone. Call every cut.', standardRefs: ['Z133 §8.1'] }),
   };
 }
 

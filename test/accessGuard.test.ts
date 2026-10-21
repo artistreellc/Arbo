@@ -262,9 +262,11 @@ describe('the door decision', () => {
   });
 
   it('the right keys open their doors and forgive the connection; the crew key at Mike’s door is refused but is not a guess', () => {
-    expect(door({ given: 'admin-k' }).out).toEqual({ ok: true });
-    expect(door({ given: 'admin-k', pathname: '/api/crew/workorders' }).out).toEqual({ ok: true });
-    expect(door({ given: 'crew-k', pathname: '/api/crew/workorders' }).out).toEqual({ ok: true });
+    // Deliberately updated (CREW_PLAN C4, D109): an open door now says which key
+    // matched — only the owner key is exempt from the crew sign-off lock (M11).
+    expect(door({ given: 'admin-k' }).out).toEqual({ ok: true, matched: 'owner' });
+    expect(door({ given: 'admin-k', pathname: '/api/crew/workorders' }).out).toEqual({ ok: true, matched: 'owner' });
+    expect(door({ given: 'crew-k', pathname: '/api/crew/workorders' }).out).toEqual({ ok: true, matched: 'crew' });
     const atOwner = door({ given: 'crew-k' });
     expect(atOwner.out).toMatchObject({ status: 401, body: { message: 'The crew door key opens the crew door only. This needs the app key.' } });
     expect(atOwner.guard.counts().wrongKeysSinceBoot).toBe(0);
@@ -279,7 +281,7 @@ describe('the door decision', () => {
     // Keyless from the throttled connection is still the plain 401 — nothing to check.
     expect(door({ guard }).out).toMatchObject({ status: 401, body: { error: 'unauthorized' } });
     // Another connection opens at once with the right key.
-    expect(door({ guard, given: 'admin-k', addr: '198.51.100.2' }).out).toEqual({ ok: true });
+    expect(door({ guard, given: 'admin-k', addr: '198.51.100.2' }).out).toEqual({ ok: true, matched: 'owner' });
   });
 });
 

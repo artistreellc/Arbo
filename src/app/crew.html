@@ -384,6 +384,10 @@ function crewWhy(e) {
   if (name === 'roster_unreadable') return 'Arbo couldn’t read the roster just now';
   if (name === 'crew_key_not_set') return 'no crew door key is set up on the server yet';
   if (name === 'no_app_key') return 'the crew door is locked on the server right now — tell the office';
+  // C4 (D109): the server owns the day.
+  if (name === 'briefing_not_signed') return 'today’s briefing isn’t signed on this phone yet';
+  if (name === 'not_todays_briefing') return 'that was not today’s briefing';
+  if (name === 'signoff_unreadable') return 'Arbo couldn’t check your sign-off';
   // A 401 that names nothing else: the door key on this phone stopped working (it was changed).
   if (e && e.code === 401) return 'the door key on this phone no longer opens the crew door — ask the office for the new one';
   const m = e && e.code === 503 ? e.message : '';
@@ -423,6 +427,9 @@ const GATE = {
   readOnly: false,
   // M11: the one 1-second refresh timer, so a second renderGate never starts another.
   ticking: null,
+  // C4 (D109): true while a sign-off is on its way — GO stays off until the
+  // answer, so a second press cannot send a second one.
+  sending: false,
   // R26: why GO never arms in the office preview ('' on a crew phone). On
   // GATE, so the gate's own functions read it with the rest of its state.
   preview: PREVIEW ? PREVIEW_WHY : '',
@@ -437,7 +444,9 @@ function renderGate(brief) {
   // online, back on screen), so the read clock and the sign-off's start begin
   // HERE — never at page load — and nothing done before it counts toward it.
   GATE.openedMs = Date.now();
-  GATE.startedAt = new Date().toISOString();
+  // C4 (D109): the start is kept per crew member, briefing and day, so a
+  // reload or a retry re-sends the same started_at (keptGateStart below).
+  GATE.startedAt = keptGateStart(brief.id);
   GATE.scrolled = false;
   GATE.checked = false;
   // The server's read floor (10–15 s by length), so the countdown is its number, not a guess.
@@ -468,6 +477,15 @@ function renderGate(brief) {
   lab.prepend(cb);
   row.appendChild(lab);
   box.appendChild(row);
+  // C4 (D109): Arbo could not read whether this crew member already signed
+  // today — said above the box, never taken as "not signed" or as a pass.
+  // signedCheck rides only a crew phone's read (the preview sends no code).
+  if (brief.signedCheck && brief.signedCheck !== 'read' && !brief.signedAt) {
+    const why = brief.signedCheck === 'signoff_unreadable' ? '' : crewWhy({ code: 503, message: brief.signedCheck });
+    box.insertBefore(el('div', 'gapline', why
+      ? 'Arbo couldn’t check for an earlier sign-off today (' + why + ').'
+      : 'Arbo couldn’t check for an earlier sign-off today.'), row);
+  }
 
   box.appendChild(el('div', 'gate-status', ''))
     .setAttribute('id', 'gate-status');
@@ -482,7 +500,8 @@ function renderGate(brief) {
   // press — one line above GO, then the stop-work order on its own bold line.
   // The briefing above stays readable. Only an exact 'readonly' from /health.
   LINKS_READY.then(() => {
-    if (LINKS !== 'readonly') return;
+    // C4: a day already signed (read back from the server) needs no save.
+    if (LINKS !== 'readonly' || GATE.unlocked) return;
     const ro = el('div', 'ro-note');
     ro.appendChild(el('div', '', 'Arbo is read-only today — your sign-off can’t be saved on this phone.'));
     ro.appendChild(el('b', '', 'Do not start work — call the office.'));
@@ -497,6 +516,10 @@ function renderGate(brief) {
   if (body.scrollHeight <= body.clientHeight + 4) GATE.scrolled = true;
   refreshGate();
   if (!GATE.ticking) GATE.ticking = setInterval(refreshGate, 1000);
+  // C4 (D109): the server says this crew member already signed today's
+  // briefing — read back from its own record, never from this phone — so a
+  // reload opens the day ("Signed at … — logged") instead of a second sign-off.
+  if (brief.signedAt) showSigned(brief.signedAt, '');
 }
 
 function secondsOnScreen() { return Math.floor((Date.now() - GATE.openedMs) / 1000); }
@@ -528,12 +551,62 @@ function refreshGate() {
     if (status && !GATE.serverMsg) status.textContent = '';
     if (go) { go.disabled = true; go.className = ''; }
   }
+  // C4 (D109): GO stays off while a sign-off is on its way — the 1-second
+  // tick never re-arms it under a press that has not been answered yet.
+  if (GATE.sending && go) { go.disabled = true; go.className = ''; }
   // R26: in the preview GO never arms, whatever the briefing state, and the
   // line says why instead of "Ready".
   if (GATE.preview) {
     if (status) status.textContent = GATE.preview;
     if (go) { go.disabled = true; go.className = ''; }
   }
+}
+
+// C4 (CREW_PLAN, D109): one sign-off start per crew member, briefing and ET
+// day, kept across a reload — so a reload or a retry re-sends the same
+// started_at and the server's unique index (0011) refuses a second paid row.
+// Storage refused, or no crew code (the preview): a fresh start, and the
+// server's own "already signed today" check is the guard left (named in D109).
+// A kept start later than now (the phone's clock moved back) is not reused:
+// it would make a reversed span the server refuses.
+function keptGateStart(briefId) {
+  const now = new Date().toISOString();
+  try {
+    if (!CREW_ID) return now;
+    const k = 'arboGateStart:' + CREW_ID + ':' + briefId + ':' + BRIEF_DAY;
+    const kept = load(k);
+    if (kept && Date.parse(kept) < Date.now()) return kept;
+    try { localStorage.setItem(k, now); } catch (e) { return now; }
+    return now;
+  } catch (e) {
+    return now; // the gate draws whatever storage does
+  }
+}
+
+// C4 (D109): the day opens on a sign-off the SERVER has on file — just
+// written, or read back after a reload. "Signed at …" is said only over a time
+// the server gave; otherwise `line` says what the server said.
+function showSigned(signedAtIso, line) {
+  GATE.unlocked = true;
+  GATE.serverMsg = ''; GATE.serverErr = false; GATE.serverHold = false;
+  const gate = $('gate');
+  if (gate) gate.className = 'unlocked';
+  const head = document.querySelector('.gate-head');
+  if (head) head.textContent = 'Briefing acknowledged — logged';
+  // Read-only refuses a NEW sign-off; this one is already on file.
+  const ro = document.querySelector('#gate .ro-note');
+  if (ro) ro.remove();
+  const cb = $('ackbox');
+  if (cb) { cb.checked = true; cb.disabled = true; }
+  const status = $('gate-status');
+  if (status) {
+    status.classList.toggle('err', false);
+    status.textContent = signedAtIso ? 'Signed at ' + fmtTime(signedAtIso) + ' — logged.' + ' Not counted twice.' : line;
+  }
+  const go = $('gobtn');
+  if (go) { go.textContent = 'DAY UNLOCKED ✓'; go.className = 'done'; go.disabled = true; }
+  renderQuiz();
+  renderWork();
 }
 
 async function submitGate() {
@@ -544,6 +617,7 @@ async function submitGate() {
   GATE.serverErr = false;
   GATE.serverHold = false;
   try {
+    GATE.sending = true; // C4: GO stays off until this sign-off is answered
     const res = await api('/api/crew/briefing/ack', {
       method: 'POST',
       body: {
@@ -554,6 +628,7 @@ async function submitGate() {
         completedAtIso: new Date().toISOString(),
       },
     });
+    GATE.sending = false;
     if (!res.unlocked) {
       // The server is the authority — if it says not yet, the day stays locked.
       GATE.requiredSeconds = res.requiredSeconds || GATE.requiredSeconds || 10;
@@ -564,14 +639,15 @@ async function submitGate() {
       refreshGate();
       return;
     }
-    GATE.unlocked = true;
-    $('gate').className = 'unlocked';
-    document.querySelector('.gate-head').textContent = 'Briefing acknowledged — logged';
-    go.textContent = 'DAY UNLOCKED ✓';
-    go.className = 'done';
-    renderQuiz();
-    renderWork();
+    // C4 (D109): already signed today (the server's own record) opens the day
+    // with no second row: "Signed at …" when the server read the time back.
+    // A first sign-off whose duplicate check could not be read was written —
+    // and says so, so the office can look for a second one.
+    showSigned(res.signedAt || '', res.duplicate
+      ? 'Already logged earlier — not counted twice.'
+      : res.signedCheck ? 'Logged — Arbo couldn’t check for an earlier sign-off today, so tell the office if you already signed.' : '');
   } catch (e) {
+    GATE.sending = false;
     await LINKS_READY; // 'cut on purpose' vs 'not set up' needs /health's answer
     go.disabled = false;
     // Name the real reason instead of a generic retry (§1B: never bluff). The
@@ -588,7 +664,13 @@ async function submitGate() {
       : retry
         ? 'Could not record that — try once more.'
         : 'Your sign-off could not be recorded (' + crewWhy(e) + ').'
-          + ' Your work orders stay locked — do not start work; call the office to log your briefing.';
+          + (e.code === 409
+            ? ' Read today’s briefing below and sign again.'
+            : ' Your work orders stay locked — do not start work; call the office to log your briefing.');
+    // C4 (D109): a 409 means the server has another briefing for today (or
+    // none) — read it again. The held line stays over the new gate until its
+    // box is ticked; a day with no briefing gets the plain "none yet" card.
+    if (e.code === 409) { GATE.content = null; loadBriefing(); }
     refreshGate();
   }
 }
@@ -754,7 +836,10 @@ async function renderWork() {
   v.appendChild(el('div', 'panel-title', "Today's work orders"));
   let data;
   try {
-    data = await api('/api/crew/workorders');
+    // C4 (D109, M11): the server opens a crew phone's work orders only on a
+    // signed-today ack, so the phone says who it is. The preview's read stays
+    // bare — Mike's own key is the one exemption, never a header or a code.
+    data = await api('/api/crew/workorders' + (PREVIEW ? '' : '?crewMemberId=' + encodeURIComponent(CREW_ID)));
   } catch (e) {
     // §1B: an unreadable day is never an empty one. C1: the reason is named
     // in crewWhy's words (the jobs link kept cut, read-only, the throttle…).
@@ -1385,7 +1470,9 @@ function loadBriefing() {
   // A gate on screen keeps its countdown; an unlocked day needs nothing; a locked door waits for its key.
   if (BRIEF_LOADING || GATE.unlocked || GATE.content || DOOR_KEY_ASKED) return;
   BRIEF_LOADING = true;
-  api('/api/crew/briefing').then(renderGate).catch(async (e) => {
+  // C4 (D109): with the crew code the server also says whether this person
+  // already signed today; the preview (no code) reads the bare briefing.
+  api('/api/crew/briefing' + (CREW_ID ? '?crewMemberId=' + encodeURIComponent(CREW_ID) : '')).then(renderGate).catch(async (e) => {
     // The gate's 429 (too many wrong keys from this connection) is the door card's too, with the server's reason.
     // M11: a door waiting for its key (or throttled) is never re-read on its own — the card's button reloads.
     if (e.code === 401 || e.code === 429) { DOOR_KEY_ASKED = true; return renderDoorKey(e.message === 'crew_key_not_set', e.message); }

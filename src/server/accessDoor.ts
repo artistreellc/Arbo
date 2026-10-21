@@ -271,7 +271,10 @@ const throttledLine = (s: number) =>
   `Too many different wrong keys from this connection. Arbo now checks one key a minute from it: wait ${s} seconds, then enter the right key — or switch networks (Wi-Fi or cellular).`;
 
 export type DoorAnswer =
-  | { ok: true }
+  // CREW_PLAN C4 (D109): which key opened the door. Only the owner key is
+  // exempt from the crew sign-off lock (M11); the x-arbo-preview header a
+  // phone sets for itself proves nothing on its own.
+  | { ok: true; matched: 'owner' | 'crew' }
   | { ok: false; status: 401 | 429; body: { error: string; message: string; retryAfterSec?: number }; retryAfterSec?: number };
 
 const refuse = (error: string, message: string): DoorAnswer => ({ ok: false, status: 401, body: { error, message } });
@@ -312,7 +315,7 @@ export function checkApiDoor(i: {
   // R25: the crew key opens the crew door's own routes and nothing else.
   if (isApp || (crewDoor && isCrew)) {
     i.guard.right(door, i.addr);
-    return { ok: true };
+    return { ok: true, matched: isApp ? 'owner' : 'crew' };
   }
   if (isCrew) return refuse('unauthorized', CREW_KEY_AT_OWNER); // a real key at the wrong door is not a guess
   const w = i.guard.wrong(door, i.addr, i.given);
