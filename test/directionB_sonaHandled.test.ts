@@ -199,6 +199,36 @@ describe('Call back clears a Sona flag (P17)', () => {
     expect(after.all().find((n) => n.dataset.sonaCall === 'H1')!.textContent).toContain('SONA BROKE A RULE');
   });
 
+  it('Today, at the tap with no redraw: its own flag box drops that caller, and every card from that caller says Handled (browser check)', async () => {
+    const k = kit(quo([call('H1', HAZEL, { slips: [SLIP] }), call('H2', HAZEL, { slips: [SLIP] }), call('O1', OAK, { slips: [SLIP] })]));
+    const today = await k.sonaPanel(3, false);
+    expect(today.all().filter((n) => n.has('sliplink'))).toHaveLength(3);
+    const at = today.children.findIndex((n) => n.has('storm'));
+    expect(at).toBeGreaterThan(0);
+    await callBack(today, 'H1').click();
+    // The same panel, not redrawn: the box names Oak's call only, in its place under the title.
+    const rows = today.all().filter((n) => n.has('sliplink'));
+    expect(rows.map((r) => r.textContent)).toEqual(['SIM-Oak, Test · T(2026-10-18T21:48:00Z) · Promised a day or time']);
+    expect(today.textContent).toContain('Sona broke your rules on 1 call');
+    expect(today.children.findIndex((n) => n.has('storm'))).toBe(at);
+    for (const id of ['H1', 'H2']) expect(today.all().find((n) => n.dataset.sonaCall === id)!.querySelectorAll('.sona-handled'), id).toHaveLength(1);
+    expect(today.all().find((n) => n.dataset.sonaCall === 'O1')!.querySelectorAll('.sona-handled')).toHaveLength(0);
+    // Its last flag handled, the box leaves; the cards stay red with her words.
+    await callBack(today, 'O1').click();
+    expect(today.all().filter((n) => n.has('sliplink'))).toHaveLength(0);
+    expect(today.textContent).not.toContain('Sona broke your rules on');
+    expect(today.all().filter((n) => n.dataset.sonaCall && n.has('emergency'))).toHaveLength(3);
+  });
+
+  it('Calls & texts, at the tap: every card from that caller says Handled (the head carries the flag)', async () => {
+    const k = kit(quo([call('H1', HAZEL, { slips: [SLIP] }), call('H2', HAZEL, { slips: [SLIP] }), call('O1', OAK, { slips: [SLIP] })]));
+    const panel = await k.sonaPanel(20, true);
+    await callBack(panel, 'H2').click();
+    for (const id of ['H1', 'H2']) expect(panel.all().find((n) => n.dataset.sonaCall === id)!.querySelectorAll('.sona-handled'), id).toHaveLength(1);
+    expect(panel.all().find((n) => n.dataset.sonaCall === 'O1')!.querySelectorAll('.sona-handled')).toHaveLength(0);
+    expect(panel.all().filter((n) => n.has('sliplink'))).toHaveLength(0);
+  });
+
   it('a new slip (a new call id) raises the flag again', async () => {
     const k = kit(quo([call('H1', HAZEL, { slips: [SLIP] })]));
     await callBack(await k.sonaPanel(20, true), 'H1').click();

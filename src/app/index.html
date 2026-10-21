@@ -650,6 +650,7 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 .agent-in{display:contents}
 .agent-in .badge{justify-self:start}
 .agent-law{margin-top:10px}
+.sona-tr > summary{min-height:44px;box-sizing:border-box;padding:10px 0;cursor:pointer}
 .agent-law summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--forest);min-height:44px;display:flex;align-items:center;justify-content:space-between;gap:12px;list-style:none}
 .agent-law summary::-webkit-details-marker{display:none}
 .agent-law summary::after{content:'';flex:none;width:8px;height:8px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);margin-right:4px;transition:transform .2s}
@@ -1978,10 +1979,25 @@ async function sonaPanel(limit, withTranscripts) {
   const done = sona.some((c) => c.slips.length) ? sonaHandled() : {};
   // Direction B P16: on Calls & texts the red flag rides the Leads head above the segments (one builder,
   // sonaSlipBox); Today keeps its own box here.
+  let flagBox = null;
   if (!withTranscripts) {
-    const box = sonaSlipBox(d, done);
-    if (box) wrap.appendChild(box);
+    flagBox = sonaSlipBox(d, done);
+    if (flagBox) wrap.appendChild(flagBox);
   }
+  // P17: a Call back here clears that caller at the tap, not at the next redraw — Today's own box is drawn
+  // again in its place (gone with its last flag), and every card from that caller gets its Handled line.
+  const cards = [];
+  const handledLine = (at) => el('div', 'storm-muted sona-handled', 'Handled — you tapped Call back at ' + fmtTime(new Date(at).toISOString()) + '.');
+  const calledBack = () => {
+    const now = sonaHandled();
+    if (flagBox) {
+      const box = sonaSlipBox(d, now);
+      if (box) wrap.insertBefore(box, flagBox);
+      flagBox.remove();
+      flagBox = box;
+    }
+    for (const k of cards) if (k.c.slips.length && now[k.c.callId] && !k.card.querySelector('.sona-handled')) k.card.insertBefore(handledLine(now[k.c.callId]), k.actions);
+  };
   const rec = st.quoRecord || {};
   if (rec.error) {
     wrap.appendChild(el('div', 'storm', 'Arbo could not read Sona\u2019s calls from Quo (' + rec.error + ') \u2014 calls the webhook missed are not being learned. That doesn\u2019t mean no calls came in.'));
@@ -2074,25 +2090,22 @@ async function sonaPanel(limit, withTranscripts) {
     if (f.requestedTime) card.appendChild(el('div', 'scope', 'Asked for: ' + f.requestedTime));
     for (const sl of c.slips) card.appendChild(el('div', 'storm', slipRuleLabel(sl.rule) + ' — Sona said: \u201c' + sl.said + '\u201d'));
     // Direction B P17: a flag Mike cleared by calling back stays in history, said in a muted line.
-    const handledLine = (at) => el('div', 'storm-muted sona-handled', 'Handled — you tapped Call back at ' + fmtTime(new Date(at).toISOString()) + '.');
     const hl = holdLine(c);
     if (hl) card.appendChild(el('div', hl[0], hl[1]));
     if (c.slips.length && done[c.callId]) card.appendChild(handledLine(done[c.callId]));
     const actions = el('div', 'actions');
+    cards.push({ c: c, card: card, actions: actions });
     if (c.from) {
       const call = el('a', 'callbtn', 'Call back');
       call.href = 'tel:' + c.from;
       // P17: calling back is handling it — every flag from this caller clears (ids only, on this phone); the phone app still dials.
-      call.addEventListener('click', () => {
-        if (!sonaCalledBack(c, d.calls) || !c.slips.length || card.querySelector('.sona-handled')) return;
-        const at = sonaHandled()[c.callId];
-        if (at) card.insertBefore(handledLine(at), actions);
-      });
+      call.addEventListener('click', () => { if (sonaCalledBack(c, d.calls)) calledBack(); });
       actions.appendChild(call);
     }
     card.appendChild(actions);
     if (withTranscripts && c.dialogue.length) {
       const det = document.createElement('details');
+      det.className = 'sona-tr'; // Direction B P16: Sona first puts this toggle on Calls & texts' first screen — 44 px tall
       det.appendChild(el('summary', '', 'Transcript (' + plural(c.dialogue.length, 'line') + ')'));
       for (const line of c.dialogue) det.appendChild(el('div', 'addr', (line.speaker === 'agent' ? 'Sona: ' : line.speaker === 'mike' ? 'You: ' : 'Caller: ') + line.text));
       card.appendChild(det);

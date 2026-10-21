@@ -261,7 +261,7 @@ describe('the red Sona flags say which call and open it', () => {
   it('the banner is a list of tappable rows — who, when, which rule — each opening that call', () => {
     // Direction B P16: the banner is one builder now, sonaSlipBox — Today's Sona panel and the Leads head share it (same text).
     const p = html.slice(html.indexOf('function sonaSlipBox('), html.indexOf('async function sonaPanel('));
-    expect(html.slice(html.indexOf('async function sonaPanel('), html.indexOf('const holdText = {', html.indexOf('async function sonaPanel(')))).toContain('const box = sonaSlipBox(d, done);'); // P17: with the calls Mike called back
+    expect(html.slice(html.indexOf('async function sonaPanel('), html.indexOf('const holdText = {', html.indexOf('async function sonaPanel(')))).toContain('flagBox = sonaSlipBox(d, done);'); // P17: with the calls Mike called back (kept, so a Call back redraws it in place)
     expect(p).toContain("const row = el('button', 'sliplink', (f.name || c.from || 'Caller') + ' · ' + fmtTime(c.at) + ' · ' + rules);");
     expect(p).toContain("row.addEventListener('click', () => openSonaCall(c.callId));");
     expect(p).toContain("' only in Quo now.'"); // a counted call Arbo no longer holds is said, not hidden
