@@ -382,9 +382,9 @@ nav button .dot.p-unread::after{background:var(--card);box-shadow:inset 0 0 0 2p
 .texts .feed-state + .storm-muted{padding-left:18px}
 /* Direction B P12: one feeds card per screen — its headline is a button that opens every feed it folded or counted.
    The dot is the worst kind it holds (the feed-state dots). A button, never a <details>: Today redraws every minute. */
-.card.feeds{padding:4px 14px}
+.card.feeds{padding:0 14px}
 .feeds[hidden],.feeds-list[hidden]{display:none}
-.feeds-head{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:48px;border:0;background:none;padding:6px 0;font:inherit;text-align:left;color:var(--ink-2)}
+.feeds-head{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:44px;border:0;background:none;padding:4px 0;font:inherit;text-align:left;color:var(--ink-2)}
 .feeds-head .feed-state{margin:0;font-size:14.5px}
 .feeds-head .fh{white-space:nowrap} /* a count stays with its words on a 320 px phone */
 .feeds-head::after{content:'';flex:none;width:8px;height:8px;border-right:2px solid var(--forest);border-bottom:2px solid var(--forest);transform:rotate(45deg);margin:0 6px 4px 0;transition:transform .2s}
@@ -437,21 +437,26 @@ nav button .dot.p-unread::after{background:var(--card);box-shadow:inset 0 0 0 2p
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
 .clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
 .clamp.open{display:block}
-#view-leads .card{padding:10px 14px;margin-bottom:10px}
-#view-leads .card .toprow.has-call{margin-bottom:4px}
-#view-leads .card .actions{margin-top:6px;gap:6px}
+/* Review round (UI #1): compact cards — the plan's "twice as many leads per screen" (8 px padding and gaps). */
+#view-leads .card{padding:8px 12px;margin-bottom:8px}
+#view-leads .card .toprow.has-call{margin-bottom:2px}
+#view-leads .card .actions{margin-top:4px;gap:6px}
 /* Direction B P16: the one-line summary. The name and its time share the top line (the time to the right), and under
    them where (city · ZIP) and what they said, folded to one line — a tap opens it whole. The city never gives way
    (P8 review): what they said does, and drops under the city when the two cannot share a line. A line carrying a
    contact instruction is not in the summary at all: it keeps a line of its own, whole (§5.9, CONTACT_LINE). */
-.card .lsum{flex:1 1 100%;display:flex;flex-wrap:wrap;align-items:baseline;column-gap:8px;min-width:0;font-size:14px;line-height:1.45}
-.card > .lsum{margin:0 0 6px}
+.card .lsum{flex:1 1 100%;display:flex;flex-wrap:wrap;align-items:baseline;column-gap:8px;min-width:0;font-size:14px;line-height:1.45;padding:12px 0;margin:-12px 0}
+.card > .lsum{margin:-12px 0 -6px}
+/* Review round (UI #4): the summary is the tap that opens what they said — a 44 px box (12 px above and below its
+   line), the margins taking the 24 px back so the row does not grow. Nothing it overlaps is a control. */
 .card .lsum .addr{flex:0 1 auto;margin:0;font-size:14px;font-weight:600;color:var(--ink-2);overflow-wrap:anywhere}
 .card .lsum .clamp{flex:1 1 80px;min-width:0;margin:0;font-size:14px;line-height:1.45;color:var(--ink-3);-webkit-line-clamp:1}
 .card .lsum .clamp.open{flex-basis:100%}
 /* Good lead, Spam and Prep estimate › share one row on a 390 px phone (a 320 px one drops Prep to its own line). */
 #view-leads .card .actions .minibtn{flex:1 1 auto;padding:0 8px;font-size:13px;white-space:nowrap}
-#view-leads .card .badge{padding:3px 9px}
+#view-leads .card .badge{padding:2px 8px}
+@media (max-width:359px){#view-leads .card .actions{gap:4px}#view-leads .card .actions .minibtn{padding:0 6px}#view-leads .card .actions .minibtn.mark .ico{display:none}}
+/* Review round: at 320 px the three share one row (they took two) — the words stay, only the icons go (R23). */
 .minibtn{min-height:48px;min-width:56px;border:1px solid var(--border);border-radius:var(--r-pill);background:var(--card);color:var(--ink-1);font-size:14px;font-weight:700;padding:0 16px}
 .minibtn:hover{background:var(--paper)}
 .minibtn:disabled{opacity:.5;box-shadow:none;background:var(--paper)}
@@ -784,17 +789,18 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
    transcript on one never holds the other). A class shows it — never [hidden] — and says which segment is on. The
    red Sona flag sits ABOVE the segments, so it never sinks into the second one; the chips are New leads' only. */
 .hubhead{display:none}.hubhead.on{display:block}
-.hubhead .viewhead{margin-bottom:12px}
+.hubhead .viewhead{margin:4px 2px 8px}
+.hubhead .storm{margin-bottom:8px}
 .hubhead .lh-calls,.hubhead.calls .lh-leads{display:none}.hubhead.calls .lh-calls{display:block}
 .hubhead.calls .lchips,.hubhead.calls .filter-none{display:none}
-.lseg{display:flex;width:100%;margin:0 0 12px}
-.lseg .lseg-btn{flex:1 1 0;min-width:0;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;column-gap:8px;row-gap:0;min-height:48px;padding:4px 8px;font-size:14.5px;line-height:1.2}
+.lseg{display:flex;width:100%;margin:0 0 8px}
+.lseg .lseg-btn{flex:1 1 0;min-width:0;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;column-gap:8px;row-gap:0;min-height:44px;padding:4px 8px;font-size:14.5px;line-height:1.2}
 .lseg .lseg-btn[aria-pressed="true"]{background:var(--seg-on,var(--card));color:var(--forest);box-shadow:0 1px 3px rgba(20,40,30,.14),inset 0 0 0 1px var(--border)}
 .lseg .lcount{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 7px;border-radius:var(--r-pill);background:var(--f-100);color:var(--forest);font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
 .lseg .lcount.hot{background:var(--emergency);color:var(--on-emergency)}
 .lseg .lcount.gap{background:none;border:1px dashed var(--border);color:var(--ink-3)}
 .lseg small{flex:1 1 100%;font-size:12px;font-weight:600;color:var(--ink-3);text-align:center}
-.lchips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+.lchips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px}
 .lchip{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 14px;border-radius:var(--r-pill);border:1px solid var(--border);background:var(--card);color:var(--ink-1);font-size:14px;font-weight:700}
 .lchip b{font-family:var(--serif);font-size:16px;font-weight:650;color:var(--forest);font-variant-numeric:tabular-nums}
 .lchip[data-filter="emergency"] b{color:var(--emergency)}
@@ -3571,10 +3577,11 @@ const LEAD_OPEN = new Set();
 // "gets home at 3", "call her cell"), so a line that carries one never folds. Broad on
 // purpose: a line kept whole by mistake costs a line of screen; one folded by mistake hides a rule.
 const CONTACT_LINE = /\b(?:call|text|phone|ring)\s+(?:first|ahead|before|after|only|between|her|his|their|my|the|me|him|them)\b|\b(?:text|calls?)\s+only\b|\b(?:do\s*n[o’']?t|never|no)\s+(?:call|text|knock|ring)|\b(?:gets?|be|is|are)\s+home\b|[’']s\s+home\b|\bhome\s+(?:by|after|at|around|before)\b|\b(?:cell|mobile|landline|work (?:number|phone))\b|\b(?:before|after|until|between)\s+\d|\b\d{1,2}(?::\d\d)?\s*[ap]\.?m\b|\bvoicemail\b|\bask for\b|\bspeak (?:to|with)\b/i;
-function clampLine(text, key) {
+function clampLine(text, key, hit) {
   if (CONTACT_LINE.test(text)) return el('div', 'scope', text);
   const n = el('div', 'scope clamp' + (key && LEAD_OPEN.has(key) ? ' open' : ''), text);
-  n.addEventListener('click', () => {
+  // The tap lands on `hit` when given (the one-line summary: a 44 px box around it), else on the line itself.
+  (hit || n).addEventListener('click', () => {
     n.classList.toggle('open');
     if (key) { if (n.classList.contains('open')) LEAD_OPEN.add(key); else LEAD_OPEN.delete(key); }
   });
@@ -3662,7 +3669,7 @@ async function renderLeads() {
     // a line of its own below instead of the summary's.
     const sum = el('div', 'lsum');
     if (lead.city) sum.appendChild(el('div', 'addr', lead.city + (lead.zip ? ' · ' + lead.zip : '')));
-    const said = lead.details ? clampLine(lead.details, lead.id + ':details') : null;
+    const said = lead.details ? clampLine(lead.details, lead.id + ':details', sum) : null; // a tap anywhere on the summary opens it
     const sayInSum = !!said && said.classList.contains('clamp');
     if (sayInSum) sum.appendChild(said);
     let sumInTop = false;
