@@ -644,11 +644,13 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 .prop-row{padding:12px 0 2px;border-top:1px solid var(--hairline);margin-top:10px}
 .prop-row .scope{margin-bottom:10px}
 .proposals .feed-state,.proposals .storm-muted{margin:10px 0 0}
-/* Direction B P14: on Office each proposal is one row — the desk and what it proposes, its button beside them — so the desks below stay near the top. */
-.office-props .prop-row{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:12px;align-items:center;padding:10px 0 8px;margin-top:8px}
-.office-props .prop-row .loop-kind,.office-props .prop-row .scope{grid-column:1}
-.office-props .prop-row .scope{margin-bottom:0;font-size:14px;line-height:1.4}
-.office-props .prop-row .minibtn{grid-column:2;grid-row:1 / span 2;padding:0 12px}
+/* Direction B P14: on Office each proposal is one row — the desk and what it proposes, its button beside them — so the desks below stay near the top.
+   Review: the desk rides in front of the words, two lines at most (a tap opens them whole), so a run leaves the four job desks on the first screen. */
+.office-props .prop-row{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:12px;align-items:center;padding:4px 0 0;margin-top:4px}
+.office-props .prop-words{font-size:14px;line-height:1.4;color:var(--ink-1)}
+.office-props .prop-words .loop-kind{display:inline;margin:0 4px 0 0;letter-spacing:.08em}
+.office-props .prop-words .scope{display:inline;margin:0}
+.office-props .prop-row .minibtn{padding:0 12px;min-height:44px}
 .bigcheck{width:26px;height:26px;flex:none;accent-color:var(--forest)}
 /* ── Talk (R30) — Mike's voice line inside Arbo. The header button sits on
    every screen; the sheet is one huge Start/End, a status line, the last
@@ -714,16 +716,16 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 /* Direction B P14: Office's desk tiles — two across, each a door to its screen, its R26 desk name above its
    title; red where something stops the day, amber where it waits on Mike. A dashed tile opens nothing (§1B). */
 .office-desks{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:2px 0 8px}
-.otile{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;min-height:132px;padding:13px 13px 12px;border:1px solid var(--hairline);border-radius:var(--r-lg);background:var(--card);box-shadow:var(--shadow-card);color:var(--ink-1);font:inherit;text-align:left;overflow:hidden;cursor:pointer}
+.otile{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;min-height:120px;padding:12px 13px 11px;border:1px solid var(--hairline);border-radius:var(--r-lg);background:var(--card);box-shadow:var(--shadow-card);color:var(--ink-1);font:inherit;text-align:left;overflow:hidden;cursor:pointer}
 .otile::after{content:'';position:absolute;left:0;right:0;top:0;height:3px;background:var(--forest);opacity:.18}
 .otile.hot::after{background:var(--emergency);opacity:.7}.otile.warn::after{background:var(--gold-5);opacity:.7}
-.otile .ico{width:24px;height:24px;color:var(--forest);margin-bottom:5px}
+.otile .ico{position:absolute;top:12px;left:13px;width:20px;height:20px;color:var(--forest)}
 .otile .cue{position:absolute;top:12px;right:12px;font-style:normal;font-size:20px;line-height:1;color:var(--ink-3)}
 .otile[aria-disabled="true"]{cursor:default}.otile[aria-disabled="true"] .cue{display:none}
 .otile[aria-disabled="false"]:active{transform:scale(.975)}
-.otile .odesk{font-size:12px;font-weight:650;letter-spacing:.02em;color:var(--gold-6)}
+.otile .odesk{font-size:12px;font-weight:650;letter-spacing:.02em;color:var(--gold-6);min-height:20px;line-height:20px;padding:0 18px 0 27px}
 .otile .otitle{font-family:var(--serif);font-size:19px;font-weight:600;line-height:1.15;color:var(--ink-1)}
-.otile .ocount{margin-top:6px;font-size:14.5px;font-weight:600;line-height:1.2;color:var(--ink-2)}
+.otile .ocount{margin-top:3px;font-size:14.5px;font-weight:600;line-height:1.2;color:var(--ink-2)}
 .otile .ocount b{font-family:var(--serif);font-variant-numeric:tabular-nums;font-size:28px;font-weight:600;color:var(--ink-1);vertical-align:-2px}
 .otile.hot .ocount b{color:var(--emergency)}.otile.warn .ocount b{color:var(--warning)}.otile.gap .ocount b{color:var(--ink-3)}
 .otile small{display:block;margin-top:3px;font-size:12.5px;line-height:1.3;color:var(--ink-3)}
@@ -4751,7 +4753,8 @@ async function renderPerformance() {
   const unjudged = p.areas.filter((a) => a.verdict === 'not_enough_data');
 
   if (judged.length) {
-    v.appendChild(el('div', 'panel-title', 'Rated areas \u2014 ' + judged.length));
+    const rated = v.appendChild(el('div', 'panel-title', 'Rated areas \u2014 ' + judged.length));
+    rated.id = 'perf-rated'; // where an area proposal lands (P14 review)
     v.appendChild(el('div', 'storm-muted', 'Ranked by revenue per crew-hour, not per job, so big removals don\u2019t skew it.'));
     for (const a of judged) v.appendChild(areaCard(a));
   }
@@ -5547,6 +5550,7 @@ async function renderFleetList(slot) {
   for (const u of [...f.units].sort((a, b) => (!b.schedulable) - (!a.schedulable))) {
     const c = el('div', 'card' + (u.schedulable ? '' : ' emergency'));
     c.dataset.unit = u.id; // where Before you roll lands (Direction B P11)
+    c.dataset.status = u.status; // where a held or DOWN unit's proposal lands (P14 review)
     const top = el('div', 'toprow');
     top.appendChild(el('div', 'who', u.name));
     top.appendChild(el('div', 'when', u.kind || ''));
@@ -5822,7 +5826,7 @@ function renderFleetView() {
 // lessons waiting on Mike's name (§4.7) and the reference library (§6U).
 function renderSafetyView() {
   return deskView('safety', 'Credentials and near misses first, then the roster, training, safety lessons and the library. Arbo recommends — you decide.', [
-    ['queue-safety', renderSafety], [null, renderRoster], [null, renderTrainingBoard], [null, renderVetting], [null, renderLibraryDesk],
+    ['queue-safety', renderSafety], [null, renderRoster], [null, renderTrainingBoard], [null, renderVetting], ['safety-library', renderLibraryDesk],
   ]);
 }
 
@@ -6561,7 +6565,7 @@ function heroLoops() {
 // crew preview's way back, NAV_DRAW); its title is Office (VIEW_TITLES). Top to bottom: the head; the
 // agents' proposals, each opening the screen where Mike acts on it; one counted tile per desk
 // (OFFICE_DESKS, the mockup's order); then the rest of Arbo. A desk tile says "Reading…" until its own
-// read lands. A read that failed is a dashed tile with the feed word and no digit, and opens nothing;
+// read lands, and opens its desk meanwhile (P14 review). A read that failed is a dashed tile with the feed word and no digit, and opens nothing;
 // the feeds card counts it too (§1B). The head counts the desks that need Mike (red or amber) and
 // never reads calm over a desk Arbo did not read.
 // need: one of the four jobs the Queue held (the head counts those). side: a second line the tile
@@ -6658,7 +6662,18 @@ function officeProposals() {
   else if (!ran) c.appendChild(el('div', 'storm', 'The run did not complete (' + run.error + '). No proposal is shown rather than a stale one.'));
   else {
     const short = run.reports.filter((r) => r.status !== 'ok').length;
-    for (const p of props) c.appendChild(proposalRow(p, true));
+    // Four at most, so a big run never buries the desks below (P14 review); past four, the first three and
+    // the rest counted, one tap from Agents, which lists every one.
+    const shown = props.length > 4 ? props.slice(0, 3) : props;
+    for (const p of shown) c.appendChild(proposalRow(p, true));
+    if (shown.length < props.length) {
+      const row = c.appendChild(el('div', 'prop-row'));
+      row.appendChild(el('div', 'prop-words', plural(props.length - shown.length, 'more proposal', 'more proposals') + ' — every one is on Agents'));
+      const b = row.appendChild(el('button', 'minibtn', 'Agents ›'));
+      b.type = 'button';
+      b.setAttribute('aria-label', 'Open Agents');
+      b.addEventListener('click', () => { switchTab('agents'); renderAgents(); });
+    }
     if (short) c.appendChild(el('div', 'feed-state unset', (props.length ? '' : 'No proposals — ') + plural(short, 'desk', 'desks') + ' couldn’t read everything (named on Agents)' + (props.length ? ' — there may be more.' : '.')));
     else if (!props.length) c.appendChild(el('div', 'storm-muted', 'No proposals from this run.'));
   }
@@ -6691,14 +6706,15 @@ function officeAge() {
   c.replaceWith(officeProposals());
 }
 // Office's head, proposals and desk tiles, drawn into v before any read lands; returns its feeds
-// card (renderMore places it). A desk tile opens its screen only once its read has landed; a newer
-// draw owns the feeds card, and an older draw's late reads fill tiles no longer on screen.
+// card (renderMore places it). A desk tile opens its screen at once, while its count reads, and is
+// inert only once its read failed; a newer draw owns the feeds card, and an older draw's late reads
+// fill tiles no longer on screen.
 function officeHub(v) {
   const head = el('div', 'viewhead');
   head.appendChild(el('div', 'eyebrow', 'The back office'));
   const h1 = head.appendChild(el('h1', '', VIEW_TITLES.more));
-  head.appendChild(el('p', '', 'Tap a desk to land on its work.'));
-  v.appendChild(head);
+  v.appendChild(head); // no help line under it (P14 review): the first screen is the proposals and the four job desks
+
   v.appendChild(officeProposals());
   const feeds = feedsCard('more');
   const grid = v.appendChild(el('div', 'office-desks'));
@@ -6706,14 +6722,16 @@ function officeHub(v) {
     const t = grid.appendChild(el('button', 'otile'));
     t.type = 'button';
     t.dataset.desk = d.view;
-    t.setAttribute('aria-disabled', 'true'); // until its read lands; a dashed tile stays this way
+    // A desk tile is a door first: it opens its desk at once, while its count still reads, as its More tile did
+    // (P14 review — a tap during "Reading…" was dropped). Only a read that failed makes it dashed and inert (§1B).
+    t.setAttribute('aria-disabled', 'false');
     t.appendChild(icon(d.icon));
     const cue = t.appendChild(el('i', 'cue', '›'));
     cue.setAttribute('aria-hidden', 'true');
     t.appendChild(el('span', 'odesk', DESK_LINE[d.view]));
     t.appendChild(el('span', 'otitle', VIEW_TITLES[d.view]));
     const reading = t.appendChild(readingLine());
-    let go = false;
+    let go = true;
     // As its old More tile did: switch, and a desk off the minute timer (Teach Arbo) is drawn fresh.
     t.addEventListener('click', () => { if (!go) return; switchTab(d.view); if (NAV_DRAW[d.view]) NAV_DRAW[d.view](); });
     const count = (n) => { const c = el('span', 'ocount'); c.appendChild(el('b', '', n)); return c; };
@@ -6725,12 +6743,12 @@ function officeHub(v) {
       if (r.sub) t.appendChild(el('small', '', r.sub.split(' · ').map((x) => x.replace(/^(\S+) /, '$1\u00a0')).join(' ·\u00a0')));
       if (r.side) t.appendChild(el('small', 'ogap', d.side + ': ' + FEED_WORD[r.side]));
       if (r.tone) t.classList.add(r.tone);
-      t.setAttribute('aria-disabled', 'false');
       t.setAttribute('aria-label', VIEW_TITLES[d.view] + ': ' + r.n + ' ' + r.what + (r.sub ? '. ' + r.sub : ''));
-      go = true;
       return { d: d, tone: r.tone, side: r.side, part: r.part || null };
     }, async (e) => {
       if (e && e.code === 401) { reading.remove(); return { d: d, key: true }; } // the key wall owns the screen
+      go = false; // a dashed tile opens nothing, from the moment its read failed
+      t.setAttribute('aria-disabled', 'true');
       await LINKS_READY; // whether db_not_configured means "cut" depends on the links
       const k = feedKind(e);
       reading.replaceWith(count('–'));
@@ -6752,10 +6770,14 @@ function officeHub(v) {
     // A desk is read whole only when its second read landed too, and its read checked everything it carries:
     // no calm line over recommended sends Arbo couldn't read, or nudges it couldn't check (P14 review).
     const read = jobs.filter((r) => !r.kind && !r.side && !r.part).length;
+    const counted = jobs.filter((r) => !r.kind).length; // its count landed, whole or in part
     const unread = rs.filter((r) => r.kind === 'unread').length;
     const off = rs.filter((r) => r.kind && r.kind !== 'unread').length;
+    // "Could not be read" is said only of reads that failed; desks cut on purpose or not set up were never
+    // read, and are "not counted" (P14 review, §1B: "couldn't read" and "cut" are different facts).
     h1.textContent = need ? plural(need, 'desk needs you', 'desks need you')
-      : read === jobs.length ? 'No desk needs you right now' : read ? 'No desk Arbo read needs you' : 'No desk could be read';
+      : read === jobs.length ? 'No desk needs you right now' : counted ? 'No desk Arbo read needs you'
+        : jobs.every((r) => r.kind === 'unread') ? 'No desk could be read' : 'No desk counted';
     const gaps = [unread ? unread + ' couldn’t be read' : '', off ? off + ' off' : ''].filter(Boolean).join(' · ');
     if (gaps) h1.appendChild(el('span', 'h1-gap', ' · ' + gaps));
   });
@@ -6815,8 +6837,8 @@ function renderMore() {
     talk.querySelector('small').textContent = 'Off while Sona answers calls';
   }).catch(() => {});
   v.appendChild(grid);
-  // Settings opens from the header button on every screen — no second door here; this line only points to it.
-  v.appendChild(el('div', 'storm-muted office-gear', 'Settings open from the gear at the top.'));
+  // Settings opens from the header button on every screen (its icon is sliders, i-settings) — no second door here; this line only points to it.
+  v.appendChild(el('div', 'storm-muted office-gear', 'Settings open from the sliders button at the top.'));
   // Direction B P14: Office's feeds card — every desk Arbo couldn't read, counted and named (each stays in its place).
   v.appendChild(feeds.el);
 
@@ -7207,6 +7229,15 @@ const PROPOSAL_GO = {
   fix_credentials: ['Open Crew & safety →', 'safety'], lesson_draft: ['Open Crew & safety →', 'safety'], vet_reference: ['Open Crew & safety →', 'safety'],
   area_review: ['Open Numbers →', 'perf'],
 };
+// Where on its screen each proposal lands (P14 review; spec: "agent proposals at the top, each jumping to
+// its panel"): a selector openPanel looks for while the screen draws, then scrolls to and flashes. A kind
+// not here, or a miss, still lands on the right screen. The held and DOWN units are the Fleet's own cards.
+const PROPOSAL_AT = {
+  decide_open_loops: '#queue-loops', collections_review: '#queue-money',
+  parts_review: '#view-fleet [data-unit][data-status="down"]', signback_review: '#view-fleet [data-unit][data-status="held"]',
+  fix_credentials: '#queue-safety', lesson_draft: '#queue-safety', vet_reference: '#safety-library',
+  area_review: '#perf-rated',
+};
 // Direction B P6 (spec: "Agents lists its proposals at the top"): every desk's
 // proposals in one list, in the roster's order, each with the desk that made it.
 // With no roster (Office's card) the run's own order. A desk the roster does not
@@ -7224,14 +7255,23 @@ function agentProposals(run, roster) {
 // Direction B P14: on Office (short) the button says just the screen, "Fleet ›", and keeps "Open Fleet" as its name.
 function proposalRow(p, short) {
   const row = el('div', 'prop-row');
-  row.appendChild(el('div', 'loop-kind', p.desk));
-  row.appendChild(el('div', 'scope', p.text));
+  if (short) {
+    // Office (review): the desk in front of what it proposes, two lines at most — a tap opens them whole (clampLine's way).
+    const w = row.appendChild(el('div', 'prop-words clamp'));
+    w.appendChild(el('span', 'loop-kind', p.desk));
+    w.appendChild(el('span', 'scope', p.text));
+    w.addEventListener('click', () => w.classList.toggle('open'));
+  } else {
+    row.appendChild(el('div', 'loop-kind', p.desk));
+    row.appendChild(el('div', 'scope', p.text));
+  }
   const go = PROPOSAL_GO[p.kind];
   if (go) {
     const b = el('button', 'minibtn', short ? VIEW_TITLES[go[1]] + ' ›' : go[0]);
     if (short) b.setAttribute('aria-label', go[0].replace(/ →$/, ''));
     b.type = 'button';
-    b.addEventListener('click', () => switchTab(go[1]));
+    const at = PROPOSAL_AT[p.kind];
+    b.addEventListener('click', () => openPanel(go[1], at ? () => document.querySelector(at) : null));
     row.appendChild(b);
   }
   return row;

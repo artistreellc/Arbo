@@ -163,7 +163,8 @@ describe('each desk draws its head before any read, then the Queue\'s panels, un
   it('Crew & safety: Crew Chief; the safety board (blind spots and aerial first) leads, then roster, training, lessons, library', async () => {
     const d = desk('safety');
     const p = d.run();
-    expect(d.log).toEqual(['safety#queue-safety:head-first', 'roster#-:head-first', 'training#-:head-first', 'vetting#-:head-first', 'library#-:head-first']);
+    // P14 review: the library's slot has an id now — where a "vet a library draft" proposal lands.
+    expect(d.log).toEqual(['safety#queue-safety:head-first', 'roster#-:head-first', 'training#-:head-first', 'vetting#-:head-first', 'library#safety-library:head-first']);
     expect(d.v.children[0]!.children[0]!.textContent).toBe('Crew Chief');
     expect(d.v.children[0]!.children[1]!.textContent).toBe('Crew & safety');
     d.settle();

@@ -39,7 +39,7 @@ describe('Queue — one dead feed never blanks the screen (§1B)', () => {
     expect(desk).toContain('const runs = panels.map(([id, render]) => {');
     expect(desk.indexOf('return render(slot);')).toBeLessThan(desk.indexOf('await Promise.allSettled(runs);'));
     for (const panel of ["['queue-safety', renderSafety]", '[null, renderRoster]', '[null, renderTrainingBoard]', '[null, renderVetting]',
-      '[null, renderLibraryDesk]', "['queue-money', renderMoney]", "['queue-fleet', renderFleet]"]) {
+      "['safety-library', renderLibraryDesk]", "['queue-money', renderMoney]", "['queue-fleet', renderFleet]"]) {
       expect(desk, panel).toContain(panel);
     }
   });
