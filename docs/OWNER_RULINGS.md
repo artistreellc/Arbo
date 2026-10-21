@@ -1436,3 +1436,102 @@ What this settles:
 
 *Carried by:* `docs/PHONE_SETUP.md` (the numbers table) and the R21 vendor
 switches in `src/integrations/vendorLinks.ts` (unchanged, still CUT).
+
+## R37 — The map: one Map screen, today's stops first (Mike, 2026-10-20)
+
+**DRAFT — Claude wrote this from Mike's words; Mike confirms or corrects it.**
+
+Mike, verbatim: *"the map, the crew section, everythimg else really needs to
+start tightening up and updating i need thos app to lauch very soon"*. Asked
+which map, his answers: **all four** (today's stops plus route; leads and jobs;
+crew and trucks; permit areas); launch — *"I use it daily first"*; date — this
+month (October 2026). Earlier: *"for a route planner intergrate tomtom"* (R35)
+and, on Bouncie, *"why dont you build and then i add later"* (R31).
+
+What this changes (built so far: M0 and M1, D106; the plan is
+`docs/MAPS_PLAN.md`):
+1. **One Map screen in the owner app**, reached from Calendar's Today's stops
+   (the **Map** button) and the links `/app#map-today`, `#map-permits`,
+   `#map-leads`, `#map-trucks`. Four layers Mike switches on and off: Today,
+   Permit areas, Leads & jobs, Trucks. Today is drawn now; the other three
+   say they are not drawn yet when switched on — never an empty map (§1B).
+2. **Today's stops on the map**, from the same calendar read and plan as
+   Calendar's Today's stops (R35): numbered in the planned order, joined by
+   straight lines that show order only. An **exact pin** only where TomTom
+   already placed the address for the route; otherwise a hollow **ZIP-area**
+   pin; every stop the map can't place is listed with why. A tap opens the
+   same *"Open in Google Maps?"* sheet as Calendar. Driving stays in Google
+   Maps.
+3. **No address goes anywhere new.** The map asks TomTom nothing (it reads
+   what the planner already holds) and asks no geocoder. The street map comes
+   from OpenStreetMap: the phone asks it for the map squares in view.
+4. **Nothing is written or saved.** The map's answers are never cached or
+   logged; the crew door never gets a map.
+
+Defaults Claude used where Mike did not say (Mike may change any) — the plan's
+questions, as built:
+- **Q1 Street map from OpenStreetMap:** yes. OSM sees which squares are viewed
+  (down to street level), the phone's IP and Arbo's address — never a name,
+  an address or a ZIP. The map opens on the four cities and never zooms to a
+  pin by itself.
+- **Q2 TomTom map tiles instead:** no — kept as the fallback if OSM refuses.
+- **Q3 Exact pins for stops the planner skips** (before 4 PM, all day,
+  ongoing): no — ZIP-area pins; TomTom is not sent those addresses.
+- **Q4 Census lookups of calendar addresses without TomTom:** no.
+- **Q5 Home, start and end on the map:** not drawn; named in words.
+- **Q9 A Map tile on Today, or a sixth dock tab:** neither — Map is one tap
+  from Calendar.
+- **Q10 Lines that follow the roads:** no — straight lines, order only
+  (*"Order only — straight lines, not roads. Google Maps draws the road."*).
+- **Q12 The privacy page:** a line is drafted below and NOT published —
+  `/privacy` changes only after Mike OKs the words, and before the TomTom key
+  goes in.
+
+Draft privacy line (Q12) — for Mike's OK, not on `/privacy`:
+> *Maps. Arbo's map shows OpenStreetMap's street map: the phone asks
+> OpenStreetMap for the map squares on screen, so it learns which area was
+> viewed, the phone's internet address and Arbo's address — never a name, an
+> address or a ZIP. With Permit areas on, it asks Virginia's Department of
+> Environmental Quality the same way. To plan the day's route, today's
+> calendar event locations are sent to TomTom exactly as typed (and a stop's
+> address to Google Maps when you choose to open it). Nothing else is shared.*
+
+Open — Mike's call (each built as its default above, or not built):
+1. Q1, Q2, Q3, Q4, Q5, Q9, Q10, Q12 above — confirm or change.
+2. **Q6 Older leads (14+ days) on the map** — default: hidden and counted
+   (Leads & jobs, M3, not built yet).
+3. **Q7a Exact lead pins** (needs a new address lookup) — default: no, ZIP
+   areas only. **Q7b Leads from Gmail and Sona on the map** — not built; needs
+   a ruling first (R4, §3, R24).
+4. **Q8 Crew phones reporting where they are** — default: **not built**. Only
+   on a ruling that names whose phones, working hours only, how each crew
+   member agrees and can see it is on, who sees it (Mike only), how long it is
+   kept, and that R32's no-writes rule is lifted for it.
+5. **Q11 Centre the permit map on the address being prepped** — default: no.
+6. **Q13 Trucks' trips after 8 pm** — not built (R31's open item).
+7. **Q14 What "jobs" on the map should be** — default: neither yet; today's
+   calendar jobs show on the Today layer.
+8. **Q15 Placing leads by the ZIP on their property record** (those rows are
+   FLAGGED in the data check) — default: yes, labelled "ZIP from the lead's
+   record" (M3).
+9. **The ZIP areas themselves.** The build could not read the Census ZIP file
+   (its host was refused by the build machine's network), so no ZIP area is
+   on the map yet and stops without an exact pin are listed instead. Filling
+   the table from the Census file is a build step, dated and tested — not a
+   decision — but until it is done, ZIP-area pins do not appear.
+
+What did NOT move: R2 — the calendar frame is unchanged; R4 and §3 — nothing
+imported, nothing saved; R24, R32, R33 — read only; R35 — TomTom is asked only
+what the planner already asks, and the key never leaves the server; §4.3 —
+logs carry counts and codes; the crew door gets no map; deploys stay manual.
+
+*Carried by:* `src/app/map.html`, `src/app/index.html` (the Map screen,
+`openMap`, `MAP_HOME`, the Today's stops Map button), `src/server.ts` (`/map`,
+`/map/leaflet.*`, `GET /api/map/today`), `src/server/appPage.ts`
+(`loadMapHtml`, `loadLeafletFile`), `src/ops/mapToday.ts`,
+`src/ops/todayStops.ts` (`readRows`), `src/integrations/tomtom.ts` (`peek`),
+`src/lib/zipCentroids.ts`, `src/permitting/gis/layers.ts`
+(`DEQ_MAPSERVER_BASE`), `src/app/sw.js`, `docs/MAPS_PLAN.md`,
+`docs/ROUTE_PLANNER.md`, `test/mapPage.test.ts`, `test/mapRoutes.test.ts`,
+`test/mapShell.test.ts`, `test/mapToday.test.ts`, `test/mapTodayFrame.test.ts`,
+`test/zipCentroids.test.ts`.
