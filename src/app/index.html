@@ -263,6 +263,7 @@ button.hstat{position:relative}.hstat .cue{display:none}.hstat[aria-disabled="fa
 .card .toprow{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:4px}
 .card .who{font-family:var(--serif);font-size:19px;font-weight:600;line-height:1.22;color:var(--ink-1);display:flex;align-items:center;font-variation-settings:'opsz' 30}
 .card .when{font-variant-numeric:tabular-nums;font-size:14px;font-weight:700;color:var(--gold-6);white-space:nowrap}
+.card .toprow .who{min-width:0;overflow-wrap:anywhere} /* a long unbroken name wraps, never pushes the page sideways */
 .card .addr{font-size:15px;margin:2px 0 8px;color:var(--ink-2)}
 .card .addr a{color:var(--forest);text-decoration:none;font-weight:600}
 .card .scope{font-size:14.5px;color:var(--ink-2);margin-bottom:8px;line-height:1.5}
@@ -312,6 +313,9 @@ nav button .navpill span:last-child{white-space:nowrap;overflow:hidden;text-over
 nav button .ico{width:23px;height:23px}
 nav button.active{color:var(--forest);background:var(--f-100)}
 nav button.dock-hidden{display:none}
+/* Wave 3b review: on a 320 px phone five labels filled their buttons edge to edge ("Calendar Estimate" read as one) —
+   the buttons take the gutter and the gaps instead (the 12 px label floor, P2, stays). */
+@media (max-width:359px){nav{left:8px;right:8px;padding:8px 4px;gap:0}nav button{letter-spacing:0}}
 /* The Leads tab's badge (R26): a red count of EMERGENCY leads. A leads feed Arbo could not read keeps a dot in the
    feed-state colours (grey = cut or not simulated, amber = not set up, hollow amber = couldn't read it) — never a
    quiet no-badge (§1B). The button's aria-label says which in words. */
@@ -366,6 +370,7 @@ nav button .dot.p-unread::after{background:var(--card);box-shadow:inset 0 0 0 2p
 .storm .sliplink,.card .sliplink{display:flex;width:100%;min-height:44px;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;padding:10px 12px;
   border-radius:12px;border:1px solid color-mix(in srgb,var(--emergency) 40%,transparent);background:var(--card);color:inherit;font:inherit;font-weight:600;text-align:left}
 .storm .sliplink::after,.card .sliplink::after{content:'\203A';font-size:22px;line-height:1;flex:none}
+.sliplink{overflow-wrap:anywhere} /* wave 3b review: a long unbroken name wraps inside the row, never widens the page */
 .card.flash{animation:cardflash 1.8s var(--ease)}
 .flash:not(.card){animation:cardflash 1.8s var(--ease);border-radius:var(--r-md)} /* Direction B P10: a panel a tap landed on */
 @keyframes cardflash{0%,40%{box-shadow:0 0 0 3px var(--emergency)}100%{box-shadow:none}}
@@ -1830,7 +1835,9 @@ function quoOffLine(links) {
     ? el('div', 'feed-state sim', Cap(FEED_WORD.sim) + ' — no real customer threads, texts or Sona calls show here; those stay in Quo.') // "real": the PRACTICE text under Calls › Texts is made up
     : el('div', 'feed-state unset', 'Quo isn’t connected to Arbo yet — Arbo can’t read your customer threads, can’t text anyone, and Sona’s calls aren’t reaching Arbo. That doesn’t mean there are no customer threads or Sona calls.');
 }
-function fillQuoSlots(reads, slots, place) {
+// saidAbove: the screen already says the fold's words where Sona's flag goes (the Leads head, on Calls & texts), so the
+// folded card names Quo and points there — the paragraph is said once on the screen (wave 3b review, UI #7).
+function fillQuoSlots(reads, slots, place, saidAbove) {
   const put = place || ((slot, x) => x.then((b) => { if (b) slot.appendChild(b); }));
   // LINKS_READY too: in practice mode the gap is "not in the practice data",
   // not a real outage — the same words Inbox and Website forms use there.
@@ -1839,7 +1846,7 @@ function fillQuoSlots(reads, slots, place) {
     if (bs.every((b) => b && b.dataset.quoOff)) {
       const q = el('div');
       q.appendChild(el('div', 'panel-title', 'Quo'));
-      q.appendChild(quoOffLine(links));
+      q.appendChild(saidAbove ? el('div', 'storm-muted', 'Shown in its own place on this screen.') : quoOffLine(links));
       q.dataset.off = links === 'simulation' ? 'sim' : 'unset'; // Direction B P12: one feed on the feeds card
       q.dataset.feedName = 'Quo';
       return slots.map((s, i) => (i ? null : q)); // the first slot carries it; the others stay empty
@@ -4503,7 +4510,7 @@ async function renderCalls() {
   const outreachFull = el('div', 'slot');
   page.appendChild(outreachFull);
   // The three fill together, so a Quo that is not connected is ONE card (in the feeds card here, as on Today).
-  fills.push(fillQuoSlots([sonaPanel(20, true), studyPanel(60), outreachPanel(true)], [sonaCallsSlot, studyFull, outreachFull], feeds.place));
+  fills.push(fillQuoSlots([sonaPanel(20, true), studyPanel(60), outreachPanel(true)], [sonaCallsSlot, studyFull, outreachFull], feeds.place, true));
   // Texts + photos sent to the Arbo number (Mike, 2026-09-24). Receive only.
   // '.texts': the business-cell line hangs under the Arbo-line row's text (two peer lines).
   const txSlot = el('div', 'slot texts');

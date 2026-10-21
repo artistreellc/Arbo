@@ -507,7 +507,8 @@ describe('Calls & texts: the old Calls screen, Sona first (P16)', () => {
     expect(at.every((x) => x > -1)).toBe(true);
     expect(at).toEqual([...at].sort((a, b) => a - b));
     expect(calls).toContain("const feeds = feedsCard('calls');");
-    expect(calls).toContain('fills.push(fillQuoSlots([sonaPanel(20, true), studyPanel(60), outreachPanel(true)], [sonaCallsSlot, studyFull, outreachFull], feeds.place));');
+    // Review round (UI #7): saidAbove — the head says the fold's words, so the card names Quo once.
+    expect(calls).toContain('fills.push(fillQuoSlots([sonaPanel(20, true), studyPanel(60), outreachPanel(true)], [sonaCallsSlot, studyFull, outreachFull], feeds.place, true));');
   });
 
   it('sonaPanel on Calls & texts leaves the red flag to the head above; Today keeps its own box (one builder, sonaSlipBox)', async () => {
