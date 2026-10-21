@@ -127,8 +127,10 @@ function kit(routes: { leads?: () => unknown; quo?: () => unknown }, links = 're
     throw new Error('unexpected read ' + path);
   };
   const helpers = ['feedKind', 'feedLine', 'plural', 'readingLine', 'slipRuleLabel', 'sonaSlipBox', 'quoOffLine',
-    'leadsTabBadge', 'sonaTabBadge', 'leadsHeadOn', 'leadsFilter', 'renderLeadsHead'];
-  const built = new Function('document', 'api', 'switchTab', 'openSonaCall', 'linksIn', 'curIn', `
+    'leadsTabBadge', 'sonaTabBadge', 'leadsHeadOn', 'leadsFilter', 'renderLeadsHead', 'sonaHandled']; // P17: the calls Mike called back
+  const store = new Map<string, string>();
+  const localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => { store.set(k, v); } };
+  const built = new Function('document', 'api', 'switchTab', 'openSonaCall', 'linksIn', 'curIn', 'localStorage', `
     const $ = (id) => document.getElementById(id);
     const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
     let LINKS = linksIn;
@@ -137,10 +139,10 @@ function kit(routes: { leads?: () => unknown; quo?: () => unknown }, links = 're
     let LH_GEN = 0;
     let LEADS_FILTER = 'all';
     const fmtTime = (x) => 'T(' + x + ')';
-    ${['FEED_WORD', 'Cap', 'FEED_TAG', 'RETRY', 'VIEW_TITLES', 'LEADS_FILTERS'].map(constSrc).join('\n')}
+    ${['FEED_WORD', 'Cap', 'FEED_TAG', 'RETRY', 'VIEW_TITLES', 'LEADS_FILTERS', 'SONA_DONE_KEY', 'SONA_DONE_MS'].map(constSrc).join('\n')}
     ${helpers.map(fnSrc).join('\n')}
     return { renderLeadsHead, leadsHeadOn, leadsFilter, leadsTabBadge, sonaTabBadge, filter: () => LEADS_FILTER };`)(
-    document, api, (t: string) => tabs.push(t), (id: string) => opened.push(id), links, cur,
+    document, api, (t: string) => tabs.push(t), (id: string) => opened.push(id), links, cur, localStorage,
   ) as Omit<Kit, '$' | 'tabs' | 'opened'>;
   return { ...built, $: (id: string) => document.getElementById(id), tabs, opened };
 }
@@ -512,7 +514,8 @@ describe('Calls & texts: the old Calls screen, Sona first (P16)', () => {
         const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
         const fmtTime = (x) => 'T(' + x + ')';
         ${['FEED_WORD', 'Cap', 'RETRY', 'TONE'].map(constSrc).join('\n')}
-        ${['plural', 'badge', 'chip', 'slipRuleLabel', 'feedKind', 'feedLine', 'sonaSlipBox', 'sonaPanel'].map(fnSrc).join('\n')}
+        const SONA_DONE_KEY = 'arboSonaHandled'; const SONA_DONE_MS = 1; const localStorage = { getItem: () => null, setItem: () => {} };
+        ${['plural', 'badge', 'chip', 'slipRuleLabel', 'feedKind', 'feedLine', 'sonaHandled', 'sonaCalledBack', 'sonaSlipBox', 'sonaPanel'].map(fnSrc).join('\n')}
         return sonaPanel(withT ? 20 : 3, withT);`.replace(/withT/g, String(withTranscripts)))(
         document, async () => quo([call('Q1', { slips: [SLIP] })]), () => {},
       ) as Promise<N>;
@@ -523,7 +526,7 @@ describe('Calls & texts: the old Calls screen, Sona first (P16)', () => {
     expect(onCalls.textContent).toContain('SONA BROKE A RULE'); // the card itself stays red, with her words
     const onToday = await make(false);
     expect(onToday.all().filter((n) => n.has('sliplink'))).toHaveLength(1);
-    expect(fnSrc('sonaPanel')).toContain('sonaSlipBox(d)');
+    expect(fnSrc('sonaPanel')).toContain('sonaSlipBox(d, done)'); // P17: with the calls Mike called back
   });
 
   it('openSonaCall\'s target view holds the [data-sona-call] cards (sonaPanel(20, true) fills a slot of view-calls)', () => {

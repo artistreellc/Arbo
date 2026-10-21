@@ -469,6 +469,7 @@ describe('the app says it', () => {
     get textContent(): string { return this.text + this.children.map((c) => c.textContent).join(' '); }
     set textContent(t: string) { this.text = t; this.children = []; }
     appendChild(n: FakeEl) { this.children.push(n); return n; }
+    addEventListener(): void { /* Direction B P17: a Sona card's Call back carries its tap (its own tests: directionB_sonaHandled) */ }
     all(): FakeEl[] { return [this, ...this.children.flatMap((c) => c.all())]; }
   }
   const el = (tag: string, cls?: string, text?: string) => { const n = new FakeEl(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
