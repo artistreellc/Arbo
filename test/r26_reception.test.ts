@@ -493,7 +493,8 @@ describe('R29 #4 — a downed line with nobody hurt: the Dominion line only, nev
   it.each([
     'The power line is down, nobody was injured.',
     'A line is down in the yard — no one is injured.',
-    'Power line down, nobody was seriously injured.',
+    // review (D1): "nobody was seriously injured" was here — it says someone may be hurt, so it now keeps 911 (below).
+    'The power line came down and nobody was hurt or injured.',
   ])('English, run: "%s" (the injury path) → Dominion, no 911; Mike alerted as before', async (text) => {
     const { r } = desk([]);
     const before = alerts.length;
@@ -569,6 +570,175 @@ describe('R29 #4 — a downed line with nobody hurt: the Dominion line only, nev
     expect(g.callRouting.incident.triggers.injury).toContain('injured');
     expect(detectIntent('The power line is down, nobody was injured.', g)).toMatchObject({ intent: 'incident', incidentType: 'injury' });
     expect(g.emergency.safetyLines.personHurt).toBe(NINE_ONE_ONE);
+  });
+});
+
+// ─────────── R29 #4, review round (D1): 911 stays whenever someone MAY be hurt ───────────
+// The review found callers' everyday ways of saying someone IS hurt that the
+// first denial check read as "nobody hurt" and dropped the 911 line. Every one
+// of these heard 911 before P5 and must hear it now: the exception said first,
+// the caller hurt themself, a self-correction, a hurt word the list lacked, a
+// partial denial ("not seriously"), a hedge, a tag question with no "?".
+// The 911 line is conditional ("If anyone is hurt…"), so over-warning is the
+// cheap failure; a dropped 911 is not (R29 #4: detection stays sensitive).
+describe('R29 #4 review (D1) — the 911 line stays whenever someone may be hurt, EN and ES', () => {
+  const MAY_BE_HURT: Record<string, string[]> = {
+    'an exception said before the denial': [
+      'Except for my wife, nobody was injured. The power line is down.',
+      'Other than my husband, no one is injured, the line is down.',
+      'Apart from my son nobody was injured',
+      'Except for me, nobody was injured. The power line is down.',
+      'Menos mi hijo, nadie está herido. Los cables están en el suelo.',
+      'Aparte de mi esposo, nadie salió lastimado. Hay cables en el suelo.',
+      'Aparte de mí, nadie está herido. Hay cables en el suelo.',
+    ],
+    'the caller is the one hurt': [
+      'Nobody was injured except me. The power line is down.',
+      'No one is injured but me, the line is down.',
+      'Nobody was injured but I hit my head. The power line is down.',
+      'power line down no one injured but i hit my head',
+      'Se cayó un cable de luz, nadie está herido excepto yo.',
+      'Los cables están en el suelo, nadie se lastimó, pero yo me lastimé.',
+      'Hay cables en el suelo, nadie esta herido, me duele la cabeza',
+    ],
+    'a self-correction with no "but" or "except"': [
+      'Nobody was injured, my son was. The line is down.',
+      'The power line is down. Nobody was injured, well actually my wife was.',
+      'The line is down, nobody was injured, wait, my neighbor was.',
+      'The power line is down, no one is injured, I mean my son is.',
+      'The power line is down, nobody was injured, actually I was.',
+      'Hay cables en el suelo, nadie está herido, bueno, mi hijo sí.',
+      'Los cables se cayeron, nadie está herido, mi esposo sí.',
+    ],
+    'a hurt word the first list lacked': [
+      'No one was injured, my son got electrocuted. The power line is down.',
+      'The line is down and nobody was injured, my husband got burned by the wire',
+      'The power line is down and nobody was injured, my son was shocked.',
+      'The power line is down, nobody was injured, my dad collapsed',
+      'Nobody was injured, the line is down, he\'s not responding.',
+      'Nobody was injured, the line is down, she can\'t breathe.',
+      'The line is down nobody was injured my wife is having a heart attack',
+      'Nobody was injured but the worker is dead',
+      'Nobody was injured last time. This time a branch hit him. The line is down.',
+      'The power line is down, nobody was injured, I got hit by a branch.',
+      'The power line is down, nobody was injured, I fell off the ladder.',
+      'Nobody was injured, my son is stuck in the tree by the power line.',
+      'The power line is down, nobody was injured, I got zapped touching the wire.',
+      'Los cables están en el suelo, nadie está herido, mi hijo se electrocutó.',
+      'Los cables están en el suelo, nadie está herido, a mi esposo le dio la corriente.',
+      'Los cables se cayeron, nadie se lastimó, mi hijo se quemó.',
+      'Hay cables en el suelo, nadie salió lastimado, mi papá se desmayó.',
+    ],
+    'a partial denial ("not seriously") is not a whole one': [
+      'Power line down, nobody was seriously injured.',
+      'Nobody was really injured, the line is down.',
+      'The line is down, nobody was injured too badly.',
+      'Los cables se cayeron, no hay heridos graves.',
+      'Hay cables en el suelo, sin heridos graves.',
+      'Los cables se cayeron, nadie está gravemente herido.',
+    ],
+    'a hedge, hearsay or a denial that is negated': [
+      'We think nobody was injured, the power line is down.',
+      'As far as we know nobody was injured, the line is down.',
+      'Nobody was injured I don\'t think, the line is down.',
+      'Supposedly nobody was injured, the power line is down.',
+      'They said nobody was injured, the line is down.',
+      'Nobody was injured as far as I can see, the line is down.',
+      'I can\'t say nobody was injured, the power line is down.',
+      'It\'s not true that nobody was injured, the power line is down.',
+      'Nobody was injured at first, the power line is down.',
+      'Nobody was injured yet, the power line is sparking.',
+      'Creemos que nadie está herido, los cables están en el suelo.',
+      'Pienso que nadie está herido, los cables están en el suelo.',
+      'Al parecer nadie está herido, hay cables en el suelo.',
+      'Que yo sepa nadie está herido, hay cables en el suelo.',
+    ],
+    'a question, with or without the "?"': [
+      'the power line is down nobody was injured right',
+      'the power line is down nobody was injured is that right',
+      'The power line is down, nobody was injured, correct?',
+      'Hay cables en el suelo nadie está herido verdad',
+      'Hay cables en el suelo, nadie está herido ¿verdad?',
+      '¿Nadie está herido? Hay cables en el suelo.',
+      'The line is down. Nobody was injured? I\'m not sure.',
+    ],
+    'someone named by name, a supposition, a scoped denial': [
+      'Nobody was injured except John. The power line is down.',
+      'Nobody was injured, but John was. The power line is down.',
+      'Nobody was injured. John was though. The power line is down.',
+      'The power line is down, nobody was injured, John fell.',
+      'Nobody was injured, he was. The line is down.',
+      'Nadie está herido, Juan sí. Hay cables en el suelo.',
+      'Nadie está herido, solo Juan. Hay cables en el suelo.',
+      'Si nadie está herido, ¿llamo a Dominion? Hay cables en el suelo.',
+      'Nobody was injured in the house, the power line is down.',
+      'Nobody was injured that we know of, the line is down.',
+      'Nobody was injured last time, the line is down again.',
+      'Nobody was injured as of now, the line is down.',
+      'Nobody was injured, I slipped and the line is down.',
+      'I fell, nobody was injured, the line is down.',
+      'Nobody is injured, but my grandson is stuck up there. The line is down.',
+      'Nadie está herido, pero a mi hijo le cayó una rama. Hay cables en el suelo.',
+      'Nadie está herido, mi niña se golpeó. Los cables están en el suelo.',
+      'Nadie salió herido, me caí de la escalera. Los cables están en el suelo.',
+    ],
+  };
+
+  for (const [why, list] of Object.entries(MAY_BE_HURT)) {
+    it.each(list)(`${why}: "%s" is not a denial, and the call hears 911`, async (text) => {
+      expect(injuryDenied(text)).toBe(false);
+      const { r } = desk(['Mike is being alerted right away.']);
+      const before = alerts.length;
+      const turn = await r.handleUserTurn(text);
+      expect(turn.reply.startsWith(NINE_ONE_ONE), turn.reply).toBe(true);
+      expect(alerts.length).toBe(before + 1); // Mike is alerted, as ever
+    });
+  }
+
+  // Softened denials with no injury trigger in them ("hurt" alone is not one in
+  // guardrails.json): they never heard 911, before P5 or since — that is
+  // detection, Mike's trigger list, not this check. They are still never a denial.
+  it.each([
+    'The power line is down, nobody was badly hurt.',
+    "The line is down, nobody's seriously hurt.",
+    'The line is down, no serious injuries.',
+    'The line is down, just minor injuries, nobody hurt bad.',
+    // Likewise never 911 before P5 (no injury trigger, no person-in-danger pattern) — and never a denial.
+    'Two people are hurt, nobody else. The line is down.',
+    'Nobody got hurt, a guy got shocked. Line is down.',
+    "Nobody's hurt, my little one got zapped. The line is down.",
+    'Hopefully nobody\'s hurt, the power line is down.',
+    'If nobody is hurt, do I call Dominion? The line is down.',
+    'power line down nobody hurt but john',
+    'Nobody was hurt inside, the line is down outside.',
+  ])('never a denial (and no 911 trigger in it, before P5 or since): "%s"', (text) => {
+    expect(injuryDenied(text)).toBe(false);
+  });
+
+  // The fix must not over-drop the other way either: plain, whole denials
+  // still get the Dominion line only (R29 #4), the caller speaking first included.
+  it.each([
+    'The power line is down, nobody was injured.',
+    'Power line down, nobody hurt.',
+    "I've got a power line down in my yard, nobody's hurt.",
+    'We have a line down on our street. No one is injured.',
+    'The power line came down and nobody was hurt or injured.',
+    'No, nobody was injured. The power line is down.',
+    'Se cayeron los cables, nadie está herido.',
+    'Tengo cables en el suelo, no hay heridos.',
+    'Hay cables en el suelo, nadie salió lastimado, gracias a Dios.',
+    'A limb knocked the power line down, nobody injured.',
+    'Nobody was hurt at all, the power line is down.',
+    'Al menos nadie está herido, hay cables en el suelo.',
+  ])('a whole, plain denial still drops 911 — Dominion only: "%s"', async (text) => {
+    expect(injuryDenied(text)).toBe(true);
+    expect(emergencySafetyCalls(text)).toEqual({ call911: false, callDominion: true });
+    const { r } = desk(['Mike is being alerted right away.']);
+    const before = alerts.length;
+    const turn = await r.handleUserTurn(text);
+    expect(turn.reply).not.toContain('911');
+    expect(turn.reply.startsWith(DOMINION)).toBe(true);
+    expect(alerts.length).toBe(before + 1);
   });
 });
 

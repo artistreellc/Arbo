@@ -149,31 +149,93 @@ export function emergencySafetyCalls(text: string): SafetyCalls {
  * injury trigger (guardrails.json, left as it is), so "the line is down,
  * nobody was injured" was read as an injury and heard the 911 line.
  *
- * Only an explicit, whole denial counts: "nobody hurt", "no one is injured",
+ * Only an explicit, WHOLE denial counts: "nobody hurt", "no one is injured",
  * "nobody was injured", "no injuries"; in Spanish "nadie está herido", "nadie
- * salió lastimado", "nadie se lastimó", "no hay heridos", "sin heridos". Anything that leaves a
- * person possibly hurt keeps the 911 line — detection stays sensitive (R29 #4):
- *   · another hurt word anywhere ("…but my son is bleeding");
- *   · an exception that names someone after the denial ("except my dad", "but my wife");
- *   · "nobody else" / "nadie más" (someone IS hurt);
- *   · a hedge ("I think", "maybe", "creo", "parece");
- *   · a denial asked as a question ("nobody injured?", "nobody hurt, right?").
- * A bare first-person "I'm not hurt" denies nothing about anyone else.
+ * salió lastimado", "nadie se lastimó", "no hay heridos", "sin heridos". The
+ * 911 line is conditional ("If anyone is hurt…"), so a needless one costs a
+ * sentence; a missing one when someone IS hurt is the failure that matters.
+ * So anything that leaves a person possibly hurt keeps it (review, D1):
+ *   · a softened or scoped denial: "nobody was SERIOUSLY injured", "…too
+ *     badly", "no hay heridos GRAVES", "…injured IN THE HOUSE";
+ *   · a hurt, medical or body word anywhere else ("…my son got electrocuted",
+ *     "she can't breathe", "I hit my head", "se desmayó", "me duele");
+ *   · any other person named anywhere ("except for my wife, nobody…",
+ *     "nobody was injured, my son was", "menos mi hijo", "mi esposo sí"),
+ *     or by name after the denial ("…John fell"), or an exception at all
+ *     ("except John", "nobody hurt but John"), or a clause ending on its
+ *     verb after it ("…, John was");
+ *   · the caller (I, me, we, yo) or an unnamed someone after the denial or
+ *     after an exception ("nobody but me", "apart from me", "excepto yo");
+ *   · a correction after it ("…well actually", "wait", "I mean", "bueno");
+ *   · a hedge or hearsay anywhere ("we think", "as far as we know",
+ *     "supposedly", "they said", "creemos", "al parecer", "que yo sepa");
+ *   · a negated or supposed denial ("I can't say nobody was injured",
+ *     "if nobody's hurt…", "si nadie está herido…");
+ *   · a question: a "?" after the denial in its sentence, or a tag with no
+ *     "?" ("…nobody was injured right", "…nadie está herido verdad").
+ * "Nobody else" / "nadie más" is never a denial (someone IS hurt), and a bare
+ * first-person "I'm not hurt" denies nothing about anyone else.
  * The alert to Mike and the notify tier never read this: they stay on the intent.
  */
+// After a denial, a word that softens it ("…injured too badly", "heridos graves").
+// Or scopes it ("…injured in the house": someone outside may be). Then it is no whole denial.
+const SOFTENED = String.raw`(?!\s+(?:seriously|serious|badly|bad|severely|critically|too|that|much|really|real|in|inside|at(?!\s+all\b)|on|here|there|graves?|gravemente|de gravedad|de cuidado|seri[oa]s?|mucho|en|dentro|aqui|alli))`;
 const DENIALS: RegExp[] = [
-  /\b(?:no one|no-one|noone|nobody)(?!\s+else\b)(?:'s|\s+(?:is|was|got|were|are|has been|had been))?(?:\s+(?:really|seriously|badly|actually))?\s+(?:hurt|injured)\b/g,
-  /\bno injur(?:y|ies)\b/g,
-  /\bnadie(?!\s+mas\b)(?:\s+(?:esta|estaba|salio|resulto|quedo|fue|se))?\s+(?:herid|lastimad|lesionad)[oa]s?\b/g,
-  /\bnadie(?!\s+mas\b)\s+se\s+(?:lastimo|hirio|lesiono)\b/g,
-  /\b(?:no hay|sin|ningun|ninguna)\s+(?:herid|lastimad|lesionad)[oa]s?\b/g,
+  // No word may sit between the denial and "hurt/injured": "nobody was seriously injured" is not one.
+  new RegExp(String.raw`\b(?:no one|no-one|noone|nobody)(?!\s+else\b)(?:'s|\s+(?:is|was|got|gets|were|are|has been|had been|has gotten))?\s+(?:hurt|injured)(?:\s+or\s+(?:hurt|injured))?\b` + SOFTENED, 'g'),
+  new RegExp(String.raw`\bno injur(?:y|ies)\b` + SOFTENED, 'g'),
+  new RegExp(String.raw`\bnadie(?!\s+mas\b)(?:\s+(?:esta|estaba|salio|resulto|quedo|fue|se))?\s+(?:herid|lastimad|lesionad)[oa]s?\b` + SOFTENED, 'g'),
+  new RegExp(String.raw`\bnadie(?!\s+mas\b)\s+se\s+(?:lastimo|hirio|lesiono)\b` + SOFTENED, 'g'),
+  new RegExp(String.raw`\b(?:no hay|sin|ningun|ninguna)\s+(?:herid|lastimad|lesionad)[oa]s?\b` + SOFTENED, 'g'),
 ];
-// A person may be hurt: any of these words left once the denials are taken out.
-const HURT_WORD = /\b(?:hurt\w*|injur\w*|bleed\w*|blood\w*|ambulance|hospital|trapped|pinned|unconscious|not moving|not breathing|passed out|knocked out|broken? (?:arm|leg|bone|neck|back|ribs?)|concussion|crushed|911|paramedics?|herid\w*|lastimad\w*|lesionad\w*|sangr\w*|ambulancia|atrapad\w*|inconsciente|no se mueve|no respira|se (?:lastimo|hirio|lastimaron|hirieron)|desmayad\w*)\b/;
-const EXCEPT_WORD = /\b(?:but|except|other than|besides|apart from|aside from|only|although|though|however|pero|excepto|menos|salvo|aunque|solo|sino)\b/;
+// A person may be hurt: a hurt, medical or body word left once the denials are taken out.
+// Tree words are kept out ("dead tree", "broken limb", "knocked the line down", "touching the line").
+const HURT_WORD = new RegExp(String.raw`\b(?:` + [
+  String.raw`hurt\w*|injur\w*|bleed\w*|blood\w*|ambulance|hospital|emergency room|paramedics?|911`,
+  String.raw`trapped|pinned|stuck|crushed|unconscious|unresponsive|not (?:moving|breathing|responding|awake)|can'?t (?:breathe|move|feel|get up|stand)`,
+  String.raw`passed out|fainted|collaps\w*|seizures?|heart attack|stroke|died|dying|killed|(?:is|was|are|were|'s) dead`,
+  String.raw`electrocut\w*|shock\w*|zapp?\w*|jolt\w*|burn(?:ed|t|s)|touched|grabbed`,
+  String.raw`fell (?:off|from|out of) (?:the|a|his|her|my|our|their) (?:ladder|roof|truck|bucket|lift|tree|deck|porch|chair)|(?:i|we|he|she|they|someone|somebody) (?:fell|slipped|tripped)|got hit|was hit|were hit|hit by|hit (?:him|her|me|us|them)|struck by|got struck|was struck`,
+  String.raw`fractur\w*|concussion|sprain\w*|bruis\w*|scratch\w*|scrape\w*|gash\w*|wound\w*|bones?|minor|serious\w*|critical\w*|badly`,
+  String.raw`head|neck|chest|arms?|legs?|hands?|face|eyes?|skull|spine|ribs?|wrists?|ankles?|knees?|shoulders?`,
+  // Spanish (accent-folded).
+  String.raw`herid\w*|lastim\w*|lesion\w*|sangr\w*|ambulancia|atrapad\w*|inconsciente|no se mueve|no respira|no responde|no puede (?:respirar|moverse)`,
+  String.raw`desmay\w*|electrocut\w*|corriente|descargas?|quem\w*|golpe\w*|duele|dolor|muert\w*|murio|infarto|convulsion\w*|grave\w*|gravedad|leve\w*`,
+  String.raw`cabeza|cuello|pecho|brazos?|piernas?|manos?|cara|ojos?|espalda|me (?:lastime|heri|cai|queme|golpee|electrocute)`,
+].join('|') + String.raw`)\b`);
+// Anyone else, named anywhere — before the denial ("except for my wife, nobody…") or after ("…my son was").
 // Not the Spanish "el": folded, the article and "él" are one word ("pero el cable…").
-const PERSON_WORD = /\b(?:he|she|him|her|his|they|them|someone|somebody|anyone|anybody|people|person|man|woman|kids?|child|children|boy|girl|baby|worker|guys?|neighbou?r|husband|wife|son|daughter|mom|mother|dad|father|brother|sister|grand\w+|friend|ella|ellos|ellas|alguien|nin[oa]s?|bebe|hombre|mujer|trabajador\w*|vecin[oa]s?|espos[oa]|hij[oa]s?|madre|padre|mama|papa|herman[oa]s?|abuel[oa]s?|amig[oa]s?)\b/;
-const HEDGE = /\b(?:i think|i guess|i believe|not sure|i don'?t know|dunno|maybe|probably|hopefully|i hope|as far as i (?:know|can tell)|can'?t tell|can'?t see|seems?|appears?|looks like|creo|no se|no estoy segur[oa]|tal vez|quizas?|a lo mejor|espero|parece)\b/;
+const PERSON_WORD = new RegExp(String.raw`\b(?:` + [
+  String.raw`he|she|him|her|his|hers|they|them|their|everyone|everybody|people|persons?|man|men|woman|women|lady|ladies|gentleman|guys?|kids?|child|children|boys?|girls?|bab(?:y|ies)|toddlers?|infants?|teen\w*`,
+  String.raw`workers?|crew|lineman|linemen|drivers?|tenants?|roommates?|neighbou?rs?|husband|wife|sons?|daughters?|mom|mommy|mother|dad|daddy|father|brothers?|sisters?|grand\w+|uncles?|aunts?|cousins?|nephews?|nieces?|boyfriend|girlfriend|fianc\w*|partner|friends?|family|folks|spouse|victims?|patients?`,
+  String.raw`ella|ellas|ellos|nin[oa]s?|bebes?|hombres?|mujer(?:es)?|senor(?:a|es|as)?|trabajador\w*|vecin[oa]s?|espos[oa]s?|marido|hij[oa]s?|madre|padre|mama|papa|herman[oa]s?|abuel[oa]s?|amig[oa]s?|ti[oa]s?|prim[oa]s?|novi[oa]s?|familia|gente|inquilin[oa]s?|muchach[oa]s?|chic[oa]s?`,
+].join('|') + String.raw`)\b`);
+// The caller, or an unnamed someone: hurt only when named after the denial or after an exception
+// ("nobody but me", "except for me, nobody…", "excepto yo", "aparte de mí") — "I've got a line down,
+// nobody's hurt" and "can you send someone? …nobody's hurt" before it are not.
+const SELF_WORD = /\b(?:i|me|myself|we|us|ourselves|someone|somebody|anyone|anybody|yo|conmigo|nosotr[oa]s|nos|alguien|mi(?=\s*(?:[,.!?;]|$)))\b/;
+const EXCEPT_WORD = /\b(?:but|except|excepting|other than|besides|apart from|aside from|save for|only|although|though|however|pero|excepto|menos|salvo|aparte|ademas|aunque|solo|sino|fuera de)\b/;
+// "Nobody… except X" anywhere: X, whoever X is (a name too), may be hurt.
+const EXCEPTION = /\b(?:except|excepting|besides|other than|apart from|aside from|save for|but for|excepto|(?<!\b(?:al|lo)\s)menos|salvo|aparte|fuera de)\b/;
+// Straight after a denial: "nobody hurt but John", "nadie herido sino…".
+const BUT_RIGHT_AFTER = /^\s+(?:but|only|pero|solo|sino)\b/;
+// After a denial, a clause that ends on its verb names who WAS: "…John was", "…my son is too".
+const ELLIPSIS = /\b(?:was|is|were|are|got|did|does|do|has|had)\s*(?:though|too|also|tambien)?\s*(?:[,.!;?]|$)/;
+// After the denial, the caller taking it back.
+const CORRECTION = /\b(?:actually|wait|i mean|well|correction|scratch that|sorry|hold on|yes|yeah|yep|bueno|digo|o sea|perdon|espera|en realidad|mejor dicho|si)\b/;
+// Anywhere: the caller is not sure, or is passing on what someone else said.
+const HEDGE = new RegExp(String.raw`\b(?:` + [
+  String.raw`think|thought|guess|believe|suppose|supposedly|assum\w*|presum\w*|apparently|probably|possibly|maybe|perhaps|hopefully|hope|sure|unsure|certain`,
+  String.raw`don'?t know|dunno|no idea|far as|from what|can'?t (?:tell|see|say)|cannot (?:tell|see|say)|couldn'?t (?:tell|see|say)`,
+  String.raw`seems?|seemed|appears?|appeared|looks? like|looked like|sounds like|said|says|told|heard|so far|yet|at first|initially|at the time|for now|as of|last time|this time|pray\w*|check\w*`,
+  String.raw`creo|creemos|creen|cree|creia|pienso|pensamos|piensa|parece|parecia|al parecer|aparentemente|supuestamente|probablemente|posiblemente|tal vez|quizas?|a lo mejor`,
+  String.raw`no se|no sabemos|no estoy segur[oa]|no estamos segur[oa]s|espero|esperamos|ojala|que yo sepa|que sepamos|hasta donde|hasta ahora|por ahora|todavia|aun|dijo|dijeron|dicen|al principio|la ultima vez|esta vez`,
+].join('|') + String.raw`)\b`);
+// Just before a denial: it is denied or supposed, not said ("I can't say nobody…", "not true
+// that nobody…", "if nobody's hurt…", "si nadie está herido…").
+const NOT_SAID = /(?:\bnot|n't|\bnever|\bcannot|\bno es|\bno fue|\bnunca|\bif|\bunless|\bwhether|\bin case|\bsi|\ben caso de que)\b[^.!?,;]{0,25}$/;
+// Just after a denial, in its sentence: asked, not told ("…nobody injured?", "…right", "…verdad").
+const QUESTION = /^[^.!]*\?|^[^.!?]*?\b(?:right|correct|true|is that so|isn'?t it|verdad|cierto|o no)\s*(?:[,.!;]|$)/;
 
 /** Folded, lower-case, plain apostrophes: the form every pattern above is written for. */
 function denialText(text: string): string {
@@ -193,18 +255,31 @@ function withoutDenials(text: string): string {
   return out + t.slice(at);
 }
 
+/** The folded text with each denial blanked (a comma, then spaces): the same length, so an index holds in both. */
+function blanked(t: string, spans: Array<[number, number]>): string {
+  let out = t;
+  for (const [s, e] of spans) out = out.slice(0, s) + ','.padEnd(e - s, ' ') + out.slice(e);
+  return out;
+}
+
 /** True only when the caller explicitly said nobody is hurt, and nothing they said leaves someone possibly hurt. */
 export function injuryDenied(text: string): boolean {
+  const said = foldAccents(text).replace(/[\u2018\u2019]/g, "'"); // case kept: a name is a capital
   const t = denialText(text);
+  if (said.length !== t.length) return false; // an index must hold in both; if not, keep the 911 line
   const spans = denialSpans(t);
   if (!spans.length) return false;
   if (HEDGE.test(t)) return false;
-  if (spans.some(([, e]) => /^[^.!]*\?/.test(t.slice(e)))) return false; // asked, not told: "nobody injured?", "nobody hurt, right?"
-  const rest = withoutDenials(text);
-  if (HURT_WORD.test(rest)) return false;
-  // After the first denial: "…but my son", "except my dad" — a person named past an exception.
-  const tail = rest.slice(spans[0]![0]);
-  const ex = EXCEPT_WORD.exec(tail);
-  if (ex && PERSON_WORD.test(tail.slice(ex.index))) return false;
+  if (spans.some(([s]) => NOT_SAID.test(t.slice(0, s)))) return false;
+  if (spans.some(([, e]) => QUESTION.test(t.slice(e)) || BUT_RIGHT_AFTER.test(t.slice(e)))) return false;
+  const rest = blanked(t, spans);
+  if (HURT_WORD.test(rest) || PERSON_WORD.test(rest) || EXCEPTION.test(rest)) return false;
+  const first = spans[0]![0];
+  const after = rest.slice(first);
+  if (CORRECTION.test(after) || ELLIPSIS.test(after)) return false;
+  const ex = EXCEPT_WORD.exec(rest);
+  if (SELF_WORD.test(rest.slice(Math.min(first, ex ? ex.index : first)))) return false;
+  // A name after the denial ("…nobody was injured, John fell"): a capital that does not start a sentence.
+  if (/[^.!?\s]\s+(?!I\b|I'|God\b|Dios\b)[A-Z]/.test(blanked(said, spans).slice(first))) return false;
   return true;
 }
