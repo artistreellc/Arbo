@@ -374,6 +374,9 @@ describe('Office: the agents’ proposals at the top (P14, from P6’s list)', (
     expect(card.children[0]!.textContent).toMatch(/^Agents · ran /);
     const rows = card.querySelectorAll('.prop-row');
     expect(rows.map((r) => r.querySelector('.scope')!.textContent)).toEqual(['Sign Unit 3 back on.', 'Decide 2 open loops.']);
+    // Each button names the screen it opens ("Fleet ›"), and keeps "Open Fleet" as its accessible name.
+    expect(rows.map((r) => r.querySelector('button')!.textContent)).toEqual(['Fleet ›', 'Follow-ups ›']);
+    expect(rows.map((r) => r.querySelector('button')!.getAttribute('aria-label'))).toEqual(['Open Fleet', 'Open Follow-ups']);
     await rows[0]!.querySelector('button')!.click();
     await rows[1]!.querySelector('button')!.click();
     expect(k.went).toEqual(['fleet', 'followups']);
