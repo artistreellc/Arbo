@@ -16,7 +16,7 @@ too, so no calendar hold is filed for a Sona call (R18 is paused). Details in
 |---|---|---|
 | **757-319-5131** | Art-is-Tree's business line — Mike's iPhone, **T-Mobile**. The public number. Stays on T-Mobile: Mike ruled *"i dont want to port the number"*. | Mike. Unanswered calls forward to Quo after 20 s. |
 | **757-606-9432** | Quo number ("Art-is-Tree LLC"), inbox `PN70xPKd5p`. | **Sona**, Quo's AI (R20: *"let sona handle it for a while while arbo learns from it"*). |
-| 757-821-6983 | Arbo's own line (Twilio → ElevenLabs → Arbo's guarded Opus brain). | **Nobody — links CUT (R21)** while development runs off Sona. Nothing deleted. |
+| 757-821-6983 | Arbo's own line (Twilio → ElevenLabs → Arbo's guarded Opus brain). **Retired by R36** — the Quo number is the one Arbo works through. | **Nobody — links CUT (R21), not coming back (R36).** Still rented in Twilio; releasing it is Mike's call, never Arbo's. Nothing deleted. |
 
 Never change the public number anywhere — Google, the website, and SEO are
 out of scope (CLAUDE.md hard boundary). Quo sits *behind* 757-319-5131.
