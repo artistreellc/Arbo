@@ -6,7 +6,7 @@
 // "Run all eight first" — never "no proposals". After a run that proposed
 // nothing, a bare "none" only when every desk read fully; otherwise the desks
 // that couldn't read everything are counted (§1B). The per-card notes stay.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { loadAppHtml } from '../src/server/appPage.js';
 
 const html = loadAppHtml();
@@ -53,6 +53,7 @@ class FNode {
   appendChild(c: FNode): FNode { c.parent?.drop(c); c.parent = this; this.children.push(c); return c; }
   drop(c: FNode): void { this.children = this.children.filter((x) => x !== c); c.parent = null; }
   remove(): void { this.parent?.drop(this); }
+  replaceWith(...ns: FNode[]): void { const p = this.parent!; const at = p.children.indexOf(this); for (const n of ns) { n.parent?.drop(n); n.parent = p; } p.children.splice(at, 1, ...ns); this.parent = null; }
   replaceChildren(...ns: FNode[]): void { for (const c of this.children) c.parent = null; this.children = []; this.own = ''; for (const n of ns) this.appendChild(n); }
   hasChildNodes(): boolean { return this.children.length > 0 || this.own !== ''; }
   setAttribute(k: string, v: string): void { this.attrs[k] = v; }
@@ -194,6 +195,42 @@ describe('renderAgents: proposals at the top', () => {
     const stale = v.children.findIndex((c) => c.textContent.includes('over 15 minutes old'));
     expect(stale).toBeGreaterThan(-1);
     expect(stale).toBeLessThan(v.children.indexOf(panel(v)!));
+  });
+
+  // Review (b-wave-1b, correctness 2): the warning was worked out only when the screen
+  // was drawn. Agents is off the minute timer, and Today's "agent runs" tile and the
+  // header Back show it as drawn — so a run gone stale since came back as "Ran 5:36 AM."
+  // over "Proposals for you (4)", no warning. The line now turns on its own.
+  it('a run that goes stale while Agents sits drawn turns its line into the warning, above the list, on its own', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-10-21T10:00:00Z'));
+      const k = kit({ ranAt: '2026-10-21T09:50:00.000Z', reports: [report('front-desk', 'ok', [{ kind: 'call_review', text: 'Review 1 logged conversation.' }], 'Front Desk')] });
+      await k.render();
+      const v = k.view();
+      expect(v.textContent).not.toContain('over 15 minutes old');
+      expect(v.textContent).toMatch(/Ran .+\. Run only looks/);
+      vi.advanceTimersByTime(4 * 60 * 1000);
+      expect(v.textContent, 'still fresh at 14 minutes').not.toContain('over 15 minutes old');
+      vi.advanceTimersByTime(2 * 60 * 1000);
+      const stale = v.children.findIndex((c) => c.textContent.includes('over 15 minutes old'));
+      expect(stale, 'the warning came up by itself').toBeGreaterThan(-1);
+      expect(stale).toBeLessThan(v.children.indexOf(panel(v)!));
+      expect(v.textContent).not.toMatch(/Ran [^—]+\. Run only looks/); // the calm "Ran …" is gone with it
+      expect(v.textContent.split('over 15 minutes old').length - 1).toBe(1);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('a redraw before the run goes stale owns the screen: the first draw\'s timer adds nothing', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-10-21T10:00:00Z'));
+      const k = kit({ ranAt: '2026-10-21T09:50:00.000Z', reports: [report('front-desk', 'ok')] });
+      await k.render();
+      await k.render();
+      vi.advanceTimersByTime(6 * 60 * 1000);
+      expect(k.view().textContent.split('over 15 minutes old').length - 1).toBe(1);
+    } finally { vi.useRealTimers(); }
   });
 
   it('nothing proposed but desks could not read everything: the gap is counted, never a bare "none" (§1B)', async () => {

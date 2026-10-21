@@ -217,6 +217,7 @@ main{padding:8px 16px 16px;max-width:680px;margin:0 auto}
 /* Direction B P10: a stat opens what it counts; a '–' is a gap — dashed, and it opens nothing. */
 button.hstat{font:inherit;text-align:left;color:inherit;width:100%;min-height:44px}
 .hstat[aria-disabled="false"]{cursor:pointer}.hstat[aria-disabled="true"]:active{transform:none}
+button.hstat{position:relative}.hstat .cue{display:none}.hstat[aria-disabled="false"] .cue{display:block;position:absolute;top:6px;right:10px;font-style:normal;font-size:20px;line-height:1;color:rgba(244,239,224,.75)} /* Direction B P10 review: a › on a stat that opens something */
 .hstat.gap{border-style:dashed;border-color:rgba(255,255,255,.3);background:transparent}
 .ring-legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:12px;font-size:12px;color:rgba(244,239,224,.75)}
 .ring-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px}
@@ -471,6 +472,7 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 .roll .roll-retry{display:flex;width:fit-content;align-items:center;justify-content:center;margin-top:8px;min-height:44px}
 /* Direction B P10: a tile opens what it counts; a tile whose feed failed is dashed and opens nothing. */
 .tile.go:not(.gap){cursor:pointer}.tile.go:not(.gap):active{transform:scale(.975)}
+.tile .cue{display:none}.tile.go:not(.gap) .cue{display:block;position:absolute;top:8px;right:10px;font-style:normal;font-size:20px;line-height:1;color:var(--ink-3)} /* the tile's › */
 .tile.gap{border-style:dashed;border-color:var(--border);box-shadow:none;background:transparent}
 .tile::after{content:'';position:absolute;left:0;right:0;top:0;height:3px;background:var(--forest);opacity:.18}
 .tile.hot::after{background:var(--emergency);opacity:.7}.tile.warn::after{background:var(--gold-5);opacity:.7}
@@ -2516,6 +2518,9 @@ function openPanel(view, target) {
   const look = () => {
     const t = typeof target === 'function' ? target() : document.getElementById(target);
     if (t) {
+      // Land below the sticky app bar, never under it (review: a unit's name and chip were hidden).
+      const bar = document.getElementById('appbar');
+      t.style.scrollMarginTop = Math.round((bar ? bar.getBoundingClientRect().height : 0) + 12) + 'px';
       t.scrollIntoView({ behavior: 'smooth', block: 'start' });
       t.classList.remove('flash'); void t.offsetWidth; t.classList.add('flash');
       return;
@@ -2529,6 +2534,10 @@ function goTile(t, fn) {
   t.setAttribute('role', 'button');
   t.tabIndex = 0;
   t.classList.add('go');
+  // The › says it opens something; the CSS draws it only on a tile that can (never a gap).
+  const cue = el('i', 'cue', '›');
+  cue.setAttribute('aria-hidden', 'true');
+  t.appendChild(cue);
   t.addEventListener('click', () => { if (t.querySelector('b').textContent !== '–') fn(); });
 }
 async function renderToday() {
@@ -5934,19 +5943,25 @@ function buildHero() {
   const gap = {};
   const labels = {};
   const live = (key) => cells[key].setAttribute('aria-disabled', go[key] && !gap[key] ? 'false' : 'true');
-  const stat = (key, label) => {
+  const one = {}; // the screen-reader name for exactly one: "1 stop today", never "1 stops today"
+  const stat = (key, label, single) => {
     const s = el('button', 'hstat');
     s.type = 'button';
     s.appendChild(el('b', 'num', '–'));
     s.appendChild(el('span', '', label));
     s.appendChild(el('small')); // HERO.stat's note: why the number is coloured
+    // The › says it opens something; the CSS draws it only while it can (aria-disabled="false").
+    const cue = el('i', 'cue', '›');
+    cue.setAttribute('aria-hidden', 'true');
+    s.appendChild(cue);
     s.setAttribute('aria-disabled', 'true'); // nothing to open until its read lands
     s.addEventListener('click', () => { if (go[key] && !gap[key]) go[key](); });
     labels[key] = label;
+    one[key] = single;
     stats.appendChild(s);
     return s;
   };
-  const cells = { stops: stat('stops', 'stops today'), loops: stat('loops', 'open loops'), alerts: stat('alerts', 'weather alerts') };
+  const cells = { stops: stat('stops', 'stops today', 'stop today'), loops: stat('loops', 'open loops', 'open loop'), alerts: stat('alerts', 'weather alerts', 'weather alert') };
   box.appendChild(stats);
   const legend = el('div', 'ring-legend');
   const leg = {};
@@ -5982,7 +5997,7 @@ function buildHero() {
       c.className = 'hstat' + (gap[key] ? ' gap' : '') + (cls ? ' ' + cls : '');
       c.querySelector('small').textContent = note || ''; // no note: the line is empty and hidden
       // A gap says its feed word on its name as well as in the subline (§1B): "open loops — loops cut".
-      c.setAttribute('aria-label', gap[key] ? labels[key] + ' — ' + fact : String(value) + ' ' + labels[key] + (note ? ', ' + note : ''));
+      c.setAttribute('aria-label', gap[key] ? labels[key] + ' — ' + fact : String(value) + ' ' + (String(value) === '1' ? one[key] : labels[key]) + (note ? ', ' + note : ''));
       facts[key] = String(value) === '–' ? fact : null; // a real number is on the tile; the subline names only the dashes (§1B)
       say();
       live(key);
@@ -6555,9 +6570,18 @@ async function renderAgents() {
   // When it ran rides on the help line; past 15 minutes it is a warning line of its own.
   // Whether the hourly check is on is said on each NOT RUN row, not here.
   const ranAt = AGENT_RUN && AGENT_RUN.ranAt;
-  const stale = !!ranAt && Date.now() - Date.parse(ranAt) > 15 * 60 * 1000;
-  if (stale) v.appendChild(el('div', 'feed-state unset', 'Ran ' + fmtWhen(ranAt) + ' — over 15 minutes old. Run again for a current read.'));
-  v.appendChild(el('div', 'storm-muted', (ranAt && !stale ? 'Ran ' + fmtWhen(ranAt) + '. ' : '') + 'Run only looks — it never changes anything.'));
+  // Direction B P6 review: Agents is off the minute timer, and Today's "agent runs"
+  // tile and the header Back show it as drawn — so these lines are drawn again, in
+  // place, the minute the run goes stale. `v` is where they go: the view, or the
+  // stand-in they are built in. A newer draw owns the screen.
+  const ageLines = (v) => {
+    const stale = !!ranAt && Date.now() - Date.parse(ranAt) > 15 * 60 * 1000;
+    if (stale) v.appendChild(el('div', 'feed-state unset', 'Ran ' + fmtWhen(ranAt) + ' — over 15 minutes old. Run again for a current read.'));
+    return v.appendChild(el('div', 'storm-muted', (ranAt && !stale ? 'Ran ' + fmtWhen(ranAt) + '. ' : '') + 'Run only looks — it never changes anything.'));
+  };
+  const help = ageLines(v);
+  const fresh = ranAt ? Date.parse(ranAt) + 15 * 60 * 1000 - Date.now() : -1; // ms before the run goes stale
+  if (fresh >= 0) setTimeout(() => { if (gen !== AGENT_GEN) return; const now = el('div'); ageLines(now); help.replaceWith(...now.children); }, fresh + 1000);
   v.appendChild(roster.brain === 'online'
     ? el('div', 'storm-muted', 'Brain: Opus online — each desk gets a plain-English read.')
     : el('div', 'feed-state unset', 'AI off — plain counts only, no AI key yet.'));

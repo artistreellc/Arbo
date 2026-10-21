@@ -129,7 +129,8 @@ describe('#25: a red stops count says why on its own tile', () => {
   it('the note sits on the tile under its label, and is empty again when none is given', () => {
     const { box, HERO } = hero();
     const stops = byClass(box, 'hstat')!;
-    expect(stops.children.map((c) => c.tag)).toEqual(['b', 'span', 'small']);
+    // b, span, small: the note under its label; then the › tap cue (Direction B P10 review), drawn only while the stat opens something.
+    expect(stops.children.map((c) => c.tag)).toEqual(['b', 'span', 'small', 'i']);
     HERO.stat('stops', 2, 'hot', '2 stops today', '1 flagged');
     expect(stops.className).toBe('hstat hot');
     expect(stops.querySelector('span')!.textContent).toBe('stops today');

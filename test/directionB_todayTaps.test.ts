@@ -46,7 +46,10 @@ class E {
   getAttribute(k: string) { return this.attrs[k] ?? null; }
   addEventListener(t: string, f: (e?: unknown) => void) { (this.on[t] ??= []).push(f); }
   click() { for (const f of this.on.click ?? []) f({ preventDefault() {} }); }
-  scrollIntoView(o: unknown) { this.scrolled.push(o); }
+  marginAtScroll: string[] = [];
+  height = 0;
+  scrollIntoView(o: unknown) { this.scrolled.push(o); this.marginAtScroll.push(this.style.scrollMarginTop ?? ''); }
+  getBoundingClientRect() { return { height: this.height, top: 0, bottom: this.height }; }
   querySelector(tag: string): E | null {
     for (const c of this.children) { if (c.tag === tag) return c; const d = c.querySelector(tag); if (d) return d; }
     return null;
@@ -111,6 +114,46 @@ describe('the hero\'s three stats open what they count (P10)', () => {
     expect(c.className).toBe('hstat');
   });
 
+  // Review (b-wave-1b, UI 10): "1 weather alerts", "1 stops today" on the screen-reader name.
+  it('the screen-reader name counts in good English: one stop, one loop, one alert', () => {
+    const h = hero();
+    h.HERO.stat('stops', 1, '', '1 stop today');
+    h.HERO.stat('loops', 1, 'warn', '1 open loop');
+    h.HERO.stat('alerts', 1, 'hot', '1 weather alert');
+    expect([0, 1, 2].map((i) => h.cell(i).getAttribute('aria-label'))).toEqual(['1 stop today', '1 open loop', '1 weather alert']);
+    h.HERO.stat('stops', 2, '', '2 stops today');
+    h.HERO.stat('alerts', 0, '', 'no weather alerts');
+    expect(h.cell(0).getAttribute('aria-label')).toBe('2 stops today');
+    expect(h.cell(2).getAttribute('aria-label')).toBe('0 weather alerts');
+    // The label on the tile itself is unchanged (qa3_today-rest pins it).
+    expect(h.cell(0).querySelector('span')!.textContent).toBe('stops today');
+  });
+
+  // Review (b-wave-1b, UI 9; mockup B-0): solid against dashed was the only sign a stat
+  // opens something. A tappable stat or tile carries a › — hidden from screen readers,
+  // drawn only while it can be tapped (a gap or an inert real 0 never shows it).
+  it('a stat or a tile that opens something carries a › cue; the CSS shows it only while it can be tapped', () => {
+    const h = hero();
+    for (const i of [0, 1, 2]) {
+      const cue = h.cell(i).all().find((n) => n.has('cue'))!;
+      expect(cue, 'each stat has its cue').toBeTruthy();
+      expect(cue.textContent).toBe('›');
+      expect(cue.getAttribute('aria-hidden')).toBe('true');
+    }
+    const goTile = new Function('el', `${fnSrc('goTile')}\nreturn goTile;`)(el) as (t: E, fn: () => void) => void;
+    const t = el('div', 'tile'); t.appendChild(el('b', '', '3')); t.appendChild(el('span', '', 'x'));
+    goTile(t, () => {});
+    const cue = t.all().find((n) => n.has('cue'))!;
+    expect(cue, 'the tile has its cue').toBeTruthy();
+    expect(cue.textContent).toBe('›');
+    expect(cue.getAttribute('aria-hidden')).toBe('true');
+    expect(t.querySelector('span')!.textContent, 'the label is still the first span').toBe('x');
+    expect(html).toMatch(/\.hstat \.cue\{[^}]*display:none/);
+    expect(html).toMatch(/\.hstat\[aria-disabled="false"\] \.cue\{[^}]*display:block/);
+    expect(html).toMatch(/\.tile \.cue\{[^}]*display:none/);
+    expect(html).toMatch(/\.tile\.go:not\(\.gap\) \.cue\{[^}]*display:block/);
+  });
+
   it('CSS: a gap stat and a gap tile are dashed; a live one shows it can be tapped', () => {
     expect(html).toMatch(/\.hstat\.gap\{[^}]*border-style:dashed/);
     expect(html).toMatch(/\.tile\.gap\{[^}]*border-style:dashed/);
@@ -127,8 +170,9 @@ describe('openPanel: switch, find (retrying while the screen draws), scroll, fla
     const $ = (id: string) => { if (id.startsWith('view-')) { const v = views[id] ??= el('div'); if (drawn[id.slice(5)]) v.children = [el('div')]; return v; } return nodes[id] ?? null; };
     const timers: Array<() => void> = [];
     const NAV_DRAW = { agents: () => drew.push('agents'), more: () => drew.push('more') };
+    const bar = el('header'); bar.height = 65;
     const open = new Function('switchTab', '$', 'CUR_TAB', 'NAV_DRAW', 'setTimeout', 'document', `${fnSrc('openPanel')}\nreturn openPanel;`)(
-      (t: string) => went.push(t), $, cur, NAV_DRAW, (f: () => void) => timers.push(f), { getElementById: (id: string) => nodes[id] ?? null },
+      (t: string) => went.push(t), $, cur, NAV_DRAW, (f: () => void) => timers.push(f), { getElementById: (id: string) => (id === 'appbar' ? bar : nodes[id] ?? null) },
     ) as (view: string, target?: string | (() => E | null)) => void;
     return { open, went, drew, nodes, timers, hasChildren: (v: string) => ($('view-' + v) as E) };
   }
@@ -170,6 +214,16 @@ describe('openPanel: switch, find (retrying while the screen draws), scroll, fla
     expect(card.scrolled).toHaveLength(1);
   });
 
+  // Review (b-wave-1b, UI 2): block:'start' with no margin put the item's top 65 px under
+  // the sticky app bar — "SIM Chipper is DOWN" landed with its name and chip hidden.
+  it('the item lands below the sticky app bar, its whole top in sight', () => {
+    const w = world('today');
+    const card = el('div', 'card');
+    w.open('today', () => card);
+    expect(card.marginAtScroll).toEqual(['77px']); // the bar's 65 px and a 12 px breath, set before the scroll
+    expect(card.scrolled).toEqual([{ behavior: 'smooth', block: 'start' }]);
+  });
+
   it('a miss gives up after a few seconds — still on the right screen', () => {
     const w = world('today');
     w.open('followups', 'nowhere');
@@ -181,7 +235,7 @@ describe('openPanel: switch, find (retrying while the screen draws), scroll, fla
 });
 
 describe('goTile: a tile opens what it counts; a gap tile opens nothing', () => {
-  const goTile = new Function(`${fnSrc('goTile')}\nreturn goTile;`)() as (t: E, fn: () => void) => void;
+  const goTile = new Function('el', `${fnSrc('goTile')}\nreturn goTile;`)(el) as (t: E, fn: () => void) => void;
   const tile = (n: string) => { const t = el('div', 'tile'); t.appendChild(el('b', '', n)); t.appendChild(el('span', '', 'x')); return t; };
 
   it('a read tile is a button that opens its target', () => {
