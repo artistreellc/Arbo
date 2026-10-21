@@ -400,11 +400,13 @@ nav button .dot.unread{background:var(--card);box-shadow:inset 0 0 0 2px var(--w
 /* Direction B P8: a lead's Call back is a round button in its top row; the word is kept for screen readers. */
 .callbtn.round{flex:none;width:52px;height:52px;min-height:52px;padding:0;border-radius:50%}
 /* The name on top, its time and city under it, the round button beside both — the name keeps the width at 320 px. */
-.card .toprow.has-call{display:grid;grid-template-columns:auto minmax(0,1fr) auto;column-gap:10px;row-gap:2px;align-items:center}
-.card .toprow.has-call .who{grid-column:1 / 3;grid-row:1;min-width:0;overflow-wrap:anywhere}
-.card .toprow.has-call .when{grid-column:1;grid-row:2}
-.card .toprow.has-call .addr{grid-column:2;grid-row:2;margin:0;font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.card .toprow.has-call .callbtn{grid-column:3;grid-row:1 / span 2}
+/* P8 review: the time and the city flow on one line and the city drops whole to the next when it does not
+   fit — never cut off ("Chesap…" at 320), never squeezed into a narrow column. The button sits right, centred. */
+.card .toprow.has-call{display:flex;flex-wrap:wrap;justify-content:flex-start;align-items:baseline;align-content:center;column-gap:10px;row-gap:2px;position:relative;min-height:52px;padding-right:62px}
+.card .toprow.has-call .who{flex:1 1 100%;min-width:0;overflow-wrap:anywhere}
+.card .toprow.has-call .when{flex:none}
+.card .toprow.has-call .addr{flex:0 1 auto;margin:0;font-size:14px;min-width:0;overflow-wrap:anywhere}
+.card .toprow.has-call .callbtn{position:absolute;right:0;top:50%;margin-top:-26px}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
 .clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
 .clamp.open{display:block}
@@ -2956,9 +2958,21 @@ $('y-go').addEventListener('click', async () => {
 
 // ---------- Leads ----------
 // Direction B P8: a lead's longer lines fold to two; a tap opens (and folds) them.
-function clampLine(text) {
-  const n = el('div', 'scope clamp', text);
-  n.addEventListener('click', () => n.classList.toggle('open'));
+// Direction B P8 review: the lines Mike opened, by lead and line ('L1:details'), so
+// the minute redraw draws them open again (holding the redraw instead would freeze
+// Leads, as an open <details> does). Kept for this launch only.
+const LEAD_OPEN = new Set();
+// A customer's contact instructions bind every contact (VA brief §5.9: "CALL FIRST",
+// "gets home at 3", "call her cell"), so a line that carries one never folds. Broad on
+// purpose: a line kept whole by mistake costs a line of screen; one folded by mistake hides a rule.
+const CONTACT_LINE = /\b(?:call|text|phone|ring)\s+(?:first|ahead|before|after|only|between|her|his|their|my|the|me|him|them)\b|\b(?:text|calls?)\s+only\b|\b(?:do\s*n[o’']?t|never|no)\s+(?:call|text|knock|ring)|\b(?:gets?|be|is|are)\s+home\b|[’']s\s+home\b|\bhome\s+(?:by|after|at|around|before)\b|\b(?:cell|mobile|landline|work (?:number|phone))\b|\b(?:before|after|until|between)\s+\d|\b\d{1,2}(?::\d\d)?\s*[ap]\.?m\b|\bvoicemail\b|\bask for\b|\bspeak (?:to|with)\b/i;
+function clampLine(text, key) {
+  if (CONTACT_LINE.test(text)) return el('div', 'scope', text);
+  const n = el('div', 'scope clamp' + (key && LEAD_OPEN.has(key) ? ' open' : ''), text);
+  n.addEventListener('click', () => {
+    n.classList.toggle('open');
+    if (key) { if (n.classList.contains('open')) LEAD_OPEN.add(key); else LEAD_OPEN.delete(key); }
+  });
   return n;
 }
 async function renderLeads() {
@@ -3050,11 +3064,11 @@ async function renderLeads() {
     }
     if (where && !whereInTop) c.appendChild(where);
     // Direction B P8: past work and what they said fold to two lines; a tap opens them.
-    if (lead.history) c.appendChild(clampLine('' + lead.history));
+    if (lead.history) c.appendChild(clampLine('' + lead.history, lead.id + ':history'));
     // §1B: a past-work read that failed is named — a missing line is not "no history".
     // R32: a link cut on purpose is said as "cut", never "couldn't read it — try again".
     else if (lead.historyUnreadable) c.appendChild(feedLine(lead.historyCut ? { code: 503, message: 'link_cut' } : null, 'Past work'));
-    if (lead.details) c.appendChild(clampLine(lead.details));
+    if (lead.details) c.appendChild(clampLine(lead.details, lead.id + ':details'));
     // Line 1 is triage + who they are; EMERGENCY already outranks HOT, so an
     // emergency lead carries no second red-ish chip beside it.
     const b = el('div', 'badges');

@@ -68,6 +68,14 @@ const lead = (o: Lead = {}): Lead => ({
   isFirstTimer: true, quality: { priority: 'warm' }, permit: null, screenPending: false,
   permitUnreadable: false, history: null, historyUnreadable: false, details: null, ...o,
 });
+// What the page keeps between redraws: the lead lines Mike opened (P8 review). One
+// set for the whole file, as the page has one; each test starts it empty.
+const LEAD_OPEN = new Set<string>();
+/** The page's own contact-instruction test, lifted as written. */
+const CONTACT_LINE = (() => {
+  const m = /^const CONTACT_LINE = (\/.*\/[a-z]*);/m.exec(html);
+  return m ? (new Function(`return ${m[1]};`)() as RegExp) : null;
+})();
 async function draw(leads: Lead[]) {
   const v = el('div');
   const posts: string[] = [];
@@ -78,7 +86,7 @@ async function draw(leads: Lead[]) {
     icon: (id: string) => el('svg', 'ico ' + id), showKeywall: () => {}, LINKS_READY: Promise.resolve('simulation'),
     state: (t: string, m: string) => { const n = el('div', 'state', t); n.appendChild(el('span', '', m)); return n; },
     feedState: (_e: unknown, w: string) => el('div', 'state', w), feedLine: (_e: unknown, w: string) => el('div', 'feed-state', w),
-    showSaveFail: () => {}, emergencyLeads: () => {}, clampLine: pageFn('clampLine', { el }),
+    showSaveFail: () => {}, emergencyLeads: () => {}, clampLine: pageFn('clampLine', { el, LEAD_OPEN, CONTACT_LINE }),
   });
   await renderLeads();
   return { v, posts, cards: v.children.filter((n) => n.has('card')) };
@@ -160,6 +168,61 @@ describe('Leads: compact rows with a round call button (P8)', () => {
     // The ruling lines never fold: an older lead's age line and the spam Undo line.
     const old = (await draw([lead({ older: true, ageDays: 40, filedAsEmergency: true })])).cards[0]!;
     expect(old.children.find((n) => n.textContent.startsWith('Older lead'))!.has('clamp')).toBe(false);
+  });
+
+  // Review (b-wave-1b, correctness 3 / UI 3): Leads redraws every minute and the
+  // open state lived only on the old node, so a line Mike opened to read before he
+  // called snapped shut within 60 s and the cards below jumped. Holding the redraw
+  // would freeze the screen as <details> does; the page remembers it by lead and line.
+  it('a line Mike opened stays open through the minute redraw — by lead and by line; closed again, it stays closed', async () => {
+    LEAD_OPEN.clear();
+    const leads = [lead({ details: 'SIM words: a long note about the oak by the fence.', history: '2 past jobs' }), lead({ id: 'L2', details: 'SIM words: another long note about a pine.' })];
+    const said = (cards: Node[], i: number) => cards[i]!.children.find((n) => n.textContent.startsWith('SIM words'))!;
+    const first = await draw(leads);
+    await said(first.cards, 0).click();
+    const again = await draw(leads);
+    expect(said(again.cards, 0).has('open'), 'L1 said: still open').toBe(true);
+    expect(again.cards[0]!.children.find((n) => n.textContent === '2 past jobs')!.has('open'), 'L1 past work: never opened').toBe(false);
+    expect(said(again.cards, 1).has('open'), 'L2: never opened').toBe(false);
+    await said(again.cards, 0).click(); // closed by hand
+    const third = await draw(leads);
+    expect(said(third.cards, 0).has('open')).toBe(false);
+  });
+
+  // Review (b-wave-1b, correctness minor, for Mike): §5.9 makes a customer's contact
+  // instructions binding on every contact ("CALL FIRST", "gets home at 3", "call her
+  // cell"), and the fold hid them under the round Call back. A line that carries one
+  // never folds; other lines still do.
+  it.each([
+    'CALL FIRST — she gets home at 3, call her cell.',
+    'Text only please, works nights.',
+    'Do not call before 10 am.',
+    'Owner is the daughter; ask for Pat.',
+  ])('a contact instruction never folds: %s', async (words) => {
+    LEAD_OPEN.clear();
+    const { cards } = await draw([lead({ details: words })]);
+    const n = cards[0]!.children.find((x) => x.textContent === words)!;
+    expect(n.has('scope')).toBe(true);
+    expect(n.has('clamp'), 'shown whole').toBe(false);
+  });
+
+  it('a line with no contact instruction still folds (the plan\'s two-line fold stands)', async () => {
+    LEAD_OPEN.clear();
+    const { cards } = await draw([lead({ details: 'SIMULATED phone enquiry — seeded, not a real customer' })]);
+    expect(cards[0]!.children.find((x) => x.textContent.startsWith('SIMULATED'))!.has('clamp')).toBe(true);
+  });
+
+  // Review (b-wave-1b, UI 6): beside the time, the city had nowrap + an ellipsis, so at
+  // 320 px it read "Yesterday 2:00 PM Chesap…" — before P8 it had its own full line.
+  it('CSS: the city beside the time wraps, never cut off with an ellipsis', () => {
+    const rule = /\.card \.toprow\.has-call \.addr\{([^}]*)\}/.exec(css)![1]!;
+    expect(rule).not.toMatch(/nowrap|ellipsis/);
+    expect(rule).toMatch(/overflow-wrap:anywhere/);
+    // The time and the city flow on one line; the city drops whole to the next when it does not fit,
+    // and the name and both lines keep clear of the round button.
+    const top = /\.card \.toprow\.has-call\{([^}]*)\}/.exec(css)![1]!;
+    expect(top).toMatch(/display:flex;flex-wrap:wrap/);
+    expect(top).toMatch(/padding-right:62px/);
   });
 
   it('CSS: a 52 px round button, a visually hidden label, the two-line fold', () => {
