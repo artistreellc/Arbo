@@ -1,6 +1,6 @@
 # Direction B — build plan
 
-**Status: built (2026-10-21).** Every package, P1–P19, is built: D101 (wave 1a, P1–P5), D102 (wave 1b, P6–P11), D103 (wave 2, P12–P13), D104 (wave 3a, P14, P15, P18) and D105 (wave 3b, P16, P17, P19 — the redesign is complete). Each row in DECISIONS.md lists the defaults chosen, the browser check, the tap counts measured against the table below, and what is still open for Mike. Not deployed: deploy is manual. The status line below is the plan as drafted.
+**Status: built (2026-10-21).** Every package, P1–P19, is built: D101 (wave 1a, P1–P5), D102 (wave 1b, P6–P11), D103 (wave 2, P12–P13), D104 (wave 3a, P14, P15, P18) and D105 (wave 3b, P16, P17, P19 — the redesign is complete; its review round is items 12–20 there). Each row in DECISIONS.md lists the defaults chosen, the browser check, the tap counts measured against the table below, and what is still open for Mike. Not deployed: deploy is manual. The status line below is the plan as drafted.
 
 **Status:** plan only, not built yet. It merges three plans: ship order, safety, and taps. They were drafted read-only on 2026-10-21 against `claude/eloquent-wozniak-1y78ia` (main 38f5012 + `docs/DIRECTION_B.md`).
 
