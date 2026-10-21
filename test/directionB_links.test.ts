@@ -118,6 +118,11 @@ describe('every link that exists today lands on a real screen (P1)', () => {
     expect(html, 'view-' + h).toContain(`id="view-${h}"`);
     expect(boot(h).landed).toBe(h);
   });
+  it('new #estimate resolves at boot to its own view-* container (P15)', () => {
+    expect(html).toContain('id="view-estimate"');
+    expect(boot('estimate').landed).toBe('estimate');
+  });
+
   it('#queue lands on More, where the four desks the Queue held now sit (P13)', () => {
     expect(boot('queue').landed).toBe('more');
     expect(boot('queue').drawn).toContain('renderMore');

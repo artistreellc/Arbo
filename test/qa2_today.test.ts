@@ -232,7 +232,8 @@ describe('T3: the tile grid stands on its own feeds', () => {
       expect(today.indexOf(feed), feed).toBeGreaterThan(-1);
       expect(today.indexOf(feed), feed).toBeLessThan(briefFetch);
     }
-    expect(today.indexOf('instr.appendChild(yardBtn)')).toBeLessThan(today.indexOf('instr.prepend(hud)'));
+    // Direction B P15: the Yard check left Today for Estimate (R29 #4) — nothing sits between the tiles and the loops.
+    expect(today).not.toContain('yardBtn');
   });
 
   it('jobs and estimates keep the "today" scope, and a dead schedule names why on them', () => {
@@ -354,10 +355,11 @@ describe('T5: one cause, one card, plain words', () => {
 });
 
 describe('T6: the Yard check says what it is for; the calendar way out sits in the schedule card', () => {
+  // Direction B P15 (R29 #4): the Yard check lives on Estimate now, with the same words and the same sheet.
   it('names the will-this-job-pay check', () => {
-    expect(today).toContain("'Yard check — will this job pay?'");
-    expect(today).not.toContain('run a number');
-    expect(today).toContain("yardBtn.addEventListener('click', openYard)");
+    expect(html).toMatch(/key: 'yard', [^}]*title: 'Yard check — will this job pay\?'/);
+    expect(html).not.toContain('run a number');
+    expect(html.slice(html.indexOf('async function renderEstimate()'))).toContain('openYard();');
   });
 
   it('a dead schedule card carries its own Open the Calendar button', () => {

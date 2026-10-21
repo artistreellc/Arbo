@@ -726,6 +726,25 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 .otile .reading{padding:8px 0 0;margin:0;font-size:13px}
 .otile.gap{border-style:dashed;border-color:var(--border);background:transparent;box-shadow:none}.otile.gap::after{display:none}
 .office-gear{margin-top:12px}
+/* Direction B P15: Estimate's tools — one full-width row each, its desk line above its title. A row whose
+   read failed is dashed, says why, and opens nothing (§1B). The prep sheet's rows: Permit, Drive, 811, Access. */
+.est-tools{background:var(--card);border:1px solid var(--hairline);border-radius:var(--r-lg);box-shadow:var(--shadow-card);overflow:hidden;margin-bottom:14px}
+.est-tool{position:relative;display:flex;align-items:center;gap:14px;width:100%;min-height:64px;padding:12px 40px 12px 14px;border:0;border-top:1px solid var(--hairline);background:none;font:inherit;text-align:left;color:var(--ink-1);cursor:pointer}
+.est-tool:first-child{border-top:0}
+.est-tool .ico{flex:none;width:24px;height:24px;color:var(--forest)}
+.est-words{display:flex;flex-direction:column;min-width:0}
+.est-tool .odesk{font-size:12px;font-weight:650;letter-spacing:.02em;color:var(--gold-6)}
+.est-tool b{font-family:var(--serif);font-size:17px;font-weight:600;line-height:1.2}
+.est-tool small{font-size:13px;color:var(--ink-3);line-height:1.35}
+.est-tool .cue{position:absolute;right:14px;top:50%;transform:translateY(-50%);font-style:normal;font-size:20px;line-height:1;color:var(--ink-3)}
+.est-tool[aria-disabled="true"]{cursor:default}.est-tool[aria-disabled="true"] .cue{display:none}
+.est-tool.gap{border-top-style:dashed}.est-tool.gap small{color:var(--ink-2)}
+.est-tool .reading{padding:2px 0 0;margin:0;font-size:13px}
+.prep-cityzip{display:grid;grid-template-columns:1fr 112px;gap:10px}
+@media (max-width:359px){.prep-cityzip{grid-template-columns:1fr}}
+.verdict .prep-lab{margin:14px 0 2px}.verdict .prep-lab:first-child{margin-top:0}
+.verdict .prep-jc{margin-top:10px}
+.verdict .feed-state .prep-again{display:block;margin-top:8px}
 .viewhead h1 .h1-gap{font-family:var(--sans);font-size:15px;font-weight:600;letter-spacing:0;color:var(--ink-3);font-variation-settings:normal}
 /* The state line drops under its chip when they cannot share a row, so a variable name never breaks mid-word. */
 .asst-state{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;font-size:15px;font-weight:600;color:var(--ink-1);margin-bottom:10px}
@@ -778,6 +797,7 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
   <div id="view-leads" class="view"></div>
   <div id="view-cal" class="view"></div>
   <div id="view-book" class="view"></div>
+  <div id="view-estimate" class="view"></div>
   <div id="view-followups" class="view"></div>
   <div id="view-money" class="view"></div>
   <div id="view-fleet" class="view"></div>
@@ -2818,13 +2838,7 @@ async function renderToday() {
   v.appendChild(instr);
   // Direction B P12: the feeds card — under the day and its instruments, above the notices it folds.
   v.appendChild(feeds.el);
-  // Yard check needs no data, so it renders before the brief fetch: with the
-  // links cut the brief returns early, and this is its only way in.
-  const yardBtn = el('button', 'hudbtn');
-  yardBtn.appendChild(icon('i-numbers'));
-  yardBtn.appendChild(el('span', '', 'Yard check — will this job pay?'));
-  yardBtn.addEventListener('click', openYard);
-  instr.appendChild(yardBtn);
+  // Direction B P15 (R29 #4): the Yard check moved to Estimate, beside prep, permit rules and measuring.
   // §9 HUD: the day as instruments — one glance, biggest number wins. Stops
   // and open loops are the hero's; the tiles carry what the hero does not.
   // Above the brief fetch: coming-due, agent runs, overdue and to-bill read
@@ -2848,7 +2862,7 @@ async function renderToday() {
   hud.appendChild(agentTile);
   hud.appendChild(owedTile);
   hud.appendChild(billTile);
-  instr.prepend(hud); // tiles, then the Yard check, then the loops
+  instr.prepend(hud); // tiles, then the loops
   const loopsPanel = el('div');
   loopsPanel.id = 'loops-panel';
   instr.appendChild(loopsPanel);
@@ -3684,6 +3698,80 @@ function renderCalendar() {
   renderTodayStops();
 }
 
+// ---------- Estimate (Direction B P15; R29 #1 and #4: "Before you write it up") ----------
+// Prep starts from the address (a lead's, P18), then the tools for the estimate. The head and the prep
+// form are drawn before any read: the form needs none, and nothing below may hide it (the talk-button
+// lesson). Permit rules and Measure open as their old More tiles did; the Yard check — moved here from
+// Today (R29 #4), still one tap away — opens its sheet; Properties on file (the Book, renamed) says what
+// is on file from the read its own screen makes. A read that failed names its feed, and that row opens
+// nothing (§1B). Never a price, never a booking. Each row's small line is its desk, as on Office.
+const ESTIMATE_TOOLS = [{ key: 'permits', line: 'Permit Desk', title: 'Permit rules', note: '4 cities, sourced and dated', icon: 'i-permit' }, { key: 'measure', line: 'Arborist', title: 'Measure a tree', note: 'LiDAR scan → trunk width', icon: 'i-lidar' }, { key: 'yard', line: 'Moved from Today', title: 'Yard check — will this job pay?', note: 'Internal only — the customer never sees it', icon: 'i-numbers' }, { key: 'book', line: 'Arborist', title: 'Properties on file', note: '', icon: 'i-book' }];
+let EST_GEN = 0;
+// What the Properties on file row last said, and whether it could open: a redraw keeps it up until its
+// own read lands (P3's swap) — only a first draw says "Reading…".
+let EST_BOOK = null;
+async function renderEstimate() {
+  const gen = ++EST_GEN;
+  const v = $('view-estimate');
+  v.replaceChildren();
+  const head = el('div', 'viewhead');
+  head.appendChild(el('div', 'eyebrow', 'Arborist · Permit Desk'));
+  head.appendChild(el('h1', '', 'Before you write it up'));
+  head.appendChild(el('p', '', 'Start with the address. Arbo lines up the permit screen, drive time, 811 and access.'));
+  v.appendChild(head);
+  v.appendChild(estimatePrepPanel());
+  v.appendChild(el('div', 'panel-title', 'Tools for the estimate'));
+  const list = v.appendChild(el('div', 'est-tools'));
+  let book = null;
+  for (const t of ESTIMATE_TOOLS) {
+    const b = list.appendChild(el('button', 'est-tool'));
+    b.type = 'button';
+    b.dataset.tool = t.key;
+    b.appendChild(icon(t.icon));
+    const w = b.appendChild(el('span', 'est-words'));
+    w.appendChild(el('span', 'odesk', t.line));
+    w.appendChild(el('b', '', t.title));
+    const note = w.appendChild(el('small', '', t.note));
+    const cue = b.appendChild(el('i', 'cue', '›'));
+    cue.setAttribute('aria-hidden', 'true');
+    if (t.key === 'book') { book = { b: b, note: note }; continue; }
+    b.addEventListener('click', () => {
+      if (t.key === 'yard') { openYard(); return; }
+      switchTab(t.key);
+      if (NAV_DRAW[t.key]) NAV_DRAW[t.key]();
+    });
+  }
+  // Properties on file: what is on file, and what is coming due — from the Book's own read.
+  let go = false;
+  const can = (yes) => {
+    go = yes;
+    book.b.setAttribute('aria-disabled', yes ? 'false' : 'true');
+    book.b.classList.toggle('gap', !yes);
+  };
+  book.b.addEventListener('click', () => { if (go) switchTab('book'); });
+  if (EST_BOOK) { book.note.textContent = EST_BOOK.said; can(EST_BOOK.go); }
+  else { book.note.replaceChildren(readingLine()); can(false); book.b.classList.remove('gap'); }
+  let p;
+  try {
+    p = await api('/api/properties');
+    if (!p || !Array.isArray(p.properties)) throw new Error('unreadable'); // a body without its list is a read that failed
+  } catch (e) {
+    if (gen !== EST_GEN) return;
+    if (e.code === 401) return showKeywall();
+    await LINKS_READY; // whether db_not_configured means "cut" depends on the links
+    if (gen !== EST_GEN) return;
+    EST_BOOK = { said: 'Not counted — ' + FEED_WORD[feedKind(e)], go: false }; // the row's title already names the feed
+    book.note.textContent = EST_BOOK.said;
+    can(false);
+    return;
+  }
+  if (gen !== EST_GEN) return;
+  // A forecast Arbo could not read is said beside the count — never "0 coming due" (§1B).
+  EST_BOOK = { said: p.properties.length + ' on file · ' + (Array.isArray(p.comingDue) ? p.comingDue.length + ' coming due' : 'coming due: ' + FEED_WORD.unread), go: true };
+  book.note.textContent = EST_BOOK.said;
+  can(true);
+}
+
 // ---------- The Book (§6/#36: every property, tap into its twin) ----------
 // ---------- Estimate prep (Mike 2026-09-24: know the property before the drive) ----------
 function estimatePrepPanel() {
@@ -3708,8 +3796,10 @@ function estimatePrepPanel() {
   }
   const notes = el('textarea'); notes.placeholder = 'Access notes from the call — fenced backyard, tight gate, dogs…';
   card.appendChild(f('Address', addr));
-  card.appendChild(f('City', citySel));
-  card.appendChild(f('ZIP', zip));
+  // Direction B P15: City and ZIP share a row, so Estimate's tools sit a field higher (a narrow phone stacks them).
+  const cz = card.appendChild(el('div', 'prep-cityzip'));
+  cz.appendChild(f('City', citySel));
+  cz.appendChild(f('ZIP', zip));
   card.appendChild(f('Job type', jobSel));
   card.appendChild(f('Access notes', notes));
   const go = el('button', 'actbtn', 'Build prep sheet');
@@ -3737,6 +3827,9 @@ function estimatePrepPanel() {
     // warning, and NO OVERLAY — VERIFY is neutral — green would read as a pass.
     const pc = !s.permit.ran ? 'v-below' : s.permit.status === 'PERMIT_LIKELY' ? 'v-lose' : s.permit.status === 'REVIEW_NEEDED' ? 'v-below' : 'v-verify';
     const sheet = el('div', 'verdict ' + pc);
+    // Direction B P15: one row each — Permit, Drive, 811, Access — in the server's own words.
+    const lab = (t) => sheet.appendChild(el('div', 'loop-kind prep-lab', t));
+    lab('Permit');
     // The head is the permit state's one label (PERMIT_STATE); a screen that never ran is PERMIT SCREEN PENDING, as on Leads.
     const ps = PERMIT_STATE[s.permit.ran ? s.permit.status : 'SCREEN_PENDING'];
     sheet.appendChild(el('div', 'vhead', ps ? ps[0] : s.permit.status.replace(/_/g, ' ')));
@@ -3747,10 +3840,26 @@ function estimatePrepPanel() {
       if (s.permit.scaleEscalation) sheet.appendChild(el('div', 'drv', s.permit.scaleEscalation));
       if (s.permit.powerLine) sheet.appendChild(el('div', 'drv', '' + s.permit.powerLine));
     }
-    sheet.appendChild(el('div', 'drv', s.drive.fromZip
-      ? '~' + s.drive.minutes + ' min from ' + s.drive.fromZip + ' — ' + s.drive.note
-      : '' + s.drive.reason));
-    sheet.appendChild(el('div', 'drv', (s.missUtility.flagged ? '' : '') + s.missUtility.note));
+    // The city's own job check, one tap away, on that city (a city outside the four has none).
+    if (s.city) {
+      const jc = el('button', 'minibtn prep-jc', 'Open the job check ›');
+      jc.type = 'button';
+      jc.addEventListener('click', () => { PERMIT_CITY = s.city; switchTab('permits'); renderPermits(); });
+      sheet.appendChild(jc);
+    }
+    lab('Drive');
+    if (s.drive.fromZip) sheet.appendChild(el('div', 'drv', '~' + s.drive.minutes + ' min from ' + s.drive.fromZip + ' — ' + s.drive.note));
+    else {
+      // §1B: a drive time Arbo could not work out is named in the server's words — never a 0 — and ↻ builds the sheet again.
+      const d = sheet.appendChild(el('div', 'feed-state unset', s.drive.reason));
+      const again = el('button', 'minibtn prep-again', '↻ Build again');
+      again.type = 'button';
+      again.addEventListener('click', () => go.onclick());
+      d.appendChild(again);
+    }
+    lab('811');
+    sheet.appendChild(el('div', 'drv', s.missUtility.note));
+    lab('Access');
     sheet.appendChild(el('div', 'drv', '' + (s.access.notes ? '"' + s.access.notes + '" — ' + s.access.note : s.access.note)));
     if (s.cityNote) sheet.appendChild(el('div', 'drv', s.cityNote));
     out.replaceChildren(sheet);
@@ -3765,15 +3874,12 @@ async function renderBook() {
   const first = !v.hasChildNodes(); // Direction B P3: readingLine() where the read lands, on a first draw only
   v.replaceChildren();
   // R26: the R25 desks' heading — the desk that owns this screen, then what it is for.
+  // Direction B P15: "Properties on file" (Book, renamed); the prep sheet moved to Estimate.
   const head = el('div', 'viewhead');
   head.appendChild(el('div', 'eyebrow', 'Arborist'));
-  head.appendChild(el('h1', '', 'Properties & estimate prep'));
-  head.appendChild(el('p', '', 'Every property Arbo has on file, and one sheet to read before you drive out to an estimate.'));
+  head.appendChild(el('h1', '', VIEW_TITLES.book));
+  head.appendChild(el('p', '', 'Every property Arbo has on file. Tap one for its history, trees and permit screens.'));
   v.appendChild(head);
-  // Prep panel renders ABOVE the properties fetch on purpose — with the
-  // links cut that fetch 503s and returns early, and anything below it
-  // never renders in production (the talk-button lesson, again).
-  v.appendChild(estimatePrepPanel());
   const reading = first ? v.appendChild(readingLine()) : null;
   let data;
   try {
@@ -6580,10 +6686,9 @@ function renderMore() {
   });
   tile('i-agents', 'Agents', 'Eight desks, one brain', () => { switchTab('agents'); renderAgents(); });
   // Direction B P14: the four desks the Queue held, Numbers and Teach Arbo are Office's counted desk
-  // tiles above (OFFICE_DESKS; no two Office tiles share an icon). Measure, Permits and Book stay here until P15.
-  tile('i-lidar', 'Measure', 'LiDAR scan → DBH', () => { switchTab('measure'); renderMeasure(); });
-  tile('i-permit', 'Permits', '4 cities, sourced', () => { switchTab('permits'); renderPermits(); });
-  tile('i-book', 'Book', 'Estimates & prep', () => switchTab('book'));
+  // tiles above (OFFICE_DESKS; no two Office tiles share an icon). P15: Book, Permits and Measure live
+  // under Estimate now — one tile opens it until the dock gets its own Estimate tab (P19).
+  tile('i-tree', 'Estimate', 'Prep, permit rules, measure', () => switchTab('estimate'));
   // R26: look only — the crew's page, on this app's key, and it cannot sign,
   // file or clock in. Same tab on purpose: an installed iPhone app keeps its
   // own saved data, so a new tab might not have the key.
@@ -7478,12 +7583,12 @@ async function renderLearn() {
   }
 }
 
-const VIEW_TITLES = { learn: 'Teach Arbo', measure: 'Measure', agents: 'Agents', permits: 'Permits', today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Book', followups: 'Follow-ups', money: 'Money', fleet: 'Fleet', safety: 'Crew & safety', calls: 'Calls', perf: 'Numbers', settings: 'Settings', more: 'Office', assistant: 'Assistant' };
+const VIEW_TITLES = { learn: 'Teach Arbo', measure: 'Measure', agents: 'Agents', permits: 'Permit rules', today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Properties on file', estimate: 'Estimate', followups: 'Follow-ups', money: 'Money', fleet: 'Fleet', safety: 'Crew & safety', calls: 'Calls', perf: 'Numbers', settings: 'Settings', more: 'Office', assistant: 'Assistant' };
 // Direction B P13: a link that names no screen of its own — #queue (never a link before) opens More, where the Queue's four desks sit.
 const VIEW_ALIAS = { queue: 'more' };
 // Direction B P13: which dock tab lights for each screen — one table (the plan's DOCK_OF), today's dock until P19.
 // Settings opens from the header gear and lights none.
-const DOCK_OF = { today: 'today', leads: 'leads', calls: 'calls', cal: 'cal', book: 'more', followups: 'more', money: 'more', fleet: 'more', safety: 'more', perf: 'more', more: 'more', permits: 'more', agents: 'more', measure: 'more', learn: 'more', assistant: 'more' };
+const DOCK_OF = { today: 'today', leads: 'leads', calls: 'calls', cal: 'cal', estimate: 'more', book: 'more', followups: 'more', money: 'more', fleet: 'more', safety: 'more', perf: 'more', more: 'more', permits: 'more', agents: 'more', measure: 'more', learn: 'more', assistant: 'more' };
 
 // The line under ARBO. Today's hero already carries the date, so Today shows
 // the name alone; every screen says SIMULATION while the data is practice data.
@@ -7832,7 +7937,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && TAL
 // browser's back all walk the same steps. With no step behind (a reload, a
 // home-screen shortcut, the crew preview's way back) a More desk lands on More
 // and anything else on Today.
-const NAV_PARENT = { book: 'more', followups: 'more', money: 'more', fleet: 'more', safety: 'more', perf: 'more', permits: 'more', agents: 'more', measure: 'more', learn: 'more', assistant: 'more', settings: 'today' };
+const NAV_PARENT = { book: 'estimate', followups: 'more', money: 'more', fleet: 'more', safety: 'more', perf: 'more', permits: 'estimate', agents: 'more', measure: 'estimate', learn: 'more', assistant: 'more', settings: 'today', estimate: 'today' };
 const SHEETS = ['twin', 'yard', 'bd', 'talk', 'approval', 'photo', 'maps'];
 let NAV_QUIET = false; // true while a back step is drawn — drawing it must not add a new step
 function navPush(which) {
@@ -7923,7 +8028,7 @@ for (const t of ['today', 'leads', 'cal', 'book', 'followups', 'calls', 'perf'])
 $('tab-more').addEventListener('click', () => { renderMore(); switchTab('more'); });
 
 // The screens ↻ redraws. The minute timer redraws them too, unless one holds typed text.
-const TIMED = { today: renderToday, leads: renderLeads, cal: renderCalendar, book: renderBook, followups: renderFollowUps, money: renderMoneyView, fleet: renderFleetView, safety: renderSafetyView, calls: renderCalls, perf: renderPerformance };
+const TIMED = { today: renderToday, leads: renderLeads, cal: renderCalendar, estimate: renderEstimate, book: renderBook, followups: renderFollowUps, money: renderMoneyView, fleet: renderFleetView, safety: renderSafetyView, calls: renderCalls, perf: renderPerformance };
 function refreshAll() { for (const t in TIMED) TIMED[t](); }
 // ↻ and the key screen also redraw a More desk that is on screen — refreshAll never draws those.
 function refreshActiveMoreView() {

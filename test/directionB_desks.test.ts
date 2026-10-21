@@ -376,7 +376,8 @@ describe('every link into the Queue lands on its desk (P13)', () => {
     const sprite = readFileSync(new URL('../src/app/sprite.svg', import.meta.url), 'utf8');
     const desks = constVal<Array<{ view: string; icon: string }>>('OFFICE_DESKS').map((d) => [d.icon, VIEW_TITLES[d.view]!] as const);
     const icons = [...desks, ...[...fnSrc('renderMore').matchAll(/tile\('(i-[a-z-]+)', '([^']+)'/g)].map((m) => [m[1]!, m[2]!] as const)];
-    expect(icons.length).toBeGreaterThanOrEqual(13);
+    // Direction B P15: Book, Permits and Measure moved under Estimate (one Estimate tile) — the whole list, exactly.
+    expect(icons.map(([, t]) => t)).toEqual(['Follow-ups', 'Money', 'Fleet', 'Crew & safety', 'Numbers', 'Teach Arbo', 'Assistant', 'Agents', 'Estimate', 'Crew', 'Phone line']);
     const seen = new Map<string, string>();
     for (const [ic, title] of icons) {
       expect(seen.get(ic), `${title} wears ${ic}, as ${seen.get(ic)} does`).toBeUndefined();
