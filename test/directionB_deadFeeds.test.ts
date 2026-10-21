@@ -112,6 +112,8 @@ type Panels = {
   inboxIntentPanel?: () => Promise<FNode | null>; websiteFormsPanel?: () => Promise<FNode | null>;
   studyPanel?: (limit: number) => Promise<FNode | null>; outreachPanel?: (full: boolean) => Promise<FNode | null>;
   feedsCard?: (key: string) => { el: FNode; place: (slot: FNode, x: unknown) => Promise<void> };
+  // Direction B P13: the Queue's four desks, each a screen of its own.
+  renderMoneyView?: () => Promise<void>; renderFleetView?: () => Promise<void>; renderSafetyView?: () => Promise<void>; renderFollowUps?: () => Promise<void>;
 };
 /** The page's helpers and the panels under test, built together with one stand-in document. */
 function kit(fail: (typeof FAILS)[number]) {
@@ -145,9 +147,18 @@ function kit(fail: (typeof FAILS)[number]) {
     if (!helpers.includes('readingLine')) helpers.push('readingLine');
     targets.push('inboxIntentPanel', 'websiteFormsPanel', 'studyPanel', 'outreachPanel', 'feedsCard');
   }
+  // Direction B P13: the four desk screens, with every panel the Queue held (and what the Fleet's Bouncie line reads).
+  if (/^async function deskView\(/m.test(html)) {
+    consts.push('VIEW_TITLES', 'DESK_LINE', 'DESK_GEN', 'FU_LABEL', 'LOOP_LABEL', 'TRACK_SAYS');
+    helpers.push('loopCard', 'loadTrack', 'agoWords', 'truckWords', 'trackWords', 'fleetTrackLine', 'fillTrack');
+    targets.push('deskView', 'renderMoneyView', 'renderFleetView', 'renderSafetyView', 'renderFollowUps', 'renderFleet',
+      'renderRoster', 'renderRosterList', 'renderTrainingBoard', 'renderVetting', 'renderLibraryDesk', 'renderLibraryQueue');
+  }
   const built = new Function('document', 'api', 'HERO', 'sysSet', 'showKeywall', 'linksIn', `
     let LINKS = linksIn;
     let TIMER_REDRAW = false;
+    let FU_GEN = 0; // P13: Follow-ups' own newest-draw guard
+    let TRACK = null; // P13: the Fleet's last Bouncie read
     const LINKS_READY = Promise.resolve(linksIn);
     let STORM_READ = null; // Direction B P11: stormBanner keeps its outcome for Before you roll
     let ROLL_BOX = null; // P11 review: the card a redraw keeps up, and the draw that owns it
@@ -263,6 +274,31 @@ describe.each(FAILS)('a read that died: $kind', (fail) => {
     expect(slots.every((s) => s.children.length === (fail.kind === 'unread' ? 1 : 0))).toBe(true);
   });
 
+  // Direction B P13: the Queue's four desks. Each draws its desk head first; every panel on it names its feed.
+  it.each([
+    ['renderMoneyView', 'view-money', 'Yard Boss', 'Money'], ['renderFleetView', 'view-fleet', 'Yard Boss', 'Fleet'],
+    ['renderSafetyView', 'view-safety', 'Crew Chief', 'Crew & safety'], ['renderFollowUps', 'view-followups', 'Chief of Staff', 'Follow-ups'],
+  ] as const)('%s (P13): its desk head, then every panel names its feed — never a calm line, never a 0', async (name, view, line, title) => {
+    const k = kit(fail);
+    await (k as unknown as Record<string, () => Promise<void>>)[name]!();
+    for (let i = 0; i < 8; i++) await flush();
+    const v = k.$(view);
+    expect(v.children[0]!.className).toBe('viewhead');
+    expect(v.children[0]!.children[0]!.textContent).toBe(line);
+    expect(v.children[0]!.children[1]!.textContent).toBe(title);
+    expectNamed(v.textContent, fail.kind, name);
+    expect(v.textContent, name + ': nothing still says Reading…').not.toContain('Reading…');
+  });
+
+  it('Crew & safety (P13): the safety board, roster, training, lessons and library each name their own dead feed', async () => {
+    const k = kit(fail);
+    await k.renderSafetyView!();
+    for (let i = 0; i < 8; i++) await flush();
+    const t = k.$('view-safety').textContent;
+    for (const what of ['Safety board — ', 'Roster — ', 'Training board — ', 'Draft queue — ', 'Library drafts — ']) expect(t, what).toContain(what + FEED_WORD[fail.kind]);
+    expect(k.paths.sort()).toEqual(['/api/reference/drafts', '/api/roster', '/api/safety', '/api/training/board', '/api/training/drafts']);
+  });
+
   it('Open loops (the hero stat): a dash and the feed tag, never 0 open', async () => {
     const k = kit(fail);
     k.heroLoops();
@@ -278,7 +314,9 @@ describe.each(FAILS)('a read that died: $kind', (fail) => {
 // exempt with the reason. A new one (each later package) must join one list.
 describe('the dead-feed harness knows every panel in the page', () => {
   const COVERED = ['renderLeads', 'sonaPanel', 'renderSafety', 'renderFleetList', 'renderMoney',
-    'inboxIntentPanel', 'studyPanel', 'outreachPanel', 'websiteFormsPanel']; // P12 joined the four Today panels
+    'inboxIntentPanel', 'studyPanel', 'outreachPanel', 'websiteFormsPanel', // P12 joined the four Today panels
+    'renderMoneyView', 'renderFleetView', 'renderSafetyView', 'renderFollowUps', // P13: the Queue's four desks …
+    'renderRosterList', 'renderTrainingBoard', 'renderVetting', 'renderLibraryQueue']; // … and the panels Crew & safety holds
   const EXEMPT: Record<string, string> = {
     renderToday: 'a page of panels; its dead-feed lines are pinned in qa_today, qa2_today and qa3_today-rest (emergencyLeads, stormBanner, heroLoops are covered above)',
     renderAssistant: 'R28 desk; its gaps are pinned in assistantUi',
@@ -289,15 +327,10 @@ describe('the dead-feed harness knows every panel in the page', () => {
     renderBook: 'not seeded in P1; pinned in qa2_queue-numbers-book (joins with P15)',
     renderCalls: 'not seeded in P1; its Quo gaps are pinned in qa3_quo-fold and r33Review (joins with P16)',
     renderRoster: 'wrapper of renderRosterList',
-    renderRosterList: 'not seeded in P1; pinned in qa3_queue-desks (joins with P13)',
-    renderTrainingBoard: 'not seeded in P1; pinned in qa2_queue-numbers-book (joins with P13)',
     renderPerformance: 'not seeded in P1; pinned in qa2_queue-numbers-book',
     renderCampaignList: 'draws a list it is handed — no read of its own',
-    renderVetting: 'not seeded in P1; pinned in qa2_queue-numbers-book (joins with P13)',
     renderLibraryDesk: 'wrapper of renderLibraryQueue',
-    renderLibraryQueue: 'not seeded in P1; pinned in qa2_queue-numbers-book (joins with P13)',
     renderFleet: 'wrapper of renderFleetList (covered) and the Bouncie line (bouncie.test)',
-    renderFollowUps: 'not seeded in P1; pinned in qa_queue and qa2_queue-numbers-book (joins with P13)',
     renderSettings: 'not seeded in P1; pinned in qa_settings and qa2_settings-more',
     renderMore: 'tiles only today — no read (P14 adds counted tiles and joins)',
     renderPermits: 'not seeded in P1; pinned in qa_permits and qa2_permits-measure-crew',

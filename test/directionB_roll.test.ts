@@ -123,7 +123,7 @@ describe('Before you roll (P11)', () => {
     ]);
     expect(head(k.box)).toBe('3 to check');
     for (const r of rs) { expect(r.tag).toBe('button'); r.click(); }
-    expect(k.opened.map(([v]) => v)).toEqual(['followups', 'followups', 'today']); // DESK_VIEW.safety, DESK_VIEW.fleet, Today's emergency card
+    expect(k.opened.map(([v]) => v)).toEqual(['safety', 'fleet', 'today']); // DESK_VIEW.safety, DESK_VIEW.fleet (P13: their own screens), Today's emergency card
     expect(k.paths).toEqual(['/api/safety', '/api/fleet/units']); // leads and weather ride the reads Today already made
     expect(k.box.textContent).not.toContain('Nothing to check');
   });
@@ -296,7 +296,7 @@ describe('a redraw keeps the rows up until its own reads land (P3\'s swap)', () 
     expect(rows(k.box), 'the old rows, the very same buttons, while the new reads are out').toEqual(before);
     expect(k.box.textContent).not.toContain('Reading…');
     before[0]!.click(); // a tap meanwhile still lands where its row said
-    expect(k.opened.map(([v]) => v)).toEqual(['followups']);
+    expect(k.opened.map(([v]) => v)).toEqual(['safety']); // DESK_VIEW.safety (P13: its own screen)
     release(SAFE_OK);
     await flush();
     expect(rows(k.box).map((r) => r.textContent)).toEqual([expect.stringContaining('Unit 3 is HELD')]);

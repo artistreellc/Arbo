@@ -67,12 +67,13 @@ const BOOT = (() => {
 function boot(hash: string): { landed: string; drawn: string[] } {
   const drawn: string[] = [];
   const renders = [...new Set([...BOOT.matchAll(/\b(render[A-Z]\w*)\(/g)].map((m) => m[1]!))];
-  const fn = new Function('location', 'VIEW_TITLES', 'history', ...renders, `
+  // Direction B P13: the boot block also reads VIEW_ALIAS (#queue → More).
+  const fn = new Function('location', 'VIEW_TITLES', 'VIEW_ALIAS', 'history', ...renders, `
     let CUR_TAB = 'today'; let NAV_QUIET = false;
     const switchTab = (w) => { CUR_TAB = w; };
     ${BOOT}
     return CUR_TAB;`);
-  const landed = fn({ hash: hash ? '#' + hash : '' }, VIEW_TITLES, { replaceState: () => {} },
+  const landed = fn({ hash: hash ? '#' + hash : '' }, VIEW_TITLES, constVal<Record<string, string>>('VIEW_ALIAS'), { replaceState: () => {} },
     ...renders.map((r) => () => drawn.push(r))) as string;
   return { landed, drawn };
 }
@@ -87,7 +88,7 @@ function litTabs(view: string): string[] {
     return Object.assign(n, { classList: { toggle: (c: string, f: boolean) => { if (f) n.on.add(c); else n.on.delete(c); } } });
   };
   const sw = pageFn<(w: string) => void>('switchTab', {
-    navPush: () => {}, $, VIEW_TITLES, CUR_TAB: 'today', setAppSub: () => {}, navShowBack: () => {}, window: { scrollTo: () => {} },
+    navPush: () => {}, $, VIEW_TITLES, DOCK_OF: constVal<Record<string, string>>('DOCK_OF'), CUR_TAB: 'today', setAppSub: () => {}, navShowBack: () => {}, window: { scrollTo: () => {} },
   });
   sw(view);
   expect($('view-' + view)!.on.has('active'), 'view-' + view + ' is shown').toBe(true);
@@ -109,6 +110,16 @@ describe('every link that exists today lands on a real screen (P1)', () => {
     expect(boot('nope').landed).toBe('today');
     // Settings opens from the gear, never from a link (the plan's table: unchanged).
     expect(boot('settings').landed).toBe('today');
+  });
+
+  // Direction B P13: the Queue's four desks are links of their own; #queue (never a link before) is an alias for More.
+  it.each(['money', 'fleet', 'safety'])('new #%s resolves at boot to its own view-* container (P13)', (h) => {
+    expect(html, 'view-' + h).toContain(`id="view-${h}"`);
+    expect(boot(h).landed).toBe(h);
+  });
+  it('#queue lands on More, where the four desks the Queue held now sit (P13)', () => {
+    expect(boot('queue').landed).toBe('more');
+    expect(boot('queue').drawn).toContain('renderMore');
   });
 
   it('a desk opened cold is drawn before it shows (More, Permits, Agents, Measure, Learn, Assistant)', () => {

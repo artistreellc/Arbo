@@ -106,12 +106,13 @@ describe('#18 — a proposal points at a real screen', () => {
     return { ...base, hasDb: () => true, linkOpen: () => true };
   };
 
-  it('the Yard Boss names the Fleet cards on the Queue, never a breakdown plan nobody can open', async () => {
+  it('the Yard Boss names the Fleet cards on the Fleet screen, never a breakdown plan nobody can open', async () => {
     expect(sectionsSrc).not.toContain('Review the breakdown plan');
     const reports = await runAllSections(simDeps());
     const yard = reports.find((r) => r.agentId === 'yard-boss')!;
     const p = yard.proposals.find((x) => x.kind === 'parts_review')!;
-    expect(p.text).toMatch(/^Decide on the repair for (the DOWN unit|the \d+ DOWN units) under Fleet on the Queue\. Arbo never orders parts — a human buys/);
+    // Direction B P13: the Queue was split; the units are on the Fleet screen.
+    expect(p.text).toMatch(/^Decide on the repair for (the DOWN unit|the \d+ DOWN units) on the Fleet screen\. Arbo never orders parts — a human buys/);
     expect(p.text).not.toMatch(/\(s\)|breakdown plan/);
   });
 
@@ -128,7 +129,7 @@ describe('#18 — a proposal points at a real screen', () => {
       expect(label, k).toMatch(/→$/);
       expect(timed, k).toContain(tab + ':');
     }
-    expect(go.parts_review).toEqual(['Open the Queue →', 'followups']);
+    expect(go.parts_review).toEqual(['Open Fleet →', 'fleet']); // Direction B P13: the Fleet desk
     expect(go.area_review).toEqual(['Open Numbers →', 'perf']);
   });
 

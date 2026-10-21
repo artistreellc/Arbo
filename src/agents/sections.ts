@@ -96,7 +96,7 @@ const IN = {
   callBacklog: 'call review backlog',
   weather: 'NWS weather alerts',
   bookedStops: "tomorrow's booked stops",
-  openLoops: 'open loops on the Queue',
+  openLoops: 'open loops on Follow-ups', // Direction B P13: the Queue is split; the loops live on Follow-ups
   briefing: 'owner briefing',
   permitScreens: 'permit screens for recent leads',
   permitBoard: 'permit board',
@@ -132,7 +132,7 @@ export const SECTION_AGENTS: readonly SectionAgentDef[] = [
     model: 'claude-opus-5',
   },
   {
-    id: 'chief-of-staff', name: 'Chief of Staff', section: 'Today & Queue',
+    id: 'chief-of-staff', name: 'Chief of Staff', section: 'Today & Follow-ups',
     roles: ['#3 Loop-Closer', '#13 Owner Briefing'],
     carries: ['ops/loopCloser (via the read-only queue)', 'agents/ownerBriefingAgent'],
     reads: [IN.openLoops, IN.briefing],
@@ -163,7 +163,7 @@ export const SECTION_AGENTS: readonly SectionAgentDef[] = [
     model: 'claude-opus-5',
   },
   {
-    id: 'crew-chief', name: 'Crew Chief', section: 'Crew',
+    id: 'crew-chief', name: 'Crew Chief', section: 'Crew & safety',
     roles: ['#6 Safety', '#7 Trainer'],
     carries: ['agents/safetyAgent', 'training/board (via the read-only training board)'],
     reads: [IN.crewSafety, IN.training, IN.weather],
@@ -174,8 +174,8 @@ export const SECTION_AGENTS: readonly SectionAgentDef[] = [
     model: 'claude-opus-5',
   },
   {
-    // R26: named by the screen it works on — the fleet & money part of the Queue.
-    id: 'yard-boss', name: 'Yard Boss', section: 'Queue — fleet & money',
+    // R26: named by the screen it works on. Direction B P13 split the Queue: Money and Fleet are its two screens.
+    id: 'yard-boss', name: 'Yard Boss', section: 'Money & Fleet',
     roles: ['#10 Equipment & parts', 'Collections (§4.8, §5B)'],
     carries: ['agents/collectionsAgent', 'fleet (via the read-only units list)'],
     reads: [IN.invoices, IN.fleet],
@@ -516,7 +516,7 @@ const INPUTS: Record<SectionId, InputSpec[]> = {
         if (attention > 0) findings.push({ severity: 'watch', text: `${plural(attention, 'open loop needs', 'open loops need')} attention.` });
         return {
           state: 'read', detail: `${b.open.length} open (${urgent} urgent)`, findings,
-          proposals: urgent > 0 ? [propose('decide_open_loops', `Decide ${plural(urgent, 'urgent loop', 'urgent loops')} on the Queue.`)] : [],
+          proposals: urgent > 0 ? [propose('decide_open_loops', `Decide ${plural(urgent, 'urgent loop', 'urgent loops')} on the Follow-ups screen.`)] : [],
         };
       }),
     },
@@ -672,11 +672,11 @@ const INPUTS: Record<SectionId, InputSpec[]> = {
             ...(b.down > 0 ? [{ severity: 'act' as const, text: `${plural(b.down, 'unit is', 'units are')} DOWN — scheduling will not assign ${them(b.down)}.` }] : []),
             ...(held > 0 ? [{ severity: 'act' as const, text: `${plural(held, 'unit is', 'units are')} on a brake/steering HOLD — off the schedule until Mike signs ${them(held)} back on.` }] : []),
           ],
-          // Points at what exists: the unit's card under Fleet on the Queue. No breakdown plan is
+          // Points at what exists: the unit's card on the Fleet screen. No breakdown plan is
           // kept to review — it is only shown when a breakdown is filed — so the copy never names one.
           proposals: [
-            ...(b.down > 0 ? [propose('parts_review', `Decide on the repair for ${b.down === 1 ? 'the DOWN unit' : `the ${b.down} DOWN units`} under Fleet on the Queue. Arbo never orders parts — a human buys (§6E2.3).`)] : []),
-            ...(held > 0 ? [propose('signback_review', `Decide whether ${held === 1 ? 'the held unit is' : `the ${held} held units are`} fixed, then sign ${them(held)} back on under Fleet on the Queue. Only Mike signs a unit back on; Arbo never clears a hold.`)] : []),
+            ...(b.down > 0 ? [propose('parts_review', `Decide on the repair for ${b.down === 1 ? 'the DOWN unit' : `the ${b.down} DOWN units`} on the Fleet screen. Arbo never orders parts — a human buys (§6E2.3).`)] : []),
+            ...(held > 0 ? [propose('signback_review', `Decide whether ${held === 1 ? 'the held unit is' : `the ${held} held units are`} fixed, then sign ${them(held)} back on from the Fleet screen. Only Mike signs a unit back on; Arbo never clears a hold.`)] : []),
           ],
         };
       }),
