@@ -114,7 +114,7 @@ function kit(q: unknown, refuse: 'none' | 'read' | 'write' = 'none', store = sto
     throw new Error('unexpected read ' + path);
   };
   const helpers = ['feedKind', 'feedLine', 'plural', 'readingLine', 'badge', 'chip', 'slipRuleLabel', 'sonaSlipBox', 'quoOffLine',
-    'leadsTabBadge', 'sonaTabBadge', 'leadsHeadOn', 'leadsFilter', 'renderLeadsHead', 'sonaHandled', 'sonaCalledBack', 'sonaPanel'];
+    'leadsTabBadge', 'sonaTabBadge', 'leadsHeadOn', 'leadsFilter', 'renderLeadsHead', 'sonaHandled', 'sonaCalledBack', 'sonaPanel', 'sonaFlagGap'];
   const built = new Function('document', 'api', 'localStorage', `
     const $ = (id) => document.getElementById(id);
     const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };

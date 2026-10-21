@@ -1932,6 +1932,16 @@ function sonaSlipBox(d, done) {
   if (older) box.appendChild(el('div', '', plural(older, 'older call is', 'older calls are') + ' only in Quo now.'));
   return box;
 }
+// /api/quo can answer while what the flags come from did not: Quo's record unreadable (R33 — Arbo makes no Quo
+// webhook, so the record is the only way Sona's calls reach it) or the model down (a call kept but not checked
+// for a rule slip). Then "no flag" is not "no slip" (§1B): the words for the flag's place, or null when whole.
+function sonaFlagGap(st) {
+  const rec = st.quoRecord || {};
+  if (rec.error || rec.unreadable) return 'Arbo could not read Sona’s calls from Quo’s record — her rule flags can’t all show here. No flag here is not the same as none.';
+  if (!st.reading) return 'Arbo cannot read Sona’s calls right now (no model key) — a rule slip can be missed, so no flag here is not the same as none.';
+  if (st.readsRetrying > 0) return 'Arbo could not read ' + plural(st.readsRetrying, 'Sona call') + ' yet (the AI model was unavailable) — a rule slip on ' + (st.readsRetrying === 1 ? 'it' : 'them') + ' can’t show until Arbo reads ' + (st.readsRetrying === 1 ? 'it' : 'them') + ', so no flag here is not the same as none.';
+  return null;
+}
 async function sonaPanel(limit, withTranscripts) {
   // M15: wiring that is not whole is tried again on its own \u2014 the line says when, so a wait never reads as a quiet phone.
   const quoRegLine = (reg) => reg.detail + (reg.retryAt ? ' Arbo tries again at ' + fmtTime(reg.retryAt) + ' \u2014 no redeploy needed.' : '');
@@ -2350,8 +2360,9 @@ async function receptionStrip() {
 // A half not read yet is left out. The dot is the louder gap when both failed.
 function leadsTabBadge(err, n, from) {
   const btn = $('tab-leads');
-  btn.dataset[from === 'sona' ? 'sonaHalf' : 'leadsHalf'] = err ? 'gap:' + feedKind(err) : String(n || 0);
-  const half = (s) => (!s ? null : s.startsWith('gap:') ? { k: s.slice(4) } : { n: Number(s) || 0 });
+  // A partial read keeps what it counted beside its gap ('gap:unread:2'): the count shows, ringed, never a clean number.
+  btn.dataset[from === 'sona' ? 'sonaHalf' : 'leadsHalf'] = err ? 'gap:' + feedKind(err) + (n ? ':' + n : '') : String(n || 0);
+  const half = (s) => (!s ? null : s.startsWith('gap:') ? { k: s.split(':')[1], n: Number(s.split(':')[2]) || 0 } : { n: Number(s) || 0 });
   const L = half(btn.dataset.leadsHalf), S = half(btn.dataset.sonaHalf);
   const count = (L && L.n || 0) + (S && S.n || 0);
   const k = ['unread', 'unset', 'sim', 'cut'].find((x) => (L && L.k === x) || (S && S.k === x)) || null;
@@ -2372,7 +2383,7 @@ function leadsTabBadge(err, n, from) {
   const parts = [];
   if (L && L.k) parts.push(FEED_WORD[L.k] + '. Emergency leads unknown — not zero.');
   else if (L && L.n) parts.push(plural(L.n, 'emergency lead'));
-  if (S && S.k) parts.push('Sona calls: ' + FEED_WORD[S.k] + '. Sona calls unknown — not zero.');
+  if (S && S.k) parts.push((S.n ? plural(S.n, 'Sona flag') + ' not handled. ' : '') + 'Sona calls: ' + FEED_WORD[S.k] + '. Sona calls unknown — not zero.');
   else if (S && S.n) parts.push(plural(S.n, 'Sona flag') + ' not handled');
   const say = 'Leads: ' + parts.map((p, i) => (i < parts.length - 1 && !p.endsWith('.') ? p + '.' : p)).join(' ');
   btn.setAttribute('aria-label', say);
@@ -3441,10 +3452,13 @@ async function renderLeadsHead() {
       // "No call needs you" only over a whole read: wired, checked by the model, the week read through, nothing retrying.
       whole: (st.registration.state === 'ok' || st.registration.state === 'read_only') && !!st.reading && !rec.error && !rec.unreadable
         && !(rec.weekThreadsNotRead > 0) && !!rec.weekReadOkAt && !(st.readsRetrying > 0),
+      // Quo answered, but its record or the model did not: the flags counted are not all the flags (§1B, R33).
+      gap: sonaFlagGap(st),
     };
   }
   if (qe) qk = feedKind(qe);
-  sonaTabBadge(qe, S ? S.flags : 0);
+  // A partial Sona read is a gap on its half of the badge, with what it did count: never a clean zero.
+  sonaTabBadge(qe || (S && S.gap ? { message: 'sona_partial' } : null), S ? S.flags : 0);
 
   const out = [];
   const head = el('div', 'viewhead');
@@ -3458,8 +3472,11 @@ async function renderLeadsHead() {
     : title(VIEW_TITLES.calls, 'lh-calls', FEED_WORD[qk]));
   out.push(head);
   // The red Sona flag, above the segments and on both. Quo unreadable: a named line in its place; Quo not set up: the fold's words, once.
-  if (S) { const box = sonaSlipBox(qr.d, done); if (box) out.push(box); }
-  else if (qr.e) out.push(feedLine(qr.e, 'Sona calls (Quo)', 'Her rule flags can’t show here — not the same as none.'));
+  if (S) {
+    const box = sonaSlipBox(qr.d, done);
+    if (box) out.push(box);
+    if (S.gap) out.push(el('div', 'feed-state unread', S.gap)); // named in the flag's place, under any flag it did read
+  } else if (qr.e) out.push(feedLine(qr.e, 'Sona calls (Quo)', 'Her rule flags can’t show here — not the same as none.'));
   else out.push(quoOffLine(links));
   // The two segments: a count only when there is one; a read that failed is '–' and its feed word, never a 0.
   const segs = el('div', 'seg lseg');
@@ -3470,15 +3487,16 @@ async function renderLeadsHead() {
     b.type = 'button';
     b.dataset.seg = view;
     b.appendChild(el('span', '', label));
-    if (k) b.appendChild(el('span', 'lcount gap', '–'));
+    // A partial read (a count and a gap) keeps its count beside the feed word: never a clean number, never a 0.
+    if (k && !n) b.appendChild(el('span', 'lcount gap', '–'));
     else if (n) b.appendChild(el('span', 'lcount' + (hot ? ' hot' : ''), String(n)));
     if (k) b.appendChild(el('small', '', FEED_WORD[k]));
-    b.setAttribute('aria-label', label + ': ' + (k ? FEED_WORD[k] + ' — not a zero' : n ? String(n) : 'none to count'));
+    b.setAttribute('aria-label', label + ': ' + (k ? (n ? n + ' counted, ' + FEED_WORD[k] + ' — not the whole count' : FEED_WORD[k] + ' — not a zero') : n ? String(n) : 'none to count'));
     b.addEventListener('click', () => switchTab(view)); // one Back step each (switchTab → navPush)
     segs.appendChild(b);
   };
   segBtn('leads', 'New leads', L ? L.n : 0, lk, false);
-  segBtn('calls', 'Calls & texts', S ? S.need : 0, qk, true);
+  segBtn('calls', 'Calls & texts', S ? S.need : 0, qk || (S && S.gap ? 'unread' : null), true);
   out.push(segs);
   // New leads' filter chips — from a read that landed, with leads to filter. Not Back steps: the list stays the same screen.
   if (L && L.n) {

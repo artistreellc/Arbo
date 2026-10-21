@@ -182,7 +182,7 @@ function kit(fail: (typeof FAILS)[number]) {
   const hub = /^async function renderLeadsHead\(/m.test(html);
   if (hub) {
     consts.push('VIEW_TITLES', 'LEADS_FILTERS');
-    helpers.push('sonaSlipBox', 'quoOffLine', 'sonaTabBadge', 'leadsHeadOn', 'leadsFilter', 'fillQuoSlots');
+    helpers.push('sonaSlipBox', 'sonaFlagGap', 'quoOffLine', 'sonaTabBadge', 'leadsHeadOn', 'leadsFilter', 'fillQuoSlots');
     targets.push('renderLeadsHead', 'renderCalls');
   }
   const built = new Function('document', 'api', 'HERO', 'sysSet', 'showKeywall', 'linksIn', `
