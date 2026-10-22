@@ -285,29 +285,6 @@ function esToggleButton(cls) {
   return b;
 }
 
-/** English | Español as two chips (the office app's Appearance), the current one lit. */
-function esLangRow(rowCls, chipCls) {
-  const wrap = document.createElement('div');
-  const head = document.createElement('div');
-  head.className = 'es-lang-label';
-  head.textContent = T('Language');
-  wrap.appendChild(head);
-  const row = document.createElement('div');
-  row.className = rowCls;
-  for (const lang of ['en', 'es']) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = chipCls + (ES.wanted === lang ? ' on' : '');
-    b.textContent = ES_LANG_NAME[lang];
-    b.setAttribute('lang', lang);
-    b.setAttribute('aria-pressed', ES.wanted === lang ? 'true' : 'false');
-    b.addEventListener('click', () => esChange(lang, row));
-    row.appendChild(b);
-  }
-  wrap.appendChild(row);
-  return wrap;
-}
-
 // Spanish mode (or a Spanish reader whose dictionary failed) is set up before the page's own script runs.
 if (ES.lang === 'es') document.documentElement.lang = 'es';
 esBrokenNotice();
