@@ -312,3 +312,34 @@ function constBlockArray(name: string): string[] {
   if (!m) throw new Error('no const ' + name);
   return new Function(`return ${m[1]};`)() as string[];
 }
+
+// Self-review of wave B (D108): what the first browser run and the reread of the diff found.
+describe('review fixes (wave B)', () => {
+  it('trips still on their way when the dots come down are never drawn over an empty map', () => {
+    const T = { tripSeq: 5, d: { state: 'ok' }, layer: { clearLayers: () => {} }, trips: { clearLayers: () => {} }, tripFor: 'x', tripLine: null, tripsOk: 'x' };
+    frameFn<() => void>('dropTrucks', { TRUCKS: T })();
+    expect(T.tripSeq).toBe(6);
+  });
+  it('after hours by this phone\'s clock, "Positions from Bouncie." is not said over the after-hours line', () => {
+    const facts = (afterHours: boolean) => {
+      const at = script.indexOf('\nFACTS.trucks = () => {');
+      const body = script.slice(at + 1, script.indexOf('\n};', at) + 3);
+      const FACTS: Record<string, () => Array<{ textContent: string }>> = {};
+      const el = (_t: string, _c: string, text = '') => ({ textContent: text, appendChild() {} });
+      new Function('FACTS', 'TRUCKS', 'el', 'MAP_SAYS', 'truckStyle', 'truckWords', body)(FACTS, { d: { state: 'ok', message: POSITIONS_SAYS.ok, trucks: [] }, afterHours, tripsOk: null }, el, MAP_SAYS, truckStyle, truckWords);
+      return FACTS.trucks!().map((n) => n.textContent);
+    };
+    expect(facts(false)).toContain(POSITIONS_SAYS.ok);
+    expect(facts(true)).not.toContain(POSITIONS_SAYS.ok);
+  });
+  it('an opened key is scrolled into the notes card; the zoom buttons step aside while a list is open', () => {
+    expect(srcOf(script, 'keyButton')).toContain("if (KEY_OPEN) $('card').scrollTop = Math.max(0, $('legend').offsetTop - 8);");
+    expect(script).toContain("$('mapbox').classList.add('popopen')");
+    expect(script).toContain("$('mapbox').classList.remove('popopen')");
+    expect(page).toContain('#mapbox.popopen .leaflet-control-zoom{visibility:hidden}');
+  });
+  it('the prep sheet\'s two buttons keep a gap side by side and line up when they wrap at 320', () => {
+    expect(shell).toContain('.verdict .prep-jc{margin-right:8px}');
+    expect(shell).not.toContain('.prep-jc + .prep-jc');
+  });
+});
