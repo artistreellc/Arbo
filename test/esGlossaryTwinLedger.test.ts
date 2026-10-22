@@ -18,6 +18,8 @@ import { findBannedEs } from '../src/i18n/banList.js';
 import { esGateProblems } from '../src/i18n/gates.js';
 import { currentSafetyPairs } from '../src/i18n/dictionaries.js';
 import { RECORDED_EN, RECORDED_SHA, HELD_EN, oneCharEdit } from './support/esRecorded.js';
+// R27 Phase A, owner app (builder b): its NEW safety-class lines, each a ledger draft (no review claimed).
+import { OWNER_B_DRAFTS } from './support/esOwnerB.js';
 
 describe('the glossary — usted, neutral Latin-American Spanish, trade terms with the English beside', () => {
   it('names the register and the variety Mike chose (R29 #3)', () => {
@@ -146,9 +148,10 @@ describe('the review ledger (src/i18n/reviewed.json) — a safety string edited 
     expect(at('reviewed')).toEqual([...RECORDED_EN]);
     // …and by fingerprint, so a recorded line's Spanish can't change and be re-marked unnoticed.
     expect(loadLedger().filter((e) => e.pass === 'reviewed').map((e) => e.sha)).toEqual([...RECORDED_SHA]);
-    expect(at('draft')).toEqual([...HELD_EN]);
+    // Pin moved (R27 Phase A, owner app b), meaning kept: D112's five held lines first, then the owner app's new drafts, exactly.
+    expect(at('draft')).toEqual([...HELD_EN, ...OWNER_B_DRAFTS.map((d) => d.en)]);
     expect(at('person')).toEqual([]);
-    expect(loadLedger().length).toBe(RECORDED_EN.length + HELD_EN.length);
+    expect(loadLedger().length).toBe(RECORDED_EN.length + HELD_EN.length + OWNER_B_DRAFTS.length);
     for (const e of loadLedger()) {
       if (e.pass === 'reviewed') {
         // Both blind passes named, with the date, and the back-translation itself on the entry.
@@ -156,9 +159,14 @@ describe('the review ledger (src/i18n/reviewed.json) — a safety string edited 
         expect(e.reviewedBy, e.en).toMatch(/back-translation/);
         expect(e.reviewedBy, e.en).toMatch(/2026-10-22/);
         expect(e.note, e.en).toMatch(/^Recorded 2026-10-22 \(D112\)/);
-      } else {
+      } else if (HELD_EN.includes(e.en)) {
         expect(e.reviewedBy, e.en).toBeUndefined();
         expect(e.note, e.en).toMatch(/^Not recorded \(D112\)/);
+      } else {
+        // Pin moved (R27 Phase A, owner app b), meaning kept: a new draft says it is one — no review claimed, no back-translation.
+        expect(e.reviewedBy, e.en).toBeUndefined();
+        expect(e.backTranslation, e.en).toBeUndefined();
+        expect(e.note, e.en).toMatch(/^Not recorded — new in R27 Phase A \(owner app\)/);
       }
     }
     // The glossary's seven labels: all recorded but HELD.
@@ -188,7 +196,9 @@ describe('the review ledger (src/i18n/reviewed.json) — a safety string edited 
     const edited = pairs.map((p) => (p === first ? { ...p, es: p.es + ' (editado)' } : p));
     expect(ledgerProblems(edited).join('\n')).toMatch(/not re-reviewed|no ledger entry/);
     expect(ledgerProblems([...pairs, { en: 'STOP WORK', es: 'PARE EL TRABAJO', where: 'test' }]).join('\n')).toMatch(/STOP WORK/);
-    expect(ledgerProblems(pairs.slice(1)).join('\n')).toMatch(/stale/);
+    // Pin moved (R27 Phase A, owner app b), meaning kept: the owner app's units now carry the recorded glossary labels too, so
+    // the pair is taken out of the repo everywhere it stands — a pair gone from the repo still leaves its ledger entry stale.
+    expect(ledgerProblems(pairs.filter((p) => !(p.en === first.en && p.es === first.es))).join('\n')).toMatch(/stale/);
     const tampered = loadLedger().map((e, i) => (i === 0 ? { ...e, sha: '0'.repeat(64) } : e));
     expect(ledgerProblems(pairs, tampered).join('\n')).toMatch(/fingerprint/);
   });

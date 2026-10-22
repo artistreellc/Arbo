@@ -265,7 +265,9 @@ describe('Book + estimate prep (source pins)', () => {
     expect(prep).toContain('l.htmlFor = node.id');
     expect(prep).not.toContain('l.style.');
     // Direction B P15 review: what the sheet holds is said once, in Estimate's head (the card's own intro repeated it).
-    expect(html).toContain("'Start with the address: permit, drive time, 811 and access. Never a price, never a booking.'");
+    // Pin moved (R27 Phase A, owner app b), meaning kept: the same two sentences, one literal each (the first a safety line — 811).
+    expect(html).toContain("esSay(el('p'), 'Start with the address: permit, drive time, 811 and access.')");
+    expect(html).toContain("T('Never a price, never a booking.')");
   });
 
   it('dropdowns and the prep card title match the rest of the form', () => {

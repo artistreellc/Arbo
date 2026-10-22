@@ -246,7 +246,11 @@ describe('the words that named the old screens move with them (ruling strings st
   });
 
   it('Follow-ups with nothing due says so in its own name — never over a feed it could not check', () => {
-    expect(fnSrc('renderFollowUps')).toContain("state(unread.length ? 'Nothing due from what Arbo could read' : 'No follow-ups due',");
+    // Pin moved (R27 Phase A, owner app b), meaning kept: the two names are said through T, and "a feed it could not check" is
+    // the storm or coming-due nudges the server could not read (storm || grow — what unread.length counted).
+    expect(fnSrc('renderFollowUps')).toContain("state(storm || grow ? T('Nothing due from what Arbo could read') : T('No follow-ups due'),");
+    expect(fnSrc('renderFollowUps')).toContain('const storm = !!q.seasonalUnavailable;');
+    expect(fnSrc('renderFollowUps')).toContain('const grow = !!q.growthUnavailable;');
   });
 
   it('a proposal for a call review opens Calls & texts, by that name', () => {

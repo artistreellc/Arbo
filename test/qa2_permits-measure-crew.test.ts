@@ -69,6 +69,8 @@ class FakeNode {
   closest(sel: string): FakeNode | null { for (let n = this.parent; n; n = n.parent) if (sel === n.tag + '.' + n.cls.split(' ')[0]) return n; return null; }
   get firstChild(): FakeNode | null { return this.kids[0] ?? null; }
   get textContent(): string { return this.text + this.kids.map((k) => k.textContent).join(''); }
+  // R27 Phase A (owner app b): the runtime's esSay / esSayTwin set a node's words as the DOM does (textContent = …).
+  set textContent(v: string) { for (const k of this.kids) k.parent = null; this.kids = []; this.text = v; }
 }
 const el = (tag: string, cls?: string, text?: string): FakeNode => new FakeNode(tag, cls ?? '', text ?? '');
 const chip = (text: string, tone: string): FakeNode => new FakeNode('span', 'chip ' + tone, text);
@@ -91,7 +93,9 @@ function buildDeps(byId: Record<string, FakeNode> = {}, win: { scrollTo: unknown
   };
   const whoLine = pageFn<(w: unknown) => FakeNode>(html, 'whoLine', { el, document, nb });
   const window = { scrollTo: (o: unknown) => win.scrollTo.push(o) };
-  return { el, chip, nb, whoLine, fmtWhen, KNOWN_HOSTS, PERMIT_STATUS, document, window };
+  // R27 Phase A (owner app b): checkCard says its label through the page's permitLabel (the safety pair; in English, as written).
+  const permitLabel = pageFn<(n: FakeNode) => FakeNode>(html, 'permitLabel');
+  return { el, chip, nb, whoLine, fmtWhen, KNOWN_HOSTS, PERMIT_STATUS, document, window, permitLabel };
 }
 type Fact = (typeof FACTS)[number];
 const factCardOf = (deps: ReturnType<typeof buildDeps>) => pageFn<(f: Fact, stale: boolean) => FakeNode>(html, 'factCard', deps);
@@ -162,7 +166,8 @@ describe('Permits — rule cards read like a person wrote them', () => {
   it('"Checked" is a human day, never a machine date', () => {
     const card = factCardOf(buildDeps());
     const src = region(html, 'function factCard(', '// ---------- Agents desk');
-    expect(src).toContain("'Checked ' + nb(fmtWhen(f.verifiedOn))");
+    // Pin moved (R27 Phase A, owner app b), meaning kept: the day is still nb(fmtWhen(…)), now the value of one keyed sentence.
+    expect(src).toContain("tf('Checked {date}', { date: nb(fmtWhen(f.verifiedOn)) })");
     for (const f of FACTS) {
       const line = card(f, false).querySelector('.srcs')!.textContent;
       expect(line, f.id).not.toMatch(/\d{4}-\d{2}-\d{2}/);

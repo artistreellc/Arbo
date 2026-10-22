@@ -89,7 +89,8 @@ const flush = async (n = 10) => { for (let i = 0; i < n; i++) await new Promise(
 const fail = (code: number, message: string) => Object.assign(new Error(message), { code });
 
 const CONSTS = ['$', 'el', 'FEED_WORD', 'Cap', 'FEED_TAG', 'FEED_SAYS', 'RETRY', 'TONE', 'PERMIT_STATE', 'ESTIMATE_TOOLS'];
-const HELPERS = ['readingLine', 'plural', 'chip', 'badge', 'feedKind', 'feedLine', 'feedState', 'state', 'estimatePrepPanel', 'renderEstimate'];
+// R27 Phase A (owner app b): the prep sheet's permit word is said through the page's permitLabel (the safety pair) — lifted with the rest.
+const HELPERS = ['readingLine', 'plural', 'chip', 'badge', 'feedKind', 'feedLine', 'feedState', 'state', 'permitLabel', 'estimatePrepPanel', 'renderEstimate'];
 
 type Answer = unknown | Error | (() => Promise<unknown>);
 /** renderEstimate (and the prep form) with the page's own helpers, one stand-in document and one answer per path. */

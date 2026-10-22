@@ -94,7 +94,8 @@ describe('Permit Desk — result and rule cards (QA round)', () => {
 
   it('source links are named by their site, never numbered by position', () => {
     expect(cards).not.toContain("'source ' + (i + 1)");
-    expect(cards).toContain("const siteOf = (u) => { try { const h = new URL(u).hostname.replace(/^www\\./, ''); return KNOWN_HOSTS[h] || h; } catch (e) { return 'source'; } };");
+    // Pin moved (R27 Phase A, owner app b), meaning kept: the fallback name is said through T.
+    expect(cards).toContain("const siteOf = (u) => { try { const h = new URL(u).hostname.replace(/^www\\./, ''); return KNOWN_HOSTS[h] || h; } catch (e) { return T('source'); } };");
   });
 
   it('a note never shows a doubled INTERNAL: prefix', () => {

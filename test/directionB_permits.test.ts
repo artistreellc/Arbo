@@ -28,6 +28,8 @@ function constSrc(name: string): string {
 }
 const PERMIT_STATE = new Function(`${constSrc('PERMIT_STATE')}\nreturn PERMIT_STATE;`)() as Record<string, [string, string]>;
 const PERMIT_STATUS = new Function('PERMIT_STATE', `${constSrc('PERMIT_STATUS')}\nreturn PERMIT_STATUS;`)(PERMIT_STATE) as Record<string, [string, string]>;
+// R27 Phase A (owner app b): the page's permitLabel says a permit or call-ahead label through the safety pair (in English, as written).
+const permitLabel = new Function(`${fnSrc('permitLabel')}\nreturn permitLabel;`)() as (n: unknown) => unknown;
 const plural = (n: number, one: string, many?: string) => n + ' ' + (n === 1 ? one : (many || one + 's'));
 const NONE: Omit<JobInput, 'city'> = { inRpa: false, nearPowerLines: false, inRightOfWay: false, stumpGrinding: false, historicDistrict: false, haulingDebris: false, burning: false };
 
@@ -165,7 +167,7 @@ function desk(opts: { checklistFails?: boolean } = {}) {
   const document = { createElement: (t: string) => el(t), createTextNode: (t: string) => el('#text', '', t) };
   const factCard = (f: { id: string }) => { const c = el('div', 'card fact'); c.id = 'fact-' + f.id; return c; };
   const chip = (t: string, tone: string) => el('span', 'badge ' + tone, t);
-  const render = new Function('$', 'el', 'api', 'document', 'factCard', 'checkCard', 'chip', 'plural', 'readingLine', 'state', 'feedKind', 'FEED_WORD', 'showKeywall', 'PERMIT_STATUS', `
+  const render = new Function('$', 'el', 'api', 'document', 'factCard', 'checkCard', 'chip', 'plural', 'readingLine', 'state', 'feedKind', 'FEED_WORD', 'showKeywall', 'PERMIT_STATUS', 'permitLabel', `
     let PERMIT_CITY = 'Virginia Beach';
     let PERMIT_GEN = 0;
     ${constSrc('TOPIC_NAMES')}
@@ -174,7 +176,7 @@ function desk(opts: { checklistFails?: boolean } = {}) {
     ${fnSrc('topicFold')}
     ${fnSrc('renderPermits')}
     return renderPermits;`)(() => v, el, api, document, factCard, (it: { status: string }) => el('div', 'card check-item', it.status), chip, plural,
-    () => el('div', 'reading', 'Reading…'), (t: string, m: string) => el('div', 'state', t + ' ' + m), () => 'unread', { unread: 'couldn’t read it' }, () => {}, PERMIT_STATUS) as () => Promise<void>;
+    () => el('div', 'reading', 'Reading…'), (t: string, m: string) => el('div', 'state', t + ' ' + m), () => 'unread', { unread: 'couldn’t read it' }, () => {}, PERMIT_STATUS, permitLabel) as () => Promise<void>;
   return { v, render, facts, stale };
 }
 
@@ -257,8 +259,8 @@ describe('"Source & date checked ↓" opens the topic before it scrolls', () => 
     target.scrollIntoView = (o: unknown) => { order.push('scroll'); target.scrolled.push(o); };
     (target as unknown as { querySelector: (s: string) => N | null }).querySelector = (s: string) => (s === '.factmeta' ? target.children[0]! : null);
     const document = { getElementById: (id: string) => (id === 'fact-x' ? target : null), createTextNode: (t: string) => el('#text', '', t) };
-    const checkCard = new Function('el', 'chip', 'nb', 'whoLine', 'PERMIT_STATUS', 'document', 'window', `${fnSrc('checkCard')}\nreturn checkCard;`)(
-      el, (t: string, tone: string) => el('span', 'badge ' + tone, t), (s: string) => s, () => el('div'), PERMIT_STATUS, document, {}) as (it: unknown) => N;
+    const checkCard = new Function('el', 'chip', 'nb', 'whoLine', 'PERMIT_STATUS', 'document', 'window', 'permitLabel', `${fnSrc('checkCard')}\nreturn checkCard;`)(
+      el, (t: string, tone: string) => el('span', 'badge ' + tone, t), (s: string) => s, () => el('div'), PERMIT_STATUS, document, {}, permitLabel) as (it: unknown) => N;
     const c = checkCard({ status: 'REVIEW NEEDED', step: 's', why: 'w', factIds: ['x'] });
     const a = c.all().find((n) => n.tag === 'a')!;
     a.click();
