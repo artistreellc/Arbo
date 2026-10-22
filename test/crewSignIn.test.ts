@@ -153,7 +153,7 @@ const el = (tag: string, cls?: string, text?: string): N => new N(tag, cls ?? ''
 const STORAGE_BLOCKED = 'This phone’s browser is blocking saved data (private browsing or site data off). Turn that off, then try again.';
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
-const who = (o: { crewId?: string; signIn?: unknown; me?: () => Promise<unknown>; storage?: 'ok' | 'blocked'; links?: string; hash?: string }) => {
+const who = (o: { crewId?: string; signIn?: unknown; me?: () => Promise<unknown>; storage?: 'ok' | 'blocked'; links?: string; hash?: string; app?: boolean }) => {
   const box = new N('div');
   const stored: Record<string, string | null> = {};
   const reloads: number[] = [];
@@ -171,7 +171,7 @@ const who = (o: { crewId?: string; signIn?: unknown; me?: () => Promise<unknown>
   const renderWhoAmI = lift<() => boolean>('renderWhoAmI', {
     $: () => box, el, document: { createElement: (t: string) => new N(t) }, PREVIEW: false, CREW_ID: o.crewId ?? '',
     SIGN_IN: o.signIn ?? null, BAD_LINK, STORAGE_BLOCKED, localStorage, location, history, checkWho,
-    crewCodeFrom: lift('crewCodeFrom', {}, constLine('CREW_CODE_RE')),
+    crewCodeFrom: lift('crewCodeFrom', {}, constLine('CREW_CODE_RE')), installedApp: () => o.app === true,
   });
   const ok = renderWhoAmI();
   return { ok, box, stored, reloads, replaced, asked };
@@ -290,6 +290,37 @@ describe('C3 — the bad-link line and the paste box', () => {
     await w.box.all().find((n) => n.tag === 'button')!.handlers.click!();
     expect(w.box.text()).toContain('Paste the link from the office.');
     expect(w.reloads).toHaveLength(0);
+  });
+
+  // Review round (D109): a tab opened on a broken link kept "#crew=not-a-code"
+  // through the paste's reload, so the broken-link line stood over the name.
+  // The paste now puts the pasted code's own link in the address, as if it had
+  // been opened: in a tab the reload says Add to Home Screen (the fragment
+  // carries the code there); the installed app keeps no fragment at all.
+  it('a paste in a browser tab puts the pasted code’s link in the address — the broken one is gone', async () => {
+    const w = who({ signIn: { broken: true, app: false }, hash: '#crew=not-a-code' });
+    w.box.all().find((n) => n.id === 'crewcode')!.value = `https://arbo.example/crew#crew=${CODE}`;
+    await w.box.all().find((n) => n.tag === 'button')!.handlers.click!();
+    expect(w.stored).toEqual({ arboCrewId: CODE });
+    expect(w.replaced).toEqual([`/crew#crew=${CODE}`]);
+    expect(w.reloads).toHaveLength(1);
+  });
+
+  it('a paste in the installed app leaves no fragment in the address', async () => {
+    const w = who({ signIn: { broken: true, app: true }, app: true });
+    w.box.all().find((n) => n.id === 'crewcode')!.value = CODE;
+    await w.box.all().find((n) => n.tag === 'button')!.handlers.click!();
+    expect(w.replaced).toEqual(['/crew']);
+    expect(w.reloads).toHaveLength(1);
+  });
+
+  it('a paste whose code could not be stored changes nothing in the address and does not reload', async () => {
+    const w = who({ hash: '#crew=not-a-code', storage: 'blocked' });
+    w.box.all().find((n) => n.id === 'crewcode')!.value = CODE;
+    await w.box.all().find((n) => n.tag === 'button')!.handlers.click!();
+    expect(w.replaced).toEqual([]);
+    expect(w.reloads).toHaveLength(0);
+    expect(w.box.text()).toContain(STORAGE_BLOCKED);
   });
 });
 

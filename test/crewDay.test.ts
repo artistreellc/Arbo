@@ -385,6 +385,30 @@ describe('C4 — the page keeps one start time per crew member, briefing and day
     expect(kept(s, C1)(TODAY.id)).toBe(first);
   });
 
+  // Review round (D109): two calls in one millisecond get the same "now" whether
+  // or not the start was kept, so the test above can pass with the reuse line
+  // gone. A start minutes old comes back unchanged only if it was kept — the one
+  // guarantee migration 0011's unique index leans on (one paid row a reload).
+  it('a reload minutes later gets the kept start back, unchanged and not overwritten', () => {
+    const s = store();
+    const key = `arboGateStart:${C1}:${TODAY.id}:2026-10-21`;
+    const earlier = new Date(Date.now() - 7 * 60_000).toISOString();
+    s.m.set(key, earlier);
+    expect(kept(s, C1)(TODAY.id)).toBe(earlier);
+    expect(s.m.get(key)).toBe(earlier);
+  });
+
+  it('a kept start later than now (the phone’s clock moved back) is never reused — a fresh one replaces it', () => {
+    const s = store();
+    const key = `arboGateStart:${C1}:${TODAY.id}:2026-10-21`;
+    const later = new Date(Date.now() + 60 * 60_000).toISOString();
+    s.m.set(key, later);
+    const got = kept(s, C1)(TODAY.id);
+    expect(got).not.toBe(later);
+    expect(Date.parse(got)).toBeLessThanOrEqual(Date.now());
+    expect(s.m.get(key)).toBe(got);
+  });
+
   it('another briefing, another crew member or another day is a fresh start', () => {
     const s = store();
     s.m.set(`arboGateStart:${C1}:${TODAY.id}:2026-10-20`, '2026-10-20T10:00:00.000Z');
@@ -544,6 +568,75 @@ describe('C4 — the page: signed after a reload, GO off in flight, a 409 reads 
     expect(p.GATE.content).toBeNull();
     expect(p.calls.load).toBe(1);
     expect(p.find('gobtn')!.className).not.toBe('ready');
+  });
+
+  // Review round (D109): the 409 emptied GATE.content and the catch handed GO
+  // back, so a second tap before the re-read landed sent content: null — a 400
+  // that then said "check your crew code". GO is off from the 409 until the
+  // re-read briefing is drawn; a tap in between sends nothing.
+  it('after a 409 GO stays off until the re-read briefing is drawn — a tap in between sends nothing', async () => {
+    const crewWhy = new Function('LINKS', `${fnSrc('crewWhy')}\nreturn crewWhy;`)('live') as (e: unknown) => string;
+    let sent = 0;
+    const p = gatePage({ api: async () => { sent += 1; throw Object.assign(new Error('not_todays_briefing'), { code: 409 }); }, crewWhy });
+    p.renderGate({ ...TODAY, requiredSeconds: 10 });
+    readyToPress(p);
+    await p.submitGate();
+    const go = p.find('gobtn')!;
+    expect(go.disabled).toBe(true);
+    p.refreshGate(); // the 1-second tick while the re-read is on its way
+    expect(go.disabled).toBe(true);
+    expect(go.className).toBe('');
+    await p.submitGate(); // a tap anyway
+    expect(sent).toBe(1);
+    // The re-read lands: the new gate holds the 409 line until its own box is ticked, then arms.
+    p.renderGate({ ...TODAY, id: '44444444-4444-4444-8444-444444444444', requiredSeconds: 10 });
+    expect(p.find('gate-status')!.textContent).toMatch(/^Your sign-off could not be recorded \(that was not today’s briefing\)\./);
+    readyToPress(p);
+    expect(p.find('gobtn')!.disabled).toBe(false);
+    expect(p.find('gobtn')!.className).toBe('ready');
+  });
+});
+
+// Review round (D109): every refusal is named through crewWhy — a 400 too.
+// Only a crew code the office does not know keeps the crew-code line; any
+// other 400 (bad_times, bad_request) is said for what it is, GO held.
+describe('C4 review — a 400 sign-off is named for what it is', () => {
+  const crewWhy = new Function('LINKS', `${fnSrc('crewWhy')}\nreturn crewWhy;`)('live') as (e: unknown) => string;
+  const refusedWith = async (message: string) => {
+    const p = gatePage({ api: async () => { throw Object.assign(new Error(message), { code: 400 }); }, crewWhy });
+    p.renderGate({ ...TODAY, requiredSeconds: 10 });
+    readyToPress(p);
+    await p.submitGate();
+    return p;
+  };
+
+  it('crewWhy names a clock the server cannot use, and any other 400 as turned down — never "didn’t answer"', () => {
+    expect(crewWhy({ code: 400, message: 'bad_times' })).toBe('this phone’s clock gave times the office can’t use — check the phone’s date and time');
+    for (const m of ['bad_request', 'bad_item_id', 'error']) {
+      expect(crewWhy({ code: 400, message: m }), m).toBe('the office couldn’t use what this phone sent');
+    }
+    // The crew-code names keep their own words on every status.
+    expect(crewWhy({ code: 400, message: 'unknown_crew' })).toBe('the office doesn’t know this crew code — check it with the office');
+  });
+
+  it('bad_times and bad_request go through crewWhy, GO held — never "check your crew code"', async () => {
+    for (const [message, reason] of [
+      ['bad_times', 'this phone’s clock gave times the office can’t use — check the phone’s date and time'],
+      ['bad_request', 'the office couldn’t use what this phone sent'],
+    ] as const) {
+      const p = await refusedWith(message);
+      expect(p.GATE.serverMsg, message).toBe(`Your sign-off could not be recorded (${reason}). Your work orders stay locked — do not start work; call the office to log your briefing.`);
+      expect(p.GATE.serverHold, message).toBe(true);
+      expect(p.find('gobtn')!.className, message).toBe('');
+    }
+  });
+
+  it('a crew code the office does not know keeps the crew-code line, GO held', async () => {
+    for (const message of ['unknown_crew', 'bad_crew_id']) {
+      const p = await refusedWith(message);
+      expect(p.GATE.serverMsg, message).toBe('That sign-off was rejected — check your crew code with the office.');
+      expect(p.GATE.serverHold, message).toBe(true);
+    }
   });
 });
 
