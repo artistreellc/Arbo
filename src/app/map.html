@@ -266,6 +266,8 @@ const MAP_SAYS = {
   tripsNoDay: 'This phone can’t tell today’s date in Virginia — no trips were asked for.',
   tripsCount: '{k} trips drawn for {truck}',
   tripsCountOne: '1 trip drawn for {truck}',
+  tripsLost: 'Bouncie sent {k} trips for {truck} whose routes couldn’t be read — not drawn. This is not “no trips”.',
+  tripsLostOne: 'Bouncie sent 1 trip for {truck} whose route couldn’t be read — not drawn. This is not “no trips”.',
   truckKeySolid: 'A truck at Bouncie’s fresh fix — an arrow when driving shows its heading.',
   truckKeyGrey: 'Grey: last known spot — the fix is old, Bouncie is unplugged, or Bouncie didn’t answer.',
   tripKey: 'Line: today’s trips inside working hours — Bouncie’s path.',
@@ -1423,6 +1425,9 @@ function dropDots() {
   dropTrips();
 }
 async function readTrucks() {
+  // Only while Map is on screen (an 'online' event or a message can land while another screen shows): a dot drawn
+  // off screen would be read as current when Map comes back, before any fresh answer.
+  if (!shownNow()) return;
   const seq = ++TRUCKS.seq;
   if (!TRUCKS.d && !TRUCKS.failed) {
     GAPS.trucks = [{ cls: 'unset', text: MAP_SAYS.readingTrucks }];
@@ -1433,13 +1438,13 @@ async function readTrucks() {
     body = await mapGet('/api/fleet/positions');
     if (typeof body.state !== 'string' || typeof body.message !== 'string') throw Object.assign(new Error('shape'), { why: 'unread' });
   } catch (e) {
-    if (seq !== TRUCKS.seq || !ON.trucks) return;
+    if (seq !== TRUCKS.seq || !ON.trucks || !shownNow()) return;
     dropTrucks(); // a refresh that failed never leaves old dots up as current
     TRUCKS.failed = keyGap(e) ? 'key' : true;
     setTruckLines();
     return;
   }
-  if (seq !== TRUCKS.seq || !ON.trucks) return;
+  if (seq !== TRUCKS.seq || !ON.trucks || !shownNow()) return;
   GAPS.key = [];
   TRUCKS.failed = false;
   const drawable = body.state === 'ok' || body.state === 'unreadable';
@@ -1447,6 +1452,9 @@ async function readTrucks() {
   TRUCKS.afterHours = drawable && !truckHoursOk(new Date());
   TRUCKS.d = { state: body.state, message: body.message, unitsError: typeof body.unitsError === 'string' ? body.unitsError : null, trucks: drawable && !TRUCKS.afterHours ? keepTrucks(body) : [] };
   if (TRUCKS.tripFor && !TRUCKS.d.trucks.some((t) => t.id === TRUCKS.tripFor)) dropTrips();
+  // "Pick the truck again" lasts through the re-read it asked for; the next answer, or one with no dots, takes it down.
+  const lc = TRUCKS.tripLine;
+  if (lc && typeof lc.until === 'number' && (seq > lc.until || !TRUCKS.d.trucks.length)) TRUCKS.tripLine = null;
   setTruckLines();
   drawTrucks();
 }
@@ -1505,7 +1513,7 @@ async function readTrips(t) {
     if (e.code === 404 && e.message === 'unknown_truck') {
       // Truck ids change when Arbo restarts: the positions are read again, once, and Mike picks the truck again.
       TRUCKS.tripFor = null;
-      TRUCKS.tripLine = { cls: 'unread', text: MAP_SAYS.truckListChanged, retry: false };
+      TRUCKS.tripLine = { cls: 'unread', text: MAP_SAYS.truckListChanged, retry: false, until: TRUCKS.seq + 1 };
       setTruckLines();
       readTrucks();
       return;
@@ -1521,14 +1529,17 @@ async function readTrips(t) {
     TRUCKS.tripLine = { cls: cls, text: body.message, retry: body.state === 'unreadable' ? 'trips' : false };
   } else {
     let k = 0;
+    let lost = 0;
     for (const trip of body.trips) {
       const pts = Array.isArray(trip && trip.path) ? trip.path.filter((p) => p && typeof p.lat === 'number' && typeof p.lon === 'number').map((p) => [p.lat, p.lon]) : [];
-      if (pts.length < 2) continue;
+      if (pts.length < 2) { lost++; continue; }
       TRUCKS.trips.addLayer(L.polyline(capPath(pts, 2000), { color: forestColor(), weight: 4, opacity: 0.75, interactive: false }));
       k++;
     }
-    TRUCKS.tripLine = null;
-    TRUCKS.tripsOk = body.message + ' ' + (k === 1 ? MAP_SAYS.tripsCountOne : MAP_SAYS.tripsCount.replace('{k}', String(k))).replace('{truck}', t.label) + '.';
+    // §1B: a trip whose route can't be read is named — never folded into a smaller count or "0 trips drawn".
+    TRUCKS.tripLine = lost ? { cls: 'unread', text: (lost === 1 ? MAP_SAYS.tripsLostOne : MAP_SAYS.tripsLost.replace('{k}', String(lost))).replace('{truck}', t.label), retry: false } : null;
+    const drawn = (k === 1 ? MAP_SAYS.tripsCountOne : MAP_SAYS.tripsCount.replace('{k}', String(k))).replace('{truck}', t.label) + '.';
+    TRUCKS.tripsOk = lost && !k ? body.message : body.message + ' ' + drawn;
   }
   setTruckLines();
   drawLegend();

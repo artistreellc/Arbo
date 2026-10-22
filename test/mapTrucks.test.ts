@@ -139,13 +139,15 @@ describe('dots come down: a failed refresh, a return from hidden, 8 pm ET (M4)',
     expect(truckHoursOk(new Date('2026-12-01T13:00:00Z'))).toBe(true); // Tue 8:00 AM EST
   });
 
-  function harness(o: { answer: () => unknown; shown?: boolean }) {
+  function harness(o: { answer: () => unknown; shown?: boolean | (() => boolean); hoursOk?: boolean }) {
     const did: string[] = [];
-    const TRUCKS = { seq: 0, d: null as null | { state: string; trucks: Truck[] }, failed: false as boolean | string, afterHours: false, layer: { clearLayers: () => did.push('clear') }, trips: { clearLayers: () => did.push('clear-trips') }, tripFor: null, tripLine: null, tripsOk: null, tripSeq: 0 };
+    const TRUCKS = { seq: 0, d: null as null | { state: string; trucks: Truck[] }, failed: false as boolean | string, afterHours: false, layer: { clearLayers: () => did.push('clear') }, trips: { clearLayers: () => did.push('clear-trips') }, tripFor: null, tripLine: null as null | Record<string, unknown>, tripsOk: null, tripSeq: 0 };
     const GAPS = { key: [] as unknown[], trucks: [] as unknown[] };
+    const shown = o.shown ?? true;
     const deps = {
       TRUCKS, GAPS, ON: { trucks: true }, MAP_SAYS, keepTrucks,
-      mapGet: async () => o.answer(), keyGap: () => false, truckHoursOk: () => true,
+      mapGet: async () => { did.push('ask'); return o.answer(); }, keyGap: () => false, truckHoursOk: () => o.hoursOk ?? true,
+      shownNow: typeof shown === 'function' ? shown : () => shown,
       setTruckLines: () => did.push('lines'), drawTrucks: () => did.push('draw'), drawStatus: () => {},
     };
     const dropTrucks = frameFn<() => void>('dropTrucks', deps);
@@ -341,5 +343,128 @@ describe('review fixes (wave B)', () => {
   it('the prep sheet\'s two buttons keep a gap side by side and line up when they wrap at 320', () => {
     expect(shell).toContain('.verdict .prep-jc{margin-right:8px}');
     expect(shell).not.toContain('.prep-jc + .prep-jc');
+  });
+});
+
+// Review round (wave B review, D108): the correctness and UI reviews' truck findings, and the three test gaps.
+describe('review round: trucks (wave B review)', () => {
+  function harness(o: { answer: () => unknown; shown?: () => boolean; hoursOk?: boolean; seq?: number; tripLine?: Record<string, unknown> | null }) {
+    const did: string[] = [];
+    const TRUCKS = { seq: o.seq ?? 0, d: null as null | { state: string; trucks: Truck[] }, failed: false as boolean | string, afterHours: false, layer: { clearLayers: () => did.push('clear') }, trips: { clearLayers: () => did.push('clear-trips') }, tripFor: null, tripLine: o.tripLine ?? null, tripsOk: null, tripSeq: 0 };
+    const deps = {
+      TRUCKS, GAPS: { key: [], trucks: [] }, ON: { trucks: true }, MAP_SAYS, keepTrucks,
+      mapGet: async () => { did.push('ask'); return o.answer(); }, keyGap: () => false, truckHoursOk: () => o.hoursOk ?? true, shownNow: o.shown ?? (() => true),
+      setTruckLines: () => did.push('lines'), drawTrucks: () => did.push('draw'), drawStatus: () => {},
+    };
+    const dropTrucks = frameFn<() => void>('dropTrucks', deps);
+    const dropTrips = frameFn<() => void>('dropTrips', deps);
+    const readTrucks = frameFn<() => Promise<void>>('readTrucks', { ...deps, dropTrucks, dropTrips });
+    return { readTrucks, did, TRUCKS };
+  }
+  const ok = () => positions('ok', { unmatched: [view({ motion: 'parked' })] });
+
+  // Correctness review #2: the 'online' handler read every layer while Map was off screen, so a dot came back as current.
+  it('no positions are asked for, and none drawn, while Map is off screen — an "online" event included', async () => {
+    const off = harness({ answer: ok, shown: () => false });
+    await off.readTrucks();
+    expect(off.did).not.toContain('ask');
+    expect(off.did).not.toContain('draw');
+    expect(off.TRUCKS.d).toBeNull();
+    // Asked while Map showed, landing after it left: not drawn.
+    let shown = true;
+    const late = harness({ answer: () => { shown = false; return ok(); }, shown: () => shown });
+    await late.readTrucks();
+    expect(late.did).toContain('ask');
+    expect(late.did).not.toContain('draw');
+    expect(late.TRUCKS.d).toBeNull();
+    expect(script).toContain("window.addEventListener('online', () => { retryTiles(); readAll(); });");
+  });
+
+  // Correctness review #3: a trip whose route can't be read was skipped silently — "0 trips drawn" for trips that exist.
+  function tripsHarness(answer: () => unknown) {
+    const did: string[] = [];
+    const asked: string[] = [];
+    const TRUCKS: Record<string, unknown> = { seq: 4, tripSeq: 0, tripFor: null, tripLine: null, tripsOk: null, tripBounds: null, trips: { clearLayers: () => did.push('clear-trips'), addLayer: (l: { pts: unknown[] }) => did.push('path:' + l.pts.length) } };
+    const readTrips = frameFn<(t: { id: string; label: string }) => Promise<void>>('readTrips', {
+      TRUCKS, ON: { trucks: true }, MAP_SAYS, etToday: () => '2026-10-21', keyGap: () => false, capPath: frameFn('capPath'), tripColor: () => '#2F6FB0', forestColor: () => '#1B4D3E',
+      L: { polyline: (pts: unknown[]) => ({ pts }) }, mapGet: async (p: string) => { asked.push(p); if (asked.length > 1) return { state: 'ok', message: TRIPS_SAYS.ok, trips: [] }; return answer(); },
+      setTruckLines: () => {}, readTrucks: () => did.push('read-positions'), dropTrips: () => did.push('drop-trips'), drawLegend: () => {}, fitTrips: () => did.push('fit'), setPanLimit: () => {},
+    });
+    return { readTrips, did, asked, TRUCKS };
+  }
+  const t = { id: 'a1b2c3d4e5f6', label: 'Bucket truck' };
+  const path = (n: number) => Array.from({ length: n }, (_, i) => ({ lat: 36.8 + i / 1e4, lon: -76.3 }));
+  it('trips whose route can\'t be read are named — never folded into "0 trips drawn" or a smaller count', async () => {
+    const none = tripsHarness(() => ({ state: 'ok', message: TRIPS_SAYS.ok, day: '2026-10-21', trips: [{ id: 'a', path: null }, { id: 'b', path: null }] }));
+    await none.readTrips(t);
+    expect(none.TRUCKS.tripsOk).not.toMatch(/0 trips drawn/);
+    expect(none.TRUCKS.tripLine).toMatchObject({ cls: 'unread', text: 'Bouncie sent 2 trips for Bucket truck whose routes couldn’t be read — not drawn. This is not “no trips”.' });
+    const some = tripsHarness(() => ({ state: 'ok', message: TRIPS_SAYS.ok, day: '2026-10-21', trips: [{ id: 'a', path: path(10) }, { id: 'b', path: null }, { id: 'c', path: path(1) }] }));
+    await some.readTrips(t);
+    expect(some.did.filter((d) => d.startsWith('path:'))).toEqual(['path:10']);
+    expect(some.TRUCKS.tripsOk).toBe(TRIPS_SAYS.ok + ' 1 trip drawn for Bucket truck.');
+    expect(some.TRUCKS.tripLine).toMatchObject({ cls: 'unread', text: 'Bouncie sent 2 trips for Bucket truck whose routes couldn’t be read — not drawn. This is not “no trips”.' });
+    const one = tripsHarness(() => ({ state: 'ok', message: TRIPS_SAYS.ok, day: '2026-10-21', trips: [{ id: 'a', path: path(3) }, { id: 'b', path: [] }] }));
+    await one.readTrips(t);
+    expect((one.TRUCKS.tripLine as { text: string }).text).toBe('Bouncie sent 1 trip for Bucket truck whose route couldn’t be read — not drawn. This is not “no trips”.');
+    const all = tripsHarness(() => ({ state: 'ok', message: TRIPS_SAYS.ok, day: '2026-10-21', trips: [{ id: 'a', path: path(3) }] }));
+    await all.readTrips(t);
+    expect(all.TRUCKS.tripLine).toBeNull();
+  });
+
+  // Test gap: a 404 that asked for the trips again would loop; the mutation hung the run instead of failing it.
+  it('a 404 unknown_truck asks for the trips once and the positions once — never the trips again', async () => {
+    const h = tripsHarness(() => { throw Object.assign(new Error('unread'), { why: 'unread', code: 404, message: 'unknown_truck', said: 'x' }); });
+    await h.readTrips(t);
+    expect(h.asked).toHaveLength(1);
+    expect(h.did.filter((d) => d === 'read-positions')).toHaveLength(1);
+  });
+
+  // UI review #8: "The truck list changed — pick the truck again." outlived every later answer.
+  it('"pick the truck again" lasts through the re-read it asked for; the next answer — or one with no dots — takes it down', async () => {
+    const line = { cls: 'unread', text: MAP_SAYS.truckListChanged, retry: false, until: 5 };
+    const h = harness({ answer: ok, seq: 4, tripLine: line });
+    await h.readTrucks(); // seq 5: the re-read the 404 asked for
+    expect(h.TRUCKS.tripLine).toBe(line);
+    await h.readTrucks(); // seq 6: the minute's read, or ↻
+    expect(h.TRUCKS.tripLine).toBeNull();
+    const gone = harness({ answer: () => positions('keys_missing'), seq: 4, tripLine: { ...line } });
+    await gone.readTrucks();
+    expect(gone.TRUCKS.tripLine).toBeNull();
+    const s = srcOf(script, 'readTrips');
+    expect(s).toContain('until: TRUCKS.seq + 1');
+  });
+
+  // Test gap: an answer landing after 8 pm by this phone's clock was never pinned.
+  it('an answer that lands after hours by this phone\'s clock draws no dot and says after hours', async () => {
+    const h = harness({ answer: ok, hoursOk: false });
+    await h.readTrucks();
+    expect(h.TRUCKS.afterHours).toBe(true);
+    expect(h.TRUCKS.d!.trucks).toEqual([]);
+    expect(truckGaps({ ...h.TRUCKS }, 'readonly')[0]!.text).toBe(MAP_SAYS.trucksAfterHours);
+    const day = harness({ answer: ok, hoursOk: true });
+    await day.readTrucks();
+    expect(day.TRUCKS.afterHours).toBe(false);
+    expect(day.TRUCKS.d!.trucks).toHaveLength(1);
+  });
+
+  // Test gap: the count's guard was checked only in the browser — "0 of 0 trucks on the map" under keys_missing.
+  it('no truck count over a state that draws nothing — never "0 of 0 trucks"; ok and unreadable count', () => {
+    const facts = (d: Record<string, unknown>, afterHours = false) => {
+      const at = script.indexOf('\nFACTS.trucks = () => {');
+      const body = script.slice(at + 1, script.indexOf('\n};', at) + 3);
+      const FACTS: Record<string, () => Array<{ textContent: string }>> = {};
+      const el = (_t: string, _c: string, text = '') => ({ textContent: text, appendChild() {} });
+      new Function('FACTS', 'TRUCKS', 'el', 'MAP_SAYS', 'truckStyle', 'truckWords', body)(FACTS, { d, afterHours, tripsOk: null }, el, MAP_SAYS, truckStyle, truckWords);
+      return FACTS.trucks!().map((n) => n.textContent);
+    };
+    for (const state of Object.keys(POSITIONS_SAYS)) {
+      if (state === 'ok' || state === 'unreadable') continue;
+      for (const txt of facts({ state, message: (POSITIONS_SAYS as Record<string, string>)[state], unitsError: null, trucks: [] })) expect(txt, state).not.toMatch(/\d+ of \d+ trucks?\b/);
+    }
+    const two = keepTrucks(positions('ok', { unmatched: [view(), view({ id: 'b2', motion: 'no_fix', lat: null, lon: null })] }));
+    expect(facts({ state: 'ok', message: POSITIONS_SAYS.ok, unitsError: null, trucks: two })).toContain('1 of 2 trucks on the map');
+    expect(facts({ state: 'unreadable', message: POSITIONS_SAYS.unreadable, unitsError: null, trucks: two.slice(0, 1) })).toContain('1 of 1 truck on the map');
+    for (const txt of facts({ state: 'ok', message: POSITIONS_SAYS.ok, unitsError: null, trucks: [] }, true)) expect(txt).not.toMatch(/\d+ of \d+ trucks?\b/);
   });
 });
