@@ -47,6 +47,14 @@ import tsparser from '@typescript-eslint/parser';
 export default [
   { ignores: ['node_modules/**', 'dist/**', 'coverage/**', '.claude/**'] },
   js.configs.recommended,
+  // R27 (D110): the Spanish runtime is a classic script the server inlines into
+  // both doors' pages; its top-level names (T, tf, tn, esPick…) are what the
+  // pages call, so they are used even though nothing in the file calls them.
+  {
+    files: ['src/app/i18n/runtime.js'],
+    languageOptions: { sourceType: 'script' },
+    rules: { 'no-unused-vars': ['error', { vars: 'local' }] },
+  },
   {
     files: ['**/*.ts'],
     languageOptions: {
