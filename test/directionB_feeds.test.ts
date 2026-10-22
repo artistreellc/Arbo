@@ -569,7 +569,7 @@ describe('Today hands every panel slot to its feeds card (P12, source pins)', ()
     expect(today).toContain('const alerting = stormBanner().then((b) => { if (b) stormSlot.appendChild(b); return !!b; });');
     expect(today).toContain('rollSlot.appendChild(beforeYouRoll(');
     expect(today).toContain('fillAssistToday(assistSlot);');
-    expect(today).toContain("if (LINKS === 'readonly') roSlot.appendChild(el('div', 'storm-muted', 'Read-only: Arbo is reading your real records and saving nothing. Anything that would save says so.'));");
+    expect(today).toContain("if (LINKS === 'readonly') roSlot.appendChild(el('div', 'storm-muted', T('Read-only: Arbo is reading your real records and saving nothing. Anything that would save says so.')));");
   });
 
   it('the card sits under the day and its instruments, above the notices it folds — hero, Before you roll and the day come first', () => {
@@ -582,9 +582,9 @@ describe('Today hands every panel slot to its feeds card (P12, source pins)', ()
   it('the schedule card stays in the day (data-keep), counted on the card; its place is taken before the brief is read', () => {
     expect(today.indexOf('feeds.place(day, new Promise((res) => { schedDone = res; }));')).toBeGreaterThan(-1);
     expect(today.indexOf('feeds.place(day, new Promise((res) => { schedDone = res; }));')).toBeLessThan(brief);
-    expect(caught).toContain("const sc = feedState(e, 'Schedule', 'an empty day');");
+    expect(caught).toContain("const sc = feedState(e, T('Schedule'), T('an empty day'));");
     expect(caught).toContain('sc.dataset.off = k;');
-    expect(caught).toContain("sc.dataset.feedName = 'Schedule';");
+    expect(caught).toContain("sc.dataset.feedName = T('Schedule');");
     expect(caught).toContain("sc.dataset.keep = '1';");
     expect(caught.indexOf('sc.appendChild(calBtn);')).toBeLessThan(caught.indexOf('schedDone(sc);'));
   });
@@ -599,9 +599,9 @@ describe('Today hands every panel slot to its feeds card (P12, source pins)', ()
   it('the emergency leads gap goes through the card, marked and named; the tile still names the gap', () => {
     const at = today.indexOf('feeds.place(emgSlot, ');
     const block = today.slice(at, today.indexOf('}));', at));
-    expect(block).toContain("const n = feedLine(r.gap, 'Emergency leads', 'That doesn’t mean there are none.');");
+    expect(block).toContain("const n = feedLine(r.gap, T('Emergency leads'), T('That doesn’t mean there are none.'));");
     expect(block).toContain('n.dataset.off = feedKind(r.gap);');
-    expect(block).toContain("n.dataset.feedName = 'Emergency leads';");
+    expect(block).toContain("n.dataset.feedName = T('Emergency leads');");
     expect(at).toBeLessThan(today.indexOf('emergencyLeads().then('));
     expect(today).toContain("setEmergencies('leads', FEED_TAG[feedKind(r.gap)]);");
   });
@@ -615,12 +615,12 @@ describe('Today hands every panel slot to its feeds card (P12, source pins)', ()
   // is noted on the card (counted, named, left where it shows), before the brief await like everything here.
   it('every read Today shows off in a place of its own is noted on the card — before the brief await', () => {
     for (const want of [
-      "feeds.note('Open loops', v.firstChild, heroLoops());",
-      "feeds.note('Weather alerts', v.firstChild, alerting.then(",
+      "feeds.note(T('Open loops'), v.firstChild, heroLoops());",
+      "feeds.note(T('Weather alerts'), v.firstChild, alerting.then(",
       'rollSlot.appendChild(beforeYouRoll(emgP, alerting.then(() => STORM_READ), feeds.note));',
-      "feeds.note('Coming due', dueTile, api('/api/properties')",
-      "feeds.note('Agent runs', agentTile, api('/api/agents/runs?limit=5')",
-      "feeds.note('Overdue and to bill', owedTile, api('/api/money')",
+      "feeds.note(T('Coming due'), dueTile, api('/api/properties')",
+      "feeds.note(T('Agent runs'), agentTile, api('/api/agents/runs?limit=5')",
+      "feeds.note(T('Overdue and to bill'), owedTile, api('/api/money')",
     ]) {
       expect(today, want).toContain(want);
       expect(today.indexOf(want), want).toBeLessThan(brief);

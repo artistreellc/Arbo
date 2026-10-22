@@ -55,8 +55,9 @@ describe('H4 — the schedule says whose bookings it is', () => {
   it('Today: no confident empty day — a named gap with the Calendar one tap away, and the schedule chip is a warning', () => {
     const html = src('src/app/index.html').replace(/\\u([0-9a-fA-F]{4})/g, (_, h: string) => String.fromCharCode(parseInt(h, 16)));
     expect(html).toContain("const onlyArbo = brief.scheduleSource === 'arbo_tables_only';");
-    expect(html).toContain("state('No bookings in Arbo today', 'Arbo only sees bookings made in Arbo — your Google Calendar isn’t read here, so your real day may not be empty.')");
-    expect(html).toContain("sysSet('schedule', onlyArbo ? 'warn' : 'ok', onlyArbo ? s.totalStops + ' in Arbo · Calendar not read' : s.totalStops + ' stops');");
+    expect(html).toContain("state(T('No bookings in Arbo today'), T('Arbo only sees bookings made in Arbo — your Google Calendar isn’t read here, so your real day may not be empty.'))"); // R27 Phase A (es-owner-a)
+    // R27 Phase A (es-owner-a; pin moved): one template each, the count as a value — the English unchanged ("N stops").
+    expect(html).toContain("sysSet('schedule', onlyArbo ? 'warn' : 'ok', onlyArbo ? tf('{n} in Arbo · Calendar not read', { n: s.totalStops }) : tf('{n} stops', { n: s.totalStops }));");
     expect(html).toContain("if (s.atRiskScope === 'arbo_tables_only' && !s.atRiskUnread)");
   });
 
@@ -66,8 +67,8 @@ describe('H4 — the schedule says whose bookings it is', () => {
   it('Today’s top numbers say "in Arbo" too — never "0 stops today" / "0 jobs today" over a calendar Arbo does not read', () => {
     const html = src('src/app/index.html').replace(/\\u([0-9a-fA-F]{4})/g, (_, h: string) => String.fromCharCode(parseInt(h, 16)));
     const fill = html.slice(html.indexOf("const onlyArbo = brief.scheduleSource === 'arbo_tables_only';"), html.indexOf('if (s.zipRun && s.zipRun.length) {'));
-    expect(fill).toContain("if (onlyArbo) { jobsTile.querySelector('span').textContent = 'jobs in Arbo'; estTile.querySelector('span').textContent = 'estimates in Arbo'; }");
-    expect(fill).toContain("plural(s.totalStops, 'stop') + (onlyArbo ? ' in Arbo today' : ' today')");
+    expect(fill).toContain("if (onlyArbo) { jobsTile.querySelector('span').textContent = T('jobs in Arbo'); estTile.querySelector('span').textContent = T('estimates in Arbo'); }");
+    expect(fill).toContain("onlyArbo ? tn(s.totalStops, '{n} stop in Arbo today', '{n} stops in Arbo today') : tn(s.totalStops, '{n} stop today', '{n} stops today')"); // R27 Phase A (es-owner-a)
     expect(fill).not.toContain("plural(s.totalStops, 'stop') + ' today'");
     // The relabel runs before the numbers land, so a 0 is never shown under "today".
     expect(fill.indexOf("'jobs in Arbo'")).toBeLessThan(fill.indexOf('setTile(jobsTile, s.jobs || 0)'));

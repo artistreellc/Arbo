@@ -14,7 +14,8 @@ import { loadMapHtml, loadAppHtml } from '../src/server/appPage.js';
 import { ZIP_CENTROIDS, ZIP_NO_AREA, ZCTA_SOURCE } from '../src/lib/zipCentroids.js';
 
 const page = loadMapHtml();
-const script = [...page.matchAll(/<script(?![^>]*\bsrc=)(?![^>]*type="application\/json")[^>]*>([\s\S]*?)<\/script>/g)][0]![1]!;
+// R27 Phase A (es-owner-a): the Spanish runtime is inlined just before the page's own script — the page's is the last.
+const script = [...page.matchAll(/<script(?![^>]*\bsrc=)(?![^>]*type="application\/json")[^>]*>([\s\S]*?)<\/script>/g)].at(-1)![1]!;
 const shell = loadAppHtml();
 function srcOf(text: string, name: string): string {
   const m = new RegExp(`^(?:async )?function ${name}\\([\\s\\S]*?^\\}$`, 'm').exec(text);
@@ -97,7 +98,7 @@ describe('placed by ZIP area only — every lead not placed is counted by why (M
 });
 
 describe('the layer\'s lines, in the plan\'s order (M3, §1B)', () => {
-  const notFed = /const notFed = '([^']+)';/.exec(srcOf(shell, 'renderLeads'))![1]!;
+  const notFed = /const notFed = T\('([^']+)'\);/.exec(srcOf(shell, 'renderLeads'))![1]!; // R27 Phase A (es-owner-a): through T
   const FEED_WORD = new Function(`${/^const FEED_WORD = .*;$/m.exec(shell)![0]}\nreturn FEED_WORD;`)() as Record<string, string>;
 
   it('outside practice the layer opens with the Leads tab\'s own "not fed" line, word for word; in practice it does not', () => {
@@ -214,7 +215,10 @@ describe('a tap lists names and ages; a name opens that lead in Leads by id only
     const s = srcOf(script, 'leadsNode');
     expect(s).toContain("toShell({ type: 'lead', id: l.id })");
     expect(s).not.toMatch(/phone|details|street|innerHTML/);
-    expect(MAP_SAYS.tagEmergency).toBe('EMERGENCY');
+    // R27 Phase A (es-owner-a; pin moved): EMERGENCY is a safety label — drawn through esPair (in English the word
+    // itself, as MAP_SAYS.tagEmergency said it), never a plain T line.
+    expect(s).toContain("if (l.emergency) tg.appendChild(esPair('EMERGENCY'));");
+    expect(MAP_SAYS).not.toHaveProperty('tagEmergency');
     expect(MAP_SAYS.leadZipNote).toBe('ZIP from the lead’s record — the ZIP area, not the exact spot.');
     // Every message the frame posts about a lead is the id alone.
     for (const m of script.matchAll(/toShell\(\{ type: 'lead'([^}]*)\}/g)) expect(m[1]).toBe(', id: l.id ');
@@ -242,7 +246,7 @@ describe('the way in: the Leads header (M3)', () => {
   it('a Map chip beside the segments opens the Leads layer; it shows over New leads only', () => {
     const s = srcOf(shell, 'renderLeadsHead');
     expect(s).toContain("openMap('leads')");
-    expect(s).toMatch(/el\('button', 'lmap lh-leads', 'Map'\)/);
+    expect(s).toMatch(/el\('button', 'lmap lh-leads', T\('Map'\)\)/); // R27 Phase A (es-owner-a): through T
     expect(s).toContain('segs.appendChild(toMap);');
     expect(shell).toMatch(/\.lseg \.lmap\{[^}]*min-height:44px/);
   });

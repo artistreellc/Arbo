@@ -12,7 +12,8 @@ import { loadMapHtml, loadAppHtml } from '../src/server/appPage.js';
 import { DEQ_MAPSERVER_BASE, DEQ_RPA_LAYER, DEQ_RPA_LIMITS, CITY_GIS_LAYERS, RPA_PROXIMITY_PROBE_METERS } from '../src/permitting/gis/layers.js';
 
 const page = loadMapHtml();
-const script = [...page.matchAll(/<script(?![^>]*\bsrc=)(?![^>]*type="application\/json")[^>]*>([\s\S]*?)<\/script>/g)][0]![1]!;
+// R27 Phase A (es-owner-a): the Spanish runtime is inlined just before the page's own script — the page's is the last.
+const script = [...page.matchAll(/<script(?![^>]*\bsrc=)(?![^>]*type="application\/json")[^>]*>([\s\S]*?)<\/script>/g)].at(-1)![1]!;
 function srcOf(text: string, name: string): string {
   const m = new RegExp(`^(?:async )?function ${name}\\([\\s\\S]*?^\\}$`, 'm').exec(text);
   if (!m) throw new Error(`no function ${name}`);

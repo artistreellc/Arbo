@@ -201,8 +201,8 @@ describe('M12 — the first good pass after a Gmail outage reads from the last g
     const html = readFileSync(new URL('../src/app/index.html', import.meta.url), 'utf8');
     expect(html).toContain('const gmailGapLine = (g) => {');
     expect(html).toContain("const gapLine = gmailGapLine(d.gmailGap);");
-    expect(html).toContain("d.gmailGap ? 'Nothing needs you in the mail Arbo has read");
-    expect(html).toContain("[14390, 'Last 10 days']");
+    expect(html).toContain("d.gmailGap ? T('Nothing needs you in the mail Arbo has read"); // R27 Phase A (es-owner-a): through T
+    expect(html).toContain("[14390, T('Last 10 days')]");
     const src = readFileSync(new URL('../src/server.ts', import.meta.url), 'utf8');
     expect(src).toContain('gmailGap: inboxWatch?.state().gap ?? null,');
     expect(src).toContain('stateStore: new InboxStateFile()');

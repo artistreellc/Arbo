@@ -25,10 +25,10 @@ describe('the shared Quo panels name why they cannot read', () => {
   it('customer notes keep their title and say Quo is not connected — never "unavailable right now"', () => {
     const study = fn('studyPanel');
     const caught = study.slice(study.indexOf('catch (e)'), study.indexOf('const st = d.status'));
-    expect(caught).toContain("el('div', 'panel-title', 'Where each customer stands')");
+    expect(caught).toContain("el('div', 'panel-title', T('Where each customer stands'))");
     expect(caught).toContain("e.message === 'quo_not_configured'");
-    expect(caught).toContain('Arbo can\\u2019t read your customer threads. That doesn\\u2019t mean there are none.');
-    expect(caught).toContain("feedLine(e, 'Customer notes', 'That doesn\\u2019t mean there are none.')");
+    expect(caught).toContain('Arbo can\u2019t read your customer threads. That doesn\u2019t mean there are none.');
+    expect(caught).toContain("feedLine(e, T('Customer notes'), T('That doesn\u2019t mean there are none.'))");
     expect(caught).toContain("if (quoOff) w.dataset.quoOff = '1';");
     expect(html).not.toContain('Customer notes: unavailable right now');
   });
@@ -38,8 +38,8 @@ describe('the shared Quo panels name why they cannot read', () => {
     expect(outreach).toContain('Waiting on Quo — nothing can be texted.');
     expect(outreach).not.toContain('This is not zero candidates');
     expect(fn('sonaPanel')).toContain('Waiting on Quo — Sona’s calls are not reaching Arbo.');
-    expect(outreach).toContain("feedLine(e, 'Text outreach')");
-    expect(fn('sonaPanel')).toContain("feedLine(e, 'Sona (Quo)')");
+    expect(outreach).toContain("feedLine(e, T('Text outreach'))");
+    expect(fn('sonaPanel')).toContain("feedLine(e, T('Sona (Quo)'))");
     expect(html).not.toContain('QUO_API_KEY');
     expect(html).not.toContain('Quo is not configured on the server');
     // The Sona card renders the intake's own detail, so the word is fixed there.
@@ -82,14 +82,14 @@ describe('the Calls screen', () => {
 
   it('a call log Arbo could not read never heads itself with a zero', () => {
     // QA round 2: one feed line inside the own-line card, not a dashed state card.
-    expect(calls).toContain("const n = feedLine(e, 'Call log', 'This is not zero calls.');");
+    expect(calls).toContain("const n = feedLine(e, T('Call log'), T('This is not zero calls.'));");
     expect(calls).toContain('await feeds.place(ownSlot, n);'); // Direction B P16: unread stays in the card; off folds into the feeds card
     expect(calls).not.toContain('feedState(');
     expect(calls).toContain('await LINKS_READY');
     expect(html).not.toContain('No calls logged yet');
     expect(calls).not.toContain('Pull refresh');
     // "No calls yet" is kept for a real read that came back empty.
-    expect(calls.indexOf("state('No calls yet'")).toBeGreaterThan(calls.indexOf('if (!data.conversations.length)'));
+    expect(calls.indexOf("state(T('No calls yet')")).toBeGreaterThan(calls.indexOf('if (!data.conversations.length)'));
   });
 
   it('a failed "Mark reviewed" says so instead of failing silently', () => {
@@ -104,19 +104,19 @@ describe('the Calls screen', () => {
     expect(calls).toContain("const txSlot = el('div', 'slot texts');"); // QA round 3: '.texts' lines up its two phone lines
     // QA round 2: Arbo's own line is a card like the rest, titled so it never reads as Sona.
     expect(html).not.toContain("'Receptionist calls'");
-    const heading = calls.indexOf("ownSlot.appendChild(el('div', 'panel-title', 'Arbo’s own line'))");
+    const heading = calls.indexOf("ownSlot.appendChild(el('div', 'panel-title', T('Arbo’s own line')))");
     expect(heading).toBeGreaterThan(calls.indexOf('const ownSlot'));
     expect(heading).toBeLessThan(calls.indexOf('const trSlot'));
     expect(calls).toContain("const trSlot = el('div');\n  ownSlot.appendChild(trSlot);");
     // The transcripts' own title is a sub-heading now, so two titles never stack.
     expect(calls).not.toContain("el('div', 'panel-title', 'Call transcripts");
-    expect(calls).toContain("el('div', 'sect', 'Call transcripts (pushed after each call)')");
+    expect(calls).toContain("el('div', 'sect', T('Call transcripts (pushed after each call)'))");
   });
 
   it('a texts read that failed keeps its title and names the failure', () => {
     // Every failure keeps the title — a 401 included (the server locks texts with no APP_ACCESS_KEY), named in words.
-    expect(calls).toContain("catch (e) {\n      txSlot.appendChild(el('div', 'panel-title', 'Texts'));");
-    expect(calls).toContain(": feedLine(e, 'Texts'));");
+    expect(calls).toContain("catch (e) {\n      txSlot.appendChild(el('div', 'panel-title', T('Texts')));");
+    expect(calls).toContain(": feedLine(e, T('Texts')));");
     expect(html).not.toContain('Texts: status unavailable right now');
   });
 });

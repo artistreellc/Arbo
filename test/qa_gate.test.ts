@@ -28,11 +28,14 @@ describe('no dead feed reads as an empty one', () => {
     expect(bareNothingNeedsYou(app)).toEqual([]);
   });
   it('R33: "ready to text" and "Send catch-up" appear only in outreachPanel’s sends-on branch', () => {
-    const at = app.indexOf('async function outreachPanel(');
-    const end = app.indexOf('\n}\n', at);
-    const panel = app.slice(at, end);
+    // R27 Phase A (es-owner-a): the inlined Spanish dictionary is data, not code — its keys are these same lines'
+    // translations, so the search runs over the page without it.
+    const code = app.replace(/<script type="application\/json" id="arbo-i18n"[^>]*>[\s\S]*?<\/script>/, '');
+    const at = code.indexOf('async function outreachPanel(');
+    const end = code.indexOf('\n}\n', at);
+    const panel = code.slice(at, end);
     for (const p of ['ready to text', 'Send catch-up']) {
-      const all = [...app.matchAll(new RegExp(p, 'g'))].map((m) => m.index!);
+      const all = [...code.matchAll(new RegExp(p, 'g'))].map((m) => m.index!);
       expect(all.length, p).toBeGreaterThan(0);
       for (const i of all) {
         expect(i > at && i < end, p + ' outside outreachPanel').toBe(true);

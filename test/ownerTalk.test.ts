@@ -1227,7 +1227,7 @@ describe('the page: wiring, header button and sheet', () => {
 
   it("the app's weather card names stops it could not check — the alert shows, and no stops at risk is never implied", () => {
     const fn = html.slice(html.indexOf('async function stormBanner() {'), html.indexOf('\n}', html.indexOf('async function stormBanner() {')));
-    expect(fn).toContain("if (s.atRiskUnread) box.appendChild(el('small', '', 'Arbo couldn’t check which booked stops fall inside the alert window.'));");
+    expect(fn).toContain("if (s.atRiskUnread) box.appendChild(el('small', '', T('Arbo couldn’t check which booked stops fall inside the alert window.')));");
   });
 
   it('nothing in the Talk block sends anything anywhere but /api/talk', () => {

@@ -107,7 +107,8 @@ describe('M15 — Quo wiring tries again instead of waiting for the next deploy'
     expect(src).toContain('startQuoWiring<QuoLine>({');
     expect(src).toContain('onRetry: (nextAt, attempts) => intake.noteWiringRetry(nextAt, attempts),');
     const html = readFileSync(new URL('../src/app/index.html', import.meta.url), 'utf8');
-    expect(html).toContain("const quoRegLine = (reg) => reg.detail + (reg.retryAt ? ' Arbo tries again at ' + fmtTime(reg.retryAt)");
+    // R27 Phase A (es-owner-a; pin moved): the retry sentence is one template, the time as a value.
+    expect(html).toContain("const quoRegLine = (reg) => reg.detail + (reg.retryAt ? ' ' + tf('Arbo tries again at {when} — no redeploy needed.', { when: fmtTime(reg.retryAt) })");
     expect(html).toContain('quoRegLine(st.registration)');
     expect(html).toContain(": reg.detail + (reg.retryAt ? ' Arbo tries again at ' + fmtTime(reg.retryAt)");
   });

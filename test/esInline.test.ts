@@ -34,10 +34,15 @@ describe('the marker — one per door page, right before the page’s own script
       expect(html.indexOf('</main>')).toBeLessThan(html.indexOf(MARK));
     });
   }
-  it('the map page, talk.html and the public pages carry none (map.html gets Spanish in a later unit)', () => {
-    expect(raw('map.html')).not.toContain(MARK);
+  // R27 Phase A (es-owner-a; pin moved — it read "map.html gets Spanish in a later unit"): that unit is here. The
+  // map carries ONE marker, right before its own script (after Leaflet), and serves only its own door's units;
+  // talk.html and the public pages still carry none.
+  it('the map page carries its own door’s marker once; talk.html and the public pages carry none', () => {
+    expect(raw('map.html').split(MARK)).toHaveLength(2);
+    expect(raw('map.html')).toMatch(/<script src="\/map\/leaflet\.js"><\/script>\n<!--ARBO:I18N-->\n<script>\n'use strict';/);
+    expect(loadMapHtml().match(/id="arbo-i18n"/g)).toHaveLength(1);
+    expect(loadMapHtml()).toContain('id="arbo-i18n" data-door="map"');
     expect(raw('talk.html')).not.toContain(MARK);
-    expect(loadMapHtml()).not.toContain('arbo-i18n');
     expect(loadTalkHtml()).not.toContain('arbo-i18n');
   });
 });

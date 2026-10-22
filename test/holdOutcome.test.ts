@@ -196,11 +196,14 @@ describe('H1 — a calendar hold is "filed" only when Google says so', () => {
     const p = html.slice(html.indexOf('async function sonaPanel('), html.indexOf('// ---------- Text outreach via Quo'));
     expect(p).not.toContain('holdsAttempted');
     expect(p).not.toMatch(/attempted: 'Calendar hold filed/);
-    expect(p).toContain("filed: 'Calendar hold filed (unconfirmed");
-    expect(p).toContain("attempted: 'Calendar hold sent to Google — no answer yet.");
-    expect(p).toContain("if (c.hold === 'failed') return ['storm', 'NOT on your calendar — '");
-    expect(p).toContain("plural(st.holdsFailed, 'calendar hold') + ' did NOT reach your calendar");
-    expect(p).toContain("' FAILED (not on your calendar)'");
+    // R27 Phase A (es-owner-a; pins moved, meaning kept): each line is one sentence through the runtime — the
+    // failed hold still a red 'storm' card that says NOT on your calendar, in each of its three causes.
+    expect(p).toContain("filed: T('Calendar hold filed (unconfirmed");
+    expect(p).toContain("attempted: T('Calendar hold sent to Google — no answer yet.");
+    expect(p).toContain("if (c.hold === 'failed') {\n      return ['storm', c.holdError === 'google_signin' ? T('NOT on your calendar — ");
+    expect(p.match(/T\('NOT on your calendar — [^']*Book it yourself\.'\)/g)).toHaveLength(3);
+    expect(p).toContain("tn(st.holdsFailed, '{n} calendar hold did NOT reach your calendar");
+    expect(p).toContain("tf('{n} FAILED (not on your calendar)', { n: st.holdsFailed })");
     // A failed hold is a red card, first on Today.
     expect(p).toContain("|| c.hold === 'failed';");
   });
@@ -359,9 +362,12 @@ describe('M16 — a call the model could not read is read again; never "booked" 
   it('the Calls card says which try it is on, then that it gave up', () => {
     // R33 merge: the "no hold filed (yet)" clause is said only while holds are on — while Google is
     // read-only no hold is ever filed, so the card does not promise one later.
-    expect(html).toContain("'Arbo could not read this call yet — trying again (' + c.extractAttempts + ' of ' + st.readRetryMax + ' tries).' + (st.holds === 'read_only' ? '' : ' No hold filed yet.')");
-    expect(html).toContain("'Arbo could not read this call after ' + st.readRetryMax + ' tries' + (st.holds === 'read_only' ? '' : ' — no hold filed') + '. If they want an estimate, book it yourself.'");
-    expect(html).toContain("'Arbo could not read ' + plural(st.readsRetrying, 'Sona call') + ' yet (the AI model was unavailable)");
+    // R27 Phase A (es-owner-a; pins moved, meaning kept): one sentence per case, the counts as values.
+    expect(html).toContain("const tries = { n: c.extractAttempts, max: st.readRetryMax };");
+    expect(html).toContain("tf('Arbo could not read this call yet — trying again ({n} of {max} tries).', tries) + (st.holds === 'read_only' ? '' : ' ' + T('No hold filed yet.'))");
+    expect(html).toContain("st.holds === 'read_only' ? tf('Arbo could not read this call after {max} tries. If they want an estimate, book it yourself.', tries)");
+    expect(html).toContain(": tf('Arbo could not read this call after {max} tries — no hold filed. If they want an estimate, book it yourself.', tries)");
+    expect(html).toContain("tn(st.readsRetrying, 'Arbo could not read {n} Sona call yet (the AI model was unavailable)");
   });
 });
 
@@ -372,9 +378,10 @@ describe('M13 — "already called back" sees the Quo line only, and says so', ()
     expect(engine.status().blindSpot).toMatch(/only calls and texts on the Quo line/);
     expect(engine.status().blindSpot).toMatch(/iPhone/);
     expect(engine.status().note).not.toMatch(/Sona bookings are re-read from Quo/);
-    expect(html).toContain("called_back: 'you called them back from the Quo line'");
-    expect(html).toContain("already_texted: 'already heard from us on the Quo line'");
-    expect(html).toContain("if (st.blindSpot) wrap.appendChild(el('div', 'feed-state unset', st.blindSpot));");
+    expect(html).toContain("called_back: T('you called them back from the Quo line')");
+    expect(html).toContain("already_texted: T('already heard from us on the Quo line')");
+    // R27 Phase A (es-owner-a; pin moved): the server's own line, with its twin when the server sends one (esSayTwin).
+    expect(html).toContain("if (st.blindSpot) wrap.appendChild(esSayTwin(el('div', 'feed-state unset'), st, 'blindSpot'));");
     expect(html).toContain('Reached them from your iPhone? Arbo can’t see that');
     expect(html).not.toContain("called_back: 'you already called them back'");
   });

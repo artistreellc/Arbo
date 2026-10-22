@@ -49,17 +49,17 @@ describe('Today: run order and the Yard check (T-order, T-hud, T-yard)', () => {
 
 describe('Today: a dead schedule is named, never an empty day (T-schedule-state, T-loops)', () => {
   it('uses the shared feed-state words and offers the real calendar', () => {
-    expect(today).toContain("feedState(e, 'Schedule', 'an empty day')");
+    expect(today).toContain("feedState(e, T('Schedule'), T('an empty day'))");
     expect(today).toContain('Open the Calendar tab');
     expect(html).not.toContain('No schedule yet');
     expect(html).not.toContain('shows up the moment it is');
-    expect(today).toContain("'schedule ' + why");
+    expect(today).toContain("tf('schedule {why}', { why })"); // R27 Phase A (es-owner-a): one template, the shared tag as a value
   });
 
   it('loops say which gap it is, never "cut" for every 503', () => {
     const loops = between('function heroLoops()', '// ---------- More:');
     expect(loops).toContain('FEED_TAG[k]');
-    expect(loops).toContain("'loops ' + why");
+    expect(loops).toContain("tf('loops {why}', { why })");
     expect(html).not.toContain("e.code === 503 ? 'cut' : 'unreadable'");
   });
 });
@@ -79,16 +79,16 @@ describe('Today: the tiles (T-hud, T-money)', () => {
     expect(counts).not.toContain('m.collections.length + m.drafts.length');
     expect(counts).not.toContain('m.drafts.length + (m.blocked || []).length');
     expect(today).toContain('const mc = moneyCounts(m);');
-    expect(today).toContain("tile('–', 'to bill')");
+    expect(today).toContain("tile('–', T('to bill'))");
     // To bill counts drafts; a job with no agreed figure is named beside it and keeps the tile amber.
     expect(today).toContain("setTile(billTile, mc.bill, (mc.bill || mc.noFigure) ? 'warn' : 'ok-t');");
-    expect(today).toContain("billTile.appendChild(el('small', '', '+' + mc.noFigure + ' no agreed figure'))");
+    expect(today).toContain("billTile.appendChild(el('small', '', tf('+{n} no agreed figure', { n: mc.noFigure })))"); // R27 Phase A (es-owner-a)
     expect(today).toContain(' can’t tell');
   });
 
   it('a dead tile keeps its dash and says why — no silent catches', () => {
     expect(today).toContain('const tileWhy = (t, why) =>');
-    expect(today).toContain("tileWhy(dueTile, 'forecast unreadable')");
+    expect(today).toContain("tileWhy(dueTile, T('forecast unreadable'))");
     for (const t of ['dueTile', 'agentTile', 'owedTile', 'billTile']) {
       expect(today, `${t} never names its dead feed`).toContain(`tileWhy(${t}, FEED_TAG[feedKind(e)])`);
     }
@@ -97,8 +97,8 @@ describe('Today: the tiles (T-hud, T-money)', () => {
   });
 
   it('the stops legend names the next stop by the clock, not finished stops', () => {
-    expect(today).toContain("'next ' + fmtWhen(next.timeIso)");
-    expect(today).toContain("'all times passed'");
+    expect(today).toContain("tf('next {when}', { when: fmtWhen(next.timeIso) })"); // R27 Phase A (es-owner-a)
+    expect(today).toContain("T('all times passed')");
     expect(today).not.toContain("passed + ' of ' + s.totalStops + ' past'");
   });
 });
@@ -118,7 +118,7 @@ describe('Today: hero, ring and chips (T-ring, T-weather-sub, T-systems, T-deskt
 
   it('a dead weather feed is named once in the hero and chip, with no loose second line', () => {
     expect(html).not.toContain('Storm watch: weather feed unavailable');
-    expect(between('async function stormBanner()', '// ---------- Location strip')).toContain("'weather ' + FEED_TAG[k]");
+    expect(between('async function stormBanner()', '// ---------- Location strip')).toContain("tf('weather {why}', { why: FEED_TAG[k] })"); // R27 Phase A (es-owner-a)
   });
 
   it('the systems strip wraps, worst chip first, instead of hiding chips off screen', () => {
@@ -140,11 +140,11 @@ describe('Today: hero, ring and chips (T-ring, T-weather-sub, T-systems, T-deskt
 describe('Today: plain words and one dead-feed style (T-copy, T-adopt, T-location)', () => {
   it('the inbox card speaks plainly and never shows the raw server reason', () => {
     const inbox = between('async function inboxIntentPanel()', '// ---------- Where each customer stands');
-    expect(inbox).toContain("'panel-title', 'Inbox')");
+    expect(inbox).toContain("'panel-title', T('Inbox'))");
     expect(inbox).not.toContain('d.gmailReason || \'no pass yet\'');
     expect(html).not.toContain('the intent engine cannot look');
     expect(inbox).toContain('Gmail isn’t connected, so Arbo can’t check your inbox.');
-    expect(inbox).toContain("feedLine(e, 'Inbox')");
+    expect(inbox).toContain("feedLine(e, T('Inbox'))");
     expect(inbox).toContain('That doesn’t mean no mail came in.');
   });
 
@@ -153,7 +153,7 @@ describe('Today: plain words and one dead-feed style (T-copy, T-adopt, T-locatio
     expect(forms).toContain('Website forms aren’t connected to Arbo yet. They still arrive in your Gmail inbox.');
     expect(html).not.toContain('Direct wire from Resend NOT connected');
     expect(forms).not.toContain('the sweep');
-    expect(forms).toContain("feedLine(e, 'Website forms')");
+    expect(forms).toContain("feedLine(e, T('Website forms'))");
   });
 
   it('the links chip says cut on purpose, not a section number', () => {
@@ -163,7 +163,7 @@ describe('Today: plain words and one dead-feed style (T-copy, T-adopt, T-locatio
 
   it('location tracking never vanishes on a failed read, and a failed switch says so', () => {
     const loc = between('async function locationStrip()', '// ---------- Inbox intents');
-    expect(loc).toContain("feedLine(e, 'Location tracking'");
+    expect(loc).toContain("feedLine(e, T('Location tracking')");
     expect(loc).toContain('It may still be on.');
     expect(loc).toContain('showSaveFail(wrap, e)');
     expect(loc).not.toContain('catch (e) { return null; }');
@@ -171,7 +171,7 @@ describe('Today: plain words and one dead-feed style (T-copy, T-adopt, T-locatio
 
   it('Today’s dead-feed lines use the feed-state row, not the help-tip bullet', () => {
     const rec = between('async function receptionStrip()', '// ---------- Today (Morning Brief)');
-    expect(rec).toContain("el('div', 'feed-state ' + feedKind(e), 'Reception: status unavailable right now.')");
+    expect(rec).toContain("el('div', 'feed-state ' + feedKind(e), T('Reception: status unavailable right now.'))");
     expect(html).not.toContain('Inbox intents: status unavailable right now.');
     expect(html).not.toContain('Website forms: status unavailable right now.');
   });

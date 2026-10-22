@@ -12,6 +12,12 @@ interface Page {
   markup: string;
   /** Each inline script, parsed. */
   scripts: ts.SourceFile[];
+  /**
+   * R27 Phase A (es-owner-a): the words an inlined data block (<script type="application/json"> — the door's
+   * Spanish dictionary) can put on screen: its string VALUES. Its keys are lookups — the English they name is
+   * counted where the page's code draws it — and a data block is not code, so codeStrings never reads it.
+   */
+  data: string[];
 }
 
 const ENTITY: Record<string, string> = {
@@ -21,13 +27,29 @@ const ENTITY: Record<string, string> = {
 const decode = (s: string) => s.replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi, (m, e: string) =>
   e[0] === '#' ? String.fromCodePoint(e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10)) : ENTITY[e.toLowerCase()] ?? m);
 
+/** Every string value in a JSON data block; one that does not parse is read whole, so a guard still sees it. */
+function dataValues(body: string): string[] {
+  let v: unknown;
+  try { v = JSON.parse(body); } catch { return [body]; }
+  const out: string[] = [];
+  const visit = (x: unknown): void => {
+    if (typeof x === 'string') out.push(x);
+    else if (Array.isArray(x)) x.forEach(visit);
+    else if (x && typeof x === 'object') Object.values(x).forEach(visit);
+  };
+  visit(v);
+  return out;
+}
+
 function read(html: string): Page {
   const scripts: ts.SourceFile[] = [];
+  const data: string[] = [];
   const markup = html.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, (_m, attrs: string, body: string) => {
-    if (!/\bsrc\s*=/.test(attrs)) scripts.push(ts.createSourceFile(`inline-${scripts.length}.js`, body, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS));
+    if (/\btype\s*=\s*["']application\/json["']/i.test(attrs)) data.push(...dataValues(body));
+    else if (!/\bsrc\s*=/.test(attrs)) scripts.push(ts.createSourceFile(`inline-${scripts.length}.js`, body, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS));
     return '\n';
   });
-  return { markup: decode(markup.replace(/<!--[\s\S]*?-->/g, '')), scripts };
+  return { markup: decode(markup.replace(/<!--[\s\S]*?-->/g, '')), scripts, data };
 }
 
 function walk(node: ts.Node, visit: (n: ts.Node) => void): void {
@@ -68,7 +90,7 @@ function enclosingFunction(n: ts.Node): string {
 /** The words a page can show: its markup and every string in its code — no comment, no lookup key. */
 export function screenText(html: string): string {
   const page = read(html);
-  return [page.markup, ...literals(page).map((l) => l.text)].join('\n');
+  return [page.markup, ...literals(page).map((l) => l.text), ...page.data].join('\n');
 }
 
 /** The calm phrases a hub must never draw (Direction B P1), in any case. */
@@ -85,6 +107,7 @@ export function bareNothingNeedsYou(html: string): string[] {
   const page = read(html);
   const bad: string[] = [];
   if (/nothing needs you/i.test(page.markup)) bad.push('in the markup');
+  if (page.data.some((t) => /nothing needs you/i.test(t))) bad.push('in a data block');
   const said = literals(page).filter((l) => /nothing needs you/i.test(l.text));
   for (const l of said) if (!INBOX_LINES.includes(l.text) || l.fn !== 'inboxIntentPanel') bad.push(`${l.fn}: ${l.text}`);
   for (const line of INBOX_LINES) if (said.filter((l) => l.text === line).length > 1) bad.push(`said twice: ${line}`);

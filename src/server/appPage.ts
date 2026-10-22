@@ -168,7 +168,9 @@ export function loadMapHtml(): string {
   if (html === undefined) {
     const zips = scriptJson({ zips: ZIP_CENTROIDS, noArea: ZIP_NO_AREA, checked: ZCTA_SOURCE.checked, box: FOUR_CITY_BOX });
     const deq = scriptJson({ base: DEQ_MAPSERVER_BASE, layer: DEQ_RPA_LAYER, limits: DEQ_RPA_LIMITS });
-    html = load('map.html').replace('<!--ARBO:ZIPS-->', () => zips).replace('<!--ARBO:DEQ-->', () => deq);
+    // R27 Phase A (es-owner-a): the map's own small dictionary (map-*.es.json) and the runtime, the
+    // doors' way — the map follows the office app's language (arboLang). English is unchanged.
+    html = withI18n(load('map.html').replace('<!--ARBO:ZIPS-->', () => zips).replace('<!--ARBO:DEQ-->', () => deq), 'map');
     cache.set('__map__', html);
   }
   return html;

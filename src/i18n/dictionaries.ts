@@ -16,11 +16,13 @@ import { twinFor, enSha } from './twin.js';
 import { isSafetyClass, type CurrentPair } from './ledger.js';
 import { currentTwinPairs } from './serverTwins.js';
 
-export type Door = 'app' | 'crew';
-export const DOORS: readonly Door[] = ['app', 'crew'];
+// R27 Phase A (es-owner-a): 'map' — the Map page (src/app/map.html) carries only its own units, and
+// follows the office app's language setting (src/app/i18n/runtime.js).
+export type Door = 'app' | 'crew' | 'map';
+export const DOORS: readonly Door[] = ['app', 'crew', 'map'];
 
 const DIR = new URL('../app/i18n/', import.meta.url);
-const UNIT_FILE = /^(app|crew)-([a-z0-9]+(?:-[a-z0-9]+)*)\.es\.json$/;
+const UNIT_FILE = /^(app|crew|map)-([a-z0-9]+(?:-[a-z0-9]+)*)\.es\.json$/;
 
 export interface DoorDictionary {
   door: Door;

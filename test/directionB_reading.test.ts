@@ -121,7 +121,9 @@ describe('readingLine: one place the word lives (R27 can find it)', () => {
     expect(rule[1]!.split(',')).toContain('.view .reading');
   });
   it('the word is written once in the page\'s code, in readingLine', () => {
-    const code = html.replace(/^\s*\/\/.*$/gm, ''); // comments may quote it
+    // Comments may quote it; R27 Phase A (es-owner-a): so may the inlined Spanish dictionary — data, not code, its key
+    // the translation of this one place (the R27 this test was waiting for).
+    const code = html.replace(/^\s*\/\/.*$/gm, '').replace(/<script type="application\/json" id="arbo-i18n"[^>]*>[\s\S]*?<\/script>/, '');
     expect(code.match(/Reading…/g)).toHaveLength(1);
     expect(fnSrc('readingLine')).toContain("'Reading…'");
   });

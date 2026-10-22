@@ -13,10 +13,13 @@ import { DEQ_MAPSERVER_BASE, DEQ_RPA_LAYER } from '../src/permitting/gis/layers.
 import { ZIP_CENTROIDS, FOUR_CITY_BOX } from '../src/lib/zipCentroids.js';
 
 const page = loadMapHtml();
+// R27 Phase A (es-owner-a; pin moved — it read "exactly one inline script"): two now, the Spanish runtime first
+// (src/app/i18n/runtime.js, inlined with the map's own door dictionary) and the page's own script last.
 const script = (() => {
   const m = [...page.matchAll(/<script(?![^>]*\bsrc=)(?![^>]*type="application\/json")[^>]*>([\s\S]*?)<\/script>/g)];
-  expect(m).toHaveLength(1);
-  return m[0]![1]!;
+  expect(m).toHaveLength(2);
+  expect(m[0]![1]).toContain('R27 (D110) — the Spanish runtime, shared by both doors.');
+  return m[1]![1]!;
 })();
 function fnSrc(name: string): string {
   const m = new RegExp(`^(?:async )?function ${name}\\([\\s\\S]*?^\\}$`, 'm').exec(script);

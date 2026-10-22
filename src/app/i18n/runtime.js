@@ -46,7 +46,10 @@ const ES_SWITCH_LABEL = {
 
 const ES = (() => {
   const tag = document.getElementById('arbo-i18n');
-  const door = tag && tag.getAttribute('data-door') === 'crew' ? 'crew' : 'app';
+  // R27 Phase A (es-owner-a): the Map page (/map, the office app's own frame) is a third door with its own
+  // small dictionary (map-*.es.json). It follows the office app's setting, arboLang — never the crew door's.
+  const named = tag && tag.getAttribute('data-door');
+  const door = named === 'crew' || named === 'map' ? named : 'app';
   const key = door === 'crew' ? 'arboCrewLang' : 'arboLang';
   let wanted = 'en';
   try { wanted = localStorage.getItem(key) === 'es' ? 'es' : 'en'; } catch { wanted = 'en'; }

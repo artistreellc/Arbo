@@ -452,11 +452,11 @@ describe('Calls: one own-line card, and a redraw that holds its height (run, not
     const calls = fnSrc('renderCalls');
     expect(calls).not.toContain('since deploy');
     expect(calls).toContain('Business cell: nothing relayed from your iPhone since Arbo last restarted. If the Shortcut is set up, text yourself to test it.');
-    expect(calls).toContain("await feeds.place(trSlot, off('feed-state unset', 'Call transcripts: not set up yet.', 'unset', 'Call transcripts'));"); // P16: through the feeds card
+    expect(calls).toContain("await feeds.place(trSlot, off('feed-state unset', T('Call transcripts: not set up yet.'), 'unset', T('Call transcripts')));"); // P16: through the feeds card
     expect(calls).not.toContain('toLocaleString');
     expect(calls).not.toContain('badge(');
-    expect(calls).toContain("plural(tr.turns, 'turn')");
-    expect(calls).toContain("chip(m.line === 'business' ? 'BUSINESS CELL' : m.line === 'quo' ? 'QUO LINE' : 'ARBO LINE', 'info')");
+    expect(calls).toContain("tn(tr.turns, '{n} turn', '{n} turns')"); // R27 Phase A (es-owner-a): a real plural, through tn
+    expect(calls).toContain("chip(m.line === 'business' ? T('BUSINESS CELL') : m.line === 'quo' ? T('QUO LINE') : T('ARBO LINE'), 'info')");
   });
 });
 
@@ -465,13 +465,13 @@ describe('Calendar', () => {
 
   it('in practice mode the real calendar says it is real, once, right under its heading', () => {
     const head = cal.indexOf('v.appendChild(head);');
-    const note = cal.indexOf("LINKS_READY.then((l) => { if (l === 'simulation' && head.isConnected) head.after(el('div', 'feed-state sim', 'Live Google Calendar \\u2014 not simulated. These are your real appointments, not practice data.')); });");
+    const note = cal.indexOf("LINKS_READY.then((l) => { if (l === 'simulation' && head.isConnected) head.after(el('div', 'feed-state sim', T('Live Google Calendar \u2014 not simulated. These are your real appointments, not practice data.'))); });");
     expect(note).toBeGreaterThan(head);
     expect(note).toBeLessThan(cal.indexOf("el('a', 'cal-open'"));
   });
 
   it('the fallback under the frame is sentence-case help text, not the all-caps label style', () => {
-    expect(cal).toContain("v.appendChild(el('div', 'storm-muted',\n    'Calendar not showing?");
+    expect(cal).toContain("v.appendChild(el('div', 'storm-muted',\n    T('Calendar not showing?"); // R27 Phase A (es-owner-a): through T
     expect(cal.match(/'cal-src'/g)).toHaveLength(1); // the heading only
   });
 
@@ -489,7 +489,9 @@ describe('Route planner results', () => {
     const t12At = planner.indexOf('const t12 = ');
     expect(t12At).toBeGreaterThan(-1);
     expect(t12At).toBeLessThan(planner.indexOf('plan.warnings'));
-    expect(planner).toContain("for (const w of plan.warnings) pout.appendChild(el('div', 'late', '\\u26a0 ' + w.replace(/\\b\\d{1,2}:\\d{2}\\b/g, t12)));");
+    // R27 Phase A (es-owner-a; pin moved): a planner warning is the server's line — said through esSayTwin (English
+    // marked "en inglés" in Spanish), the ⚠ and the 12-hour clock as before.
+    expect(planner).toContain("for (const w of plan.warnings) pout.appendChild(esSayTwin(el('div', 'late'), { w: w.replace(/\\b\\d{1,2}:\\d{2}\\b/g, t12) }, 'w', '⚠ '));");
     // The same replace, run: only HH:MM changes.
     const t12 = new Function('return ' + /const t12 = (\(s\) => \{.*\});/.exec(planner)![1])() as (s: string) => string;
     expect('Plan runs past 8pm (ends 21:30) — consider moving a stop to another day.'.replace(/\b\d{1,2}:\d{2}\b/g, t12))
@@ -500,13 +502,15 @@ describe('Route planner results', () => {
 
   it('each visit is a time chip, then the stop and when it ends', () => {
     expect(planner).toContain("row.appendChild(chip(t12(vt.startTime), 'info'));");
-    expect(planner).toContain("row.appendChild(el('span', '', vt.order + '. ' + vt.label + ' (until\\u00a0' + t12(vt.endTime).replace(' ', '\\u00a0') + ')'));");
+    // R27 Phase A (es-owner-a; pin moved): one template, the no-break spaces kept.
+    expect(planner).toContain("row.appendChild(el('span', '', tf('{n}. {label} (until\\u00a0{time})', { n: vt.order, label: vt.label, time: t12(vt.endTime).replace(' ', '\\u00a0') })));");
     expect(planner).not.toContain('badge(');
   });
 
   it('ZIP estimates are a named feed state (unread when Maps failed, unset when no key) — no ℹ help tip', () => {
-    expect(planner).toContain("el('div', 'feed-state ' + (/Maps call failed/.test(plan.note) ? 'unread' : 'unset'), 'ZIP estimates \\u00b7 ' + plan.note)");
-    expect(planner).toContain("el('div', 'storm-muted', 'Live traffic \\u00b7 ' + plan.note)");
+    // R27 Phase A (es-owner-a; pins moved): the same named states, one template each.
+    expect(planner).toContain("el('div', 'feed-state ' + (/Maps call failed/.test(plan.note) ? 'unread' : 'unset'), tf('ZIP estimates · {note}', { note: plan.note }))");
+    expect(planner).toContain("el('div', 'storm-muted', tf('Live traffic · {note}', { note: plan.note }))");
     expect(planner).not.toContain('\\u2139');
     expect(planner).not.toContain('ℹ');
   });
@@ -518,7 +522,7 @@ describe('Route planner results', () => {
     expect(planner).toContain("pbtn.style.cssText = 'min-width:0;width:100%;margin-top:0';");
     expect(planner).not.toContain('flex:1 1 0');
     // At half a phone row the long label clipped ("Weekday (after ·"); the hint line carries "after 4 PM".
-    expect(planner).toContain("[['saturday', 'Saturday'], ['weekday', 'Weekday']]");
+    expect(planner).toContain("[['saturday', T('Saturday')], ['weekday', T('Weekday')]]");
     expect(planner).toContain('Weekdays start after 4 PM.');
     expect(css).toMatch(/\.field select,#yard select,select\.input\{-webkit-appearance:none;appearance:none;[^}]*background-image:/);
   });
@@ -537,11 +541,11 @@ describe('Leads buttons and copy (source pins)', () => {
   it('Undo restores what the lead was; the done half is never removed', () => {
     expect(leads).toContain('const was = lead.status;');
     expect(leads).toContain("body: { status: qTag ? 'qualified' : was }");
-    expect(leads).toContain("btn.disabled = true; btn.replaceChildren(icon('i-check'), el('span', '', 'Good lead ✓'));");
+    expect(leads).toContain("btn.disabled = true; btn.replaceChildren(icon('i-check'), el('span', '', T('Good lead ✓')));");
     expect(leads).not.toContain('btn.remove()');
     expect(leads).not.toContain("'new' } });");
     expect(leads).not.toContain('badge(');
-    expect(leads).toContain("chip('SPAM', 'info')");
+    expect(leads).toContain("chip(T('SPAM'), 'info')");
   });
 
   it('no developer copy on these screens', () => {

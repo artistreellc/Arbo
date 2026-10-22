@@ -701,7 +701,7 @@ describe('read-only: the app and the crew page say it plainly', () => {
   it('the app and the server carry the same plain line', async () => {
     const { READ_ONLY_LINE } = await import('../src/db/links.js');
     expect(READ_ONLY_LINE).toBe(LINE);
-    expect(app).toContain(`const READ_ONLY_LINE = '${LINE}';`);
+    expect(app).toContain(`const READ_ONLY_LINE = T('${LINE}');`); // R27 Phase A (es-owner-a): the same line, through T
   });
 
   it('a refused tap reads the plain line — never "the server did not accept it"', () => {
@@ -720,14 +720,14 @@ describe('read-only: the app and the crew page say it plainly', () => {
 
   it('Today shows one plain line, only while the master is exactly readonly', () => {
     const today = fnSrc(app, 'renderToday');
-    expect(today).toContain("LINKS_READY.then(() => { if (LINKS === 'readonly') roSlot.appendChild(el('div', 'storm-muted', 'Read-only: Arbo is reading your real records and saving nothing. Anything that would save says so.')); });");
+    expect(today).toContain("LINKS_READY.then(() => { if (LINKS === 'readonly') roSlot.appendChild(el('div', 'storm-muted', T('Read-only: Arbo is reading your real records and saving nothing. Anything that would save says so.'))); });");
     // Under the system chips, above the storm alert.
     expect(today.indexOf('v.appendChild(roSlot);')).toBeGreaterThan(today.indexOf('v.appendChild(buildSystems());'));
     expect(today.indexOf('v.appendChild(roSlot);')).toBeLessThan(today.indexOf('v.appendChild(stormSlot);'));
   });
 
   it('the agent runs tile says its runs were not saved', () => {
-    expect(fnSrc(app, 'renderToday')).toContain("if (r.runLog === 'not_saved_read_only') tileWhy(agentTile, 'not saved — read-only');");
+    expect(fnSrc(app, 'renderToday')).toContain("if (r.runLog === 'not_saved_read_only') tileWhy(agentTile, T('not saved — read-only'));");
   });
 
   it('the crew page names read-only on every screen, the owner preview included, and words a refused save', () => {

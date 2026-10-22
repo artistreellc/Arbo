@@ -562,7 +562,7 @@ describe('Calls & texts: the old Calls screen, Sona first (P16)', () => {
     for (const n of ['Arbo line texts', 'Call transcripts', 'Call log']) expect(calls, n).toContain(`'${n}'`);
     expect(calls).toContain('feeds.place(');
     // The R33 Quo texts line is a partial read — it never folds (it stays in the Texts card).
-    expect(calls).toContain("txSlot.appendChild(el('div', 'feed-state cut',\n        'Quo line: texts webhook missing");
+    expect(calls).toContain("txSlot.appendChild(el('div', 'feed-state cut',\n        T('Quo line: texts webhook missing"); // R27 Phase A (es-owner-a)
   });
 });
 
@@ -597,13 +597,13 @@ describe('lead rows: the one-line summary (P16 — where the 2× density is addr
 
   it('a lead card is a .card.lead (what the filters hide by), and the older heading is marked for the filters', () => {
     expect(leads).toContain("el('div', 'card lead' + (lead.isEmergency ? ' emergency' : '') + (lead.needsCallback ? ' callback' : ''))");
-    expect(leads).toContain("el('div', 'panel-title older-head', 'Older leads — more than 14 days old')");
+    expect(leads).toContain("el('div', 'panel-title older-head', T('Older leads — more than 14 days old'))");
   });
 
   it('a past-work or permit read cut on purpose is one line in New leads\' feeds card, not one per lead; one that failed stays on its lead', () => {
     expect(leads).toContain("feedsCard('leads')");
-    expect(leads).toContain("else if (lead.historyUnreadable && !lead.historyCut) c.appendChild(feedLine(null, 'Past work'));");
-    expect(leads).toContain("if (lead.permitUnreadable && !lead.permitCut) c.appendChild(feedLine(null, 'Permit screen'));");
+    expect(leads).toContain("else if (lead.historyUnreadable && !lead.historyCut) c.appendChild(feedLine(null, T('Past work')));");
+    expect(leads).toContain("if (lead.permitUnreadable && !lead.permitCut) c.appendChild(feedLine(null, T('Permit screen')));");
   });
 });
 

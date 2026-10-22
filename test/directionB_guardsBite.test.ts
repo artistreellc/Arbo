@@ -18,6 +18,14 @@ const mutate = (from: string, to: string): string => {
   return raw.replace(from, () => to);
 };
 const PANEL = 'async function outreachPanel(full) {';
+// R27 Phase A (es-owner-a; pins moved, meaning kept): the permit chip also draws its label as a Spanish pair keyed by
+// the same words (permitChip: w === 'PERMIT LIKELY' ? esPair('PERMIT LIKELY')). That draw is relabelled with the map,
+// so the word is left only in lookups — the map's key, the === that picks the pair, PERMIT_STATUS['PERMIT LIKELY'].
+const PAIR_DRAW = "w === 'PERMIT LIKELY' ? esPair('PERMIT LIKELY')";
+const relabelPair = (html: string): string => {
+  expect(html.split(PAIR_DRAW).length - 1, `mutation target: ${PAIR_DRAW}`).toBe(1);
+  return html.replace(PAIR_DRAW, () => "w === 'PERMIT LIKELY' ? esPair('Permit likely')");
+};
 /** The page with a line of code added at the top of outreachPanel. */
 const withCode = (line: string) => mutate(PANEL, `${PANEL}\n  if (full === 'x') { ${line} }`);
 
@@ -71,15 +79,17 @@ describe('the send snapshot sees every send, however it is spelled (D2)', () => 
 describe('the strings guard reads what can be on screen, never a comment or a lookup key (D4)', () => {
   it.each([
     ['a trailing // comment', "b.appendChild(chip('NO AERIAL WORK', 'alarm'));", "b.appendChild(chip('GROUNDED', 'alarm')); // was NO AERIAL WORK", 'NO AERIAL WORK'],
-    ['a trailing /* */ comment', "b.appendChild(chip('SONA BROKE A RULE', 'stop'));", "b.appendChild(chip('SLIP', 'stop')); /* SONA BROKE A RULE */", 'SONA BROKE A RULE'],
+    // R27 Phase A (es-owner-a): the chip's words now go through T — the comment still keeps nothing on screen.
+    ['a trailing /* */ comment', "b.appendChild(chip(T('SONA BROKE A RULE'), 'stop'));", "b.appendChild(chip(T('SLIP'), 'stop')); /* SONA BROKE A RULE */", 'SONA BROKE A RULE'],
     ['a lookup key', "PERMIT_LIKELY: ['PERMIT LIKELY', 'watch']", "PERMIT_LIKELY: ['Permit likely', 'watch']", 'PERMIT LIKELY'],
   ])('a ruling word kept only in %s is gone', (_why, from, to, word) => {
     expect(screenText(raw)).toContain(word); // control: it is on screen today
-    expect(screenText(mutate(from, to))).not.toContain(word);
+    const broken = mutate(from, to);
+    expect(screenText(word === 'PERMIT LIKELY' ? relabelPair(broken) : broken)).not.toContain(word);
   });
 
   it('a ruling word kept only as an index or a lookup argument is gone', () => {
-    const relabelled = mutate("PERMIT_LIKELY: ['PERMIT LIKELY', 'watch']", "PERMIT_LIKELY: ['Permit likely', 'watch']");
+    const relabelled = relabelPair(mutate("PERMIT_LIKELY: ['PERMIT LIKELY', 'watch']", "PERMIT_LIKELY: ['Permit likely', 'watch']"));
     const kept = relabelled.replace(PANEL, `${PANEL}\n  const k = PERMIT_STATUS['PERMIT LIKELY']; if (String(k).includes('PERMIT LIKELY')) return;`);
     expect(screenText(kept)).not.toContain('PERMIT LIKELY');
   });

@@ -16,7 +16,8 @@ import { loadMapHtml } from '../src/server/appPage.js';
 import { ZIP_CENTROIDS, ZIP_NO_AREA, ZCTA_SOURCE, FOUR_CITY_BOX } from '../src/lib/zipCentroids.js';
 
 const page = loadMapHtml();
-const script = [...page.matchAll(/<script(?![^>]*\bsrc=)(?![^>]*type="application\/json")[^>]*>([\s\S]*?)<\/script>/g)][0]![1]!;
+// R27 Phase A (es-owner-a): the Spanish runtime is inlined just before the page's own script — the page's is the last.
+const script = [...page.matchAll(/<script(?![^>]*\bsrc=)(?![^>]*type="application\/json")[^>]*>([\s\S]*?)<\/script>/g)].at(-1)![1]!;
 const css = page.slice(page.indexOf('<style>'), page.indexOf('</style>'));
 function srcOf(text: string, name: string): string {
   const m = new RegExp(`^(?:async )?function ${name}\\([\\s\\S]*?^\\}$`, 'm').exec(text);

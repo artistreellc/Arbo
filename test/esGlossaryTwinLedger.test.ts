@@ -18,6 +18,7 @@ import { findBannedEs } from '../src/i18n/banList.js';
 import { esGateProblems } from '../src/i18n/gates.js';
 import { currentSafetyPairs } from '../src/i18n/dictionaries.js';
 import { RECORDED_EN, RECORDED_SHA, HELD_EN, oneCharEdit } from './support/esRecorded.js';
+import { OWNER_A_DRAFTS } from './support/esOwnerA.js';
 
 describe('the glossary — usted, neutral Latin-American Spanish, trade terms with the English beside', () => {
   it('names the register and the variety Mike chose (R29 #3)', () => {
@@ -146,9 +147,11 @@ describe('the review ledger (src/i18n/reviewed.json) — a safety string edited 
     expect(at('reviewed')).toEqual([...RECORDED_EN]);
     // …and by fingerprint, so a recorded line's Spanish can't change and be re-marked unnoticed.
     expect(loadLedger().filter((e) => e.pass === 'reviewed').map((e) => e.sha)).toEqual([...RECORDED_SHA]);
-    expect(at('draft')).toEqual([...HELD_EN]);
+    // R27 Phase A (es-owner-a): the owner app's first units add their own new safety lines as DRAFTS
+    // (test/support/esOwnerA.ts), after D112's five — never a review recorded, never touching the 17.
+    expect(at('draft')).toEqual([...HELD_EN, ...OWNER_A_DRAFTS]);
     expect(at('person')).toEqual([]);
-    expect(loadLedger().length).toBe(RECORDED_EN.length + HELD_EN.length);
+    expect(loadLedger().length).toBe(RECORDED_EN.length + HELD_EN.length + OWNER_A_DRAFTS.length);
     for (const e of loadLedger()) {
       if (e.pass === 'reviewed') {
         // Both blind passes named, with the date, and the back-translation itself on the entry.
@@ -158,7 +161,7 @@ describe('the review ledger (src/i18n/reviewed.json) — a safety string edited 
         expect(e.note, e.en).toMatch(/^Recorded 2026-10-22 \(D112\)/);
       } else {
         expect(e.reviewedBy, e.en).toBeUndefined();
-        expect(e.note, e.en).toMatch(/^Not recorded \(D112\)/);
+        expect(e.note, e.en).toMatch(OWNER_A_DRAFTS.includes(e.en) ? /^Not recorded \(R27 Phase A, es-owner-a\)/ : /^Not recorded \(D112\)/);
       }
     }
     // The glossary's seven labels: all recorded but HELD.
@@ -188,7 +191,9 @@ describe('the review ledger (src/i18n/reviewed.json) — a safety string edited 
     const edited = pairs.map((p) => (p === first ? { ...p, es: p.es + ' (editado)' } : p));
     expect(ledgerProblems(edited).join('\n')).toMatch(/not re-reviewed|no ledger entry/);
     expect(ledgerProblems([...pairs, { en: 'STOP WORK', es: 'PARE EL TRABAJO', where: 'test' }]).join('\n')).toMatch(/STOP WORK/);
-    expect(ledgerProblems(pairs.slice(1)).join('\n')).toMatch(/stale/);
+    // R27 Phase A (es-owner-a; pin moved, meaning kept): a recorded label can sit in more than one place (the glossary
+    // and a door's dictionary), so every copy of the first pair goes before its ledger entry reads as stale.
+    expect(ledgerProblems(pairs.filter((p) => !(p.en === first.en && p.es === first.es))).join('\n')).toMatch(/stale/);
     const tampered = loadLedger().map((e, i) => (i === 0 ? { ...e, sha: '0'.repeat(64) } : e));
     expect(ledgerProblems(pairs, tampered).join('\n')).toMatch(/fingerprint/);
   });
