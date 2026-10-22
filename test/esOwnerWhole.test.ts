@@ -16,6 +16,7 @@ import { unitFiles, readUnit, loadDoorDictionary } from '../src/i18n/dictionarie
 import { OWNER_A_SCOPE, OWNER_A_STATEMENTS } from './support/esOwnerA.js';
 import { OWNER_B_PANELS, OWNER_B_SHARED } from './support/esOwnerB.js';
 import { OWNER_C_PANELS, OWNER_C_SWEEP } from './support/esOwnerC.js';
+import { loadI18n, FakeNode } from './support/i18nRuntime.js';
 
 const raw = readFileSync(new URL('../src/app/index.html', import.meta.url), 'utf8');
 const at = raw.lastIndexOf('<script>');
@@ -206,5 +207,35 @@ describe('the shared feed and save-failure words are said in Spanish on every sc
     const mark = sf.statements.find((st) => topNames(st).includes('saveFailMark'))!.getText(sf);
     expect(mark).toContain("e.message === 'read_only' && e.line");
     expect(mark).toContain("if (ES.lang !== 'es') return n;"); // English draws exactly as before
+  });
+});
+
+// ── One way to say a safety label (D111's rule): a label held back says the Spanish pointer first, never English alone. ──
+// es-owner-a's permitChip said its pair with esPair (no pointer when held); es-owner-b's permitLabel and every other
+// safety chip use esSay. Merged, the Leads chip and the Estimate/Permit rules chips must behave the same when a label is held.
+describe('a permit label held back wears the pointer on every screen — the Leads chip as the others', () => {
+  const src = (re: RegExp) => { const m = re.exec(script); if (!m) throw new Error(String(re)); return m[0]; };
+  const page = (units: Record<string, Record<string, string>>) => {
+    const rt = loadI18n({ door: 'app', units, stored: { arboLang: 'es' } });
+    const el = (tag: string, cls?: string, text?: string) => { const n = rt.doc.createElement(tag) as FakeNode; if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+    const body = [src(/^const TONE = [^\n]*$/m), src(/^function badge\([^\n]*\}$/m), src(/^function chip\([\s\S]*?^\}$/m),
+      src(/^const PERMIT_STATE = [^\n]*$/m), src(/^function permitChip\([\s\S]*?^\}$/m), 'return { permitChip };'].join('\n');
+    return new Function('ES', 'T', 'esSay', 'esPair', 'el', body)(rt.ES, rt.T, rt.esSay, rt.esPair, el) as { permitChip: (s: string) => FakeNode };
+  };
+  const served = loadDoorDictionary('app').units;
+  it('recorded (as served today): the Spanish over the full English, in one .es-pair holder', () => {
+    const c = page(served).permitChip('PERMIT_LIKELY');
+    const box = c.querySelector('.es-pair')!;
+    expect(box).not.toBeNull();
+    expect(box.classList.contains('es-held')).toBe(false);
+    expect(c.querySelector('.es-pair-es')!.textContent).toBe('PROBABLEMENTE SE NECESITA PERMISO');
+  });
+  it('held (its review not recorded): the pointer, then the English — never the English alone', () => {
+    const held = Object.fromEntries(Object.entries(served).map(([u, d]) => [u, Object.fromEntries(Object.entries(d).filter(([k]) => k !== 'PERMIT LIKELY'))]));
+    const c = page(held).permitChip('PERMIT_LIKELY');
+    const box = c.querySelector('.es-pair')!;
+    expect(box && box.classList.contains('es-held')).toBe(true);
+    expect(box.children[0]!.textContent).toBe('Aviso de seguridad — por ahora solo en inglés; pídale a alguien que se lo lea:');
+    expect(box.textContent).toContain('PERMIT LIKELY');
   });
 });

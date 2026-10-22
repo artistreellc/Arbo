@@ -529,6 +529,8 @@ function fleetPage(payload: () => unknown, signBack: (path: string) => Promise<u
     fleetTrackLine: () => node('div', 'storm-muted fleet-track', ''),
     openBreakdown: () => {},
     saveFailText: (e: { code?: number }) => `Not saved — refused (${e.code}). Nothing was written.`,
+    // D113: a refusal in the server's own words is marked "en inglés" in Spanish (saveFailMark) — English draws nothing more.
+    saveFailMark: (n: FakeNode) => n,
     UNIT_STATUS: pageTable('UNIT_STATUS'),
     LINKS_READY: Promise.resolve('simulation'), FEED_WORD: {}, feedKind: () => 'unread', feedSays: () => '',
     window: { alert: () => {} },

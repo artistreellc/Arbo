@@ -128,7 +128,7 @@ describe('R26 qa-x6 — one label per permit state, the badge wording everywhere
     // Each label is written once in the page script — every surface reads it from the map.
     // Pins moved (R27 Phase A, owner app a + b, merged in D113), meaning kept: two places say a label again, each keyed by
     // the same words, never a third surface. permitChip's Spanish pick (builder a) — the === that matches the map's word
-    // and that word's esPair key (parity needs keys written out): twice there. permitLabel (builder b) says a drawn label
+    // and that word's key, said through esSay since D113 as every other safety chip (parity needs keys written out): twice there. permitLabel (builder b) says a drawn label
     // again through the safety pair — it matches the label the map drew (a case) and draws that same English (the
     // dictionary key), so it is no second spelling. Outside both, each label is still written once.
     const chipSrc = fnSrc('permitChip');
@@ -136,7 +136,7 @@ describe('R26 qa-x6 — one label per permit state, the badge wording everywhere
     const rest = html.replace(chipSrc, '').replace(sayer, '');
     for (const label of ['PERMIT: REVIEW NEEDED', 'NO OVERLAY — VERIFY W/ CITY', 'PERMIT SCREEN PENDING']) {
       expect(rest.split("'" + label + "'").length - 1, label).toBe(1);
-      expect(chipSrc.split("w === '" + label + "' ? esPair('" + label + "')").length - 1, label).toBe(1);
+      expect(chipSrc.split("w === '" + label + "' ? esSay(c, '" + label + "')").length - 1, label).toBe(1);
       expect(chipSrc.split("'" + label + "'").length - 1, label).toBe(2);
       expect(sayer, label).toContain(`case '${label}': return esSay(n, '${label}');`);
     }

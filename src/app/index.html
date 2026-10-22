@@ -1413,18 +1413,18 @@ function badge(text, cls) { return el('span', 'badge ' + cls, text); }
 // amber; a no-overlay result is context (the city still has the last word).
 const PERMIT_STATE = { PERMIT_LIKELY: ['PERMIT LIKELY', 'watch'], REVIEW_NEEDED: ['PERMIT: REVIEW NEEDED', 'watch'], NO_OVERLAY_VERIFY: ['NO OVERLAY — VERIFY W/ CITY', 'info'], SCREEN_PENDING: ['PERMIT SCREEN PENDING', 'watch'] };
 // One permit state as its chip. A status it does not know keeps the old reading: verify with the city.
-// R27 Phase A (es-owner-a): a permit label is a safety label (R27 #4) — in Spanish the recorded Spanish over
-// the FULL English (esPair); in English the chip exactly as before. The map's word picks its pair (each key written
-// out, so parity can check it); a word with no pair here keeps the English chip — never another state's pair.
+// R27 Phase A (es-owner-a): a permit label is a safety label (R27 #4) — in Spanish the recorded Spanish over the
+// FULL English, said into the chip with esSay as every other safety chip is (D113: so a label held back wears the
+// Spanish pointer, never the English alone — D111); in English the chip exactly as before. The map's word picks its
+// key (each written out, so parity can check it); a word with no key here keeps the English chip — never another
+// state's pair.
 function permitChip(status) {
   const s = PERMIT_STATE[status] || PERMIT_STATE.NO_OVERLAY_VERIFY;
   const c = chip(s[0], s[1]);
   if (ES.lang !== 'es') return c;
   const w = s[0];
-  const pair = w === 'PERMIT LIKELY' ? esPair('PERMIT LIKELY') : w === 'PERMIT: REVIEW NEEDED' ? esPair('PERMIT: REVIEW NEEDED')
-    : w === 'PERMIT SCREEN PENDING' ? esPair('PERMIT SCREEN PENDING') : w === 'NO OVERLAY — VERIFY W/ CITY' ? esPair('NO OVERLAY — VERIFY W/ CITY') : null;
-  if (pair) c.replaceChildren(pair);
-  return c;
+  return w === 'PERMIT LIKELY' ? esSay(c, 'PERMIT LIKELY') : w === 'PERMIT: REVIEW NEEDED' ? esSay(c, 'PERMIT: REVIEW NEEDED')
+    : w === 'PERMIT SCREEN PENDING' ? esSay(c, 'PERMIT SCREEN PENDING') : w === 'NO OVERLAY — VERIFY W/ CITY' ? esSay(c, 'NO OVERLAY — VERIFY W/ CITY') : c;
 }
 function permitBadge(lead) {
   if (lead.permit) return permitChip(lead.permit.screenStatus);
@@ -3638,7 +3638,7 @@ async function renderLeadsHead() {
   };
   if (!h.hasChildNodes()) {
     const head0 = el('div', 'viewhead');
-    head0.appendChild(el('div', 'eyebrow', T('Front Desk')));
+    head0.appendChild(el('div', 'eyebrow', 'Front Desk')); // the desk's name (R26), as written — one voice with Office, Agents, Learn (D113)
     head0.appendChild(title(VIEW_TITLES.leads, ''));
     h.replaceChildren(head0, readingLine());
   }
@@ -3694,7 +3694,7 @@ async function renderLeadsHead() {
 
   const out = [];
   const head = el('div', 'viewhead');
-  head.appendChild(el('div', 'eyebrow', T('Front Desk')));
+  head.appendChild(el('div', 'eyebrow', 'Front Desk')); // the desk's name (R26), as written (D113)
   head.appendChild(L
     ? title(L.n ? tn(L.n, '{n} new lead', '{n} new leads') + (L.alarm ? ', ' + tn(L.alarm, '{n} emergency', '{n} emergencies') : '')
       : links === 'simulation' ? T('No new leads') : T('New leads are not in Arbo'), 'lh-leads') // R4: on real data, an unfed list — never a 0

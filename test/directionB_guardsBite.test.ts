@@ -18,11 +18,12 @@ const mutate = (from: string, to: string): string => {
   return raw.replace(from, () => to);
 };
 const PANEL = 'async function outreachPanel(full) {';
-// R27 Phase A (es-owner-a; pins moved, meaning kept): the permit chip also draws its label as a Spanish pair keyed by
-// the same words (permitChip: w === 'PERMIT LIKELY' ? esPair('PERMIT LIKELY')). That draw is relabelled with the map,
-// so the word is left only in lookups — the map's key, the === that picks the pair, PERMIT_STATUS['PERMIT LIKELY'].
-const PAIR_DRAW = "w === 'PERMIT LIKELY' ? esPair('PERMIT LIKELY')";
-const PAIR_UNDRAWN = "w === 'PERMIT LIKELY' ? esPair('Permit likely')";
+// R27 Phase A (es-owner-a; pins moved, meaning kept): the permit chip also says its label through the safety pair keyed
+// by the same words (permitChip: w === 'PERMIT LIKELY' ? esSay(c, 'PERMIT LIKELY') — esSay since D113, as every other
+// safety chip). That draw is relabelled with the map, so the word is left only in lookups — the map's key, the === that
+// picks the pair, PERMIT_STATUS['PERMIT LIKELY'].
+const PAIR_DRAW = "w === 'PERMIT LIKELY' ? esSay(c, 'PERMIT LIKELY')";
+const PAIR_UNDRAWN = "w === 'PERMIT LIKELY' ? esSay(c, 'Permit likely')";
 /** The page with a line of code added at the top of outreachPanel. */
 const withCode = (line: string) => mutate(PANEL, `${PANEL}\n  if (full === 'x') { ${line} }`);
 

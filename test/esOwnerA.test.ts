@@ -77,6 +77,8 @@ const OPTION_KEYS = new Set(['hour', 'minute', 'weekday', 'month', 'day', 'year'
   'behavior', 'error', 'kind', 'type', 'layer', 'rootMargin', 'tone', 'state', 'why', 'stage', 'view', 'cls', 'level']);
 // Codes and names the page compares or passes on — written out, so a new English word is never waved through.
 const CODES = new Set(['use strict', 'application/json', 'GET', 'POST', 'unknown', 'serviceWorker', 'ARBO', 'Art-is-Tree', 'VA', 'Arbo', 'Quo', 'Sona',
+  // D113: a desk's name (R26), as written — the Leads hub's eyebrow says it as Office, Agents and Teach Arbo do (one voice).
+  'Front Desk',
   'Gmail', 'Google Maps', 'TomTom', 'PDF', 'WEEK', 'AGENDA', 'America/New_York', ' · Art-is-Tree',
   // A 12-hour clock's suffix (clock12, the planner's t12): the time's format, not a word.
   ' AM', ' PM',
