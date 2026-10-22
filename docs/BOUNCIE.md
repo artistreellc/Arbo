@@ -211,14 +211,24 @@ key and the same hours.
   fix: grey, *"Last fix 3 h ago — may have moved"*; unplugged: grey,
   *"Bouncie unplugged — last known spot"*; no fix yet or after hours: listed,
   not drawn. If Bouncie doesn't answer, the trucks Arbo held show grey under
-  *"Arbo could not read Bouncie just now."*
+  *"Arbo could not read Bouncie just now."* Each truck's marker carries its
+  name (a dark pill, never the green of a stop); trucks parked together share
+  one marker, *"3 trucks"* — tap it for each truck and its own Today's trips.
+  A truck that would sit on one of today's stops steps aside, a dotted line to
+  its spot. A truck far away (Richmond) is counted on the map's *"1 truck is
+  off this view — show all"*, and the map can always pan to it.
 - **Dots come down** when a read fails or the phone has no signal, when you
-  leave the Map or the app (until a fresh answer), and at 8 pm by the phone's
-  own clock — before the server's next answer.
+  leave the Map or the app (until a fresh answer — nothing is read or drawn
+  while another screen shows), and at 8 pm by the phone's own clock — before
+  the server's next answer.
 - **Today's trips** on a truck's card draws that truck's trips for today
   (inside working hours, each path at most 2,000 points); every answer that
-  isn't trips is said in the server's words. If Arbo restarted since, it
-  says *"The truck list changed — pick the truck again."*
+  isn't trips is said in the server's words. The map brings the trips into
+  view, in blue (today's route is the green dashed line). A trip whose route
+  Bouncie sent unreadable is named — *"Bouncie sent 1 trip … whose route
+  couldn't be read — not drawn"* — never counted as no trip. If Arbo
+  restarted since, it says *"The truck list changed — pick the truck again."*
+  until the next answer.
 - **Crew aren't on the map** — Arbo has no crew location (Q8: not built
   without your ruling). The crew door gets no map and no truck read.
 - Nothing is stored on the phone and nothing is logged.
