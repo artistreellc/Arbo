@@ -81,6 +81,9 @@ html.night #osm{background:rgba(11,21,18,.85);color:#C5D2CA}
 #legend{padding:0 0 4px}
 .key{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink-2);padding:2px 0}
 .key .pin{flex:0 0 auto;transform:scale(.7);margin:-6px}
+/* DEQ's own symbol for layer 33: an orange fill (230,152,0), 50% transparent, a thin grey outline. */
+.swatch{flex:0 0 auto;align-self:flex-start;width:30px;height:20px;margin-top:2px;border-radius:5px}
+.swatch.rpa{background:rgba(230,152,0,.5);border:1px solid rgba(110,110,110,.9)}
 .hud{display:block;width:100%;min-height:48px;padding:6px 12px;border:0;border-radius:14px;background:var(--forest);color:var(--on-forest);font:700 14px/1.25 var(--sans);box-shadow:var(--shadow);cursor:pointer}
 /* Leaflet's zoom buttons and a stop list's ×: 44 px, in the app's colours by Day and Night. */
 #mapbox .leaflet-bar{border:1px solid var(--border);box-shadow:var(--shadow)}
@@ -103,7 +106,6 @@ html.night #osm{background:rgba(11,21,18,.85);color:#C5D2CA}
 </style>
 </head>
 <body>
-<!--ARBO:SPRITE-->
 <div id="top">
   <div id="chips" role="group" aria-label="Map layers"></div>
 </div>
@@ -137,7 +139,6 @@ const MAP_SAYS = {
   namePermits: 'Permit areas',
   nameLeads: 'Leads & jobs',
   nameTrucks: 'Trucks',
-  permitsSoon: 'Permit areas aren’t drawn yet — the next map build adds Virginia DEQ’s RPA layer. No shading here is not a “no”.',
   leadsSoon: 'Leads & jobs aren’t on the map yet — the next map build adds them. Your leads are on the Leads tab.',
   trucksSoon: 'Trucks aren’t on the map yet — that layer is still to be built. Office → Fleet lists each truck.',
   practice: 'PRACTICE DATA — pins sit in their ZIP area; these are not real places.',
@@ -174,12 +175,23 @@ const MAP_SAYS = {
   tilesFailedBare: 'Street map didn’t load (OpenStreetMap) — this is not an empty map.',
   offline: 'No signal — the street map needs one.',
   retry: 'Try again',
+  keyRow: 'What the map shows',
+  // Permit areas (M2): DEQ's RPA shading. An area never gets a permit word — those belong to one address's screen.
+  rpaZoom: 'Zoom in to see RPA areas — DEQ doesn’t draw them at this zoom; not drawn is not “no RPA”.',
+  rpaReading: 'Reading DEQ’s RPA layer…',
+  rpaFailed: 'Couldn’t load the DEQ RPA layer just now — this is not “no RPA here”.',
+  rpaUnset: 'DEQ’s RPA layer couldn’t be set up on this page — nothing is drawn; this is not “no RPA”.',
+  rpaMissing: 'Not on this map: the Virginia Beach, Norfolk and Chesapeake city RPA layers (found, not verified); Portsmouth (no city layer found); floodplain, Norfolk CRO and reservoir areas (no layer). Missing shading is never a “no”.',
+  rpaLegend: 'Shaded: Resource Protection Area — Virginia DEQ statewide layer 33 (checked 2026-08-01). Not shaded does not mean no permit — VERIFY W/ CITY. Arbo’s permit screen checks 300 m around an address, because an address point can sit 150–300 m from a rear-lot buffer. For one address’s permit word, use Estimate → prep.',
+  permitsCutR32: 'Permit records are cut on purpose (R32) — none are drawn.',
+  permitsCut: 'Permit records are cut on purpose — none are drawn.',
+  permitsNotDrawn: 'Permit records aren’t drawn on this map.',
 };
 
 const LAYERS = ['today', 'permits', 'leads', 'trucks'];
 const LAYER_NAME = { today: MAP_SAYS.nameToday, permits: MAP_SAYS.namePermits, leads: MAP_SAYS.nameLeads, trucks: MAP_SAYS.nameTrucks };
 // A layer not built yet says so when it is switched on — never an empty map.
-const LAYER_SOON = { permits: MAP_SAYS.permitsSoon, leads: MAP_SAYS.leadsSoon, trucks: MAP_SAYS.trucksSoon };
+const LAYER_SOON = { leads: MAP_SAYS.leadsSoon, trucks: MAP_SAYS.trucksSoon };
 // The layers this build draws: each reads its own feed and names its own gaps.
 const LAYER_READ = {};
 const LAYER_CLEAR = {};
@@ -192,6 +204,21 @@ function inlined(id) {
 }
 const ZIPS = inlined('map-zips') || { zips: {}, noArea: [], checked: null, box: { south: 36.53, west: -76.58, north: 36.99, east: -75.84 } };
 const BOX = ZIPS.box;
+const DEQ = inlined('map-deq'); // DEQ's MapServer base, layer 33 and its recorded limits (layers.ts); null = not set up
+
+// The links' word, from the shell's own /health read ('live', 'readonly', 'cut', 'simulation'): what "cut" can
+// truthfully mean on this map, and whether this is practice. null until the shell knows; the frame never reads
+// /health itself.
+let LINKS = null;
+function shellLinks() {
+  try {
+    if (window.parent === window || typeof window.parent.arboMapLinks !== 'function') return Promise.resolve(null);
+    return Promise.resolve(window.parent.arboMapLinks()).then((v) => (typeof v === 'string' ? v : null), () => null);
+  } catch (e) {
+    return Promise.resolve(null);
+  }
+}
+const LINKS_READY = shellLinks().then((v) => { LINKS = v; return v; });
 
 let ON = readLayers();
 let MAP = null;
@@ -346,6 +373,13 @@ function drawFacts() {
   const box = $('facts');
   box.replaceChildren();
   for (const l of LAYERS) if (ON[l] && FACTS[l]) for (const n of FACTS[l]()) box.appendChild(n);
+  // The key's button rides beside Today's counts; with no counts on the map it has a row of its own.
+  if (keyRows().length && !box.querySelector('.keybtn')) {
+    const row = el('div', 'counts');
+    row.appendChild(el('div', 'muted', MAP_SAYS.keyRow));
+    row.appendChild(keyButton());
+    box.appendChild(row);
+  }
   syncCard();
 }
 // The key opens from its button beside the counts (keyButton); Route the day rides on the map (HUDS).
@@ -800,6 +834,143 @@ HUDS.today = () => {
 LAYER_READ.today = readToday;
 LAYER_CLEAR.today = clearToday;
 
+// ═══ PERMIT AREAS (M2): Virginia DEQ's statewide RPA layer (EDMA layer 33), as translucent shading ═══
+// The phone asks DEQ's MapServer export for the box in view — only the box, the image size and the dpi, never a
+// ZIP, a pin or an address — and only at zooms where DEQ draws the layer (layer 33's minScale, recorded with its
+// date in layers.ts). A new box replaces the old image; a failed image takes the old one down too and says so.
+// Missing shading is never a "no" (§1B), and an area never gets a permit word — those belong to one address.
+const RPA = { seq: 0, url: null, state: null, live: [] };
+
+// The scale DEQ's server works out for a view at this zoom: Web Mercator at 96 dpi in projected metres (ArcGIS's
+// own: z13 ≈ 1:72,224, z14 ≈ 1:36,112). It holds because the request sends size = the map's CSS pixels × dpr and
+// dpi = 96 × dpr. The ground scale at 36.8°N is about 0.80 of this; DEQ counts the projected one — the larger —
+// so the map asks from z13.75 (its zoom steps are quarters) and never where DEQ would draw nothing.
+function rpaScale(zoom) {
+  return 591657527.591555 / Math.pow(2, zoom);
+}
+function rpaDraws(zoom, limits) {
+  if (!limits || typeof limits.minScale !== 'number' || typeof limits.maxScale !== 'number') return false;
+  const s = rpaScale(zoom);
+  return (limits.minScale === 0 || s <= limits.minScale) && (limits.maxScale === 0 || s >= limits.maxScale);
+}
+// One export request for the box in view. Its size is the map's CSS size × dpr; past DEQ's maximum both sides
+// shrink together (the image keeps the box's shape, so the shading lands on the right streets) and the dpi with
+// them (the scale DEQ sees holds). Null when DEQ's limits are not recorded — never a guessed request.
+function rpaExport(deq, box, w, h, dpr) {
+  const lim = deq && deq.limits;
+  if (!lim || typeof lim.maxImageWidth !== 'number' || typeof lim.maxImageHeight !== 'number' || !(w > 0) || !(h > 0)) return null;
+  const r = Math.min(dpr > 0 ? dpr : 1, lim.maxImageWidth / w, lim.maxImageHeight / h);
+  const iw = Math.min(lim.maxImageWidth, Math.round(w * r));
+  const ih = Math.min(lim.maxImageHeight, Math.round(h * r));
+  const dpi = Math.round(96 * r);
+  const deg = (x) => x.toFixed(6);
+  const q = [
+    'bbox=' + [box.west, box.south, box.east, box.north].map(deg).join(','),
+    'bboxSR=4326',
+    'imageSR=3857',
+    'size=' + iw + ',' + ih,
+    'dpi=' + dpi,
+    'format=png32',
+    'transparent=true',
+    'layers=show:' + deq.layer,
+    'f=image',
+  ];
+  return { url: deq.base + '/export?' + q.join('&'), size: [iw, ih], dpi: dpi, bounds: [[box.south, box.west], [box.north, box.east]] };
+}
+// What a records line can truthfully say: cut by R32 in read-only, cut with every link (§3), or simply not drawn
+// here (practice, live, or the links' word not known yet).
+function cutLine(kind, links) {
+  if (links === 'readonly') return MAP_SAYS[kind + 'CutR32'];
+  if (links === 'cut') return MAP_SAYS[kind + 'Cut'];
+  return MAP_SAYS[kind + 'NotDrawn'];
+}
+// The layer's lines: why there is no shading now (zoom, reading, failed), then what is never on this map.
+function permitLines(state, links) {
+  const out = [];
+  if (state === 'zoom') out.push({ cls: 'unset', text: MAP_SAYS.rpaZoom, retry: false });
+  if (state === 'reading') out.push({ cls: 'unset', text: MAP_SAYS.rpaReading, retry: false });
+  if (state === 'failed') out.push({ cls: 'unread', text: MAP_SAYS.rpaFailed, retry: true });
+  if (state === 'unset') out.push({ cls: 'unread', text: MAP_SAYS.rpaUnset, retry: false });
+  out.push({ cls: 'unset', text: MAP_SAYS.rpaMissing, retry: false });
+  out.push({ cls: links === 'readonly' || links === 'cut' ? 'cut' : 'unset', text: cutLine('permits', links), retry: false });
+  return out;
+}
+function dropRpa() {
+  for (const ov of RPA.live) ov.remove();
+  RPA.live = [];
+  RPA.url = null;
+}
+function setRpa(state) {
+  RPA.state = state;
+  GAPS.permits = permitLines(state, LINKS).map((g) => ({ cls: g.cls, text: g.text, retry: g.retry ? () => readPermits(true) : null }));
+  drawStatus();
+  drawFacts();
+  drawLegend();
+}
+// Ask DEQ for the box in view, or say why not. `force` (↻, refresh, the layer switched on) asks again for the same box.
+function readPermits(force) {
+  if (!ON.permits || !MAP) return;
+  const lim = DEQ && DEQ.limits;
+  const known = !!lim && typeof lim.minScale === 'number' && typeof lim.maxScale === 'number';
+  if (!known || !rpaDraws(MAP.getZoom(), lim)) {
+    RPA.seq++;
+    dropRpa();
+    setRpa(known ? 'zoom' : 'unset');
+    return;
+  }
+  const size = MAP.getSize();
+  const b = MAP.getBounds();
+  const want = rpaExport(DEQ, { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() }, size.x, size.y, window.devicePixelRatio || 1);
+  if (!want) {
+    RPA.seq++;
+    dropRpa();
+    setRpa('unset');
+    return;
+  }
+  // The same box as the image already asked for (a refit that moved nothing): nothing new to ask.
+  if (!force && want.url === RPA.url && RPA.state !== 'failed') return;
+  const seq = ++RPA.seq;
+  RPA.url = want.url;
+  const ov = L.imageOverlay(want.url, want.bounds, { opacity: 1, interactive: false, className: 'rpa', alt: '' });
+  RPA.live.push(ov);
+  ov.on('load', () => {
+    // An older box landing late never sits over a newer one.
+    if (seq !== RPA.seq) { ov.remove(); RPA.live = RPA.live.filter((x) => x !== ov); return; }
+    for (const old of RPA.live) if (old !== ov) old.remove();
+    RPA.live = [ov];
+    setRpa('ok');
+  });
+  ov.on('error', () => {
+    ov.remove();
+    RPA.live = RPA.live.filter((x) => x !== ov);
+    if (seq !== RPA.seq) return;
+    dropRpa(); // the old image too: no shading from another box is left standing unexplained
+    setRpa('failed');
+  });
+  ov.addTo(MAP);
+  if (RPA.state !== 'ok' && RPA.state !== 'reading') setRpa('reading');
+}
+// Every move asks again for the new box (only while the layer is on).
+function rpaMove() {
+  if (ON.permits) readPermits(false);
+}
+// Switched off: every image comes down, and an answer still on its way is dropped when it lands.
+function rpaOff() {
+  RPA.seq++;
+  dropRpa();
+  RPA.state = null;
+}
+// The key: what the shading is, in the plan's words.
+KEYS.permits = () => {
+  const row = el('div', 'key');
+  row.appendChild(el('span', 'swatch rpa'));
+  row.appendChild(el('span', '', MAP_SAYS.rpaLegend));
+  return [row];
+};
+LAYER_CLEAR.permits = rpaOff;
+LAYER_READ.permits = () => readPermits(true);
+// (Permit areas ends here.)
+
 // While another screen shows, the shell's Map view loses its 'active' class (the frame keeps its size and
 // gets no event of its own). Same origin, so the frame watches that class: when Map comes back, its layers read again.
 function watchShown() {
@@ -834,6 +1005,7 @@ function boot() {
     for (const t of ['pointerdown', 'touchstart', 'wheel']) $('map').addEventListener(t, () => { KEEP_VIEW = false; }, { passive: true, capture: true });
     MAP.on('zoomend', drawPins);
     MAP.on('moveend', offView);
+    MAP.on('moveend', rpaMove);
     MAP.on('popupopen', () => { POP_OPEN = true; offView(); });
     MAP.on('popupclose', () => { POP_OPEN = false; offView(); });
     MAP.on('resize', () => { if (KEEP_VIEW) openView(); offView(); });
@@ -855,6 +1027,8 @@ function boot() {
   }
   toShell({ type: 'ready' });
   readAll();
+  // The records line waits on the links' word; once the shell knows it, the layer says it.
+  LINKS_READY.then(() => { if (ON.permits && RPA.state) setRpa(RPA.state); });
 }
 boot();
 </script>

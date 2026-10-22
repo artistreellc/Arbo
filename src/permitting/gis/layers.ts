@@ -127,18 +127,35 @@ export const DEQ_MAPSERVER_BASE = DEQ_CBPA.url.replace(new RegExp(`/${DEQ_RPA_LA
 
 /**
  * Layer 33's scale range and the service's image limits — what the map's
- * export request must respect (M2). NOT READ YET: the build sandbox cannot
- * reach *.virginia.gov (D37). Read `${DEQ_MAPSERVER_BASE}/33?f=json`
- * (minScale, maxScale) and `${DEQ_MAPSERVER_BASE}?f=json` (maxImageWidth,
- * maxImageHeight) from Railway or a phone, record them here with the date,
- * before M2 merges. A null is unknown — never a default the map guesses.
+ * export request must respect (M2). Wave A shipped these as null ("not read":
+ * the build sandbox cannot reach *.virginia.gov, D37). READ 2026-10-21,
+ * fetched from DEQ's public services (not from the build sandbox):
+ *   `${DEQ_MAPSERVER_BASE}/33?f=json` — name "Resource Protection Area (RPA)",
+ *     parent layer 32 "Chesapeake Bay Preservation Act Areas" (the group),
+ *     minScale 50000, maxScale 0 (no limit closer in), defaultVisibility
+ *     false (so the export must ask `layers=show:33`), a simple renderer: an
+ *     orange fill (RGB 230,152,0), 50% transparent; fields LOCALITY,
+ *     AREATYPE, SOURCE.
+ *   `${DEQ_MAPSERVER_BASE}?f=json` — maxImageWidth 4096, maxImageHeight
+ *     4096, PNG32 among the image formats, currentVersion 12.1, map units
+ *     metres in Web Mercator (wkid 102100/3857).
+ * Read again 2026-10-22 (Maps wave B, through a fetch service): the same.
+ * ArcGIS works out an export's scale from its bbox, size and dpi, so the map
+ * sends size = its CSS pixels × devicePixelRatio AND dpi = 96 ×
+ * devicePixelRatio: the scale DEQ sees is then the Web Mercator scale of the
+ * zoom Mike sees (z13 ≈ 1:72,224, z13.5 ≈ 1:51,070, z13.75 ≈ 1:42,945,
+ * z14 ≈ 1:36,112 — projected metres; the ground scale at 36.8°N is about
+ * 0.80 of that). The layer draws at 1:50,000 or closer, so the map asks from
+ * z13.75 (its zoom steps are quarters) and says "Zoom in" below that.
+ * Re-read both on a change at DEQ, and date the edit; a null would be unknown
+ * — never a default the map guesses.
  */
 export const DEQ_RPA_LIMITS: { minScale: number | null; maxScale: number | null; maxImageWidth: number | null; maxImageHeight: number | null; checked: string | null } = {
-  minScale: null,
-  maxScale: null,
-  maxImageWidth: null,
-  maxImageHeight: null,
-  checked: null,
+  minScale: 50000,
+  maxScale: 0,
+  maxImageWidth: 4096,
+  maxImageHeight: 4096,
+  checked: '2026-10-21',
 };
 
 const cbpaMeaning = (city: string): string =>
