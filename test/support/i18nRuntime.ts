@@ -26,6 +26,12 @@ export class FakeNode {
   className = '';
   type = '';
   id = '';
+  // D111: the form fields the crew door's own functions read and write (test/esCrewDraw.test.ts).
+  value = '';
+  placeholder = '';
+  disabled = false;
+  hidden = false;
+  checked = false;
   private data = '';
   constructor(public tagName: string, text = '') { if (tagName === '#text') this.data = text; else if (text) this.textContent = text; }
   get textContent(): string { return this.tagName === '#text' ? this.data : this.children.map((c) => c.textContent).join(''); }
@@ -33,6 +39,12 @@ export class FakeNode {
   get lang(): string { return this.getAttribute('lang') ?? ''; }
   set lang(v: string) { this.setAttribute('lang', v); }
   get firstChild(): FakeNode | null { return this.children[0] ?? null; }
+  get lastChild(): FakeNode | null { return this.children[this.children.length - 1] ?? null; }
+  // D111: enough for the crew door's own functions to run over this DOM in Spanish (test/esCrewDraw.test.ts).
+  prepend(c: FakeNode): void { if (this.children.length) this.insertBefore(c, this.children[0]!); else this.appendChild(c); }
+  querySelector(sel: string): FakeNode | null { return this.all().find((n) => n.matches(sel)) ?? null; }
+  querySelectorAll(sel: string): FakeNode[] { return this.all().filter((n) => n.matches(sel)); }
+  matches(sel: string): boolean { return sel.startsWith('#') ? this.id === sel.slice(1) : sel.startsWith('.') ? this.classList.contains(sel.slice(1)) : this.tagName === sel; }
   get nextSibling(): FakeNode | null { const p = this.parentNode; if (!p) return null; return p.children[p.children.indexOf(this) + 1] ?? null; }
   get classList() {
     const list = () => this.className.split(/\s+/).filter(Boolean);
