@@ -405,6 +405,11 @@ nav button .dot.p-unread::after{background:var(--card);box-shadow:inset 0 0 0 2p
 .feeds-at > .card.feeds{background:var(--card);border-color:var(--hairline);box-shadow:var(--shadow-card);margin-bottom:14px}
 .loc-strip{display:flex;align-items:center;gap:12px;margin-bottom:12px;font-size:14px;color:var(--ink-2)}
 .loc-strip .badge{flex:none;min-width:92px;text-align:center;white-space:nowrap}
+/* R27 Phase A (es-owner-c): a Settings row's words may hold a long key name (GOOGLE_OAUTH_CLIENT_SECRET, RAILWAY_WEBHOOK_KEY);
+   beside its badge it ran the page sideways at 320 px — in English already, more with Spanish's longer badge words. The words wrap,
+   and a switch keeps its own width: squeezed, Spanish's ENCENDIDO ran past the switch's edge. */
+#view-settings .loc-strip > span:not(.badge){min-width:0;overflow-wrap:anywhere}
+#view-settings .loc-strip > .loc-toggle{flex:none}
 .fleet-track{margin-top:10px}
 .fleet-track:empty{display:none}
 .loc-toggle{min-height:44px;min-width:64px;border:1px solid var(--border);border-radius:var(--r-pill);background:var(--card);color:var(--ink-3);
@@ -864,6 +869,11 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 .es-pair-en{display:block;margin-top:2px;font-size:.85em;font-weight:600;opacity:.85}
 .es-pair-tag{display:inline-block;margin-right:5px;padding:0 4px;border:1px solid currentColor;border-radius:4px;opacity:.75;font-size:.9em;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
 .badge:has(> .es-pair-es){display:inline-block;border-radius:var(--r-md);white-space:normal;text-align:left;max-width:100%}
+/* R27 Phase A (es-owner-c): a held safety line's Spanish pointer is a line of its own, as on the crew door (crew.html) —
+   without it the pointer ran straight into the English ("…que se lo lea:Every text, before it goes out"). */
+.es-held-why{display:block;margin-bottom:2px;font-size:.85em;font-weight:700}
+/* The "en inglés" mark is a <small>; inside an alert box (.storm / .late small is a block line) it stretched into an empty-looking bar. */
+.storm .es-en-mark,.late .es-en-mark{display:inline-block;margin-top:0}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -5398,6 +5408,9 @@ function renderCampaignList(slot, p) {
     const val = el('div', 'when', figure ? tf('{amount} per booked job', { amount: dollars(c.costPerBookedJob) })
       : c.bookedJobs === null ? T('Unknown') : c.cost === null ? T('Cost unknown') : T('0 booked'));
     if (!figure) val.style.color = 'var(--ink-3)';
+    // Spanish's figure ("$200 por trabajo agendado") is twice the English: one line, it squeezed the campaign's
+    // name into a sliver at 320 px (browser check, es-owner-c). In Spanish it may wrap; English is drawn as before.
+    if (ES.lang === 'es') { val.style.whiteSpace = 'normal'; val.style.textAlign = 'right'; }
     top.appendChild(val);
     card.appendChild(top);
     card.appendChild(esSayTwin(el('div', 'scope'), c, 'line')); // the server's own line: English, marked, until Phase B
@@ -6069,6 +6082,13 @@ async function bouncieSettings(v, stale) {
     const row = el('div', 'loc-strip');
     // R27 #4: EXPIRED is a safety badge word — said through the pair (its review is not recorded yet: the pointer, then the English).
     row.appendChild(word === 'EXPIRED' ? esSay(chip('', tone), 'EXPIRED') : chip(word, tone));
+    if (word === 'EXPIRED' && ES.lang === 'es') {
+      // In Spanish the badge holds the pair (the pointer, then the English) — a one-line pill beside the words ran the
+      // row past a 320 px phone (browser check, es-owner-c). It takes a line of its own and wraps; the words sit under it.
+      row.style.flexWrap = 'wrap';
+      const pill = row.lastChild;
+      pill.style.whiteSpace = 'normal'; pill.style.textAlign = 'left'; pill.style.flex = '1 1 100%'; pill.style.borderRadius = 'var(--r-md)';
+    }
     row.appendChild(el('span', '', text));
     v.appendChild(row);
   }
@@ -8032,12 +8052,13 @@ async function renderAgents() {
     top.appendChild(ic);
     const t = el('div');
     t.appendChild(el('div', 'who', a.name)); // the desk's name (R26): a name, as the roster the server sends
-    // One unbreakable span per part, and the dot travels with the part after
-    // it, so a wrapped line never ends on '·'.
+    // One span per part, and the dot travels with the part after it, so a wrapped line never ends on '·'.
+    // A short part stays unbroken; a long one ("Master Arborist Knowledge") may wrap between its words — kept
+    // whole, it ran the page sideways on a 320 px phone, in English as on main (browser check, es-owner-c).
     const sub = el('div', 'loop-kind');
     [a.section].concat(a.roles.map(noRefs)).forEach((part, n) => {
       if (n) sub.appendChild(document.createTextNode(' ·\u00a0'));
-      const p = el('span', '', part); p.style.whiteSpace = 'nowrap'; sub.appendChild(p);
+      const p = el('span', '', part); if (part.length <= 20) p.style.whiteSpace = 'nowrap'; sub.appendChild(p);
     });
     t.appendChild(sub);
     top.appendChild(t);

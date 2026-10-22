@@ -428,6 +428,27 @@ describe('the Spanish speaks with one voice — the glossary’s words, usted, n
       expect(esGateProblems(en, es), `${en} → ${es}`).toEqual([]);
     }
   });
+  // English says "1 off", "1 passed", "1 received" with the same words as many; Spanish agrees in number. A count said
+  // through tf (one English form, no one/many pair) must read right with one — so its Spanish never puts a plural word
+  // straight after the count ("1 apagados", "1 aprobados" — browser check, es-owner-c). The tile labels shown after a
+  // big number are labels, not sentences; "overdue" is Today's shared word (a-today's "vencidas") and is flagged there.
+  const ONE_FORM = ['{n} couldn’t be read', '{n} off', '{n} passed', '{n} broke a rule', '{n} missed something', '{n} can’t answer yet',
+    '{n} to bill', '{n} no agreed figure', '{n} can’t tell', '⚠ {n} can’t see', '{n} with no cost on file', '{n} removal', '{n} pruning', '{n} other',
+    '{label} — {n} received, last {when}', '{label} — {n} received since Arbo last restarted',
+    'Quo (Sona calls & texts) — {n} received, last {when}', 'Quo (Sona calls & texts) — {n} received since Arbo last restarted'];
+  it('a count with one English form reads right with one in Spanish', () => {
+    const dict = myDict();
+    for (const en of ONE_FORM) {
+      const es = dict[en];
+      expect(es, en).toBeTypeOf('string');
+      const one = es!.replace('{n}', '1');
+      // A plural word after one — unless it is inside a phrase a preposition opens ("1 sin fallas", "1 con una regla rota").
+      expect(one, `${en} → ${es}`).not.toMatch(/(?:^|[^\d])1 (?!(?:sin|con|de|por|para) )(?:\p{L}+ )?\p{L}+(?:os|as)\b/u);
+      expect(one, `${en} → ${es}`).not.toMatch(/(?:^|[^\d])1 [^·,:]*\b\p{L}+(?:ron|an|en)\b/u); // a plural verb after one ("1 no se pudieron leer")
+    }
+    // The fleet tile's label is the desk's own, said the same with one or many.
+    expect(dict['held or down']).toBe('en espera o fuera de servicio');
+  });
   // The glossary's "roster" is the office's list of who is on the crew; the Agents screen's roster is the list of the eight
   // agents — another thing, said as such ("la lista de agentes"), never the crew's list.
   const OTHER_SENSE: Record<string, string[]> = { roster: ['The agent roster', 'an empty roster'] };
@@ -550,6 +571,8 @@ function screens(lang: 'en' | 'es', answer: (path: string, body?: unknown) => un
 const flush = async (n = 10) => { for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0)); };
 const fail = (code: number, message: string) => Object.assign(new Error(message), { code });
 const all = (n: FakeNode): FakeNode[] => [n, ...n.all()];
+/** A drawn node's inline style (the page's harness nodes are XNodes). */
+const styleOf = (n: FakeNode): Record<string, string> => (n as XNode).style;
 /** Every node the page marked English in Spanish mode (lang="en"; its "en inglés" mark inside it). */
 const markedEnglish = (n: FakeNode) => all(n).filter((x) => x.getAttribute('lang') === 'en').map((x) => x.textContent);
 const POINTER = 'Aviso de seguridad — por ahora solo en inglés; pídale a alguien que se lo lea:';
@@ -585,6 +608,15 @@ describe('Numbers in Spanish over the real runtime — the page’s words in Spa
     // Data as written: the area keys; the server's own lines in English, marked.
     for (const k of ['23451', '23456']) expect(t).toContain(k);
     expect(markedEnglish(v)).toEqual(expect.arrayContaining(['Jobs without crew hours are left out of every rate.en inglés', '6 jobs, 41 crew-hours.en inglés', '$400 spent · 2 booked jobs.en inglés']));
+  });
+  it('a campaign’s figure may wrap in Spanish (twice the English, it squeezed the name at 320 px); English draws it as before', async () => {
+    const figure = async (lang: 'es' | 'en') => {
+      const p = screens(lang, () => PERF);
+      await p.renderPerformance();
+      return all(p.byId('view-perf')).find((n) => n.className === 'when' && /\$200/.test(n.textContent))!;
+    };
+    expect(styleOf(await figure('es'))).toMatchObject({ whiteSpace: 'normal', textAlign: 'right' });
+    expect(styleOf(await figure('en')).whiteSpace).toBeUndefined();
   });
   it('English: exactly the English, nothing marked', async () => {
     const p = screens('en', () => PERF);
@@ -639,6 +671,17 @@ describe('Agents in Spanish — its own copy in Spanish; the desks’ names and 
       'Open Fleet →', 'Proposal for you: Review the chipper parts.', 'Invoices — link cut', 'May: read fleet']) expect(v.textContent, s).toContain(s);
     plainEnglish(v);
   });
+  it('the roster’s role line: a short part stays whole, a long one may wrap between its words (it ran a 320 px page sideways)', async () => {
+    const R2 = { brain: 'off', agents: [{ id: 'arborist', name: 'Arborist', section: 'Estimate', roles: ['#5 Master Arborist Knowledge', '#8 Vision & Labeling'], reads: [], can: [], cannot: [] }] };
+    for (const lang of ['es', 'en'] as const) {
+      const p = screens(lang, (path) => (path === '/api/agents/sections' ? R2 : null));
+      await p.renderAgents();
+      const line = all(p.byId('view-agents')).find((n) => n.className === 'loop-kind' && /Master Arborist/.test(n.textContent))!;
+      const parts = line.children.filter((n) => n.tagName === 'span').map((n) => [n.textContent, styleOf(n).whiteSpace]);
+      expect(parts, lang).toEqual([['Estimate', 'nowrap'], ['Master Arborist Knowledge', undefined], ['Vision & Labeling', 'nowrap']]);
+      expect(line.textContent).toBe('Estimate ·\u00a0Master Arborist Knowledge ·\u00a0Vision & Labeling');
+    }
+  });
   it('Office’s proposals card: Spanish frame, the proposal as written (marked), the short button names its screen', () => {
     const es = screens('es', () => null);
     es.setRun(RUN);
@@ -669,7 +712,7 @@ describe('the Office desk tiles in Spanish — one template per part, the count�
   it('Spanish and English, word for word', async () => {
     const es = screens('es', (path) => ANSWERS[path]);
     expect(await es.officeDesk('money')).toMatchObject({ n: 2, what: 'vencidas', sub: '1 por facturar · 1 no se sabe' });
-    expect(await es.officeDesk('fleet')).toMatchObject({ n: 1, what: 'retenidas o fuera de servicio', sub: '1 unidad en servicio · 1 necesita atención' });
+    expect(await es.officeDesk('fleet')).toMatchObject({ n: 1, what: 'en espera o fuera de servicio', sub: '1 unidad en servicio · 1 necesita atención' });
     expect(await es.officeDesk('safety')).toMatchObject({ n: 1, what: 'sin trabajo en altura', sub: '1 certificación vence dentro de 30 días · 1 más necesita revisión · ⚠ 1 sin poder ver' });
     expect(await es.officeDesk('perf')).toMatchObject({ n: 1, what: 'zona calificada', sub: 'Anuncios: $120 gastados · 1 sin el costo registrado' });
     const en = screens('en', (path) => ANSWERS[path]);
@@ -696,6 +739,26 @@ describe('Settings in Spanish — Bouncie’s EXPIRED through the safety pair (h
     expect(pair.children[1]!.textContent).toBe('EXPIRED');
     expect(pair.children[1]!.getAttribute('lang')).toBe('en');
     expect(pair.children[2]!.textContent).toBe('en inglés');
+    // The pill holding the pair takes a line of its own and wraps — beside the words it ran past a 320 px phone.
+    const pill = all(v).find((n) => n.children.includes(pair))!;
+    const row = all(v).find((n) => n.children.includes(pill))!;
+    expect(styleOf(row).flexWrap).toBe('wrap');
+    expect(styleOf(pill)).toMatchObject({ whiteSpace: 'normal', flex: '1 1 100%' });
+  });
+  it('a held line’s Spanish pointer is a line of its own in the office app, as on the crew door (it ran into the English)', () => {
+    const crew = readFileSync(new URL('../src/app/crew.html', import.meta.url), 'utf8');
+    const rule = '.es-held-why{display:block;margin-bottom:2px;font-size:.85em;font-weight:700}';
+    expect(crew).toContain(rule);
+    expect(raw).toContain(rule);
+    // The "en inglés" mark beside an agent's finding or a scan's warning (alert boxes, whose <small> is a block line) stays a small tag.
+    expect(raw).toContain('.storm .es-en-mark,.late .es-en-mark{display:inline-block;margin-top:0}');
+  });
+  it('a Settings row fits a 320 px phone in either language: long key names wrap, a switch keeps its width (browser check)', () => {
+    // Beside a badge, GOOGLE_OAUTH_CLIENT_SECRET ran the page to 342 px in English and 378 px in Spanish; a squeezed switch
+    // let ENCENDIDO run past its edge. Scoped to Settings: the badge keeps its own rule (min-width 92px, one line).
+    expect(raw).toContain('#view-settings .loc-strip > span:not(.badge){min-width:0;overflow-wrap:anywhere}');
+    expect(raw).toContain('#view-settings .loc-strip > .loc-toggle{flex:none}');
+    expect(raw).toContain('.loc-strip .badge{flex:none;min-width:92px;text-align:center;white-space:nowrap}');
   });
   it('English: the rows as before, the chip plain', async () => {
     const p = screens('en', (path) => (path === '/api/bouncie' ? B : null));
@@ -724,7 +787,7 @@ describe('Settings in Spanish — Bouncie’s EXPIRED through the safety pair (h
     const t = v.textContent;
     for (const s of ['Ajustes', 'Interruptores y conexiones', 'Interruptores de los canales de prospectos', 'ENCENDIDO', 'ZIP de trabajo de hoy', 'Configurado para hoy: 23451',
       'En vivo — última señal hace 4 min', 'SOLO LECTURA', 'Arbo pide: Read Gmail — Google lo llama “Read your email”', 'Abrir Google', 'Conectar',
-      'Conexiones con los registros de la oficina', 'Prospectos — lead: 3', 'Registros de llamadas y mensajes', 'CORTADO', 'Resend (copias de los formularios del sitio web) — 2 recibidos desde que Arbo se reinició',
+      'Conexiones con los registros de la oficina', 'Prospectos — lead: 3', 'Registros de llamadas y mensajes', 'CORTADO', 'Resend (copias de los formularios del sitio web) — recibidos desde que Arbo se reinició: 2',
       'Quo (llamadas y mensajes de Sona) — Hook not created.', 'FALTA EL WEBHOOK', 'Apariencia', 'Automático', 'Idioma', 'SIN CONFIGURAR']) expect(t, s).toContain(s);
     for (const data of ['Gmail leads', 'Read Gmail', '23451']) expect(t).toContain(data);
     for (const en of ['Switches & connections', 'Data links', 'Appearance', 'Set for today', 'Open Google']) expect(t, en).not.toContain(en);
@@ -820,7 +883,7 @@ describe('Measure and Teach Arbo in Spanish — the page’s words in Spanish; t
     await es.renderLearn();
     const v = es.byId('view-learn');
     for (const s of ['Enséñele al cerebro', 'escenarios', 'reglas revisadas', 'aprobado', '1 todavía sin respuesta', 'Correr la revisión de reglas', 'Por escritorio',
-      '1 aprobados · 1 con una regla rota', 'Lecciones esperando su respuesta', 'Rompió una regla', '1 escenario', 'Dijo: “It costs $400”', 'Aprobar', 'Rechazar',
+      '1 sin fallas · 1 con una regla rota', 'Lecciones esperando su respuesta', 'Rompió una regla', '1 escenario', 'Dijo: “It costs $400”', 'Aprobar', 'Rechazar',
       'Los problemas con los que practica', '• Caller asks for a price (SIM-Pat, nivel 2)', 'Front Desk']) expect(v.textContent, s).toContain(s);
     expect(markedEnglish(v)).toEqual(expect.arrayContaining(['Never quote a price.en inglés', 'Caller asks for a price' + 'en inglés']));
     const en = screens('en', (path) => (path === '/api/sim/catalog' ? CAT : STATE));
