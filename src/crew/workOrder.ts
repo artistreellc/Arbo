@@ -46,6 +46,10 @@
 // upstream can never leak into a crew surface by omission (§8C.1, §6E crew
 // never see tracking, §6J2.5 pricing never leaves the office).
 
+import { twinFor } from '../i18n/twin.js';
+import { twinOf } from '../i18n/serverTwins.js';
+import type { LedgerEntry } from '../i18n/ledger.js';
+
 export interface WorkOrderSource {
   jobId: string;
   routeOrder: number;
@@ -81,7 +85,32 @@ export interface CrewPayload {
   photoRefs: string[];
   briefingId: string | null;
   requiresBeforeAfterPhotos: true;
+  /**
+   * R27 (D111): the Spanish twins of the lines above that this module wrote —
+   * hazards by position (null where none may be served), permitNote — present
+   * only when at least one may be served. Never scope, address or city: data
+   * is never translated. Absent, the payload is byte-identical to before.
+   */
+  es?: { hazards?: Array<string | null>; permitNote?: string };
 }
+
+/**
+ * The fixed lines this module writes, by id — the English exactly as the crew
+ * has always read it. Their Spanish lives in src/i18n/twins/crew-workorder.es.json
+ * under the same ids; every one is safety-class, so none is served in Spanish
+ * until the review ledger records its review (R27 #4, #5).
+ */
+export const CREW_LINES = {
+  hazardPowerLines: 'POWER LINES — utility coordination required before work near conductors',
+  hazardStructures: 'STRUCTURES nearby — plan drop zone accordingly',
+  permitLikely: 'PERMIT LIKELY — do not start protected work until the permit is confirmed.',
+  reviewNeeded: 'PERMIT: REVIEW NEEDED — check with the office before cutting.',
+  noOverlayVerify: 'NO OVERLAY — VERIFY W/ CITY before protected work.',
+  permitUnreadable: 'PERMIT STATUS UNKNOWN — Arbo could not read the permit screen. Check with the office before protected work.',
+  permitScreenPending: 'PERMIT SCREEN PENDING — status UNKNOWN, no screen on file. Check with the office before protected work.',
+} as const;
+type CrewLineId = keyof typeof CREW_LINES;
+const LINE_ID = new Map<string, CrewLineId>(Object.entries(CREW_LINES).map(([id, en]) => [en, id as CrewLineId]));
 
 /**
  * Build the crew-safe payload. Note what CANNOT appear because the type has
@@ -90,28 +119,28 @@ export interface CrewPayload {
  */
 export function buildCrewPayload(src: WorkOrderSource): CrewPayload {
   const hazards: string[] = [];
-  if (src.hazardPowerLines) hazards.push('POWER LINES — utility coordination required before work near conductors');
-  if (src.hazardStructures) hazards.push('STRUCTURES nearby — plan drop zone accordingly');
+  if (src.hazardPowerLines) hazards.push(CREW_LINES.hazardPowerLines);
+  if (src.hazardStructures) hazards.push(CREW_LINES.hazardStructures);
 
   // §6B.3: a crew note may warn, may route to verification, and may never clear.
   const permitNote =
     src.permitStatus === 'PERMIT_LIKELY'
-      ? 'PERMIT LIKELY — do not start protected work until the permit is confirmed.'
+      ? CREW_LINES.permitLikely
       : src.permitStatus === 'REVIEW_NEEDED'
-        ? 'PERMIT: REVIEW NEEDED — check with the office before cutting.'
+        ? CREW_LINES.reviewNeeded
         : src.permitStatus === 'NO_OVERLAY_VERIFY'
-          ? 'NO OVERLAY — VERIFY W/ CITY before protected work.'
+          ? CREW_LINES.noOverlayVerify
           // A FAILED lookup and "no screen on file" are both UNKNOWN — on a
           // safety surface, silence reads as "no concern", which it never is
           // (§6B.3). They are different facts and never read the same (§1B):
           // a failed read cannot claim no screen exists, so it is named first.
           : src.permitUnreadable
-            ? 'PERMIT STATUS UNKNOWN — Arbo could not read the permit screen. Check with the office before protected work.'
+            ? CREW_LINES.permitUnreadable
             : src.permitScreenPending
-              ? 'PERMIT SCREEN PENDING — status UNKNOWN, no screen on file. Check with the office before protected work.'
+              ? CREW_LINES.permitScreenPending
               : null;
 
-  return {
+  return crewPayloadTwins({
     jobId: src.jobId,
     routeOrder: src.routeOrder,
     address: src.address,
@@ -123,7 +152,28 @@ export function buildCrewPayload(src: WorkOrderSource): CrewPayload {
     photoRefs: src.photoRefs,
     briefingId: src.briefingId,
     requiresBeforeAfterPhotos: true,
+  });
+}
+
+/**
+ * R27 (D111): the Spanish twins of this payload's own lines, under `es`, for
+ * the ones that may be served (twinFor: the same English, no banned word, no
+ * lost number, and — every line here being safety-class — a recorded review).
+ * None servable: the very same object comes back, so English is byte-identical.
+ * `ledger` is the committed review ledger unless a test hands one in.
+ */
+export function crewPayloadTwins(p: CrewPayload, ledger?: LedgerEntry[]): CrewPayload {
+  const twin = (en: string): string | null => {
+    const id = LINE_ID.get(en);
+    return id ? twinFor(en, twinOf('crew-workorder', id), ledger) : null;
   };
+  const hazards = p.hazards.map(twin);
+  const permitNote = p.permitNote === null ? null : twin(p.permitNote);
+  if (!hazards.some((h) => h !== null) && permitNote === null) return p;
+  const es: NonNullable<CrewPayload['es']> = {};
+  if (hazards.some((h) => h !== null)) es.hazards = hazards;
+  if (permitNote !== null) es.permitNote = permitNote;
+  return { ...p, es };
 }
 
 /** Order the day's work orders the way the truck will actually drive it. */

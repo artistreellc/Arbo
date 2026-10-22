@@ -15,7 +15,7 @@
 import { createHash } from 'node:crypto';
 import { hasBannedEs } from './banList.js';
 import { esGateProblems } from './gates.js';
-import { safetyCleared } from './ledger.js';
+import { safetyCleared, type LedgerEntry } from './ledger.js';
 
 /** The fingerprint of the exact English a twin was translated from. */
 export function enSha(en: string): string {
@@ -28,13 +28,27 @@ export interface EsTwin { es: string; enSha: string }
 // The gate problems that make a twin unsafe to serve at all (the full gate set runs in tests).
 const UNSERVABLE = /^(?:empty|banned|placeholders|phone|section|number|"ft"|STOP)/;
 
-/** The Spanish to serve for this English line, or null — and then the English shows. */
-export function twinFor(en: string, twin: EsTwin | null | undefined): string | null {
+/**
+ * May this Spanish stand for this English at all — no banned word, no lost number, phone, § cite,
+ * "ft", value slot or STOP? The serving check every twin passes (R27 Phase A, D111: the database's
+ * reviewed twins pass it too — src/i18n/dataTwins.ts).
+ */
+export function servableEs(en: string, es: string): boolean {
+  if (typeof en !== 'string' || typeof es !== 'string') return false;
+  if (!es.trim() || hasBannedEs(es)) return false;
+  return !esGateProblems(en, es).some((p) => UNSERVABLE.test(p));
+}
+
+/**
+ * The Spanish to serve for this English line, or null — and then the English shows. `ledger` is the
+ * committed review ledger unless a test hands one in (D111: so a recorded review can be proven
+ * without editing reviewed.json).
+ */
+export function twinFor(en: string, twin: EsTwin | null | undefined, ledger?: LedgerEntry[]): string | null {
   if (!twin || typeof twin.es !== 'string' || typeof twin.enSha !== 'string') return null;
   if (typeof en !== 'string' || twin.enSha !== enSha(en)) return null; // the English moved on
-  if (!twin.es.trim() || hasBannedEs(twin.es)) return null;
-  if (esGateProblems(en, twin.es).some((p) => UNSERVABLE.test(p))) return null;
-  if (!safetyCleared(en, twin.es)) return null;
+  if (!servableEs(en, twin.es)) return null;
+  if (!safetyCleared(en, twin.es, ledger)) return null;
   return twin.es;
 }
 

@@ -56,6 +56,7 @@ import { buildDueProperties, buildGrowthOutreach, type GrowthTarget } from '../o
 import { findOpenLoops, type LoopSnapshot } from '../ops/loopCloser.js';
 import { quoteCheck, deriveLeakagePct, type QuoteCheckInput } from '../ops/estimating.js';
 import { buildCrewPayload, sequenceRoute, type WorkOrderSource } from '../crew/workOrder.js';
+import { briefingTwin } from '../i18n/dataTwins.js';
 import { evaluateGate, buildAcknowledgment, requiredReadSeconds, type BriefingContent } from '../crew/briefingGate.js';
 import { etToday, etDayWindow, etWeekStart } from '../lib/etDay.js';
 import {
@@ -339,7 +340,8 @@ export interface DataSource {
    * §6M.8: the published tailgate briefing for `day` (an ET date), or null if
    * none. CREW_PLAN C4: only that day's — yesterday's is never served.
    */
-  todaysBriefing?(day: string): Promise<{ id: string; body: string; standardRefs: string[] } | null>;
+  /** esTwin (R27, D111): the row's stored Spanish twin, raw — served only through dataTwins.briefingTwin. */
+  todaysBriefing?(day: string): Promise<{ id: string; body: string; standardRefs: string[]; esTwin?: unknown } | null>;
   /**
    * CREW_PLAN C4: when this crew member signed the briefing in [fromIso, toIso)
    * — the server's own record, never the phone's clock. Null when not signed.
@@ -1139,11 +1141,15 @@ export function createApi(source: DataSource, extras: ApiExtras = {}) {
       if (!source.ready() || !source.todaysBriefing) return { status: 503, body: { error: gap(source.todaysBriefing) } };
       // C4 (D109): today's by the Hampton Roads day — yesterday's is never served.
       const day = etToday();
-      const brief = await source.todaysBriefing(day);
-      if (!brief) return { status: 404, body: { error: 'no_briefing_published' } };
+      const found = await source.todaysBriefing(day);
+      if (!found) return { status: 404, body: { error: 'no_briefing_published' } };
+      // R27 (D111): the stored twin never rides raw; its Spanish rides under es only when served.
+      const { esTwin, ...brief } = found;
       // The read time the gate will hold the crew to, so the page counts down
       // the server's number instead of guessing one (10–15 s by length).
       const body: Record<string, unknown> = { ...brief, requiredSeconds: requiredReadSeconds(brief.body) };
+      const es = briefingTwin(brief.body, esTwin);
+      if (es !== null) body.es = { body: es };
       // C4: whether this crew member already signed today, from the server's
       // own record, so a reload shows "Signed at …" instead of a second gate.
       // signedCheck is 'read' only over a read that answered; otherwise it
