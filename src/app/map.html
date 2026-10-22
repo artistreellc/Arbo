@@ -562,26 +562,30 @@ function mapGroups(stops) {
   for (const g of out) g.stops.sort(byTime);
   return out;
 }
-// On screen: groups that would overlap at this zoom (pins are 44 px) share one marker listing them all, in time
-// order — two stops a street apart never hide one under the other. A marker holding anything but exact pins is
-// drawn hollow; its list says how each stop was placed. Redone at every zoom.
+// On screen: pins that would touch at this zoom (44 px circles, centres closer than the gap) share one marker
+// listing them all, in time order — two stops a street apart never hide one under the other. The marker sits at
+// the middle of its stops, never on one of them (stop 3 drawn on stop 1, 20 km off, at 320 px). A marker holding
+// anything but exact pins is drawn hollow; its list says how each stop was placed. Redone at every zoom.
 function screenGroups(groups, toPx, gap) {
   const out = [];
   for (const g of groups) {
     const p = toPx(g);
-    const hit = out.find((c) => Math.abs(c.x - p.x) < gap && Math.abs(c.y - p.y) < gap);
-    if (hit) hit.parts.push(g);
-    else out.push({ x: p.x, y: p.y, parts: [g] });
+    const hit = out.find((c) => Math.hypot(c.x - p.x, c.y - p.y) < gap);
+    if (!hit) { out.push({ x: p.x, y: p.y, parts: [g] }); continue; }
+    hit.parts.push(g);
+    hit.x += (p.x - hit.x) / hit.parts.length; // the centre the next pin is measured from moves with the marker
+    hit.y += (p.y - hit.y) / hit.parts.length;
   }
+  const mid = (parts, k) => parts.reduce((a, g) => a + g[k], 0) / parts.length;
   return out.map((c) => (c.parts.length === 1 ? c.parts[0] : {
-    lat: c.parts[0].lat,
-    lon: c.parts[0].lon,
+    lat: mid(c.parts, 'lat'),
+    lon: mid(c.parts, 'lon'),
     exact: c.parts.every((g) => g.exact),
     practice: c.parts.every((g) => g.practice),
     stops: c.parts.flatMap((g) => g.stops).sort(byTime),
   }));
 }
-const PIN_GAP = 52;
+const PIN_GAP = 48; // a 44 px pin and a hair
 // The dashed line: numbered pins only, in the plan's order — order, not roads.
 function routeLine(stops) {
   const pts = stops.filter((s) => s.n !== null).sort((a, b) => a.n - b.n).map((s) => [s.lat, s.lon]);

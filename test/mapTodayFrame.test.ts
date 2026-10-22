@@ -279,6 +279,35 @@ describe('pins that would overlap share one marker (UI review)', () => {
   });
 });
 
+// Verification round (D106): the shared marker must never draw a stop where it isn't. At 320×640 the practice
+// day's opening view put stop 3 (Chesapeake) inside "1·3" on stop 1 (Virginia Beach) — 55 px apart, two 44 px
+// pins that never touched — and the dashed line ended at an empty spot.
+describe('a shared marker only where pins would touch, and between its stops (verification round)', () => {
+  const byTime = frameFn<(a: Stop, b: Stop) => number>('byTime');
+  const mapGroups = frameFn<(s: Stop[]) => Array<{ lat: number; lon: number; exact: boolean; practice: boolean; stops: Stop[] }>>('mapGroups', { byTime });
+  const screenGroups = frameFn<(g: ReturnType<typeof mapGroups>, toPx: (g: { lat: number; lon: number }) => { x: number; y: number }, gap: number) => ReturnType<typeof mapGroups>>('screenGroups', { byTime });
+  const gap = Number(/\nconst PIN_GAP = (\d+);/.exec(script)![1]);
+  // Pixels straight through: lon is x, lat is y.
+  const px = (g: { lat: number; lon: number }) => ({ x: g.lon, y: g.lat });
+  const at = (n: number, x: number, y: number) => S({ id: 's' + n, n, time: `1${n}:00`, title: 'SIM-' + n, placedBy: 'practice', lat: y, lon: x });
+
+  it('the gap is a 44 px pin plus a hair: pins merge only when their circles would touch', () => {
+    expect(gap).toBeGreaterThanOrEqual(44);
+    expect(gap).toBeLessThanOrEqual(48);
+  });
+
+  it('the practice day at 320 (measured): 1, 2 and 3 are 55, 58 and 49 px apart — three markers, none shared', () => {
+    const out = screenGroups(mapGroups([at(1, 180, 205), at(2, 126, 183), at(3, 132, 232)]), px, gap);
+    expect(out.map((g) => g.stops.map((s) => s.n).join('·'))).toEqual(['1', '2', '3']);
+  });
+
+  it('pins that would touch share one marker, drawn between them — neither stop more than half the gap from it', () => {
+    const out = screenGroups(mapGroups([at(1, 100, 100), at(2, 130, 120)]), px, gap);
+    expect(out).toHaveLength(1);
+    for (const s of out[0]!.stops) expect(Math.hypot(s.lon - out[0]!.lon, s.lat - out[0]!.lat)).toBeLessThanOrEqual(gap / 2);
+  });
+});
+
 describe('the first screen: lines, legend, popups (UI review)', () => {
   it('a street map that didn\'t load says "pins are still placed" only when pins are drawn', () => {
     const tileLine = frameFn<(pins: boolean) => string>('tileLine', { MAP_SAYS });
