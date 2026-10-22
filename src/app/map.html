@@ -89,6 +89,7 @@ html.night #osm{background:rgba(11,21,18,.85);color:#C5D2CA}
 #mapbox .leaflet-bar{border:1px solid var(--border);box-shadow:var(--shadow)}
 #mapbox .leaflet-bar a{width:44px;height:44px;line-height:44px;font:700 22px/44px var(--sans);background:var(--card);color:var(--ink-1);border-bottom-color:var(--border)}
 #mapbox .leaflet-bar a.leaflet-disabled{background:var(--paper-2);color:var(--ink-4)}
+#mapbox.popopen .leaflet-control-zoom{visibility:hidden}
 #mapbox a.leaflet-popup-close-button{width:44px;height:44px;font:400 26px/44px var(--sans);color:var(--ink-3)}
 #mapbox .leaflet-popup-content{margin:10px 12px}
 .pinwrap{background:none;border:0}
@@ -481,7 +482,13 @@ function keyButton() {
   b.type = 'button';
   b.setAttribute('aria-label', MAP_SAYS.keyName);
   b.setAttribute('aria-expanded', KEY_OPEN ? 'true' : 'false');
-  b.addEventListener('click', () => { KEY_OPEN = !KEY_OPEN; drawFacts(); drawLegend(); });
+  b.addEventListener('click', () => {
+    KEY_OPEN = !KEY_OPEN;
+    drawFacts();
+    drawLegend();
+    // The notes card scrolls inside itself: an opened key is brought into its view, never left below the fold.
+    if (KEY_OPEN) $('card').scrollTop = Math.max(0, $('legend').offsetTop - 8);
+  });
   return b;
 }
 // The card shows only when it has something to say.
@@ -1403,6 +1410,7 @@ function dropTrips() {
 function dropTrucks() {
   TRUCKS.d = null;
   if (TRUCKS.layer) TRUCKS.layer.clearLayers();
+  TRUCKS.tripSeq++; // trips still on their way are not drawn over dots that came down
   if (TRUCKS.trips) TRUCKS.trips.clearLayers();
   TRUCKS.tripFor = null;
   TRUCKS.tripLine = null;
@@ -1570,7 +1578,7 @@ FACTS.trucks = () => {
   const d = TRUCKS.d;
   if (!d) return [];
   const out = [];
-  if (d.state === 'ok' || d.state === 'no_trucks') out.push(el('div', 'muted', d.message));
+  if ((d.state === 'ok' && !TRUCKS.afterHours) || d.state === 'no_trucks') out.push(el('div', 'muted', d.message));
   if ((d.state === 'ok' || d.state === 'unreadable') && !TRUCKS.afterHours) {
     const on = d.trucks.filter((t) => truckStyle(t, d.state)).length;
     out.push(el('div', 'muted', (d.trucks.length === 1 ? MAP_SAYS.trucksCountOne : MAP_SAYS.trucksCount.replace('{n}', String(d.trucks.length))).replace('{on}', String(on))));
@@ -1642,8 +1650,10 @@ function boot() {
     MAP.on('zoomend', drawLeadPins);
     MAP.on('moveend', offView);
     MAP.on('moveend', rpaMove);
-    MAP.on('popupopen', () => { POP_OPEN = true; offView(); });
-    MAP.on('popupclose', () => { POP_OPEN = false; offView(); });
+    // While a list is open the off-view button and the zoom buttons step aside: Leaflet's controls sit above its
+    // popups, and on a small phone a list reaches down over the zoom buttons (pinch still zooms).
+    MAP.on('popupopen', () => { POP_OPEN = true; $('mapbox').classList.add('popopen'); offView(); });
+    MAP.on('popupclose', () => { POP_OPEN = false; $('mapbox').classList.remove('popopen'); offView(); });
     MAP.on('resize', () => { if (KEEP_VIEW) openView(); offView(); });
     openView();
     setPanLimit([]);
