@@ -813,6 +813,7 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 .lseg .lcount.hot{background:var(--emergency);color:var(--on-emergency)}
 .lseg .lcount.gap{background:none;border:1px dashed var(--border);color:var(--ink-3)}
 .lseg small{flex:1 1 100%;font-size:12px;font-weight:600;color:var(--ink-3);text-align:center}
+.lseg .lmap{flex:0 0 auto;min-height:44px;min-width:56px;margin-left:4px;padding:0 14px;border-radius:var(--r-pill);border:1px solid var(--border);background:var(--card);color:var(--forest);font-size:14.5px;font-weight:700}
 .lchips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px}
 .lchip{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 14px;border-radius:var(--r-pill);border:1px solid var(--border);background:var(--card);color:var(--ink-1);font-size:14px;font-weight:700}
 .lchip b{font-family:var(--serif);font-size:16px;font-weight:650;color:var(--forest);font-variant-numeric:tabular-nums}
@@ -3560,6 +3561,12 @@ async function renderLeadsHead() {
   };
   segBtn('leads', 'New leads', L ? L.n : 0, lk, false);
   segBtn('calls', 'Calls & texts', S ? S.need : 0, qk || (S && S.gap ? 'unread' : null), !!(S && S.red));
+  // Maps wave B (M3): open leads on the map, by ZIP area — over New leads only (lh-leads); Back returns here.
+  const toMap = el('button', 'lmap lh-leads', 'Map');
+  toMap.type = 'button';
+  toMap.setAttribute('aria-label', 'Open leads on the map');
+  toMap.addEventListener('click', () => openMap('leads'));
+  segs.appendChild(toMap);
   out.push(segs);
   // New leads' filter chips — from a read that landed, with leads to filter. Not Back steps: the list stays the same screen.
   if (L && L.n) {

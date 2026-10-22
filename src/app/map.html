@@ -25,7 +25,7 @@
   color-scheme:light;
   --paper:#F7F5F0;--paper-2:#EFEBE1;--card:#FFFFFF;
   --ink-1:#13201A;--ink-2:#3B4A43;--ink-3:#5A675F;--ink-4:#8B958F;
-  --forest:#1B4D3E;--on-forest:#FFFFFF;--warning:#A87A0A;--gold:#C9971C;
+  --forest:#1B4D3E;--on-forest:#FFFFFF;--warning:#A87A0A;--gold:#C9971C;--emergency:#C2413B;
   --border:rgba(19,32,26,.12);--hairline:rgba(19,32,26,.075);
   --sans:'Instrument Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
   --shadow:0 1px 2px rgba(8,26,20,.18),0 6px 16px -8px rgba(8,26,20,.42);
@@ -34,7 +34,7 @@ html.night{
   color-scheme:dark;
   --paper:#0B1512;--paper-2:#101D18;--card:#13221C;
   --ink-1:#EAF1EC;--ink-2:#C5D2CA;--ink-3:#98A99F;--ink-4:#6E8077;
-  --forest:#5FB08F;--on-forest:#0B1512;--warning:#E6B84A;--gold:#DDB24C;
+  --forest:#5FB08F;--on-forest:#0B1512;--warning:#E6B84A;--gold:#DDB24C;--emergency:#F07D72;
   --border:rgba(234,241,236,.13);--hairline:rgba(234,241,236,.075);
   --shadow:0 8px 22px -8px rgba(0,0,0,.7);
 }
@@ -69,7 +69,7 @@ body{font-family:var(--sans);font-size:16px;line-height:1.45;color:var(--ink-1);
 #mapbox{position:relative;flex:1 1 auto;min-height:0;margin:0 8px 8px;border-radius:16px;overflow:hidden;border:1px solid var(--hairline)}
 #map{position:absolute;inset:0;background:var(--paper-2)}
 /* The notes card: every gap, the counts and the key, over the top of the map (it scrolls inside, never the page). */
-#card{position:absolute;z-index:1000;top:8px;left:8px;right:8px;max-height:calc(100% - 150px);overflow-y:auto;overscroll-behavior:contain;padding:4px 10px;border-radius:14px;border:1px solid var(--border);background:var(--card);box-shadow:var(--shadow)}
+#card{position:absolute;z-index:1000;top:8px;left:8px;right:8px;max-height:min(calc(100% - 150px),50%);overflow-y:auto;overscroll-behavior:contain;padding:4px 10px;border-radius:14px;border:1px solid var(--border);background:var(--card);box-shadow:var(--shadow)}
 #card[hidden],#offview[hidden]{display:none}
 #offview{position:absolute;z-index:1000;right:8px;top:8px;max-width:calc(100% - 16px);min-height:44px;padding:0 14px;border-radius:22px;border:1px solid var(--border);background:var(--card);color:var(--forest);font:700 13.5px/1.2 var(--sans);box-shadow:var(--shadow);cursor:pointer}
 #hud{position:absolute;z-index:1000;left:62px;right:8px;bottom:28px}
@@ -97,6 +97,10 @@ html.night #osm{background:rgba(11,21,18,.85);color:#C5D2CA}
 .pin.exact{background:var(--forest);color:var(--on-forest);border:2px solid var(--card)}
 .pin.area{background:var(--card);color:var(--ink-1);border:3px dashed var(--forest)}
 .pin.practice{background:var(--card);color:var(--ink-1);border:3px dashed var(--ink-4)}
+/* A ZIP area's open leads: hollow (never an exact spot), gold; red when an emergency lead is among them (as on Leads). */
+.pin.leadpin{background:var(--card);color:var(--ink-1);border:3px dashed var(--gold)}
+.pin.leadpin.alarm{border:3px solid var(--emergency);color:var(--emergency)}
+.pop small.alarm{color:var(--emergency);font-weight:700}
 .pop{overflow-wrap:anywhere}
 .pop b{display:block;font-size:13px;color:var(--ink-3);margin-bottom:4px;padding-right:30px}
 .pop button{display:block;width:100%;min-height:44px;margin-top:6px;padding:6px 10px;text-align:left;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--ink-1);font:600 14px/1.35 var(--sans);cursor:pointer}
@@ -139,7 +143,6 @@ const MAP_SAYS = {
   namePermits: 'Permit areas',
   nameLeads: 'Leads & jobs',
   nameTrucks: 'Trucks',
-  leadsSoon: 'Leads & jobs aren’t on the map yet — the next map build adds them. Your leads are on the Leads tab.',
   trucksSoon: 'Trucks aren’t on the map yet — that layer is still to be built. Office → Fleet lists each truck.',
   practice: 'PRACTICE DATA — pins sit in their ZIP area; these are not real places.',
   todayFailed: 'Today’s stops: couldn’t read them just now. This is not an empty day.',
@@ -186,12 +189,54 @@ const MAP_SAYS = {
   permitsCutR32: 'Permit records are cut on purpose (R32) — none are drawn.',
   permitsCut: 'Permit records are cut on purpose — none are drawn.',
   permitsNotDrawn: 'Permit records aren’t drawn on this map.',
+  // Leads & jobs (M3): open leads by ZIP area. notFed is the Leads tab's own line, word for word (R4).
+  notFed: 'Arbo doesn’t receive new leads yet — Sona’s are in Quo, and website and ad leads are in Gmail. This is not an empty inbox.',
+  readingLeads: 'Reading open leads…',
+  leadsFeed: 'Leads: {word}. This is not an empty inbox.',
+  feed_cut: 'cut on purpose',
+  feed_sim: 'not in the practice data',
+  feed_unset: 'not set up yet',
+  feed_unread: 'couldn’t read it',
+  olderHidden: '{k} older leads hidden — Show older',
+  olderHiddenOne: '1 older lead hidden — Show older',
+  olderShown: '{k} older leads shown — Hide older',
+  olderShownOne: '1 older lead shown — Hide older',
+  newest50: 'Showing the newest 50 open leads — the map reads no more than that.',
+  leadsCounts: '{on} of {n} open leads on the map',
+  leadsCountsOne: '{on} of 1 open lead on the map',
+  noZip: '{k} leads with no ZIP — not on the map',
+  noZipOne: '1 lead with no ZIP — not on the map',
+  outsideLeads: '{k} leads outside the four cities — not on the map',
+  outsideLeadsOne: '1 lead outside the four cities — not on the map',
+  noAreaLeads: '{k} leads’ ZIPs have no map area',
+  noAreaLeadsOne: '1 lead’s ZIP has no map area',
+  notLoadedLeads: '{k} leads: ZIP areas are not loaded on the map yet — not placed',
+  notLoadedLeadsOne: '1 lead: ZIP areas are not loaded on the map yet — not placed',
+  leadsEmpty: 'No open leads in Arbo to place.',
+  leadsEmptyOlder: 'No new open leads — only older ones, hidden above.',
+  leadsEmptyPractice: 'No open leads in the practice data.',
+  leadGroup: '{where} · {k} open leads, {n} new',
+  leadGroupOne: '{where} · 1 open lead, {n} new',
+  leadZipNote: 'ZIP from the lead’s record — the ZIP area, not the exact spot.',
+  leadKey: 'Open leads in one ZIP area — the number is how many. ZIP from the lead’s record, not the exact spot.',
+  leadKeyAlarm: 'Red: an emergency lead among them, as on Leads.',
+  ageToday: 'came in today',
+  ageOne: '1 day ago',
+  ageMany: '{k} days ago',
+  tagEmergency: 'EMERGENCY',
+  tagOlder: 'Older lead',
+  tagQualified: 'Qualified',
+  noName: 'Unknown caller',
+  jobs: 'Jobs are on your Google Calendar — today’s are on the Today layer. Other days aren’t on the map yet.',
+  jobsCutR32: 'Arbo’s job and estimate records are cut on purpose (R32) — none drawn; this is not “no jobs”.',
+  jobsCut: 'Arbo’s job and estimate records are cut on purpose — none drawn; this is not “no jobs”.',
+  jobsNotDrawn: 'Arbo’s own job and estimate records aren’t drawn on the map — this is not “no jobs”.',
 };
 
 const LAYERS = ['today', 'permits', 'leads', 'trucks'];
 const LAYER_NAME = { today: MAP_SAYS.nameToday, permits: MAP_SAYS.namePermits, leads: MAP_SAYS.nameLeads, trucks: MAP_SAYS.nameTrucks };
 // A layer not built yet says so when it is switched on — never an empty map.
-const LAYER_SOON = { leads: MAP_SAYS.leadsSoon, trucks: MAP_SAYS.trucksSoon };
+const LAYER_SOON = { trucks: MAP_SAYS.trucksSoon };
 // The layers this build draws: each reads its own feed and names its own gaps.
 const LAYER_READ = {};
 const LAYER_CLEAR = {};
@@ -282,7 +327,8 @@ async function mapGet(path) {
   // The door's 429 (too many wrong keys from this connection) is a wait, not a refused key; any other 429 is a read that failed.
   if (res.status === 429 && body && body.error === 'too_many_attempts') throw Object.assign(new Error('throttled'), { why: 'throttled' });
   if (res.status === 401) throw Object.assign(new Error('refused'), { why: body && body.error === 'no_app_key' ? 'noAppKey' : 'refused' });
-  if (!res.ok || !body || typeof body !== 'object') throw Object.assign(new Error('unread'), { why: 'unread', code: res.status });
+  // The server's own reason rides as `message` (db_not_configured, link_cut …), so a layer can say the Leads tab's word.
+  if (!res.ok || !body || typeof body !== 'object') throw Object.assign(new Error('unread'), { why: 'unread', code: res.status, message: body && typeof body.error === 'string' ? body.error : 'error' });
   return body;
 }
 
@@ -600,7 +646,8 @@ function mapGroups(stops) {
 // listing them all, in time order — two stops a street apart never hide one under the other. The marker sits at
 // the middle of its stops, never on one of them (stop 3 drawn on stop 1, 20 km off, at 320 px). A marker holding
 // anything but exact pins is drawn hollow; its list says how each stop was placed. Redone at every zoom.
-function screenGroups(groups, toPx, gap) {
+// Another layer's groups (Leads' ZIP areas) share the rule: `join` says what a shared marker holds.
+function screenGroups(groups, toPx, gap, join) {
   const out = [];
   for (const g of groups) {
     const p = toPx(g);
@@ -611,13 +658,14 @@ function screenGroups(groups, toPx, gap) {
     hit.y += (p.y - hit.y) / hit.parts.length;
   }
   const mid = (parts, k) => parts.reduce((a, g) => a + g[k], 0) / parts.length;
-  return out.map((c) => (c.parts.length === 1 ? c.parts[0] : {
+  return out.map((c) => (c.parts.length === 1 ? c.parts[0] : Object.assign({
     lat: mid(c.parts, 'lat'),
     lon: mid(c.parts, 'lon'),
+  }, join ? join(c.parts) : {
     exact: c.parts.every((g) => g.exact),
     practice: c.parts.every((g) => g.practice),
     stops: c.parts.flatMap((g) => g.stops).sort(byTime),
-  }));
+  })));
 }
 const PIN_GAP = 48; // a 44 px pin and a hair
 // The dashed line: numbered pins only, in the plan's order — order, not roads.
@@ -715,16 +763,19 @@ function groupMarker(g) {
   }
   // The list opens clear of the notes card and Route the day, and fits the map's width. This click runs before
   // Leaflet's own (registered first), so the sizes are the map's as it is now.
-  const room = () => Object.assign(popupFits(MAP.getSize().x), {
+  const pop = L.popup(popRoom());
+  pop.setContent(groupNode(g));
+  m.on('click', () => Object.assign(pop.options, popRoom()));
+  m.bindPopup(pop);
+  return m;
+}
+// Where a list may open: clear of the notes card and Route the day, as wide as the map allows (every layer's lists).
+function popRoom() {
+  return Object.assign(popupFits(MAP.getSize().x), {
     autoPanPaddingTopLeft: L.point(10, cardPad() + 10),
     autoPanPaddingBottomRight: L.point(10, hudPad() + 10),
     maxHeight: Math.max(120, MAP.getSize().y - cardPad() - hudPad() - 60),
   });
-  const pop = L.popup(room());
-  pop.setContent(groupNode(g));
-  m.on('click', () => Object.assign(pop.options, room()));
-  m.bindPopup(pop);
-  return m;
 }
 function forestColor() {
   return getComputedStyle(document.documentElement).getPropertyValue('--forest').trim() || '#1B4D3E';
@@ -971,6 +1022,241 @@ LAYER_CLEAR.permits = rpaOff;
 LAYER_READ.permits = () => readPermits(true);
 // (Permit areas ends here.)
 
+// ═══ LEADS & JOBS (M3): open leads, grouped by ZIP area — never by address ═══
+// The Leads tab's own read (/api/leads?limit=50), cut down as it lands to what the map draws — id, name, ZIP, city,
+// age, older, emergency, status; a phone, the details and a street are never kept. A lead is placed only at its ZIP
+// area (the Census table; the ZIP from the lead's property record, Q15): no geocoder is asked, and no lead's address
+// or ZIP goes anywhere. Outside practice the layer opens with the Leads tab's own "not fed" line (R4), so a quiet map
+// never reads as an empty inbox; older leads are hidden and counted first (Q6). Jobs live on Google Calendar (R2, Q14).
+const LEADS = { seq: 0, d: null, failed: null, layer: null, showOlder: false };
+
+// What the map keeps of a lead — nothing more.
+function keepLead(l) {
+  return {
+    id: typeof l.id === 'string' || typeof l.id === 'number' ? String(l.id) : '',
+    name: typeof l.name === 'string' && l.name.trim() ? l.name.trim() : null,
+    zip: typeof l.zip === 'string' ? l.zip : null,
+    city: typeof l.city === 'string' && l.city.trim() ? l.city.trim() : null,
+    ageDays: typeof l.ageDays === 'number' && l.ageDays >= 0 ? Math.floor(l.ageDays) : null,
+    older: l.older === true,
+    emergency: l.isEmergency === true,
+    status: typeof l.status === 'string' ? l.status : null,
+  };
+}
+// The Leads tab's own feed word for a read that failed — the shell's feedKind, on the same links' word (§1B).
+function leadFeedKind(e, links) {
+  if (!e || !e.code) return 'unread';
+  if (e.code === 503) {
+    if (e.message === 'not_simulated') return 'sim';
+    if (e.message === 'db_not_configured') return links === 'live' || links === 'readonly' ? 'unset' : 'cut';
+    if (e.message === 'link_cut') return 'cut';
+    if (e.message === 'not_built' || /_(not_configured|not_wired|not_started|missing)$/.test(e.message)) return 'unset';
+  }
+  return 'unread';
+}
+// A lead's ZIP area, or why it has none. The table holds every accepted ZIP that has an area and lists the accepted
+// ones that have none, so (once it is checked) any other ZIP is outside the four cities.
+function leadPlace(zip, zips) {
+  const m = typeof zip === 'string' ? /^(\d{5})(?:-\d{4})?$/.exec(zip.trim()) : null;
+  if (!m) return { why: 'noZip' };
+  const p = zips.zips[m[1]];
+  if (p) return { zip: m[1], lat: p.lat, lon: p.lon };
+  if (zips.noArea.includes(m[1])) return { why: 'noArea' };
+  return { why: zips.checked ? 'outside' : 'notLoaded' };
+}
+// An emergency first (as Leads sorts them), then the newest.
+function byLead(a, b) {
+  if (a.emergency !== b.emergency) return a.emergency ? -1 : 1;
+  if (a.ageDays !== b.ageDays) return a.ageDays === null ? 1 : b.ageDays === null ? -1 : a.ageDays - b.ageDays;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+// One group per ZIP area; every lead not placed is counted by why.
+function leadGroups(leads, zips) {
+  const groups = [];
+  const at = new Map();
+  const miss = { noZip: 0, outside: 0, noArea: 0, notLoaded: 0 };
+  for (const l of leads) {
+    const p = leadPlace(l.zip, zips);
+    if (p.why) { miss[p.why]++; continue; }
+    let g = at.get(p.zip);
+    if (!g) {
+      g = { zip: p.zip, lat: p.lat, lon: p.lon, leads: [] };
+      at.set(p.zip, g);
+      groups.push(g);
+    }
+    g.leads.push(l);
+  }
+  for (const g of groups) g.leads.sort(byLead);
+  groups.sort((a, b) => (a.zip < b.zip ? -1 : a.zip > b.zip ? 1 : 0));
+  return { groups, miss };
+}
+// A shared marker holds every ZIP area under it.
+function joinZips(parts) {
+  return { parts: parts };
+}
+// "23508 · Norfolk · 3 open leads, 1 new" — an older lead is never counted as new.
+function leadGroupLine(g) {
+  const city = g.leads.map((l) => l.city).find(Boolean);
+  const fresh = g.leads.filter((l) => !l.older).length;
+  const t = g.leads.length === 1 ? MAP_SAYS.leadGroupOne : MAP_SAYS.leadGroup.replace('{k}', String(g.leads.length));
+  return t.replace('{where}', g.zip + (city ? ' · ' + city : '')).replace('{n}', String(fresh));
+}
+function leadAge(d) {
+  if (typeof d !== 'number') return '';
+  return d === 0 ? MAP_SAYS.ageToday : d === 1 ? MAP_SAYS.ageOne : MAP_SAYS.ageMany.replace('{k}', String(d));
+}
+// The layer's gap lines, in order: the Leads tab's "not fed" line first outside practice, a read that failed in the
+// Leads tab's own word, then Arbo's own job records (never drawn).
+function leadGaps(kind, links) {
+  const out = [];
+  if (links !== 'simulation') out.push({ cls: 'unset', text: MAP_SAYS.notFed, retry: false });
+  if (kind) out.push({ cls: kind, text: MAP_SAYS.leadsFeed.replace('{word}', MAP_SAYS['feed_' + kind]), retry: kind === 'unread' });
+  out.push({ cls: links === 'readonly' || links === 'cut' ? 'cut' : 'unset', text: cutLine('jobs', links), retry: false });
+  return out;
+}
+// After a good read, in the plan's order: older leads hidden (before any count or empty line), the newest-50 note,
+// the count, each reason a lead is not on the map, the empty line; the jobs line last.
+function leadFacts(d, showOlder, zips, practice) {
+  const out = [];
+  const one = (n, single, many) => (n === 1 ? single : many.replace('{k}', String(n)));
+  const older = d.leads.filter((l) => l.older).length;
+  if (older) out.push({ kind: 'older', text: showOlder ? one(older, MAP_SAYS.olderShownOne, MAP_SAYS.olderShown) : one(older, MAP_SAYS.olderHiddenOne, MAP_SAYS.olderHidden) });
+  if (d.full) out.push({ kind: 'note', text: MAP_SAYS.newest50 });
+  const shown = showOlder ? d.leads : d.leads.filter((l) => !l.older);
+  const v = leadGroups(shown, zips);
+  if (shown.length) {
+    const on = v.groups.reduce((a, g) => a + g.leads.length, 0);
+    out.push({ kind: 'count', text: (shown.length === 1 ? MAP_SAYS.leadsCountsOne : MAP_SAYS.leadsCounts.replace('{n}', String(shown.length))).replace('{on}', String(on)) });
+  }
+  const whys = [['noZip', MAP_SAYS.noZipOne, MAP_SAYS.noZip], ['outside', MAP_SAYS.outsideLeadsOne, MAP_SAYS.outsideLeads], ['noArea', MAP_SAYS.noAreaLeadsOne, MAP_SAYS.noAreaLeads], ['notLoaded', MAP_SAYS.notLoadedLeadsOne, MAP_SAYS.notLoadedLeads]];
+  for (const [why, single, many] of whys) if (v.miss[why]) out.push({ kind: 'miss', text: one(v.miss[why], single, many) });
+  if (!shown.length) out.push({ kind: 'empty', text: older && !showOlder ? MAP_SAYS.leadsEmptyOlder : practice ? MAP_SAYS.leadsEmptyPractice : MAP_SAYS.leadsEmpty });
+  out.push({ kind: 'jobs', text: MAP_SAYS.jobs });
+  return out;
+}
+// The markers' numbers: how many leads; red when an emergency is among them (as Leads marks one).
+function leadPinNode(parts, sample) {
+  const n = parts.reduce((a, g) => a + g.leads.length, 0);
+  const alarm = parts.some((g) => g.leads.some((l) => l.emergency));
+  return el('span', 'pin leadpin' + (alarm ? ' alarm' : ''), sample ? '' : String(n));
+}
+// A tap lists each ZIP area's leads by name and age — DOM text only; a name opens that lead in Leads, by id.
+function leadsNode(parts) {
+  const box = el('div', 'pop');
+  for (const g of parts) {
+    box.appendChild(el('b', '', leadGroupLine(g)));
+    for (const l of g.leads) {
+      const b = el('button', '', [l.name || MAP_SAYS.noName, leadAge(l.ageDays)].filter(Boolean).join(' · '));
+      b.type = 'button';
+      const tags = [l.emergency ? MAP_SAYS.tagEmergency : null, l.older ? MAP_SAYS.tagOlder : null, l.status === 'qualified' ? MAP_SAYS.tagQualified : null].filter(Boolean).join(' · ');
+      if (tags) b.appendChild(el('small', l.emergency ? 'alarm' : '', tags));
+      if (/^[A-Za-z0-9_-]{1,64}$/.test(l.id)) b.addEventListener('click', () => toShell({ type: 'lead', id: l.id }));
+      else b.disabled = true;
+      box.appendChild(b);
+    }
+  }
+  box.appendChild(el('small', '', MAP_SAYS.leadZipNote));
+  return box;
+}
+function leadMarker(mk) {
+  const parts = mk.parts || [mk];
+  const label = parts.map(leadGroupLine).join('; ');
+  const m = L.marker([mk.lat, mk.lon], { icon: L.divIcon({ html: leadPinNode(parts, false), className: 'pinwrap', iconSize: [0, 0] }), title: label, alt: label, keyboard: true, riseOnHover: true });
+  const pop = L.popup(popRoom());
+  pop.setContent(leadsNode(parts));
+  m.on('click', () => Object.assign(pop.options, popRoom()));
+  m.bindPopup(pop);
+  return m;
+}
+// The markers at this zoom (ZIP areas that would touch share one — redrawn on every zoom).
+function drawLeadPins() {
+  if (!MAP || !LEADS.layer) return;
+  LEADS.layer.clearLayers();
+  if (!ON.leads || !LEADS.d) return;
+  const shown = LEADS.showOlder ? LEADS.d.leads : LEADS.d.leads.filter((l) => !l.older);
+  const toPx = (g) => MAP.latLngToLayerPoint([g.lat, g.lon]);
+  for (const mk of screenGroups(leadGroups(shown, ZIPS).groups, toPx, PIN_GAP, joinZips)) LEADS.layer.addLayer(leadMarker(mk));
+}
+function setLeadLines() {
+  GAPS.leads = leadGaps(LEADS.failed && LEADS.failed !== 'key' ? LEADS.failed : null, LINKS).map((g) => ({ cls: g.cls, text: g.text, retry: g.retry ? readLeads : null }));
+  drawStatus();
+  drawFacts();
+  drawLegend();
+}
+async function readLeads() {
+  const seq = ++LEADS.seq;
+  if (!LEADS.d && !LEADS.failed) {
+    GAPS.leads = [{ cls: 'unset', text: MAP_SAYS.readingLeads }];
+    drawStatus();
+  }
+  let body = null;
+  let err = null;
+  try {
+    body = await mapGet('/api/leads?limit=50');
+    if (!Array.isArray(body.leads)) throw Object.assign(new Error('shape'), { why: 'unread' });
+  } catch (e) {
+    err = e;
+  }
+  await LINKS_READY; // whether db_not_configured means "cut", and whether this is practice
+  if (seq !== LEADS.seq || !ON.leads) return;
+  if (err) {
+    // §1B: a read that failed draws no marker and is named — never a 0, never an empty inbox.
+    LEADS.d = null;
+    if (LEADS.layer) LEADS.layer.clearLayers();
+    LEADS.failed = keyGap(err) ? 'key' : leadFeedKind(err, LINKS);
+    setLeadLines();
+    return;
+  }
+  GAPS.key = [];
+  LEADS.failed = null;
+  LEADS.d = { leads: body.leads.map(keepLead), full: body.leads.length === 50, practice: LINKS === 'simulation' };
+  setLeadLines();
+  drawLeadPins();
+}
+// Switched off: the markers come down and an answer on its way is dropped.
+function leadsOff() {
+  LEADS.seq++;
+  LEADS.d = null;
+  LEADS.failed = null;
+  if (LEADS.layer) LEADS.layer.clearLayers();
+}
+FACTS.leads = () => {
+  const out = [];
+  const items = LEADS.d ? leadFacts(LEADS.d, LEADS.showOlder, ZIPS, LEADS.d.practice) : LEADS.failed ? [{ kind: 'jobs', text: MAP_SAYS.jobs }] : [];
+  for (const f of items) {
+    if (f.kind === 'older') {
+      // Q6: hidden and counted; a tap puts them on the map (and takes them off again). Not kept anywhere.
+      const b = el('button', 'factbtn', f.text);
+      b.type = 'button';
+      b.setAttribute('aria-expanded', LEADS.showOlder ? 'true' : 'false');
+      b.addEventListener('click', () => { LEADS.showOlder = !LEADS.showOlder; drawFacts(); drawLegend(); drawLeadPins(); });
+      out.push(b);
+    } else if (f.kind === 'miss') {
+      const row = el('div', 'line unset');
+      row.appendChild(el('span', '', f.text));
+      out.push(row);
+    } else out.push(el('div', 'muted', f.text));
+  }
+  return out;
+};
+KEYS.leads = () => {
+  if (!LEADS.d) return [];
+  const shown = LEADS.showOlder ? LEADS.d.leads : LEADS.d.leads.filter((l) => !l.older);
+  const groups = leadGroups(shown, ZIPS).groups;
+  if (!groups.length) return [];
+  const key = (alarm, text) => {
+    const row = el('div', 'key');
+    row.appendChild(leadPinNode([{ leads: [{ emergency: alarm }] }], true));
+    row.appendChild(el('span', '', text));
+    return row;
+  };
+  const out = [key(false, MAP_SAYS.leadKey)];
+  if (groups.some((g) => g.leads.some((l) => l.emergency))) out.push(key(true, MAP_SAYS.leadKeyAlarm));
+  return out;
+};
+LAYER_READ.leads = readLeads;
+LAYER_CLEAR.leads = leadsOff;
+
 // While another screen shows, the shell's Map view loses its 'active' class (the frame keeps its size and
 // gets no event of its own). Same origin, so the frame watches that class: when Map comes back, its layers read again.
 function watchShown() {
@@ -1004,6 +1290,7 @@ function boot() {
     L.control.zoom({ position: 'bottomleft' }).addTo(MAP);
     for (const t of ['pointerdown', 'touchstart', 'wheel']) $('map').addEventListener(t, () => { KEEP_VIEW = false; }, { passive: true, capture: true });
     MAP.on('zoomend', drawPins);
+    MAP.on('zoomend', drawLeadPins);
     MAP.on('moveend', offView);
     MAP.on('moveend', rpaMove);
     MAP.on('popupopen', () => { POP_OPEN = true; offView(); });
@@ -1023,6 +1310,7 @@ function boot() {
     TILES.on('tileload', () => { TILE.loaded++; tilesState(); });
     TILES.addTo(MAP);
     TODAY.layer = L.layerGroup().addTo(MAP);
+    LEADS.layer = L.layerGroup().addTo(MAP);
     tilesState();
   }
   toShell({ type: 'ready' });
