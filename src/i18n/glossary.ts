@@ -110,18 +110,21 @@ export const FALSE_FRIENDS: ReadonlyArray<GlossaryPair & { never: string[]; why:
  *
  * Decided in the plan and critiqued twice. D112: six of the seven passed the
  * blind second translation and the blind back-translation and are recorded in
- * the ledger (src/i18n/reviewed.json) as reviewed. HELD is not — the blind
- * second translation read it as "do not drive — out of service", and "no se
- * maneja" can read as a description rather than an order — so it stays a draft
- * (the English shows) until new words pass a fresh blind pass. Nothing
- * safety-class is served in Spanish until the ledger records its review.
+ * the ledger (src/i18n/reviewed.json) as reviewed. HELD did not — the plan's
+ * "NO SE MANEJA — FRENOS/DIRECCIÓN" can read as a description ("it does not get
+ * driven") rather than an order, and the blind second translation said "out of
+ * service" — so D112 proposed new words. D112's held-five round (2026-10-22)
+ * put them through a fresh blind pass: they passed both and are recorded, so
+ * all seven are. A brake or steering defect is the only thing that holds a
+ * unit (src/fleet/breakdown.ts), so the reason in brackets is always true.
+ * Nothing safety-class is served in Spanish until the ledger records its review.
  */
 export const SAFETY_PAIRS: readonly GlossaryPair[] = [
   { en: 'PERMIT LIKELY', es: 'PROBABLEMENTE SE NECESITA PERMISO' },
   { en: 'PERMIT: REVIEW NEEDED', es: 'PERMISO: HAY QUE REVISAR' },
   { en: 'NO OVERLAY — VERIFY W/ CITY', es: 'VERIFIQUE CON LA CIUDAD — EL MAPA NO MOSTRÓ ZONA PROTEGIDA' },
   { en: 'PERMIT SCREEN PENDING', es: 'CHEQUEO DE PERMISO SIN HACER' },
-  { en: 'HELD', es: 'NO SE MANEJA — FRENOS/DIRECCIÓN', note: 'The brake or steering hold (R26, R29 #5).' },
+  { en: 'HELD', es: 'NO LO MANEJE NI LO USE — FUERA DE SERVICIO (FRENOS O DIRECCIÓN)', note: 'The brake or steering hold (R26, R29 #5).' },
   { en: 'NO AERIAL WORK', es: 'NO PUEDE TRABAJAR EN ALTURA' },
   { en: 'NO EXPIRY DATE', es: 'FALTA LA FECHA DE VENCIMIENTO' },
 ];

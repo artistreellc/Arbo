@@ -51,7 +51,8 @@ describe('the glossary — usted, neutral Latin-American Spanish, trade terms wi
       ['PERMIT: REVIEW NEEDED', 'PERMISO: HAY QUE REVISAR'],
       ['NO OVERLAY — VERIFY W/ CITY', 'VERIFIQUE CON LA CIUDAD — EL MAPA NO MOSTRÓ ZONA PROTEGIDA'],
       ['PERMIT SCREEN PENDING', 'CHEQUEO DE PERMISO SIN HACER'],
-      ['HELD', 'NO SE MANEJA — FRENOS/DIRECCIÓN'],
+      // D112 held-five round (pin moved, meaning kept): HELD's Spanish is the one the fresh blind pass recorded.
+      ['HELD', 'NO LO MANEJE NI LO USE — FUERA DE SERVICIO (FRENOS O DIRECCIÓN)'],
       ['NO AERIAL WORK', 'NO PUEDE TRABAJAR EN ALTURA'],
       ['NO EXPIRY DATE', 'FALTA LA FECHA DE VENCIMIENTO'],
     ]);
@@ -106,18 +107,24 @@ describe('server twins — withEs and enSha (a stale twin is never served)', () 
   });
 
   it('a safety-class twin is served only once the ledger records its review (a draft is not enough)', () => {
-    // D112 (pin moved, meaning kept): PERMIT LIKELY is recorded now, so the draft is HELD — the one
-    // glossary label the blind review held back (its Spanish drifted from the blind second translation).
-    const label = 'HELD';
-    const es = 'NO SE MANEJA — FRENOS/DIRECCIÓN';
+    // D112 held-five round (pin moved, meaning kept): every glossary label is recorded now, so the draft
+    // is PERMIT LIKELY's work-order line — one of the four "protected work" lines the review still holds.
+    const label = 'PERMIT LIKELY — do not start protected work until the permit is confirmed.';
+    const es = 'PROBABLEMENTE SE NECESITA PERMISO — no empiece el trabajo que requiere permiso (protected work) hasta que se confirme el permiso.';
     expect(isSafetyClass(label)).toBe(true);
     expect(loadLedger().find((e) => e.en === label && e.es === es)?.pass).toBe('draft');
     expect(twinFor(label, { es, enSha: enSha(label) })).toBeNull();
-    const reviewed: LedgerEntry[] = [{ en: label, es, sha: pairSha(label, es), where: 'test', pass: 'reviewed', translatedBy: 't', reviewedBy: 'r', backTranslation: 'NOT TO BE DRIVEN — BRAKES/STEERING', on: '2026-10-22' }];
+    const reviewed: LedgerEntry[] = [{ en: label, es, sha: pairSha(label, es), where: 'test', pass: 'reviewed', translatedBy: 't', reviewedBy: 'r', backTranslation: 'A PERMIT IS PROBABLY NEEDED — …', on: '2026-10-22' }];
     expect(safetyCleared(label, es, reviewed)).toBe(true);
     expect(safetyCleared(label, es + ' ', reviewed)).toBe(false);
     // And a recorded glossary label is served from the committed ledger, exactly as recorded.
     expect(twinFor('PERMIT LIKELY', { es: 'PROBABLEMENTE SE NECESITA PERMISO', enSha: enSha('PERMIT LIKELY') })).toBe('PROBABLEMENTE SE NECESITA PERMISO');
+    // HELD: its recorded Spanish is served; the plan's words it replaced have no ledger entry and are not.
+    const held = 'NO LO MANEJE NI LO USE — FUERA DE SERVICIO (FRENOS O DIRECCIÓN)';
+    expect(twinFor('HELD', { es: held, enSha: enSha('HELD') })).toBe(held);
+    expect(loadLedger().some((e) => e.es === 'NO SE MANEJA — FRENOS/DIRECCIÓN')).toBe(false);
+    expect(safetyCleared('HELD', 'NO SE MANEJA — FRENOS/DIRECCIÓN')).toBe(false);
+    expect(twinFor('HELD', { es: 'NO SE MANEJA — FRENOS/DIRECCIÓN', enSha: enSha('HELD') })).toBeNull();
   });
 });
 
@@ -141,7 +148,7 @@ describe('the review ledger (src/i18n/reviewed.json) — a safety string edited 
   // D112 (replaces "the plan's table is a draft"): the blind review recorded exactly these lines and
   // held exactly these — RECORDED_EN / HELD_EN (test/support/esRecorded.ts) are the one list the page
   // and twin tests read. Only a blind-reviewed line is served; nothing is at "person" yet (R27 #5).
-  it('records exactly the blind-reviewed set — 12 reviewed, 5 held as drafts, none read by a person yet', () => {
+  it('records exactly the blind-reviewed set — 13 reviewed, 4 held as drafts, none read by a person yet', () => {
     const at = (pass: string) => loadLedger().filter((e) => e.pass === pass).map((e) => e.en);
     expect(at('reviewed')).toEqual([...RECORDED_EN]);
     // …and by fingerprint, so a recorded line's Spanish can't change and be re-marked unnoticed.
@@ -161,8 +168,15 @@ describe('the review ledger (src/i18n/reviewed.json) — a safety string edited 
         expect(e.note, e.en).toMatch(/^Not recorded \(D112\)/);
       }
     }
-    // The glossary's seven labels: all recorded but HELD.
-    for (const p of SAFETY_PAIRS) expect(loadLedger().find((e) => e.en === p.en)?.pass, p.en).toBe(p.en === 'HELD' ? 'draft' : 'reviewed');
+    // The glossary's seven labels: all recorded (HELD since D112's held-five round, with new Spanish),
+    // each as the very pair the glossary holds.
+    for (const p of SAFETY_PAIRS) {
+      const e = loadLedger().find((x) => x.en === p.en);
+      expect(e?.pass, p.en).toBe('reviewed');
+      expect(e?.es, p.en).toBe(p.es);
+    }
+    expect(RECORDED_EN.length).toBe(13);
+    expect(HELD_EN.length).toBe(4);
   });
 
   it('serves exactly the recorded lines as written — and a recorded line whose Spanish is edited by ONE character stops being served', () => {
