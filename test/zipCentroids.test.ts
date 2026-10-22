@@ -10,7 +10,12 @@ import { serviceCityForZip } from '../src/lib/address.js';
 
 describe('the ZIP centroid table', () => {
   it('names its source; a point is never shipped without the date it was checked', () => {
-    expect(ZCTA_SOURCE.url).toBe('https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2020_Gazetteer/2020_Gaz_zcta_national.zip');
+    // Maps wave B (D108): the source is the Census 2020 ZCTA layer on TIGERweb — the same TIGER/Line 2020
+    // internal points the 2020 ZCTA Gazetteer publishes — read through its public query (the Gazetteer's own
+    // host was refused from the build machine). The pin's meaning holds: the table names its source and is dated.
+    expect(ZCTA_SOURCE.url).toBe('https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/PUMA_TAD_TAZ_UGA_ZCTA/MapServer/11');
+    expect(ZCTA_SOURCE.query).toContain('outFields=ZCTA5,INTPTLAT,INTPTLON');
+    expect(ZCTA_SOURCE.query).toContain('ACCEPTED_ZIPS');
     expect(ZCTA_SOURCE.name).toMatch(/2020.*ZCTA.*Gazetteer/);
     if (Object.keys(ZIP_CENTROIDS).length > 0 || ZIP_NO_AREA.length > 0) {
       expect(ZCTA_SOURCE.checked).toMatch(/^\d{4}-\d{2}-\d{2}$/);
@@ -59,6 +64,32 @@ describe('the ZIP centroid table', () => {
       if (p.ok) expect(ZCTA_SOURCE.checked, z).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       else expect(['no_area', 'not_loaded']).toContain(p.why);
     }
+  });
+
+  // Maps wave B (D108): the table is filled from the Census 2020 ZCTA internal points, read 2026-10-22.
+  it('is filled and dated: 39 ZIP areas placed, the other 30 accepted ZIPs named "no map area" — every accepted ZIP in exactly one', () => {
+    expect(ZCTA_SOURCE.checked).toBe('2026-10-22');
+    expect(ZCTA_SOURCE.notChecked).toBeNull();
+    expect(Object.keys(ZIP_CENTROIDS)).toHaveLength(39);
+    expect(ZIP_NO_AREA).toHaveLength(30);
+    for (const z of ACCEPTED_ZIPS) expect(Number(z in ZIP_CENTROIDS) + Number(ZIP_NO_AREA.includes(z)), z).toBe(1);
+    for (const z of ACCEPTED_ZIPS) expect(zipPoint(z).ok || (zipPoint(z) as { why: string }).why === 'no_area', z).toBe(true);
+  });
+
+  it('the plan\'s hand-check list comes out as the Census says: PO box and business ZIPs have no area; 23551 is placed', () => {
+    for (const z of ['23450', '23466', '23467', '23471', '23479', '23501', '23506', '23541', '23326', '23327', '23328', '23705']) {
+      expect(zipPoint(z), z).toEqual({ ok: false, why: 'no_area' });
+    }
+    expect(zipPoint('23551')).toEqual({ ok: true, lat: 36.92354, lon: -76.29255 });
+  });
+
+  it('points are the Census 2020 internal points to 5 decimals (spot checks across the four cities)', () => {
+    expect(ZIP_CENTROIDS['23508']).toEqual({ lat: 36.88528, lon: -76.31034 }); // Norfolk
+    expect(ZIP_CENTROIDS['23451']).toEqual({ lat: 36.87236, lon: -76.00432 }); // Virginia Beach
+    expect(ZIP_CENTROIDS['23461']).toEqual({ lat: 36.7706, lon: -75.96377 }); // Virginia Beach, the east-most
+    expect(ZIP_CENTROIDS['23320']).toEqual({ lat: 36.75173, lon: -76.21764 }); // Chesapeake
+    expect(ZIP_CENTROIDS['23321']).toEqual({ lat: 36.8004, lon: -76.42115 }); // Chesapeake, the west-most
+    expect(ZIP_CENTROIDS['23707']).toEqual({ lat: 36.84179, lon: -76.34033 }); // Portsmouth
   });
 
   it('a ZIP outside the four cities is "outside", never placed; junk is outside too', () => {
