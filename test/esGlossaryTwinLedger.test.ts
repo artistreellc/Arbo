@@ -17,6 +17,7 @@ import { pathToFileURL } from 'node:url';
 import { findBannedEs } from '../src/i18n/banList.js';
 import { esGateProblems } from '../src/i18n/gates.js';
 import { currentSafetyPairs } from '../src/i18n/dictionaries.js';
+import { RECORDED_EN, RECORDED_SHA, HELD_EN, oneCharEdit } from './support/esRecorded.js';
 
 describe('the glossary — usted, neutral Latin-American Spanish, trade terms with the English beside', () => {
   it('names the register and the variety Mike chose (R29 #3)', () => {
@@ -105,14 +106,18 @@ describe('server twins — withEs and enSha (a stale twin is never served)', () 
   });
 
   it('a safety-class twin is served only once the ledger records its review (a draft is not enough)', () => {
-    const label = 'PERMIT LIKELY';
-    const es = 'PROBABLEMENTE SE NECESITA PERMISO';
+    // D112 (pin moved, meaning kept): PERMIT LIKELY is recorded now, so the draft is HELD — the one
+    // glossary label the blind review held back (its Spanish drifted from the blind second translation).
+    const label = 'HELD';
+    const es = 'NO SE MANEJA — FRENOS/DIRECCIÓN';
     expect(isSafetyClass(label)).toBe(true);
-    // The glossary pair is in the ledger as a draft — blind review and back-translation are Phase A.
+    expect(loadLedger().find((e) => e.en === label && e.es === es)?.pass).toBe('draft');
     expect(twinFor(label, { es, enSha: enSha(label) })).toBeNull();
-    const reviewed: LedgerEntry[] = [{ en: label, es, sha: pairSha(label, es), where: 'test', pass: 'reviewed', translatedBy: 't', reviewedBy: 'r', backTranslation: 'PERMIT PROBABLY NEEDED', on: '2026-10-22' }];
+    const reviewed: LedgerEntry[] = [{ en: label, es, sha: pairSha(label, es), where: 'test', pass: 'reviewed', translatedBy: 't', reviewedBy: 'r', backTranslation: 'NOT TO BE DRIVEN — BRAKES/STEERING', on: '2026-10-22' }];
     expect(safetyCleared(label, es, reviewed)).toBe(true);
     expect(safetyCleared(label, es + ' ', reviewed)).toBe(false);
+    // And a recorded glossary label is served from the committed ledger, exactly as recorded.
+    expect(twinFor('PERMIT LIKELY', { es: 'PROBABLEMENTE SE NECESITA PERMISO', enSha: enSha('PERMIT LIKELY') })).toBe('PROBABLEMENTE SE NECESITA PERMISO');
   });
 });
 
@@ -121,16 +126,60 @@ describe('the review ledger (src/i18n/reviewed.json) — a safety string edited 
     expect(ledgerProblems(currentSafetyPairs())).toEqual([]);
   });
 
-  it('the ledger is honest about where each entry stands: the plan’s table is a draft, not a review', () => {
+  it('the ledger is honest about where each entry stands: every pass is named, every fingerprint its own pair', () => {
     for (const e of loadLedger()) {
       expect(['draft', 'reviewed', 'person']).toContain(e.pass);
       expect(e.sha).toBe(pairSha(e.en, e.es));
+      expect(e.translatedBy, e.en).toBeTruthy();
       if (e.pass !== 'draft') {
         expect(e.reviewedBy, e.en).toBeTruthy();
         expect(e.backTranslation, e.en).toBeTruthy();
       }
     }
-    for (const p of SAFETY_PAIRS) expect(loadLedger().find((e) => e.en === p.en)?.pass).toBe('draft');
+  });
+
+  // D112 (replaces "the plan's table is a draft"): the blind review recorded exactly these lines and
+  // held exactly these — RECORDED_EN / HELD_EN (test/support/esRecorded.ts) are the one list the page
+  // and twin tests read. Only a blind-reviewed line is served; nothing is at "person" yet (R27 #5).
+  it('records exactly the blind-reviewed set — 12 reviewed, 5 held as drafts, none read by a person yet', () => {
+    const at = (pass: string) => loadLedger().filter((e) => e.pass === pass).map((e) => e.en);
+    expect(at('reviewed')).toEqual([...RECORDED_EN]);
+    // …and by fingerprint, so a recorded line's Spanish can't change and be re-marked unnoticed.
+    expect(loadLedger().filter((e) => e.pass === 'reviewed').map((e) => e.sha)).toEqual([...RECORDED_SHA]);
+    expect(at('draft')).toEqual([...HELD_EN]);
+    expect(at('person')).toEqual([]);
+    expect(loadLedger().length).toBe(RECORDED_EN.length + HELD_EN.length);
+    for (const e of loadLedger()) {
+      if (e.pass === 'reviewed') {
+        // Both blind passes named, with the date, and the back-translation itself on the entry.
+        expect(e.reviewedBy, e.en).toMatch(/second translation/);
+        expect(e.reviewedBy, e.en).toMatch(/back-translation/);
+        expect(e.reviewedBy, e.en).toMatch(/2026-10-22/);
+        expect(e.note, e.en).toMatch(/^Recorded 2026-10-22 \(D112\)/);
+      } else {
+        expect(e.reviewedBy, e.en).toBeUndefined();
+        expect(e.note, e.en).toMatch(/^Not recorded \(D112\)/);
+      }
+    }
+    // The glossary's seven labels: all recorded but HELD.
+    for (const p of SAFETY_PAIRS) expect(loadLedger().find((e) => e.en === p.en)?.pass, p.en).toBe(p.en === 'HELD' ? 'draft' : 'reviewed');
+  });
+
+  it('serves exactly the recorded lines as written — and a recorded line whose Spanish is edited by ONE character stops being served', () => {
+    for (const e of loadLedger()) {
+      expect(safetyCleared(e.en, e.es), e.en).toBe(e.pass === 'reviewed');
+      const edited = oneCharEdit(e.es);
+      expect(edited.length - e.es.length, e.en).toBeLessThanOrEqual(1);
+      expect(edited, e.en).not.toBe(e.es);
+      expect(safetyCleared(e.en, edited), `${e.en} → ${edited}`).toBe(false);
+      expect(twinFor(e.en, { es: edited, enSha: enSha(e.en) }), `${e.en} → ${edited}`).toBeNull();
+    }
+    // …and the build check names it: edited and not re-reviewed.
+    const pairs = currentSafetyPairs();
+    const rec = pairs.find((p) => p.en === 'POWER LINES — utility coordination required before work near conductors')!;
+    expect(safetyCleared(rec.en, rec.es)).toBe(true);
+    const edited = pairs.map((p) => (p === rec ? { ...p, es: oneCharEdit(p.es) } : p));
+    expect(ledgerProblems(edited).join('\n')).toMatch(/edited and not re-reviewed \(twin:crew-workorder\): POWER LINES/);
   });
 
   it('bites: an edited Spanish line, a missing entry, a stale entry and a tampered fingerprint each fail', () => {

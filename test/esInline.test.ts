@@ -82,7 +82,13 @@ describe('what may be inlined — a broken unit is named; a banned, unservable o
   const dir = mkdtempSync(join(tmpdir(), 'arbo-i18n-'));
   writeFileSync(join(dir, 'crew-good.es.json'), JSON.stringify({ Language: 'Idioma', 'Wait {n} minutes': 'Espere {n} minutos' }));
   writeFileSync(join(dir, 'crew-banned.es.json'), JSON.stringify({ 'No overlay found': 'Zona libre', 'Look it up': 'Búsquelo' }));
-  writeFileSync(join(dir, 'crew-safety.es.json'), JSON.stringify({ 'PERMIT LIKELY': 'PROBABLEMENTE SE NECESITA PERMISO' }));
+  // D112 (fixture moved, meaning kept): PERMIT LIKELY's pair is recorded now, so it is served; HELD's
+  // pair is a draft, and a recorded pair edited by one character has no review — both held back.
+  writeFileSync(join(dir, 'crew-safety.es.json'), JSON.stringify({
+    'PERMIT LIKELY': 'PROBABLEMENTE SE NECESITA PERMISO',
+    HELD: 'NO SE MANEJA — FRENOS/DIRECCIÓN',
+    'NO AERIAL WORK': 'NO PUEDE TRABAJAR EN ALTURa',
+  }));
   writeFileSync(join(dir, 'crew-slots.es.json'), JSON.stringify({ '{n} calls today': '{count} llamadas hoy' }));
   writeFileSync(join(dir, 'crew-broken.es.json'), '{"Language": ');
   writeFileSync(join(dir, 'crew-notflat.es.json'), JSON.stringify({ Language: { es: 'Idioma' } }));
@@ -100,9 +106,9 @@ describe('what may be inlined — a broken unit is named; a banned, unservable o
   it('a banned Spanish word, a renamed slot, or a safety line the ledger has not cleared is held back — the rest of the unit stays', () => {
     expect(d.units['crew-good']).toEqual({ Language: 'Idioma', 'Wait {n} minutes': 'Espere {n} minutos' });
     expect(d.units['crew-banned']).toEqual({ 'Look it up': 'Búsquelo' });
-    expect(d.units['crew-safety']).toEqual({});
+    expect(d.units['crew-safety']).toEqual({ 'PERMIT LIKELY': 'PROBABLEMENTE SE NECESITA PERMISO' });
     expect(d.units['crew-slots']).toEqual({});
-    expect(d.held.map((h) => `${h.unit}:${h.key}`).sort()).toEqual(['crew-banned:No overlay found', 'crew-safety:PERMIT LIKELY', 'crew-slots:{n} calls today']);
+    expect(d.held.map((h) => `${h.unit}:${h.key}`).sort()).toEqual(['crew-banned:No overlay found', 'crew-safety:HELD', 'crew-safety:NO AERIAL WORK', 'crew-slots:{n} calls today']);
   });
 });
 

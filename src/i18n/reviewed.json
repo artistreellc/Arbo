@@ -6,36 +6,48 @@
       "es": "PROBABLEMENTE SE NECESITA PERMISO",
       "sha": "599563718f51c47c2f40d7ed9184af4eb6d3980a955cae8c3de86f6a4bdfee42",
       "where": "glossary:safety",
-      "pass": "draft",
+      "pass": "reviewed",
       "translatedBy": "Claude — docs/R27_SPANISH_PLAN.md table (2026-10-20), after the plan’s two adversarial critiques",
-      "on": "2026-10-22"
+      "reviewedBy": "Two blind passes, 2026-10-22 (D112): a second translation of the English alone (never saw this Spanish) and a back-translation of this Spanish alone (never saw the English) — two agents with no tools, neither saw the other side; compared by Claude.",
+      "backTranslation": "A PERMIT IS PROBABLY NEEDED",
+      "on": "2026-10-22",
+      "note": "Recorded 2026-10-22 (D112). Back: same meaning, the hedge kept (probably, not certainly). Second: \"PERMISO PROBABLEMENTE REQUERIDO\" — same meaning. Flagged and accepted: \"permiso\" also means permission — it is the Spanish word for permit (the blind second pass chose it too), and either reading stops to ask."
     },
     {
       "en": "PERMIT: REVIEW NEEDED",
       "es": "PERMISO: HAY QUE REVISAR",
       "sha": "f9fcaf3eba494eab26db1adbeff595ec33db818dc7858498027487ce2e4d8542",
       "where": "glossary:safety",
-      "pass": "draft",
+      "pass": "reviewed",
       "translatedBy": "Claude — docs/R27_SPANISH_PLAN.md table (2026-10-20), after the plan’s two adversarial critiques",
-      "on": "2026-10-22"
+      "reviewedBy": "Two blind passes, 2026-10-22 (D112): a second translation of the English alone (never saw this Spanish) and a back-translation of this Spanish alone (never saw the English) — two agents with no tools, neither saw the other side; compared by Claude.",
+      "backTranslation": "PERMIT: IT HAS TO BE REVIEWED / CHECKED",
+      "on": "2026-10-22",
+      "note": "Recorded 2026-10-22 (D112). Back: same meaning, the obligation kept. Second: \"PERMISO: REQUIERE REVISIÓN\" — same meaning. Flagged and accepted: it names no reviewer — the English names none either; the crew’s work-order line (L13) adds \"consulte con la oficina antes de cortar\"; \"permiso\" as L0."
     },
     {
       "en": "NO OVERLAY — VERIFY W/ CITY",
       "es": "VERIFIQUE CON LA CIUDAD — EL MAPA NO MOSTRÓ ZONA PROTEGIDA",
       "sha": "991333dcd2506c390e75680e446a7305f008b9ce8a4a7441c1ee293bad6d9eee",
       "where": "glossary:safety",
-      "pass": "draft",
+      "pass": "reviewed",
       "translatedBy": "Claude — docs/R27_SPANISH_PLAN.md table (2026-10-20), after the plan’s two adversarial critiques",
-      "on": "2026-10-22"
+      "reviewedBy": "Two blind passes, 2026-10-22 (D112): a second translation of the English alone (never saw this Spanish) and a back-translation of this Spanish alone (never saw the English) — two agents with no tools, neither saw the other side; compared by Claude.",
+      "backTranslation": "VERIFY WITH THE CITY — THE MAP DID NOT SHOW A PROTECTED ZONE",
+      "on": "2026-10-22",
+      "note": "Recorded 2026-10-22 (D112). Back: same meaning, the order first. Second: \"VERIFIQUE CON LA CIUDAD — EL MAPA NO MUESTRA ZONA PROTEGIDA\" — same meaning, same order. Flagged and accepted: \"no mostró\" can also read \"failed to show\" — the more cautious reading; the second clause can read as reassurance — VERIFY leads, unconditionally (the English leads with NO OVERLAY, so the Spanish is the stronger order); \"verifique\" speaks to the reader as VERIFY does."
     },
     {
       "en": "PERMIT SCREEN PENDING",
       "es": "CHEQUEO DE PERMISO SIN HACER",
       "sha": "f3e9021d3831b55c1b098dbc6f389397537c0b833cc229ba7ef3d211cd05e690",
       "where": "glossary:safety",
-      "pass": "draft",
+      "pass": "reviewed",
       "translatedBy": "Claude — docs/R27_SPANISH_PLAN.md table (2026-10-20), after the plan’s two adversarial critiques",
-      "on": "2026-10-22"
+      "reviewedBy": "Two blind passes, 2026-10-22 (D112): a second translation of the English alone (never saw this Spanish) and a back-translation of this Spanish alone (never saw the English) — two agents with no tools, neither saw the other side; compared by Claude.",
+      "backTranslation": "PERMIT CHECK NOT DONE (undone)",
+      "on": "2026-10-22",
+      "note": "Recorded 2026-10-22 (D112). Back: the same state (no screen on file — L16). Second: \"PERMISO: VERIFICACIÓN PENDIENTE\" — same meaning. Flagged and accepted: no instruction — the English gives none; the crew line (L16) adds one; \"chequeo\" is informal (D110, open for Mike — the plan’s word kept)."
     },
     {
       "en": "HELD",
@@ -44,75 +56,92 @@
       "where": "glossary:safety",
       "pass": "draft",
       "translatedBy": "Claude — docs/R27_SPANISH_PLAN.md table (2026-10-20), after the plan’s two adversarial critiques",
-      "on": "2026-10-22"
+      "on": "2026-10-22",
+      "note": "Not recorded (D112) — drift. Blind back: \"no se maneja\" is impersonal and reads as a description too (\"it does not get driven\"), not an order; in Spain \"manejar\" is handle (\"we do not handle brakes/steering\" — no order at all); \"dirección\" also reads as address. Blind second (from the English): \"NO CONDUZCA — FUERA DE SERVICIO\" — a direct order and the whole unit out of service, where this says only \"not driven\" — a meaning difference: HELD keeps the unit off the schedule until Mike signs it back on (src/fleet/breakdown.ts). Proposed, not applied (it needs a fresh blind pass): \"NO LO MANEJE NI LO USE — FUERA DE SERVICIO (FRENOS O DIRECCIÓN)\"."
     },
     {
       "en": "NO AERIAL WORK",
       "es": "NO PUEDE TRABAJAR EN ALTURA",
       "sha": "fe1f7608cb6d608f6d8c05c41d159aac60a35d487c12770451a83cf8285ffd77",
       "where": "glossary:safety",
-      "pass": "draft",
+      "pass": "reviewed",
       "translatedBy": "Claude — docs/R27_SPANISH_PLAN.md table (2026-10-20), after the plan’s two adversarial critiques",
-      "on": "2026-10-22"
+      "reviewedBy": "Two blind passes, 2026-10-22 (D112): a second translation of the English alone (never saw this Spanish) and a back-translation of this Spanish alone (never saw the English) — two agents with no tools, neither saw the other side; compared by Claude.",
+      "backTranslation": "CANNOT WORK AT HEIGHT (you / he / she cannot work aloft)",
+      "on": "2026-10-22",
+      "note": "Recorded 2026-10-22 (D112). Back: same prohibition. Second: \"NO TRABAJO EN ALTURA: NI TREPAR NI CANASTA\" — same meaning, spelled out (work at height is climbing and the bucket). Flagged and accepted: \"puede\" names no one — the badge sits on the named crew member’s card (Crew & safety); \"not able\" or \"not allowed\", both keep him on the ground. For the read-through: the second pass’s \"ni trepar ni canasta\" spells the scope out."
     },
     {
       "en": "NO EXPIRY DATE",
       "es": "FALTA LA FECHA DE VENCIMIENTO",
       "sha": "9e612bc3515e39644a2ca3f708baed6e157608fc60dcc431fc5f82a5d9290611",
       "where": "glossary:safety",
-      "pass": "draft",
+      "pass": "reviewed",
       "translatedBy": "Claude — docs/R27_SPANISH_PLAN.md table (2026-10-20), after the plan’s two adversarial critiques",
-      "on": "2026-10-22"
+      "reviewedBy": "Two blind passes, 2026-10-22 (D112): a second translation of the English alone (never saw this Spanish) and a back-translation of this Spanish alone (never saw the English) — two agents with no tools, neither saw the other side; compared by Claude.",
+      "backTranslation": "THE EXPIRATION DATE IS MISSING",
+      "on": "2026-10-22",
+      "note": "Recorded 2026-10-22 (D112). Back: same meaning — missing, never \"never expires\" (glossary). Second: \"VENCIMIENTO NO REGISTRADO\" — same meaning. Flagged and accepted: it does not say what expires — the card names the credential."
     },
     {
       "en": "Do not start work — call the office.",
       "es": "No empiece a trabajar — llame a la oficina.",
       "sha": "7ca16938e280e50114a481cb1812e7c05f8315b8f4a116654533f500adcf80fa",
       "where": "dict:crew-gate",
-      "pass": "draft",
-      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); the blind second pass and the back-translation are not done yet, so nothing here is reviewed",
+      "pass": "reviewed",
+      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111)",
+      "reviewedBy": "Two blind passes (D112): the second translation of D111’s review round (2026-10-22 — the English alone, taken out before the builder’s Spanish was read) and a back-translation of this Spanish alone (2026-10-22 — never saw the English); agents with no tools, neither saw the other side; compared by Claude.",
+      "backTranslation": "Do not start working — call the office.",
       "on": "2026-10-22",
-      "note": "Review round 2026-10-22 (D111): the blind second translation agreed with this Spanish (no meaning drift); the back-translation found no drift but was NOT blind — its translator had seen the English — so no review is recorded. Owed: a back-translation made without the English."
+      "note": "Recorded 2026-10-22 (D112). Back: same meaning, no ambiguity. Second (D111): the same Spanish word for word."
     },
     {
       "en": "Your work orders stay locked — do not start work; call the office to log your briefing.",
       "es": "Sus órdenes de trabajo siguen bloqueadas — no empiece a trabajar; llame a la oficina para que registre su charla de seguridad.",
       "sha": "d3fc6fafdd2551a3b2228469013138ae6b45afdd0ec64c23061b2fce866716a3",
       "where": "dict:crew-gate",
-      "pass": "draft",
-      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); the blind second pass and the back-translation are not done yet, so nothing here is reviewed",
+      "pass": "reviewed",
+      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111)",
+      "reviewedBy": "Two blind passes (D112): the second translation of D111’s review round (2026-10-22 — the English alone, taken out before the builder’s Spanish was read) and a back-translation of this Spanish alone (2026-10-22 — never saw the English); agents with no tools, neither saw the other side; compared by Claude.",
+      "backTranslation": "Your work orders are still blocked — do not start working; call the office so that it records your safety talk.",
       "on": "2026-10-22",
-      "note": "Review round 2026-10-22 (D111): the blind second translation agreed with this Spanish (no meaning drift); the back-translation found no drift but was NOT blind — its translator had seen the English — so no review is recorded. Owed: a back-translation made without the English."
+      "note": "Recorded 2026-10-22 (D112). Back: same meaning — the NO, the lock and the call kept. Second (D111): the same Spanish word for word. Flagged and accepted: \"para que registre\" can read \"so that you log it\" — the English \"to log\" is as open, and either way the order is: do not start, call the office."
     },
     {
       "en": "This is not an empty day — do not start work; call the office.",
       "es": "Esto no es un día vacío — no empiece a trabajar; llame a la oficina.",
       "sha": "68e0b4a1ec07f35c0d27f7afe40a66afc277f4bd62bbd7e6ba7940389666262f",
       "where": "dict:crew-work",
-      "pass": "draft",
-      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); the blind second pass and the back-translation are not done yet, so nothing here is reviewed",
+      "pass": "reviewed",
+      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111)",
+      "reviewedBy": "Two blind passes (D112): the second translation of D111’s review round (2026-10-22 — the English alone, taken out before the builder’s Spanish was read) and a back-translation of this Spanish alone (2026-10-22 — never saw the English); agents with no tools, neither saw the other side; compared by Claude.",
+      "backTranslation": "This is not an empty day — do not start working; call the office.",
       "on": "2026-10-22",
-      "note": "Review round 2026-10-22 (D111): the blind second translation agreed with this Spanish (no meaning drift); the back-translation found no drift but was NOT blind — its translator had seen the English — so no review is recorded. Owed: a back-translation made without the English."
+      "note": "Recorded 2026-10-22 (D112). Back: same meaning. Second (D111): the same Spanish word for word. Flagged and accepted: \"día vacío\" is opaque alone — on screen it follows \"No se pueden confirmar los trabajos de hoy\" and \"Arbo no pudo leer la lista de contratos, así que ningún trabajo está confirmado.\" (crew.html), and the order is plain."
     },
     {
       "en": "POWER LINES — utility coordination required before work near conductors",
       "es": "LÍNEAS ELÉCTRICAS — es obligatorio coordinar con la compañía de luz antes de trabajar cerca de los cables",
       "sha": "4ec33bb7c504849038dc707f3e40a46a0c66e8cf72d43b0e814676861a198918",
       "where": "twin:crew-workorder",
-      "pass": "draft",
-      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); the blind second pass and the back-translation are not done yet, so nothing here is reviewed",
+      "pass": "reviewed",
+      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111)",
+      "reviewedBy": "Two blind passes (D112): the second translation of D111’s review round (2026-10-22 — the English alone, taken out before the builder’s Spanish was read) and a back-translation of this Spanish alone (2026-10-22 — never saw the English); agents with no tools, neither saw the other side; compared by Claude.",
+      "backTranslation": "POWER LINES — it is mandatory to coordinate with the electric company before working near the wires",
       "on": "2026-10-22",
-      "note": "Review round 2026-10-22 (D111): the blind second translation agreed with this Spanish (no meaning drift); the back-translation found no drift but was NOT blind — its translator had seen the English — so no review is recorded. Owed: a back-translation made without the English."
+      "note": "Recorded 2026-10-22 (D112). Back: same meaning — required is mandatory, \"before\" kept. Second (D111): \"…se requiere coordinar con la compañía de luz…\" — same meaning. Flagged and accepted: it names no one to coordinate — the English names no one; \"cables\" is wider than power conductors — wider is more caution, under LÍNEAS ELÉCTRICAS."
     },
     {
       "en": "STRUCTURES nearby — plan drop zone accordingly",
       "es": "ESTRUCTURAS cerca — planee la zona de caída (drop zone) teniéndolas en cuenta",
       "sha": "171fbc2d32348c86b353f4ed56dd164fa14ca965e18af5d75300fdf51a5464ac",
       "where": "twin:crew-workorder",
-      "pass": "draft",
-      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); the blind second pass and the back-translation are not done yet, so nothing here is reviewed",
+      "pass": "reviewed",
+      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111)",
+      "reviewedBy": "Two blind passes (D112): the second translation of D111’s review round (2026-10-22 — the English alone, taken out before the builder’s Spanish was read) and a back-translation of this Spanish alone (2026-10-22 — never saw the English); agents with no tools, neither saw the other side; compared by Claude.",
+      "backTranslation": "STRUCTURES nearby — plan the fall zone (drop zone) taking them into account",
       "on": "2026-10-22",
-      "note": "Review round 2026-10-22 (D111): the blind second translation agreed with this Spanish (no meaning drift); the back-translation found no drift but was NOT blind — its translator had seen the English — so no review is recorded. Owed: a back-translation made without the English."
+      "note": "Recorded 2026-10-22 (D112). Back: same meaning. Second (D111): \"…según eso\" — same meaning. Flagged and accepted: alone, \"zona de caída\" could read as fall protection — the gloss \"(drop zone)\" is part of the line; advisory, as the English is."
     },
     {
       "en": "PERMIT LIKELY — do not start protected work until the permit is confirmed.",
@@ -120,19 +149,22 @@
       "sha": "e6d1da2f58ad48d9aa007ad1ebb50e0ceb04c06a94026949c291f27398e79e29",
       "where": "twin:crew-workorder",
       "pass": "draft",
-      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); the blind second pass and the back-translation are not done yet, so nothing here is reviewed",
+      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111)",
+      "backTranslation": "A PERMIT IS PROBABLY NEEDED — do not start the work that requires a permit (protected work) until the permit is confirmed.",
       "on": "2026-10-22",
-      "note": "Review round 2026-10-22 (D111): Spanish revised after the back-translation (\"trabajo protegido\" read as work done with protection; protected work is work that needs permit clearance, src/permitting/permitRecord.ts). Owed: a fresh blind second translation check and a back-translation made without the English; no review is recorded."
+      "note": "Not recorded (D112). The blind back-translation (2026-10-22) found no drift, and \"el trabajo que requiere permiso (protected work)\" came back as \"the work that requires a permit (protected work)\" without the English. Held because no blind second translation has agreed with these words: the only one (D111’s review round) wrote \"el trabajo en zona protegida (protected work)\" — work in a protected zone, a different meaning (src/permitting/permitRecord.ts requiresClearance also counts a permit flag outside any zone) — and D111 chose these words after it. Owed: a blind second translation of L12, L14, L15 and L16 from the English alone, with the glossary (TRADE_TERMS: protected work → \"el trabajo que requiere permiso (protected work)\"); then this entry can be recorded as is — its back-translation stands while the Spanish is unchanged."
     },
     {
       "en": "PERMIT: REVIEW NEEDED — check with the office before cutting.",
       "es": "PERMISO: HAY QUE REVISAR — consulte con la oficina antes de cortar.",
       "sha": "c5f1df09bd20355da679161f4d4c1cafdbc822ffa6cff86ea3e8b0bc1df94d0a",
       "where": "twin:crew-workorder",
-      "pass": "draft",
-      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); the blind second pass and the back-translation are not done yet, so nothing here is reviewed",
+      "pass": "reviewed",
+      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111)",
+      "reviewedBy": "Two blind passes (D112): the second translation of D111’s review round (2026-10-22 — the English alone, taken out before the builder’s Spanish was read) and a back-translation of this Spanish alone (2026-10-22 — never saw the English); agents with no tools, neither saw the other side; compared by Claude.",
+      "backTranslation": "PERMIT: IT HAS TO BE REVIEWED — consult with the office before cutting.",
       "on": "2026-10-22",
-      "note": "Review round 2026-10-22 (D111): the blind second translation agreed with this Spanish (no meaning drift); the back-translation found no drift but was NOT blind — its translator had seen the English — so no review is recorded. Owed: a back-translation made without the English."
+      "note": "Recorded 2026-10-22 (D112). Back: same meaning. Second (D111): the same Spanish word for word. Flagged and accepted: \"consulte con\" is \"check with\" — the English says check with, not get approval; \"antes de cortar\" covers any cutting, as the English does; \"permiso\" as L0."
     },
     {
       "en": "NO OVERLAY — VERIFY W/ CITY before protected work.",
@@ -140,9 +172,10 @@
       "sha": "ee88f3090d525ad66636d9119803bcbf658dc57f8e3a446793b764c701bbb332",
       "where": "twin:crew-workorder",
       "pass": "draft",
-      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); the blind second pass and the back-translation are not done yet, so nothing here is reviewed",
+      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111)",
+      "backTranslation": "VERIFY WITH THE CITY — THE MAP DID NOT SHOW A PROTECTED ZONE. Do it before starting the work that requires a permit (protected work).",
       "on": "2026-10-22",
-      "note": "Review round 2026-10-22 (D111): Spanish revised after the back-translation (\"trabajo protegido\" read as work done with protection; protected work is work that needs permit clearance, src/permitting/permitRecord.ts). Owed: a fresh blind second translation check and a back-translation made without the English; no review is recorded."
+      "note": "Not recorded (D112). The blind back-translation (2026-10-22) found no drift, and \"el trabajo que requiere permiso (protected work)\" came back as \"the work that requires a permit (protected work)\" without the English. Held because no blind second translation has agreed with these words: the only one (D111’s review round) wrote \"el trabajo en zona protegida (protected work)\" — work in a protected zone, a different meaning (src/permitting/permitRecord.ts requiresClearance also counts a permit flag outside any zone) — and D111 chose these words after it. Also for that pass (the back-translator’s flags; the English has the same shape): \"Hágalo\" tells the reader to verify with the city himself, as VERIFY does; the second clause can read as reassurance; \"if there is no protected zone, which work needs a permit?\" — the English \"NO OVERLAY … before protected work\" asks the same. Owed: a blind second translation of L12, L14, L15 and L16 from the English alone, with the glossary (TRADE_TERMS: protected work → \"el trabajo que requiere permiso (protected work)\"); then this entry can be recorded as is — its back-translation stands while the Spanish is unchanged."
     },
     {
       "en": "PERMIT STATUS UNKNOWN — Arbo could not read the permit screen. Check with the office before protected work.",
@@ -150,9 +183,10 @@
       "sha": "cbe406dfa33f79b31563346fe201fbd40fc1b23e7d22ffb63bc968c14b04f4d7",
       "where": "twin:crew-workorder",
       "pass": "draft",
-      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); the blind second pass and the back-translation are not done yet, so nothing here is reviewed",
+      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111)",
+      "backTranslation": "PERMIT STATUS UNKNOWN — Arbo could not read the permit check. Consult with the office before starting the work that requires a permit (protected work).",
       "on": "2026-10-22",
-      "note": "Review round 2026-10-22 (D111): Spanish revised after the back-translation (\"trabajo protegido\" read as work done with protection; protected work is work that needs permit clearance, src/permitting/permitRecord.ts). Owed: a fresh blind second translation check and a back-translation made without the English; no review is recorded."
+      "note": "Not recorded (D112). The blind back-translation (2026-10-22) found no drift, and \"el trabajo que requiere permiso (protected work)\" came back as \"the work that requires a permit (protected work)\" without the English. Held because no blind second translation has agreed with these words: the only one (D111’s review round) wrote \"el trabajo en zona protegida (protected work)\" — work in a protected zone, a different meaning (src/permitting/permitRecord.ts requiresClearance also counts a permit flag outside any zone) — and D111 chose these words after it. Also for that pass: \"Arbo\" may be taken for a person; \"consulte\" is \"check with\", as the English says. Owed: a blind second translation of L12, L14, L15 and L16 from the English alone, with the glossary (TRADE_TERMS: protected work → \"el trabajo que requiere permiso (protected work)\"); then this entry can be recorded as is — its back-translation stands while the Spanish is unchanged."
     },
     {
       "en": "PERMIT SCREEN PENDING — status UNKNOWN, no screen on file. Check with the office before protected work.",
@@ -160,9 +194,10 @@
       "sha": "d0f2fd745d884f377ee02b9c01f6a456f4ab7dc94d0fbb585d4159f101a91820",
       "where": "twin:crew-workorder",
       "pass": "draft",
-      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); the blind second pass and the back-translation are not done yet, so nothing here is reviewed",
+      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111)",
+      "backTranslation": "PERMIT CHECK NOT DONE — status UNKNOWN, there is no check recorded. Consult with the office before starting the work that requires a permit (protected work).",
       "on": "2026-10-22",
-      "note": "Review round 2026-10-22 (D111): Spanish revised after the back-translation (\"trabajo protegido\" read as work done with protection; protected work is work that needs permit clearance, src/permitting/permitRecord.ts). Owed: a fresh blind second translation check and a back-translation made without the English; no review is recorded."
+      "note": "Not recorded (D112). The blind back-translation (2026-10-22) found no drift, and \"el trabajo que requiere permiso (protected work)\" came back as \"the work that requires a permit (protected work)\" without the English. Held because no blind second translation has agreed with these words: the only one (D111’s review round) wrote \"el trabajo en zona protegida (protected work)\" — work in a protected zone, a different meaning (src/permitting/permitRecord.ts requiresClearance also counts a permit flag outside any zone) — and D111 chose these words after it. Also for that pass: the headline says the check was not done, the body that none is on file — the English PENDING / \"no screen on file\" differ the same way. Owed: a blind second translation of L12, L14, L15 and L16 from the English alone, with the glossary (TRADE_TERMS: protected work → \"el trabajo que requiere permiso (protected work)\"); then this entry can be recorded as is — its back-translation stands while the Spanish is unchanged."
     }
   ]
 }

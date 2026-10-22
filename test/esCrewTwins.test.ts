@@ -21,6 +21,7 @@ import { buildCrewPayload, crewPayloadTwins, CREW_LINES, type WorkOrderSource } 
 import { toCrewFacing as libraryFacing, NO_LIMITS_WARNING } from '../src/reference/library.js';
 import { briefingTwin, quizTwin, quizEnSha } from '../src/i18n/dataTwins.js';
 import { toCrewFacing as quizFacing, gradeSubmission } from '../src/training/grading.js';
+import { RECORDED_EN, HELD_EN, oneCharEdit } from './support/esRecorded.js';
 
 const src = (over: Partial<WorkOrderSource> = {}): WorkOrderSource => ({
   jobId: 'j1', routeOrder: 1, address: 'SIM 1 Simulation Row', city: 'Virginia Beach', timeIso: null, scope: 'SIM scope',
@@ -75,28 +76,52 @@ describe('the twin tables — every row is the Spanish of a line the module writ
     expect(readTwinTable('no-such-table')).toBeNull();
     expect(twinOf('no-such-table', 'x')).toBeNull();
   });
-  it('every safety-class row is in the review ledger — and as a draft: nothing in this unit is recorded as reviewed', () => {
+  // D112 (pin moved): the blind review recorded the two hazards and REVIEW NEEDED; the four lines that
+  // say "protected work" stay drafts (no blind second translation has agreed with their words yet).
+  it('every safety-class row is in the review ledger — the three recorded by the blind review reviewed, the four "protected work" lines drafts', () => {
     const safety = currentTwinPairs().filter((p) => isSafetyClass(p.en));
     expect(safety.length).toBe(Object.keys(CREW_LINES).length);
+    const recorded: string[] = [CREW_LINES.hazardPowerLines, CREW_LINES.hazardStructures, CREW_LINES.reviewNeeded];
     for (const p of safety) {
       expect(currentSafetyPairs().some((c) => c.en === p.en && c.es === p.es), p.en).toBe(true);
       const e = loadLedger().find((x) => x.en === p.en && x.es === p.es);
-      expect(e?.pass, p.en).toBe('draft');
+      expect(e?.pass, p.en).toBe(recorded.includes(p.en) ? 'reviewed' : 'draft');
+      expect(RECORDED_EN.includes(p.en), p.en).toBe(recorded.includes(p.en));
+      expect(HELD_EN.includes(p.en), p.en).toBe(!recorded.includes(p.en));
     }
   });
 });
 
 describe('work orders — the English payload is byte-identical; a twin rides under es only once it may be served', () => {
-  it('every line is safety-class and still a draft, so no twin is served: the very same payload as before', () => {
+  // D112 (pin moved, meaning kept): the committed ledger now records the two hazards, so their twins
+  // ride under es; PERMIT LIKELY's line is still a draft, so no permitNote twin. The English is untouched.
+  it('the English fields are the very same as before; the recorded hazards ride under es; the held PERMIT LIKELY line does not', () => {
     const p = buildCrewPayload(src());
-    expect('es' in p).toBe(false);
+    const table = readTwinTable('crew-workorder')!;
     expect(p.hazards).toEqual([CREW_LINES.hazardPowerLines, CREW_LINES.hazardStructures]);
     expect(p.permitNote).toBe(CREW_LINES.permitLikely);
-    expect(JSON.stringify(p)).toBe(JSON.stringify({
+    expect(p.es).toEqual({ hazards: [table.hazardPowerLines!.es, table.hazardStructures!.es] });
+    const english = { ...p };
+    delete english.es;
+    expect(JSON.stringify(english)).toBe(JSON.stringify({
       jobId: 'j1', routeOrder: 1, address: 'SIM 1 Simulation Row', city: 'Virginia Beach', timeIso: null, scope: 'SIM scope',
       hazards: [CREW_LINES.hazardPowerLines, CREW_LINES.hazardStructures], permitNote: CREW_LINES.permitLikely,
       photoRefs: [], briefingId: null, requiresBeforeAfterPhotos: true,
     }));
+    // Each held permit line: no twin from the committed ledger. The recorded one (REVIEW NEEDED): its twin.
+    for (const s of ['PERMIT_LIKELY', 'NO_OVERLAY_VERIFY'] as const) {
+      expect(buildCrewPayload(src({ hazardPowerLines: false, hazardStructures: false, permitStatus: s })).es, s).toBeUndefined();
+    }
+    expect(buildCrewPayload(src({ hazardPowerLines: false, hazardStructures: false, permitStatus: null, permitUnreadable: true })).es).toBeUndefined();
+    expect(buildCrewPayload(src({ hazardPowerLines: false, hazardStructures: false, permitStatus: null, permitScreenPending: true })).es).toBeUndefined();
+    expect(buildCrewPayload(src({ hazardPowerLines: false, hazardStructures: false, permitStatus: 'REVIEW_NEEDED' })).es).toEqual({ permitNote: table.reviewNeeded!.es });
+    // No hazard and no permit note: the payload has no es at all — the same object as before.
+    expect('es' in buildCrewPayload(src({ hazardPowerLines: false, hazardStructures: false, permitStatus: null }))).toBe(false);
+  });
+  it('a recorded hazard whose Spanish is edited by ONE character is not served — the English shows', () => {
+    const r = readTwinTable('crew-workorder')!.hazardPowerLines!;
+    expect(twinFor(r.en, { es: r.es, enSha: r.enSha })).toBe(r.es);
+    expect(twinFor(r.en, { es: oneCharEdit(r.es), enSha: r.enSha })).toBeNull();
   });
   it('once reviewed, the twins ride under es with the same field names — hazards by position — and the English is untouched', () => {
     const p = buildCrewPayload(src({ permitStatus: 'NO_OVERLAY_VERIFY' }));
