@@ -1571,8 +1571,10 @@ async function crewLangChange(to) {
   esSwitchInPlace(to);
   crewRedraw();
 }
-// Redraw in place after sign-off: no read, no send. Typed text and picked answers stay; a lookup or
-// a list this phone never read is left as it is (a read still out draws in the new language when it lands).
+// Redraw in place after sign-off: never a send. The gate's words, the work orders and the library
+// redraw from what this phone already read, typed text and picked answers kept; a list still being
+// read draws in the new language when it lands. The one read: questions that never loaded are asked
+// for again (the newest draw owns the panel).
 function crewRedraw() {
   paintSigned();
   if (QUIZ.done) { if (QUIZ.result) quizLogged($('quiz'), QUIZ.result); } else renderQuiz(QUIZ.pool ? QUIZ.context : undefined, true);
