@@ -731,8 +731,9 @@ describe('read-only: the app and the crew page say it plainly', () => {
   });
 
   it('the crew page names read-only on every screen, the owner preview included, and words a refused save', () => {
-    expect(crew).toContain("LINKS_READY.then(() => { if (LINKS === 'readonly') $('dateline').textContent = 'READ-ONLY · ' + $('dateline').textContent; });");
-    expect(crew).toContain("bannerLine.textContent = PREVIEW_BANNER + ' Arbo is read-only: it reads real records and saves nothing.';");
+    // D111 (pins moved, meaning kept): the same lines, one template / one sentence each through tf and T.
+    expect(crew).toContain("LINKS_READY.then(() => { if (LINKS === 'readonly') $('dateline').textContent = tf('READ-ONLY · {date}', { date: $('dateline').textContent }); });");
+    expect(crew).toContain("bannerLine.textContent = PREVIEW_BANNER + ' ' + T('Arbo is read-only: it reads real records and saves nothing.');");
     const crewWhy = new Function('LINKS', `${fnSrc(crew, 'crewWhy')}\nreturn crewWhy;`)('readonly') as (e: unknown) => string;
     expect(crewWhy({ code: 503, message: 'read_only' })).toBe('Arbo is read-only right now — it can look but not save, so nothing was written');
     expect(crewWhy({ code: 503, message: 'link_cut' })).toBe('the office data link is cut on purpose');

@@ -238,7 +238,9 @@ describe('the crew page — a throttled connection is named on every card, never
     expect(GATE.unlocked).toBeUndefined();
     expect(GATE.serverErr).toBe(true);
     expect(GATE.serverMsg).toContain('too many wrong door keys from this connection');
-    expect(GATE.serverMsg).toContain('do not start work');
+    // D111 (pin moved, meaning kept): the stop-work order is its own sentence now, said by refreshGate
+    // right after serverMsg as a safety line — serverOrder says it follows (test/crewDay.test.ts draws it).
+    expect(GATE.serverOrder).toBe(true);
     expect(go.disabled).toBe(false);
   });
 });

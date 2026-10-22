@@ -157,9 +157,13 @@ function esPickEl(tag, cls, obj, field) {
 function esPair(en) {
   const text = String(en);
   if (ES.lang !== 'es' || /^\s*STOP\s*$/.test(text)) return document.createTextNode(text);
+  return esPairOf(text, ES.dict[text]);
+}
+
+/** The Spanish-mode pair for an English line and its Spanish (dictionary or server twin); no Spanish: the English, "en inglés". */
+function esPairOf(text, es) {
   const f = document.createDocumentFragment();
-  const es = ES.dict[text];
-  if (typeof es !== 'string') {
+  if (typeof es !== 'string' || !es) {
     const s = document.createElement('span');
     s.setAttribute('lang', 'en');
     s.textContent = text;
@@ -182,6 +186,78 @@ function esPair(en) {
   f.appendChild(top);
   f.appendChild(under);
   return f;
+}
+
+// R27 Phase A (D111): the drawing helpers. Each puts its words INTO the page's own node, so English
+// stays byte-identical (node.textContent is the English as written) and nothing in English comes from
+// another document — a page harness's own fake nodes keep working. In Spanish a pair goes in ONE
+// span.es-pair holder, so a flex row (a hazard line's ⚠ beside its words) keeps it as one item.
+//
+// Review round (D111, UI 1 + 3): a safety line held back (its review not recorded) is never English
+// alone under Spanish words — a Spanish reader would take the Spanish reason before it for the whole
+// message and never read the order. It wears a Spanish POINTER first, on its own line: it says a safety
+// notice follows in English and to have someone read it — it does not translate the order (that waits
+// for its review). Then the English starts on its own line, so nobody has to find where the Spanish ends.
+function esPairInto(node, prefix, text, es) {
+  node.textContent = prefix;
+  const box = document.createElement('span');
+  box.className = 'es-pair';
+  if (typeof es !== 'string' || !es) {
+    box.className = 'es-pair es-held';
+    const why = document.createElement('span');
+    why.className = 'es-held-why';
+    why.setAttribute('lang', 'es');
+    why.textContent = T('Safety notice — only in English for now; ask someone to read it to you:');
+    box.appendChild(why);
+  }
+  box.appendChild(esPairOf(text, es));
+  node.appendChild(box);
+  return node;
+}
+
+/**
+ * A safety or legal line from the door's dictionary, said into `node` (R27 #4): in English the line
+ * as written; in Spanish the Spanish first and the full English beneath — or, while its review is not
+ * recorded (the entry is held back), the English marked "en inglés". The key is written out at the
+ * call site, as T's is, so parity can check it. STOP alone is never translated.
+ * `lead` (optional) is the sentence before the line, already in the page's language — a failure's
+ * reason before its stop-work order. In English the node holds ONE text node, lead + line, exactly
+ * as the page wrote it before (D111).
+ */
+function esSay(node, en, lead) {
+  const text = String(en);
+  const pre = lead || '';
+  if (ES.lang !== 'es' || /^\s*STOP\s*$/.test(text)) { node.textContent = pre + text; return node; }
+  return esPairInto(node, pre, text, ES.dict[text]);
+}
+
+const esTwinOf = (obj, field) => (obj && obj.es && typeof obj.es[field] === 'string' && obj.es[field] ? obj.es[field] : null);
+const esField = (obj, field) => (obj && obj[field] !== null && obj[field] !== undefined ? String(obj[field]) : '');
+
+/**
+ * A safety line a server module wrote (obj[field]) and its twin (obj.es[field]), said into `node` as
+ * a pair: English prefix + the English field; Spanish prefix + the twin over the full English, or the
+ * English marked "en inglés" when the server served no twin (stale, unreviewed or none).
+ */
+function esSayPick(node, obj, field, prefix) {
+  const pre = prefix || '';
+  const en = esField(obj, field);
+  if (ES.lang !== 'es') { node.textContent = pre + en; return node; }
+  return esPairInto(node, pre, en, esTwinOf(obj, field));
+}
+
+/**
+ * Any other server line and its twin, said into `node`: English prefix + the English field; Spanish
+ * prefix + the twin, or the English with lang="en" and "en inglés" (never a blank).
+ */
+function esSayTwin(node, obj, field, prefix) {
+  const pre = prefix || '';
+  const en = esField(obj, field);
+  const tw = ES.lang === 'es' ? esTwinOf(obj, field) : null;
+  if (tw) { node.textContent = pre + tw; return node; }
+  node.textContent = pre + en;
+  if (ES.lang === 'es') { node.setAttribute('lang', 'en'); node.appendChild(esEnMark()); }
+  return node;
 }
 
 // ---- Dates and numbers ----------------------------------------------------

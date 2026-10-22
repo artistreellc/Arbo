@@ -1,0 +1,23 @@
+{
+  "Report a near miss": "Reporte un casi accidente (near miss)",
+  "Something almost went wrong? Say it here — nobody gets blamed or written up. It’s filed under your crew code, and the office turns it into a lesson for the next crew. Leave other people’s names out.": "¿Algo casi salió mal? Cuéntelo aquí — a nadie se le culpa ni se le amonesta por escrito. Queda guardado con su código de cuadrilla, y la oficina lo convierte en una lección para la próxima cuadrilla. No escriba los nombres de otras personas.",
+  "What almost happened?": "¿Qué casi pasó?",
+  "File it": "Enviar reporte",
+  "Filing is off while the office data link is cut on purpose — tell the office directly.": "No se pueden enviar reportes mientras la conexión con los registros de la oficina está cortada a propósito — avise directamente a la oficina.",
+  "Filing is off while Arbo is read-only — tell the office directly.": "No se pueden enviar reportes mientras Arbo está en solo lectura — avise directamente a la oficina.",
+  "Type what almost happened — even a few words.": "Escriba lo que casi pasó — aunque sean unas pocas palabras.",
+  "Tell the app who is on this phone first, up at the top.": "Primero dígale a la app quién usa este teléfono, arriba de todo.",
+  "Did not save — the office did not recognise your crew code.": "No se guardó — la oficina no reconoció su código de cuadrilla.",
+  "Did not save — {why}.": "No se guardó — {why}.",
+  "Tell the office directly.": "Avise directamente a la oficina.",
+  "Filed. Thank you — that is how nobody gets hurt next time.": "Enviado. Gracias — así es como nadie se lastima la próxima vez.",
+  "Logged under: {category}.": "Registrado como: {category}.",
+  "This crew code is off the roster — the office will see that.": "Este código de cuadrilla ya no está en la lista del personal — la oficina lo va a ver.",
+  "struck by": "golpe por objeto",
+  "electrical": "eléctrico",
+  "fall": "caída",
+  "cutting": "corte",
+  "vehicle": "vehículo",
+  "rigging": "aparejo (rigging)",
+  "environmental": "ambiental"
+}

@@ -14,6 +14,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { glossaryPairs } from './glossary.js';
 import { twinFor, enSha } from './twin.js';
 import { isSafetyClass, type CurrentPair } from './ledger.js';
+import { currentTwinPairs } from './serverTwins.js';
 
 export type Door = 'app' | 'crew';
 export const DOORS: readonly Door[] = ['app', 'crew'];
@@ -76,12 +77,16 @@ export function loadDoorDictionary(door: Door, dir: URL = DIR): DoorDictionary {
   return dict;
 }
 
-/** Every safety-class English/Spanish pair in the repo — what the review ledger must name. */
-export function currentSafetyPairs(dir: URL = DIR): CurrentPair[] {
+/**
+ * Every safety-class English/Spanish pair in the repo — what the review ledger must name: the
+ * glossary, the door dictionaries and (D111) the server twin tables (src/i18n/serverTwins.ts).
+ */
+export function currentSafetyPairs(dir: URL = DIR, twinDir?: URL): CurrentPair[] {
   const pairs: CurrentPair[] = glossaryPairs().filter((p) => isSafetyClass(p.en)).map(({ en, es, where }) => ({ en, es, where }));
   for (const u of unitFiles(dir)) {
     const entries = readUnit(u.file, dir) ?? {};
     for (const [en, es] of Object.entries(entries)) if (isSafetyClass(en)) pairs.push({ en, es, where: `dict:${u.unit}` });
   }
+  for (const p of currentTwinPairs(twinDir)) if (isSafetyClass(p.en)) pairs.push(p);
   return pairs;
 }

@@ -1403,7 +1403,7 @@ export async function recordBriefingAck(input: {
  * day, so yesterday's briefing could be signed as today's. A row with no
  * forDay never matches, so it is never served. Null when none for that day.
  */
-export async function todaysBriefing(day: string): Promise<{ id: string; body: string; standardRefs: string[] } | null> {
+export async function todaysBriefing(day: string): Promise<{ id: string; body: string; standardRefs: string[]; esTwin?: unknown } | null> {
   const db = getDb();
   const res = await db.from('training_item')
     .select('id, body, topic')
@@ -1415,10 +1415,13 @@ export async function todaysBriefing(day: string): Promise<{ id: string; body: s
     .maybeSingle();
   if (res.error) throw res.error;
   if (!res.data) return null;
-  const raw = res.data.body as { text?: string; standardRefs?: string[] } | string;
+  const raw = res.data.body as { text?: string; standardRefs?: string[]; es?: unknown } | string;
   const text = typeof raw === 'string' ? raw : raw.text ?? '';
   const refs = typeof raw === 'string' ? [] : raw.standardRefs ?? [];
-  return { id: res.data.id as string, body: text, standardRefs: refs };
+  // R27 (D111): a reviewed Spanish twin the office kept beside the English (body.es), passed up
+  // as it is stored — the API serves it only under the plan's rules (src/i18n/dataTwins.ts).
+  const esTwin = typeof raw === 'string' ? undefined : raw.es;
+  return { id: res.data.id as string, body: text, standardRefs: refs, ...(esTwin !== undefined ? { esTwin } : {}) };
 }
 
 /**

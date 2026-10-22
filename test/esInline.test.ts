@@ -14,6 +14,7 @@ import { loadDoorDictionary, unitFiles, readUnit } from '../src/i18n/dictionarie
 import { esGateProblems } from '../src/i18n/gates.js';
 import { findBannedEs } from '../src/i18n/banList.js';
 import { RUNTIME_SRC } from './support/i18nRuntime.js';
+import { isSafetyClass, loadLedger } from '../src/i18n/ledger.js';
 
 const raw = (f: string) => readFileSync(new URL(`../src/app/${f}`, import.meta.url), 'utf8');
 const MARK = '<!--ARBO:I18N-->';
@@ -114,7 +115,8 @@ function usedKeys(src: string, file: string): { keys: string[]; computed: string
   const visit = (n: ts.Node) => {
     if (ts.isCallExpression(n) && ts.isIdentifier(n.expression)) {
       const name = n.expression.text;
-      const args = name === 'tn' ? [n.arguments[1], n.arguments[2]] : name === 'T' || name === 'tf' || name === 'esPair' ? [n.arguments[0]] : [];
+      // R27 Phase A (D111): esSay(node, 'line') says a dictionary line into a node — its key is the second argument.
+      const args = name === 'tn' ? [n.arguments[1], n.arguments[2]] : name === 'T' || name === 'tf' || name === 'esPair' ? [n.arguments[0]] : name === 'esSay' ? [n.arguments[1]] : [];
       for (const a of args) {
         const k = lit(a);
         if (k !== null) keys.push(k); else computed.push(`${name}(${a ? a.getText(sf) : ''})`);
@@ -133,7 +135,7 @@ describe('parity — no missing key, no stale key, per door', () => {
       const page = usedKeys(pageScripts(raw(file)), file);
       const runtime = usedKeys(RUNTIME_SRC, 'runtime.js');
       // The runtime's own tn passes its chosen form on to tf — that is the implementation, not a key.
-      expect(page.computed, 'a T/tf/tn/esPair key must be written out, so it can be checked').toEqual([]);
+      expect(page.computed, 'a T/tf/tn/esPair/esSay key must be written out, so it can be checked').toEqual([]);
       const used = new Set([...page.keys, ...runtime.keys]);
       const dict = new Set(unitFiles().filter((u) => u.door === door).flatMap((u) => Object.keys(readUnit(u.file) ?? {})));
       expect([...used].filter((k) => !dict.has(k)), 'missing from the dictionary').toEqual([]);
@@ -151,7 +153,14 @@ describe('every dictionary entry in the repo passes the ban list and every gate,
         expect(findBannedEs(es), `${en} → ${es}`).toEqual([]);
         expect(esGateProblems(en, es), `${en} → ${es}`).toEqual([]);
       }
-      expect(loadDoorDictionary(u.door).held.filter((h) => h.unit === u.unit)).toEqual([]);
+      // D111 (pin moved, meaning kept): nothing is held back but a safety line waiting for its review —
+      // a safety-class key whose exact pair the ledger names as a draft. A banned or unservable entry,
+      // or a safety line with no ledger entry at all, still fails here.
+      const held = loadDoorDictionary(u.door).held.filter((h) => h.unit === u.unit);
+      for (const h of held) {
+        expect(isSafetyClass(h.key), `${u.unit}: ${h.key} is held back`).toBe(true);
+        expect(loadLedger().some((e) => e.en === h.key && e.es === entries![h.key] && e.pass === 'draft'), `${u.unit}: ${h.key} has no draft ledger entry`).toBe(true);
+      }
     });
   }
 });

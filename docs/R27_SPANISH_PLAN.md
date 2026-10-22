@@ -1,15 +1,30 @@
 # R27 — The Spanish version: the build plan
 
-**Status (2026-10-22):** Foundation built (D110, branch `es-foundation`) — the
-runtime (`T`, `tf`, `tn`, `esPick`, `esPair`), per-door dictionaries inlined at
-serve time, both switches (Office → Appearance, Settings → Appearance and
-the key screen; the crew door's header toggle), the glossary, the ban list in
-every never-say-clear guard, `withEs`/`enSha` twins, the review ledger and the
-customer fence. Review round done (15 findings fixed, D110). Nothing is translated yet beyond the switches' own words:
-Spanish mode shows every screen in English, marked "en inglés". The plan's
-safety-label table is in the ledger as a draft, so no safety label is served
-in Spanish until its review is recorded. **Phase A is next** (crew door
-first). Not deployed.
+**Status (2026-10-22):** Foundation built and merged (D110). **Phase A unit 1,
+the crew door, built** (D111, branch `es-crew`): every crew screen and state
+wrapped (one literal per sentence, values as `tf` slots, counts as `tn`), nine
+crew units (`src/app/i18n/crew-*.es.json`, first translation pass), the server
+text the crew door shows twinned (`src/i18n/twins/crew-workorder.es.json`,
+`crew-library.es.json`; the day's briefing and quiz items through
+`src/i18n/dataTwins.ts`), and a change after sign-off redraws every panel in
+place. **Language phase, first round (D111 review round, 2026-10-22):** a
+blind second translation of all 187 strings and a back-translation of the
+safety lines ran; two meaning drifts were fixed (the library's above-level
+warning, the near-miss "written up" promise), and "protected work", roster,
+data link and "on site" were re-worded (glossary). **No safety-class review is
+recorded yet:** the back-translation was not blind (its translator had seen the
+English), and four permit lines changed after it — so the three stop-work
+orders and the seven work-order hazard and permit lines stay drafts, and
+Spanish mode shows each in English under a Spanish pointer ("Aviso de seguridad
+— por ahora solo en inglés; pídale a alguien que se lo lea:"). Next for this
+unit: a back-translation of the ten safety lines made WITHOUT the English, then
+their reviews recorded in `src/i18n/reviewed.json`, then the phone read-through
+by a Spanish-reading crew member — Mike named "rudy or marco or temo" (R29 #3)
+— before crews rely on it (`docs/GO_LIVE.md` §2). A briefing or quiz question
+whose English holds a safety line (911, 811, Dominion, stop work, a badge) is
+never served in Spanish from its row until Mike rules how those get reviewed
+(questions below). Phase A's other units (the owner app's screens) come after.
+Not deployed.
 
 Mike, 2026-10-20: *"The whole app needs to be able to have a Spanish version
 as well for our Spanish speaking, employees"* (ruling R27). This is the plan
@@ -222,7 +237,10 @@ These stay byte-identical, and tests prove it by output:
    Until each lands it shows English with "en inglés", never a blank.
 5. A second translation and review wave, screenshots in both languages,
    then the PR and deploy.
-6. Mike's phone read-through by a Spanish-speaking crew member.
+6. Mike's phone read-through by a Spanish-speaking crew member — Rudy, Marco
+   or Temo (Mike, R29 #3: *"rudy or marco or temo"*) — of the briefing, the quiz
+   and the work orders, before crews rely on them. Still owed for the crew door
+   (D111); it is separate from, and comes after, the recorded reviews.
 
 ## Questions for Mike (each has a default; none blocks the build)
 
@@ -239,3 +257,18 @@ These stay byte-identical, and tests prove it by output:
   separate from R27.
 - The installed app's home-screen name stays "Arbo" (a phone freezes it at
   install).
+- **Added by D111's review round** (defaults hold until Mike answers):
+  - *Safety lines inside the office's own text.* The committed ledger cannot
+    hold a per-day briefing, and a quiz option has no room for the English
+    beneath. Default: a briefing or question whose English holds a safety line
+    is not served in Spanish from its row — it shows in English, marked. How
+    should those be reviewed and shown?
+  - *The sign-off language record.* "A briefing signed in Spanish records the
+    language; an English fallback is flagged on the Training board" needs a new
+    column on the paid sign-off record (`training_event`, a live migration) and
+    an owner-app board change. Default: not built until Mike says go.
+  - *A wider safety class.* The attestation ("I read this briefing…"), the
+    near-miss no-blame promise, the paid-time lines and the library's
+    above-level warning are served in Spanish without the ledger (the class is
+    the badges and the 911/811/Dominion/stop-work lines). Default: kept as is;
+    should they join the ledger (English shown until reviewed)?

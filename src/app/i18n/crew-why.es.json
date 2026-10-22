@@ -1,0 +1,19 @@
+{
+  "too many wrong door keys from this connection — wait a minute and try again, or switch between Wi-Fi and cellular": "demasiadas claves de la puerta incorrectas desde esta conexión — espere un minuto y vuelva a intentarlo, o cambie entre Wi-Fi y datos móviles",
+  "this crew code is off the roster — check with the office": "este código de cuadrilla ya no está en la lista del personal — consulte con la oficina",
+  "the office doesn’t know this crew code — check it with the office": "la oficina no reconoce este código de cuadrilla — revíselo con la oficina",
+  "Arbo couldn’t read the roster just now": "Arbo no pudo leer la lista del personal en este momento",
+  "no crew door key is set up on the server yet": "todavía no hay una clave de la puerta de la cuadrilla configurada en el servidor",
+  "the crew door is locked on the server right now — tell the office": "la puerta de la cuadrilla está cerrada en el servidor ahora mismo — avise a la oficina",
+  "Arbo has no sign-off on file for this crew code today — the office has to log it": "Arbo no tiene hoy ninguna firma registrada para este código de cuadrilla — la oficina tiene que registrarla",
+  "that was not today’s briefing": "esa no era la charla de seguridad de hoy",
+  "Arbo couldn’t check your sign-off": "Arbo no pudo revisar su firma",
+  "this phone’s clock gave times the office can’t use — check the phone’s date and time": "el reloj de este teléfono dio horas que la oficina no puede usar — revise la fecha y la hora del teléfono",
+  "the office couldn’t use what this phone sent": "la oficina no pudo usar lo que envió este teléfono",
+  "the door key on this phone no longer opens the crew door — ask the office for the new one": "la clave de la puerta de este teléfono ya no abre la puerta de la cuadrilla — pida la nueva a la oficina",
+  "not part of the practice data": "no es parte de los datos de práctica",
+  "Arbo is read-only right now — it can look but not save, so nothing was written": "Arbo está en solo lectura ahora mismo — puede mirar pero no guardar, así que no se guardó nada",
+  "the office data link is cut on purpose": "la conexión con los registros de la oficina está cortada a propósito",
+  "not set up on the server yet": "todavía no está configurado en el servidor",
+  "the office didn’t answer": "la oficina no contestó"
+}
