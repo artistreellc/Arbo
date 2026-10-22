@@ -20,8 +20,9 @@ describe('Agents desk', () => {
   const agents = fn('renderAgents');
 
   it('a feed left out on purpose is NOT RUN, and a desk missing inputs says so in words', () => {
-    expect(html).toContain("notrun: ['NOT RUN', 'info']");
-    expect(html).toContain("degraded: ['MISSING INPUTS', 'watch']");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same words and tones, said through T.
+    expect(html).toContain("notrun: [T('NOT RUN'), 'info']");
+    expect(html).toContain("degraded: [T('MISSING INPUTS'), 'watch']");
     expect(html).not.toContain("'DEGRADED'");
   });
 
@@ -29,7 +30,8 @@ describe('Agents desk', () => {
     expect(agents).toContain('Run only looks — it never changes anything.');
     expect(agents).not.toContain('not wired in this run');
     expect(agents).not.toContain('hourly sweep');
-    expect(agents).toContain("el('div', 'feed-state unset', 'AI off — plain counts only, no AI key yet.')");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same short line, said through T.
+    expect(agents).toContain("el('div', 'feed-state unset', T('AI off — plain counts only, no AI key yet.'))");
     expect(agents).not.toContain('ANTHROPIC_API_KEY');
   });
 
@@ -41,8 +43,9 @@ describe('Agents desk', () => {
 
   it('a kept result says when it ran, and warns only once it is stale', () => {
     // QA round 3: a fresh time rides on the help line; a stale one is its own warning line.
-    expect(agents).toContain("if (stale) v.appendChild(el('div', 'feed-state unset', 'Ran ' + fmtWhen(ranAt) + ' — over 15 minutes old. Run again for a current read.'));");
-    expect(agents).toContain("(ranAt && !stale ? 'Ran ' + fmtWhen(ranAt) + '. ' : '')");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the stale line and the help line's time, each one template with the time a slot.
+    expect(agents).toContain("if (stale) v.appendChild(el('div', 'feed-state unset', tf('Ran {when} — over 15 minutes old. Run again for a current read.', { when: fmtWhen(ranAt) })));");
+    expect(agents).toContain("ranAt && !stale ? tf('Ran {when}. Run only looks — it never changes anything.', { when: fmtWhen(ranAt) })");
     expect(agents).not.toContain('not live');
   });
 
@@ -60,18 +63,22 @@ describe('Learn desk', () => {
   const learn = fn('renderLearn');
 
   it('the headline tiles count what was checked, not the catalog, and name the unanswered', () => {
-    expect(learn).toContain("tile(exercised + '/' + ruleIds.length, 'rules checked')");
-    expect(learn).toContain("tile(ruleIds.length, 'rules on file')");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same tile words, said through T.
+    expect(learn).toContain("tile(exercised + '/' + ruleIds.length, T('rules checked'))");
+    expect(learn).toContain("tile(ruleIds.length, T('rules on file'))");
     expect(learn).not.toContain('rules tested');
-    expect(learn).toContain("el('small', '', r.unhandled + ' can’t answer yet')");
-    expect(html).toContain("const BRAIN_LABEL = { scripted: 'rule check', opus: 'Opus' };");
-    expect(learn).toContain("'. Clears when the app is redeployed.'");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the small line's count a slot, the rule check's name through T, the clearing said in both run lines.
+    expect(learn).toContain("el('small', '', tf('{n} can’t answer yet', { n: r.unhandled }))");
+    expect(html).toContain("const BRAIN_LABEL = { scripted: T('rule check'), opus: 'Opus' };");
+    expect(learn).toContain("tf('Last Opus run: {when}. Clears when the app is redeployed.'");
+    expect(learn).toContain("tf('Last rule check: {when}. Clears when the app is redeployed.'");
     expect(learn).not.toContain('r.honesty');
   });
 
   it('every waiting lesson is accounted for: rule breaks first, and the rest named', () => {
     expect(learn).toContain(".sort((a, b) => lessonTier(a) - lessonTier(b) || b.scenarioIds.length - a.scenarioIds.length)");
-    expect(learn).toContain("'Showing 25 of ' + lessons.length");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same line, the count of all a slot.
+    expect(learn).toContain("'Showing 25 of {all} — answer these and the other {n} move up.', { all: lessons.length }");
   });
 
   it('lesson cards are headed in words, and the evidence is labelled as the check’s note', () => {
@@ -79,7 +86,8 @@ describe('Learn desk', () => {
     for (const word of ["'Missed something'", "'Did what it shouldn’t'", "'Broke a rule'"]) expect(html).toContain(word);
     expect(learn).toContain('lessonLabel(l.rule)');
     expect(learn).not.toContain("l.rule.replace(/_/g, ' ')");
-    expect(learn).toContain("'What the check found: '");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same label, one template with the check's note as its value.
+    expect(learn).toContain("tf('What the check found: {found}', { found: l.evidence })");
     expect(learn).not.toContain('What it said');
   });
 
@@ -99,7 +107,8 @@ describe('Learn desk', () => {
   it('by-desk bars run in the caption’s order, and a rule break is the loud colour', () => {
     expect(html).toContain('.learnbar .b{background:var(--emergency)}');
     expect(learn).toContain('bar.appendChild(pass); bar.appendChild(brk); bar.appendChild(mis); bar.appendChild(un);');
-    expect(learn).toContain("' can’t answer yet'");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the fourth segment's words, a template with its count.
+    expect(learn).toContain("tf('{n} can’t answer yet', { n: s.unhandled })");
   });
 
   it('nothing on either desk says "clear"', () => {

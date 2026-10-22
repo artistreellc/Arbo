@@ -39,12 +39,13 @@ describe('More', () => {
 
   it('tiles line up, say what they open, and Settings has one door (the header button)', () => {
     expect(html).toMatch(/\.gtile\{[^}]*justify-content:flex-start/);
-    expect(more).toContain("tile('i-crew', 'Crew', 'What the crew sees'");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same tile, its words through T.
+    expect(more).toContain("tile('i-crew', T('Crew'), T('What the crew sees')");
     // Direction B P14: More is Office — the rest of Arbo sits under "Also here", and Numbers ("which areas &
     // campaigns pay") is a counted desk tile above it (OFFICE_DESKS), still one tap away.
-    expect(more).toContain("el('div', 'panel-title', 'Also here')");
+    expect(more).toContain("el('div', 'panel-title', T('Also here'))"); // pin moved (R27 Phase A, owner app c): through T
     expect(html).toMatch(/^const OFFICE_DESKS = .*\{ view: 'perf', icon: 'i-numbers'/m);
-    expect(more).toContain("el('div', 'panel-title', 'Install')");
+    expect(more).toContain("el('div', 'panel-title', T('Install'))"); // pin moved (R27 Phase A, owner app c): through T
     for (const gone of ['Each desk has its own agent', 'Crew door', 'Money, fleet, crew', 'On your home screen', 'Links, Google, ZIP', 'renderSettings']) {
       expect(more, `More still carries "${gone}"`).not.toContain(gone);
     }

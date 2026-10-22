@@ -115,8 +115,9 @@ describe('Permit Desk — result and rule cards (QA round)', () => {
 describe('Measure desk (QA round)', () => {
   it('the status line follows the result on every redraw — never "Nothing measured yet." above one', () => {
     expect(measure).not.toContain("el('div', 'storm-muted', 'Nothing measured yet.')");
-    expect(measure).toContain("? 'Measured ' + LIDAR_LAST.file.points.toLocaleString() + ' points from ' + LIDAR_LAST.file.name + '.'");
-    expect(measure).toContain(": (LIDAR_UP_CHANGED ? 'Up changed — open the scan file again to measure with it.' : 'Nothing measured yet.')");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the result's line first (one template: the count, shown with esNum, and the file's name as slots), the two empty states after.
+    expect(measure).toContain("? tf('Measured {n} points from {file}.', { n: esNum(LIDAR_LAST.file.points), file: LIDAR_LAST.file.name })");
+    expect(measure).toContain(": (LIDAR_UP_CHANGED ? T('Up changed — open the scan file again to measure with it.') : T('Nothing measured yet.'))");
   });
 
   it('changing Up drops the old-axis result, including one still being read', () => {
@@ -124,23 +125,29 @@ describe('Measure desk (QA round)', () => {
     expect(measure).toContain('if (LIDAR_LAST) LIDAR_UP_CHANGED = true;');
     expect(measure).toContain('LIDAR_LAST = null;');
     expect(measure).toContain('if (LIDAR_UP !== upSent) return;');
-    expect(measure).toContain("[['', 'Auto'], ['y', 'Y is up'], ['z', 'Z is up']]");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same three choices, their words through T.
+    expect(measure).toContain("[['', T('Auto')], ['y', T('Y is up')], ['z', T('Z is up')]]");
   });
 
   it('the status line names the axis it was read with, in plain words (QA round 2: upWords)', () => {
-    expect(html).toContain("' Read ' + ua.axis.toUpperCase() + ' as up — '");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the axis upper-cased, each reason one whole sentence after a leading space.
+    expect(html).toContain("const axis = ua.axis.toUpperCase();");
+    expect(html).toContain("return ' ' + (ua.source === 'override' ? tf('Read {axis} as up — you chose this.', { axis })");
     expect(measure).toContain('upWords(LIDAR_LAST.file.upAxis)');
     expect(measure).toContain('upWords(body.file.upAxis)');
     expect(result).not.toContain("'Read with '");
   });
 
   it('warnings (units first) sit above the tiles; the duplicate paragraph and trunk-fit line are gone', () => {
-    const warn = result.indexOf("for (const w of m.warnings) wrap.appendChild(el('div', 'late', w));");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the warnings, the engine's own lines, are drawn as before (English, marked in Spanish) above the tiles.
+    const warn = result.indexOf("for (const w of m.warnings) wrap.appendChild(esSayTwin(el('div', 'late'), { line: w }, 'line'));");
     expect(warn).toBeGreaterThan(-1);
     expect(warn).toBeLessThan(result.indexOf('wrap.appendChild(hud);'));
     expect(result).not.toContain("el('div', 'scope', r.summary)");
     expect(result).not.toContain('Trunk fit');
-    expect(result).toContain("(k === 'dbh' && m.dbhFit ? '; scatter ' + round(m.dbhFit.rmseCm / 2.54, 2) + ' in (' + round(m.dbhFit.rmseCm, 1) + ' cm)' : '')");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the scatter still inches first, centimetres in brackets — the same figures as slots of the line's own template.
+    expect(result).toContain("k === 'dbh' && m.dbhFit");
+    expect(result).toContain("tf('{what} — {level}: {why}; scatter {in} in ({cm} cm)', Object.assign(say, { in: round(m.dbhFit.rmseCm / 2.54, 2), cm: round(m.dbhFit.rmseCm, 1) }))");
   });
 
   it('tiles lead in inches and feet; the how-to agrees with the 4 m clean range', () => {
@@ -153,7 +160,8 @@ describe('Measure desk (QA round)', () => {
   });
 
   it('a refusal never ends in a double full stop', () => {
-    expect(measure).toContain(".replace(/\\.\\s*$/, '') + '. No number is better than a wrong one.'");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the server's detail still loses its own full stop before the template adds one.
+    expect(measure).toContain("tf('Not measured — {why}. No number is better than a wrong one.', { why: String(body.detail || body.error || tf('server said {code}', { code: res.status })).replace(/\\.\\s*$/, '') })");
   });
 
   it('the sign-off is readable: ink-3, balanced wrap', () => {

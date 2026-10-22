@@ -148,7 +148,8 @@ describe('A2/A3 — on demand, every row says one plain fact', () => {
     expect(cut.length).toBeGreaterThan(10);
     for (const i of cut) expect(i.detail).toBe('cut on purpose');
     const agents = fn('renderAgents');
-    expect(agents).toContain("el('div', 'feed-state cut', 'Data links are cut on purpose until each one is checked — rows marked CUT were not read.')");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same once-said line, through T.
+    expect(agents).toContain("el('div', 'feed-state cut', T('Data links are cut on purpose until each one is checked — rows marked CUT were not read.'))");
     expect(agents).not.toContain('ARBO_');
   });
 
@@ -162,7 +163,8 @@ describe('A4 — no spec numbering, slashes or machine phrasing on the cards', (
 
   it('findings, proposals and the AI summary pass through noRefs', () => {
     expect(agents).toContain('noRefs(f.text)');
-    expect(agents).toContain("'Proposal for you: ' + noRefs(p.text)");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the proposal still passes through noRefs, as the value of its one template.
+    expect(agents).toContain("tf('Proposal for you: {text}', { text: noRefs(p.text) })");
     expect(agents).toContain('noRefs(s.text)');
     const noRefs = pageConst<(s: string) => string>('noRefs');
     expect(noRefs('1 library draft awaits a named vetter (§4.7).')).toBe('1 library draft awaits a named vetter.');
@@ -193,7 +195,8 @@ describe('A5 — the notes above the desks', () => {
 
   it('when it ran is plain help; past 15 minutes it is a warning', () => {
     // QA round 3: the time rides on the help line; stale, it is a warning line of its own.
-    expect(agents).toContain("'Ran ' + fmtWhen(ranAt)");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: when it ran is a slot in the line's one template.
+    expect(agents).toContain("tf('Ran {when}. Run only looks — it never changes anything.', { when: fmtWhen(ranAt) })");
     expect(agents).toContain("if (stale) v.appendChild(el('div', 'feed-state unset',");
     expect(agents).not.toContain('these results are as of then');
     // A stale line keeps the same gap under the Run button as the help line does.
@@ -203,15 +206,17 @@ describe('A5 — the notes above the desks', () => {
 
   it('the run note is short; AI off is a not-set-up line', () => {
     // QA round 3: the hourly check is named on each NOT RUN row (sections.ts hourlyOnly), not repeated here.
-    expect(agents).toContain("'Run only looks — it never changes anything.'");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same lines, said through T.
+    expect(agents).toContain("T('Run only looks — it never changes anything.')");
     expect(agents).not.toContain('morning briefing run on the hourly check');
-    expect(agents).toContain("el('div', 'feed-state unset', 'AI off — plain counts only, no AI key yet.')");
-    expect(agents).toContain("el('div', 'storm-muted', 'Brain: Opus online — each desk gets a plain-English read.')");
+    expect(agents).toContain("el('div', 'feed-state unset', T('AI off — plain counts only, no AI key yet.'))");
+    expect(agents).toContain("el('div', 'storm-muted', T('Brain: Opus online — each desk gets a plain-English read.'))");
   });
 
   it('a roster that could not be read is named in the feed words', () => {
-    expect(agents).toContain("feedState(e, 'The agent roster', 'an empty roster')");
-    expect(fn('renderLearn')).toContain("feedState(e, 'The training ground', 'an empty catalog')");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same names, said through T (the shared feed words take them as values).
+    expect(agents).toContain("feedState(e, T('The agent roster'), T('an empty roster'))");
+    expect(fn('renderLearn')).toContain("feedState(e, T('The training ground'), T('an empty catalog'))");
   });
 });
 
@@ -222,7 +227,8 @@ describe('L1 — By desk tells a rule break from a missed behaviour', () => {
     expect(html).toContain('.learnbar .b{background:var(--emergency)}.learnbar .m{background:var(--warning)}');
     expect(learn).toContain("const brk = el('i', 'b'); brk.style.width = (s.total ? (s.broke / s.total) * 100 : 0) + '%';");
     expect(learn).toContain("const mis = el('i', 'm'); mis.style.width = (s.total ? (s.missed / s.total) * 100 : 0) + '%';");
-    expect(learn).toContain("s.passed + ' passed · ' + s.broke + ' broke a rule · ' + s.missed + ' missed something · ' + s.unhandled + ' can’t answer yet'");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the caption's four parts in the same order, each its own template, joined by the middle dot.
+    expect(learn).toContain("[tf('{n} passed', { n: s.passed }), tf('{n} broke a rule', { n: s.broke }), tf('{n} missed something', { n: s.missed }), tf('{n} can’t answer yet', { n: s.unhandled })].join(' · ')");
     expect(learn).not.toContain('s.failed - s.unhandled');
   });
 
@@ -244,12 +250,14 @@ describe('L2 — lesson cards in words', () => {
     expect(lessonLabel('no_date_promise')).toBe('Broke a rule');
     expect(lessonLabel('unhandled:front_desk')).toBe('Front Desk · can’t answer yet');
     expect(learn).toContain("el('div', 'loop-kind lesson-kind')");
-    expect(learn).toContain("k.appendChild(el('span', 'n', plural(l.scenarioIds.length, 'scenario')));");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the count in its own span, one and many forms through tn.
+    expect(learn).toContain("k.appendChild(el('span', 'n', tn(l.scenarioIds.length, '{n} scenario', '{n} scenarios')));");
     expect(html).toContain('.lesson-kind{display:flex;justify-content:space-between;gap:10px}.lesson-kind .n{white-space:nowrap;font-weight:600}');
   });
 
   it('a lesson names its situations behind a tap', () => {
-    expect(learn).toContain("dd.appendChild(el('summary', '', 'Which situations'));");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same summary, said through T.
+    expect(learn).toContain("dd.appendChild(el('summary', '', T('Which situations')));");
     expect(learn).toContain('cat.scenarios.find((s) => s.id === id)');
   });
 
@@ -274,21 +282,25 @@ describe('L3 — Learn layout and quoted evidence', () => {
   });
 
   it('the passed tile keeps a one-word label; what it could not answer is its small line', () => {
-    expect(learn).toContain("tile(Math.round(r.passRate * 100) + '%', 'passed', r.passRate >= 0.9 ? 'ok-t' : 'warn', r.unhandled > 0 ? el('small', '', r.unhandled + ' can’t answer yet') : null)");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the one-word label through T, the small line's count a slot.
+    expect(learn).toContain("tile(Math.round(r.passRate * 100) + '%', T('passed'), r.passRate >= 0.9 ? 'ok-t' : 'warn', r.unhandled > 0 ? el('small', '', tf('{n} can’t answer yet', { n: r.unhandled })) : null)");
     expect(learn).not.toContain("'passed · '");
   });
 
   it('both run buttons share one shape; the problems rows read as card titles', () => {
     // QA round 3: a short label either way, so the pair fits one row; why Opus is off is the line below.
-    expect(learn).toContain("el('button', 'actbtn alt', 'Run with Opus')");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same label, said through T.
+    expect(learn).toContain("el('button', 'actbtn alt', T('Run with Opus'))");
     expect(html).toContain('.actbtn.alt{background:var(--card);color:var(--ink-1);border:1px solid var(--border);box-shadow:none}');
     expect(learn).toContain("sum.appendChild(el('span', 'who', SECTION_NAMES[sec] || sec));");
-    expect(learn).toContain("sum.appendChild(el('span', 'n', plural(list.length, 'problem')));");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the count in its own span, one and many forms through tn.
+    expect(learn).toContain("sum.appendChild(el('span', 'n', tn(list.length, '{n} problem', '{n} problems')));");
     expect(html).toContain('.agent-law.card summary .who{flex:1;font-size:17px}.agent-law.card summary .n{flex:none;font-size:13px;font-weight:600;color:var(--ink-3)}');
   });
 
   it('words from the answer are quoted; a note of what was absent is labelled as the check’s', () => {
-    expect(learn).toContain("l.evidenceSaid ? 'It said: “' + l.evidence + '”' : 'What the check found: ' + l.evidence");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the quote and the label, each one template with the evidence as its value.
+    expect(learn).toContain("l.evidenceSaid ? tf('It said: “{said}”', { said: l.evidence }) : tf('What the check found: {found}', { found: l.evidence })");
     const said = (text: string, s = probe()) => scoreResponse(s, text).violations.map((v) => [v.rule, v.said === true]);
     expect(said('That usually runs about $850.')).toContainEqual(['never_price', true]);
     expect(said("Sure — we'll be there Tuesday.")).toContainEqual(['no_date_promise', true]);

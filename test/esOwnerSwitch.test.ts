@@ -51,7 +51,8 @@ describe('the key screen — a small toggle, the first switch an employee meets'
 
 describe('Office → Appearance — English | Español, beside the theme', () => {
   const more = fnSrc(raw, 'renderMore');
-  const block = more.slice(more.indexOf('  // R27 (D110): the language'), more.indexOf("  v.appendChild(el('div', 'panel-title', 'Install'));"));
+  // Pin moved (R27 Phase A, owner app c), meaning kept: the block still ends at Install's title, said through T now.
+  const block = more.slice(more.indexOf('  // R27 (D110): the language'), more.indexOf("  v.appendChild(el('div', 'panel-title', T('Install')));"));
   const run = (r: ReturnType<typeof loadI18n>) => {
     const v = new FakeNode('div');
     const el = (tag: string, cls?: string, text?: string) => { const n = new FakeNode(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
@@ -63,7 +64,9 @@ describe('Office → Appearance — English | Español, beside the theme', () =>
 
   it('sits after the theme chips and before Install', () => {
     expect(block.length).toBeGreaterThan(0);
-    expect(more.indexOf("v.appendChild(el('div', 'panel-title', 'Appearance'));")).toBeLessThan(more.indexOf('  // R27 (D110): the language'));
+    // Pin moved (R27 Phase A, owner app c), meaning kept: Appearance's title (through T) comes before the language — and is found (never a -1).
+    expect(more.indexOf("v.appendChild(el('div', 'panel-title', T('Appearance')));")).toBeGreaterThan(-1);
+    expect(more.indexOf("v.appendChild(el('div', 'panel-title', T('Appearance')));")).toBeLessThan(more.indexOf('  // R27 (D110): the language'));
     expect(more.indexOf('v.appendChild(seg);')).toBeLessThan(more.indexOf('  // R27 (D110): the language'));
   });
 

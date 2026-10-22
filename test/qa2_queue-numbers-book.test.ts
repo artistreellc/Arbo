@@ -151,7 +151,8 @@ describe('Q1 — a failed read has one title shape: "X — <feed word>"', () => 
       expect(b.indexOf('await LINKS_READY;'), what).toBeGreaterThan(-1);
       expect(b.indexOf('await LINKS_READY;'), what).toBeLessThan(b.indexOf(`'${what} — '`));
     }
-    expect(campaigns()).toContain("state('Campaigns — ' + FEED_WORD.unread,");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same title shape, "Campaigns — <feed word>", one template.
+    expect(campaigns()).toContain("state(tf('Campaigns — {state}', { state: FEED_WORD.unread }),");
   });
 
   it('the twin sheet names a failed read in the shared words and sends a lost key to the keywall', () => {
@@ -478,7 +479,8 @@ describe('Q8 — Numbers polish', () => {
   it('an unrated card keeps its title on one line: no sample suffix on the rate', () => {
     const a = area();
     expect(a).not.toContain('-job sample');
-    expect(a).toContain("dollars(a.normalizedRatePerCrewHour) + '/crew-hr');");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the rate with no sample suffix, the amount a slot of its template.
+    expect(a).toContain("tf('{amount}/crew-hr', { amount: dollars(a.normalizedRatePerCrewHour) }));");
   });
 
   it('the campaign line does not repeat the per-job headline', () => {
@@ -486,18 +488,23 @@ describe('Q8 — Numbers polish', () => {
     expect(r.line).toBe('$400 spent · 2 booked jobs.');
     expect(r.line).not.toContain('$200');
     expect(r.costPerBookedJob).toBe(200);
-    expect(campaigns()).toContain("dollars(c.costPerBookedJob) + ' per booked job'");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the per-job headline once, the amount a slot of its template.
+    expect(campaigns()).toContain("tf('{amount} per booked job', { amount: dollars(c.costPerBookedJob) })");
   });
 
   it('explanation lines are help text, and the window line is one sentence with no separators', () => {
     const p = perf();
     expect(p).not.toContain("'zip-run'");
-    for (const line of ["el('div', 'storm-muted', 'Paid, completed jobs in the '",
-      "el('div', 'storm-muted', 'Ranked by revenue per crew-hour",
-      "el('div', 'storm-muted', 'These are unmeasured, not underperforming"]) expect(p).toContain(line);
-    expect(p).toContain("+ ': ' + plural(counted, 'job')");
-    expect(p).toContain("+ (p.checkedAtIso ? ', checked ' + fmtWhen(p.checkedAtIso) : '') + '.'));");
-    const window = p.slice(p.indexOf("'Paid, completed jobs in the '"), p.indexOf('// §1B: what the numbers cannot see'));
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same help-text lines through T; the window line is still one
+    // sentence, now one template per case — the count (one or many), the window and when it was checked are slots.
+    for (const line of ["el('div', 'storm-muted', p.windowDays === 365",
+      "el('div', 'storm-muted', T('Ranked by revenue per crew-hour",
+      "el('div', 'storm-muted', T('These are unmeasured, not underperforming"]) expect(p).toContain(line);
+    expect(p).toContain("tn(counted, 'Paid, completed jobs in the last {days} days: {n} job.', 'Paid, completed jobs in the last {days} days: {n} jobs.', { days: p.windowDays })");
+    expect(p).toContain("const when = p.checkedAtIso ? fmtWhen(p.checkedAtIso) : '';");
+    expect(p).toContain("'Paid, completed jobs in the last 12 months: {n} job, checked {when}.'");
+    const window = p.slice(p.indexOf("const when = p.checkedAtIso"), p.indexOf('// §1B: what the numbers cannot see'));
+    expect(window).toContain('Paid, completed jobs in the');
     expect(window).not.toContain('\\u00b7');
     expect(window).not.toContain('·');
   });

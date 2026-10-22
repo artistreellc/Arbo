@@ -109,7 +109,9 @@ describe('M15 — Quo wiring tries again instead of waiting for the next deploy'
     const html = readFileSync(new URL('../src/app/index.html', import.meta.url), 'utf8');
     expect(html).toContain("const quoRegLine = (reg) => reg.detail + (reg.retryAt ? ' Arbo tries again at ' + fmtTime(reg.retryAt)");
     expect(html).toContain('quoRegLine(st.registration)');
-    expect(html).toContain(": reg.detail + (reg.retryAt ? ' Arbo tries again at ' + fmtTime(reg.retryAt)");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: Settings' Quo row still says the intake's own sentence, then when Arbo tries again —
+    // one template, both values slots.
+    expect(html).toContain("reg.retryAt ? tf('Quo (Sona calls & texts) \\u2014 {detail} Arbo tries again at {when} \\u2014 no redeploy needed.', { detail: reg.detail, when: fmtTime(reg.retryAt) })");
   });
 
   it('every Quo call carries a deadline, so a hung Quo fails and is named instead of stalling the wiring', async () => {

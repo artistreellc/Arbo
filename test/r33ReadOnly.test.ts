@@ -541,9 +541,10 @@ describe('the app says it', () => {
 
   it('Settings → Google shows READ-ONLY, lists the three read permissions, and the steps say what Google will show', () => {
     const settings = src('buildSettings');
-    expect(settings).toContain("chip('READ-ONLY', t.stored ? 'good' : 'info')"); // green only once a sign-in is saved (R33 review)
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same chip and tones, its word through T.
+    expect(settings).toContain("chip(T('READ-ONLY'), t.stored ? 'good' : 'info')"); // green only once a sign-in is saved (R33 review)
     expect(settings).toContain('gs.permissions');
     expect(settings).toContain('Google’s screen will list exactly these three');
-    expect(settings).toContain("chip(q.quoWrites === 'live' ? 'SENDS ON' : 'READ-ONLY'");
+    expect(settings).toContain("chip(q.quoWrites === 'live' ? T('SENDS ON') : T('READ-ONLY')"); // pin moved (R27 Phase A, owner app c): through T
   });
 });

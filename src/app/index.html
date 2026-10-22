@@ -2557,18 +2557,20 @@ async function stormLawFlag(alerting) {
 // Off and not set up are switches Mike sets, so Today stays quiet about them and
 // the desk says which; a read that failed is named, never a quiet nothing (§1B).
 // [label, tone] per kind of ask: a charge wears the alarm chip (R28 build), a send is amber, the rest is context.
-const APPROVAL_KIND = { email: ['EMAIL', 'watch'], payment: ['PAYMENT', 'alarm'], text: ['TEXT', 'watch'], drive: ['DRIVE', 'info'], calendar: ['CALENDAR', 'info'], other: ['OTHER', 'info'] };
+// R27 Phase A (es-owner-c): the chips' words read once at load (the office app reloads on a language change).
+const APPROVAL_KIND = { email: [T('EMAIL'), 'watch'], payment: [T('PAYMENT'), 'alarm'], text: [T('TEXT'), 'watch'], drive: [T('DRIVE'), 'info'], calendar: [T('CALENDAR'), 'info'], other: [T('OTHER'), 'info'] };
 // A kind this page does not know is still named, in amber — never blank, never calm.
 function approvalChip(kind) {
-  const k = APPROVAL_KIND[kind] || [kind ? String(kind).toUpperCase() : 'UNKNOWN', 'watch'];
+  const k = APPROVAL_KIND[kind] || [kind ? String(kind).toUpperCase() : T('UNKNOWN'), 'watch'];
   return chip(k[0], k[1]);
 }
 // What happens next, said in place of the row once Mike has answered.
-const APPROVAL_NEXT = { email: 'send it', text: 'send it', payment: 'charge it', drive: 'save it', calendar: 'book it' };
+// R27 Phase A (es-owner-c): each kind's whole sentence (no verb glued into a frame), read once at load.
+const APPROVAL_NEXT = { email: T('Approved — Arbo will send it now.'), text: T('Approved — Arbo will send it now.'), payment: T('Approved — Arbo will charge it now.'), drive: T('Approved — Arbo will save it now.'), calendar: T('Approved — Arbo will book it now.') };
 function approvalAnswered(a, decision, note) {
-  if (decision === 'allow') return 'Approved — Arbo will ' + (APPROVAL_NEXT[a.kind] || 'do it') + ' now.';
+  if (decision === 'allow') return APPROVAL_NEXT[a.kind] || T('Approved — Arbo will do it now.');
   // "told why" only when there was a why to tell.
-  return note ? 'Denied — Arbo was told why.' : 'Denied — Arbo was told no.';
+  return note ? T('Denied — Arbo was told why.') : T('Denied — Arbo was told no.');
 }
 // One ask as a row: its kind and when, then what it wants. A tap opens the sheet to decide.
 function approvalRow(a) {
@@ -2578,7 +2580,7 @@ function approvalRow(a) {
   meta.appendChild(approvalChip(a.kind));
   meta.appendChild(el('span', 't', fmtWhen(a.requestedAt)));
   row.appendChild(meta);
-  row.appendChild(el('span', 'sum', nb(a.summary || a.tool || 'Arbo didn’t say what this is'))); // nb: a phone number never splits at its hyphen
+  row.appendChild(el('span', 'sum', nb(a.summary || a.tool || T('Arbo didn’t say what this is')))); // nb: a phone number never splits at its hyphen
   row.addEventListener('click', () => openApproval(a));
   return row;
 }
@@ -2592,7 +2594,7 @@ function approvalDone(id, line) {
   for (const all of document.querySelectorAll('.approw-all')) {
     const ids = all.dataset.ids.split('\n').filter((x) => x && x !== id);
     all.dataset.ids = ids.join('\n');
-    all.textContent = 'All ' + ids.length + ' waiting →';
+    all.textContent = tf('All {n} waiting →', { n: ids.length });
   }
 }
 // Read what is waiting again, wherever it is drawn: Today's card and the desk.
@@ -2611,7 +2613,7 @@ function assistantReread() {
 // A detail with one of these labels, and any long value, scrolls in its own box.
 const APPROVAL_BOX = /^(body|message|text|note|notes|content|description)$/i;
 function openApproval(a) {
-  $('approval-title').textContent = nb(a.summary || a.tool || 'Waiting for your OK');
+  $('approval-title').textContent = nb(a.summary || a.tool || T('Waiting for your OK'));
   const body = $('approval-body');
   body.replaceChildren();
   $('approval').classList.add('show');
@@ -2619,16 +2621,17 @@ function openApproval(a) {
   sheetOpened('approval');
   const meta = el('div', 'approval-meta');
   meta.appendChild(approvalChip(a.kind));
-  meta.appendChild(el('span', '', 'Asked ' + (fmtWhen(a.requestedAt) || '— Arbo didn’t say when')));
+  const asked = fmtWhen(a.requestedAt);
+  meta.appendChild(el('span', '', asked ? tf('Asked {when}', { when: asked }) : T('Asked — Arbo didn’t say when')));
   body.appendChild(meta);
   const details = Array.isArray(a.details) ? a.details.filter((d) => d && typeof d === 'object') : [];
   for (const d of details) {
     const value = d.value === undefined || d.value === null ? '' : String(d.value);
     const row = el('div', 'adetail');
-    row.appendChild(el('div', 'lab', d.label ? String(d.label) : 'Detail'));
+    row.appendChild(el('div', 'lab', d.label ? String(d.label) : T('Detail'))); // the label is the assistant's own word (data)
     const long = APPROVAL_BOX.test(String(d.label)) || value.length > 160 || value.indexOf('\n') !== -1;
     // A short value keeps a phone number whole (nb); a body is shown exactly as it will go out.
-    row.appendChild(el('div', 'val' + (long ? ' box' : ''), !value ? '(empty)' : long ? value : nb(value)));
+    row.appendChild(el('div', 'val' + (long ? ' box' : ''), !value ? T('(empty)') : long ? value : nb(value)));
     body.appendChild(row);
   }
   const pay = a.kind === 'payment';
@@ -2638,14 +2641,14 @@ function openApproval(a) {
   const amount = /\d/.test(raw) ? raw : '';
   const money = /^\d/.test(amount) ? '$' + amount : amount;
   // §1B: what Arbo did not send is named, and it is never approved blind.
-  const blocked = !details.length ? 'Arbo sent nothing to check for this one, so it can’t be approved here. Deny it if you can’t tell what it is.' : '';
+  const blocked = !details.length ? T('Arbo sent nothing to check for this one, so it can’t be approved here. Deny it if you can’t tell what it is.') : '';
   // A Square call with no amount is warned by name — never a garbled "charge No amount…" — and stays Mike's to decide.
-  const warn = !blocked && pay && !amount ? 'Arbo didn’t show an amount for this Square call. Read the details above before you allow it.' : '';
+  const warn = !blocked && pay && !amount ? T('Arbo didn’t show an amount for this Square call. Read the details above before you allow it.') : '';
   if (blocked || warn) body.appendChild(el('div', 'feed-state unread', blocked || warn));
   const out = el('div', 'errline');
   body.appendChild(out);
   const decide = el('div', 'adecide');
-  const yes = el('button', 'actbtn' + (pay ? ' charge' : ''), pay ? (amount ? 'Approve — charge ' + money : 'Approve — no amount in this request') : 'Approve');
+  const yes = el('button', 'actbtn' + (pay ? ' charge' : ''), pay ? (amount ? tf('Approve — charge {amount}', { amount: money }) : T('Approve — no amount in this request')) : T('Approve'));
   yes.disabled = !!blocked;
   const noteWrap = el('div', 'field');
   noteWrap.hidden = true;
@@ -2655,11 +2658,11 @@ function openApproval(a) {
   note.id = 'approval-note';
   note.maxLength = 300;
   note.setAttribute('autocomplete', 'off');
-  const noteLab = el('label', '', 'Why, for Arbo (optional)');
+  const noteLab = el('label', '', T('Why, for Arbo (optional)'));
   noteLab.htmlFor = note.id;
   noteWrap.appendChild(noteLab);
   noteWrap.appendChild(note);
-  const no = el('button', 'actbtn alt', 'Deny');
+  const no = el('button', 'actbtn alt', T('Deny'));
   const send = async (decision) => {
     const why = decision === 'deny' ? note.value.trim() : '';
     yes.disabled = true;
@@ -2672,20 +2675,20 @@ function openApproval(a) {
         // TCPA quiet hours: Arbo held the text. Said in the server's words; the ask stays open (Deny now, Allow after 8am).
         yes.disabled = !!blocked;
         no.disabled = false;
-        out.textContent = e.line || 'It is outside 8am–9pm ET, so Arbo holds a customer text until 8am. Nothing was sent — it is still waiting.';
+        out.textContent = e.line || T('It is outside 8am–9pm ET, so Arbo holds a customer text until 8am. Nothing was sent — it is still waiting.');
         return;
       }
       if (e && (e.code === 409 || e.code === 404)) {
         // Answered somewhere else, or no longer waiting: said, and the lists are read again. The buttons stay off.
-        out.textContent = e.code === 409 ? 'Already decided — reading the list again.' : 'This one is no longer waiting — reading the list again.';
+        out.textContent = e.code === 409 ? T('Already decided — reading the list again.') : T('This one is no longer waiting — reading the list again.');
         assistantReread();
         return;
       }
       // Anything else leaves the ask waiting: the row stays, the buttons come back, and the line says why.
       yes.disabled = !!blocked;
       no.disabled = false;
-      if (e && e.code === 401) { out.textContent = 'Arbo needs the key again — nothing was decided.'; showKeywall(); return; }
-      out.textContent = (e && e.line) || (e && e.code ? 'Arbo didn’t take your answer — it is still waiting. Try again.' : 'Couldn’t reach Arbo — your answer may not have arrived. Tap ↻ to see if it is still waiting.');
+      if (e && e.code === 401) { out.textContent = T('Arbo needs the key again — nothing was decided.'); showKeywall(); return; }
+      out.textContent = (e && e.line) || (e && e.code ? T('Arbo didn’t take your answer — it is still waiting. Try again.') : T('Couldn’t reach Arbo — your answer may not have arrived. Tap ↻ to see if it is still waiting.'));
       return;
     }
     // Close only the sheet that still shows THIS ask: Mike may have closed it mid-send and opened another.
@@ -2693,11 +2696,11 @@ function openApproval(a) {
     // A Square call with no amount (a lookup, an invoice publish) is never said back as "will charge it".
     approvalDone(a.id, approvalAnswered(pay && !amount ? { kind: 'other' } : a, decision, why));
   };
-  if (pay) armTwice(yes, amount ? 'Tap again to charge ' + money : 'Tap again to approve', () => send('allow'), 600);
+  if (pay) armTwice(yes, amount ? tf('Tap again to charge {amount}', { amount: money }) : T('Tap again to approve'), () => send('allow'), 600);
   else yes.addEventListener('click', () => send('allow'));
   no.addEventListener('click', () => {
     // The first tap opens the one-line note; the second sends the no, with or without it.
-    if (noteWrap.hidden) { noteWrap.hidden = false; no.textContent = 'Deny — tell Arbo'; note.focus(); return; }
+    if (noteWrap.hidden) { noteWrap.hidden = false; no.textContent = T('Deny — tell Arbo'); note.focus(); return; }
     send('deny');
   });
   decide.appendChild(yes);
@@ -2725,13 +2728,14 @@ async function fillAssistToday(slot) {
   if (why.code === 503 && (why.message === 'assistant_off' || why.message === 'assistant_not_set_up')) return;
   // The filter sits on the body: one with no approvals list is a read that failed, never "nothing waiting".
   const list = ap.status === 'fulfilled' && ap.value && Array.isArray(ap.value.approvals) ? ap.value.approvals : null;
-  if (!list) { slot.appendChild(el('div', 'feed-state unread', 'Assistant: couldn’t read what’s waiting. ' + RETRY)); return; }
-  if (list.length) slot.appendChild(el('div', 'panel-title', 'Waiting for your OK'));
-  if (!s) { if (!(st.reason && st.reason.code === 401)) slot.appendChild(feedLine(st.status === 'rejected' ? st.reason : null, 'Assistant status')); }
-  else if (s.state === 'error') slot.appendChild(el('div', 'feed-state unread', 'Assistant: ' + (s.reason ? String(s.reason).replace(/\.\s*$/, '') : 'something is wrong and Arbo didn’t say what') + '. Open Office → Assistant.'));
+  if (!list) { slot.appendChild(el('div', 'feed-state unread', T('Assistant: couldn’t read what’s waiting.') + ' ' + RETRY)); return; }
+  if (list.length) slot.appendChild(el('div', 'panel-title', T('Waiting for your OK')));
+  if (!s) { if (!(st.reason && st.reason.code === 401)) slot.appendChild(feedLine(st.status === 'rejected' ? st.reason : null, T('Assistant status'))); }
+  // R27 Phase A (es-owner-c): the assistant's own reason is a value (its words), the frame one template.
+  else if (s.state === 'error') slot.appendChild(el('div', 'feed-state unread', s.reason ? tf('Assistant: {why}. Open Office → Assistant.', { why: String(s.reason).replace(/\.\s*$/, '') }) : T('Assistant: something is wrong and Arbo didn’t say what. Open Office → Assistant.')));
   for (const a of list.slice(0, 4)) slot.appendChild(approvalRow(a));
   if (list.length > 4) {
-    const more = el('button', 'hudbtn approw-all', 'All ' + list.length + ' waiting →');
+    const more = el('button', 'hudbtn approw-all', tf('All {n} waiting →', { n: list.length }));
     more.dataset.ids = list.map((a) => a.id).join('\n'); // the asks it counts: approvalDone takes each one off as Mike answers it
     more.addEventListener('click', () => { switchTab('assistant'); renderAssistant(); });
     slot.appendChild(more);
@@ -2739,46 +2743,49 @@ async function fillAssistToday(slot) {
   // Today's office check in the server's words: a day it could not run, or that stopped, is named in amber.
   // A done check's report follows in its own words, kept apart from Activity so a busy morning never scrolls it away.
   const oc = s && s.officeCheck && typeof s.officeCheck.line === 'string' && s.officeCheck.line ? s.officeCheck : null;
-  if (oc) slot.appendChild(el('div', oc.state === 'missed' || oc.state === 'error' ? 'feed-state unread' : 'storm-muted', oc.line));
-  if (oc && oc.report && typeof oc.report.text === 'string' && oc.report.text) slot.appendChild(el('div', 'asst-report', oc.report.text));
+  // R27 Phase A (es-owner-c): the office check's line and its report are the server's and the assistant's own words — English, marked.
+  if (oc) slot.appendChild(esSayTwin(el('div', oc.state === 'missed' || oc.state === 'error' ? 'feed-state unread' : 'storm-muted'), oc, 'line'));
+  if (oc && oc.report && typeof oc.report.text === 'string' && oc.report.text) slot.appendChild(esSayTwin(el('div', 'asst-report'), oc.report, 'text'));
 }
 
 // The assistant's switches and a failed read, each in its own words (§1B):
 // off is grey (on purpose), not set up amber, a read that failed hollow amber.
 function assistGap(e, what) {
   const m = e && e.code === 503 ? e.message : '';
-  if (m === 'assistant_off') return el('div', 'feed-state cut', what + ': off on purpose — nothing shows here while the assistant is off.');
-  if (m === 'assistant_not_set_up') return el('div', 'feed-state unset', what + ': ' + FEED_WORD.unset + ' — nothing shows here until the assistant is set up.');
+  // R27 Phase A (es-owner-c): `what` is the panel's own name, already in the page's language — a slot.
+  if (m === 'assistant_off') return el('div', 'feed-state cut', tf('{what}: off on purpose — nothing shows here while the assistant is off.', { what }));
+  if (m === 'assistant_not_set_up') return el('div', 'feed-state unset', tf('{what}: {state} — nothing shows here until the assistant is set up.', { what, state: FEED_WORD.unset }));
   return feedLine(e, what);
 }
 // [label, tone] for the activity that carries a chip: an ask, Mike's answer, a problem.
-const ACTIVITY_CHIP = { waiting: ['ASKED YOU', 'watch'], error: ['ERROR', 'stop'] };
+const ACTIVITY_CHIP = { waiting: [T('ASKED YOU'), 'watch'], error: [T('ERROR'), 'stop'] };
 function activityRow(it) {
   const row = el('div', 'actrow');
   const meta = el('div', 'ameta');
   meta.appendChild(el('span', 't', fmtWhen(it.at)));
   const c = it.kind === 'decided'
-    ? (it.permission === 'allow' ? ['APPROVED', 'good'] : it.permission === 'deny' ? ['DENIED', 'info'] : ['DECIDED', 'info'])
+    ? (it.permission === 'allow' ? [T('APPROVED'), 'good'] : it.permission === 'deny' ? [T('DENIED'), 'info'] : [T('DECIDED'), 'info'])
     : ACTIVITY_CHIP[it.kind];
   if (c) meta.appendChild(chip(c[0], c[1]));
   row.appendChild(meta);
-  row.appendChild(el('div', 'txt', nb(it.text || it.tool || 'Arbo didn’t say')));
+  row.appendChild(el('div', 'txt', nb(it.text || it.tool || T('Arbo didn’t say'))));
   return row;
 }
 // One status line per state, in Mike's words. A state this page does not know is said as one.
 function assistStateLine(s) {
   if (s.state === 'ready') {
-    const busy = typeof s.sessionsOpen === 'number' ? (s.sessionsOpen ? 'working on ' + plural(s.sessionsOpen, 'thing') : 'nothing in progress') : 'Arbo didn’t say what it is working on';
+    // R27 Phase A (es-owner-c): "On — <what it is doing>" is one template; each part after it a whole phrase of the " · " list.
+    const busy = typeof s.sessionsOpen === 'number' ? (s.sessionsOpen ? tn(s.sessionsOpen, 'working on {n} thing', 'working on {n} things') : T('nothing in progress')) : T('Arbo didn’t say what it is working on');
     const heard = s.lastEventAt ? fmtWhen(s.lastEventAt) : '';
     // A time it could not read is left out, never said as "not heard from yet".
-    return 'On — ' + busy + (heard ? ' · last heard from ' + heard : s.lastEventAt ? '' : ' · not heard from yet');
+    return tf('On — {busy}', { busy }) + (heard ? ' · ' + tf('last heard from {when}', { when: heard }) : s.lastEventAt ? '' : ' · ' + T('not heard from yet'));
   }
-  if (s.state === 'off') return 'Off — Railway switch ARBO_AGENT is not live';
-  if (s.state === 'not_set_up') return 'Not set up — missing: ' + (Array.isArray(s.missing) && s.missing.length ? s.missing.join(', ') : 'Arbo didn’t say what');
-  if (s.state === 'error') return s.reason ? String(s.reason) : 'Something is wrong — Arbo didn’t say what';
-  return 'Arbo reported “' + s.state + '”, a state this page doesn’t know';
+  if (s.state === 'off') return T('Off — Railway switch ARBO_AGENT is not live');
+  if (s.state === 'not_set_up') return tf('Not set up — missing: {list}', { list: Array.isArray(s.missing) && s.missing.length ? s.missing.join(', ') : T('Arbo didn’t say what') });
+  if (s.state === 'error') return s.reason ? String(s.reason) : T('Something is wrong — Arbo didn’t say what');
+  return tf('Arbo reported “{state}”, a state this page doesn’t know', { state: s.state });
 }
-const ASSIST_STATE = { ready: ['ON', 'good'], off: ['OFF', 'info'], not_set_up: ['NOT SET UP', 'watch'], error: ['ERROR', 'stop'] };
+const ASSIST_STATE = { ready: [T('ON'), 'good'], off: [T('OFF'), 'info'], not_set_up: [T('NOT SET UP'), 'watch'], error: [T('ERROR'), 'stop'] };
 
 // The desk (Office → Assistant): is it on, what it asks first, what is waiting, what it did.
 let ASSIST_GEN = 0;
@@ -2787,9 +2794,9 @@ async function renderAssistant() {
   const v = $('view-assistant');
   v.replaceChildren();
   const head = el('div', 'viewhead');
-  head.appendChild(el('div', 'eyebrow', 'Front office'));
-  head.appendChild(el('h1', '', 'Your assistant'));
-  head.appendChild(el('p', '', 'It works your texts, email, calendar, Drive and Square — and asks you first before anything goes out or gets charged.'));
+  head.appendChild(el('div', 'eyebrow', T('Front office')));
+  head.appendChild(el('h1', '', T('Your assistant')));
+  head.appendChild(el('p', '', T('It works your texts, email, calendar, Drive and Square — and asks you first before anything goes out or gets charged.')));
   v.appendChild(head);
   // Every slot is placed before any read, so the order never depends on which read lands first.
   const stSlot = el('div', 'slot assist');
@@ -2801,28 +2808,30 @@ async function renderAssistant() {
   const rules = (slot, title, cls, lines) => {
     slot.appendChild(el('div', 'panel-title', title));
     const ul = el('ul', 'asst-list' + cls);
-    for (const l of lines) ul.appendChild(el('li', '', l));
+    // R27 Phase A (es-owner-c): a line is its words, or an item already said into its <li> (the safety pair's).
+    for (const l of lines) ul.appendChild(typeof l === 'string' ? el('li', '', l) : l);
     slot.appendChild(ul);
   };
-  rules(askSlot, 'What it asks you first', '', [
-    'Every email, before it goes out.',
-    'Every text, before it goes out. Texts to customers also need their consent, stop for good on STOP, and only go 8am–9pm ET.',
-    'Every calendar booking. A guest is named loudly — Google emails them an invite.',
-    'Every Drive write. It never deletes or shares a file.',
-    'Every Square invoice or charge.',
+  rules(askSlot, T('What it asks you first'), '', [
+    T('Every email, before it goes out.'),
+    // R27 #4: the carrier keyword and the quiet hours — a safety line, said through the pair (its review is not recorded yet).
+    esSay(el('li'), 'Every text, before it goes out. Texts to customers also need their consent, stop for good on STOP, and only go 8am–9pm ET.'),
+    T('Every calendar booking. A guest is named loudly — Google emails them an invite.'),
+    T('Every Drive write. It never deletes or shares a file.'),
+    T('Every Square invoice or charge.'),
   ]);
-  rules(ownSlot, 'What it does on its own', ' own', [
-    'Reads your inbox, texts and calls.',
-    'Drafts — nothing a draft says goes out without your OK.',
-    'One office check a day, 7am Monday to Saturday: weather for today’s and tomorrow’s jobs, unpaid invoices, equipment due, what waits on you. It reports here; anything it wants to send still asks.',
-    'Never edits, moves or deletes an event.',
+  rules(ownSlot, T('What it does on its own'), ' own', [
+    T('Reads your inbox, texts and calls.'),
+    T('Drafts — nothing a draft says goes out without your OK.'),
+    T('One office check a day, 7am Monday to Saturday: weather for today’s and tomorrow’s jobs, unpaid invoices, equipment due, what waits on you. It reports here; anything it wants to send still asks.'),
+    T('Never edits, moves or deletes an event.'),
   ]);
   const [st, ap, act] = await Promise.allSettled([api('/api/assistant/status'), api('/api/assistant/approvals'), api('/api/assistant/activity')]);
   if (gen !== ASSIST_GEN) return; // a newer render owns the desk
   if ([st, ap, act].some((r) => r.status === 'rejected' && r.reason && r.reason.code === 401)) return showKeywall();
-  stSlot.appendChild(el('div', 'panel-title', 'Status'));
+  stSlot.appendChild(el('div', 'panel-title', T('Status')));
   const s = st.status === 'fulfilled' && st.value && typeof st.value.state === 'string' && st.value.state ? st.value : null; // no state is a read that failed
-  if (!s) stSlot.appendChild(feedLine(st.status === 'rejected' ? st.reason : null, 'Assistant status'));
+  if (!s) stSlot.appendChild(feedLine(st.status === 'rejected' ? st.reason : null, T('Assistant status')));
   else {
     const row = el('div', 'asst-state');
     const [label, tone] = ASSIST_STATE[s.state] || [s.state.toUpperCase(), 'watch'];
@@ -2830,18 +2839,18 @@ async function renderAssistant() {
     row.appendChild(el('span', '', assistStateLine(s)));
     stSlot.appendChild(row);
     const oc = s.officeCheck && typeof s.officeCheck.line === 'string' && s.officeCheck.line ? s.officeCheck : null;
-    if (oc) stSlot.appendChild(el('div', oc.state === 'missed' || oc.state === 'error' ? 'feed-state unread' : 'storm-muted', oc.line));
-    if (oc && oc.report && typeof oc.report.text === 'string' && oc.report.text) stSlot.appendChild(el('div', 'asst-report', oc.report.text));
+    if (oc) stSlot.appendChild(esSayTwin(el('div', oc.state === 'missed' || oc.state === 'error' ? 'feed-state unread' : 'storm-muted'), oc, 'line'));
+    if (oc && oc.report && typeof oc.report.text === 'string' && oc.report.text) stSlot.appendChild(esSayTwin(el('div', 'asst-report'), oc.report, 'text'));
   }
-  waitSlot.appendChild(el('div', 'panel-title', 'Waiting for your OK'));
+  waitSlot.appendChild(el('div', 'panel-title', T('Waiting for your OK')));
   const list = ap.status === 'fulfilled' && ap.value && Array.isArray(ap.value.approvals) ? ap.value.approvals : null;
-  if (!list) waitSlot.appendChild(assistGap(ap.status === 'rejected' ? ap.reason : null, 'Waiting for your OK'));
-  else if (!list.length) waitSlot.appendChild(el('div', 'storm-muted', 'Nothing is waiting for your OK.'));
+  if (!list) waitSlot.appendChild(assistGap(ap.status === 'rejected' ? ap.reason : null, T('Waiting for your OK')));
+  else if (!list.length) waitSlot.appendChild(el('div', 'storm-muted', T('Nothing is waiting for your OK.')));
   else for (const a of list) waitSlot.appendChild(approvalRow(a));
-  actSlot.appendChild(el('div', 'panel-title', 'What it did'));
+  actSlot.appendChild(el('div', 'panel-title', T('What it did')));
   const items = act.status === 'fulfilled' && act.value && Array.isArray(act.value.items) ? act.value.items : null;
-  if (!items) actSlot.appendChild(assistGap(act.status === 'rejected' ? act.reason : null, 'What it did'));
-  else if (!items.length) actSlot.appendChild(el('div', 'storm-muted', 'Nothing on record yet.'));
+  if (!items) actSlot.appendChild(assistGap(act.status === 'rejected' ? act.reason : null, T('What it did')));
+  else if (!items.length) actSlot.appendChild(el('div', 'storm-muted', T('Nothing on record yet.')));
   else {
     // Newest first, as the server sends them. The first 30 show; the rest are one tap away.
     const feed = el('div');
@@ -2849,7 +2858,7 @@ async function renderAssistant() {
     actSlot.appendChild(feed);
     if (items.length > 30) {
       const row = el('div', 'actions');
-      const all = el('button', 'minibtn', 'Show all ' + items.length);
+      const all = el('button', 'minibtn', tf('Show all {n}', { n: items.length }));
       all.addEventListener('click', () => { feed.replaceChildren(...items.map(activityRow)); row.remove(); });
       row.appendChild(all);
       actSlot.appendChild(row);
@@ -5258,14 +5267,18 @@ async function renderTrainingBoard(slot) {
 }
 
 // ---------- Performance (§6D/§6N.3: which areas actually pay) ----------
+// R27 Phase A (es-owner-c): each verdict's words, read once at load (the office app reloads on a language change).
 const VERDICT_LABEL = {
-  above: ['ABOVE AVERAGE', 'good'],
-  at: ['AT AVERAGE', 'info'],
-  below: ['BELOW AVERAGE', 'watch'],
-  not_enough_data: ['NOT ENOUGH DATA', 'info'],
+  above: [T('ABOVE AVERAGE'), 'good'],
+  at: [T('AT AVERAGE'), 'info'],
+  below: [T('BELOW AVERAGE'), 'watch'],
+  not_enough_data: [T('NOT ENOUGH DATA'), 'info'],
 };
+// R27 Phase A (es-owner-c): the three job types the rate counts (src/ops/areaPerformance.ts), each its own
+// count template; a type this page does not know is shown as the server wrote it.
+const MIX_SAYS = { removal: (n) => tf('{n} removal', { n }), pruning: (n) => tf('{n} pruning', { n }), other: (n) => tf('{n} other', { n }) };
 function mixLine(mix) {
-  return Object.keys(mix || {}).map((k) => mix[k] + ' ' + k).join(' \u00b7 ');
+  return Object.keys(mix || {}).map((k) => (MIX_SAYS[k] ? MIX_SAYS[k](mix[k]) : mix[k] + ' ' + k)).join(' \u00b7 ');
 }
 async function renderPerformance() {
   const v = $('view-perf');
@@ -5274,8 +5287,8 @@ async function renderPerformance() {
   // R26: the R25 desks' heading, above the read so a dead feed keeps it.
   const head = el('div', 'viewhead');
   head.appendChild(el('div', 'eyebrow', DESK_LINE.perf));
-  head.appendChild(el('h1', '', 'Which areas & campaigns pay'));
-  head.appendChild(el('p', '', 'Each area rated by revenue per crew-hour, and what each campaign cost per booked job.'));
+  head.appendChild(el('h1', '', T('Which areas & campaigns pay')));
+  head.appendChild(el('p', '', T('Each area rated by revenue per crew-hour, and what each campaign cost per booked job.')));
   v.appendChild(head);
   const reading = first ? v.appendChild(readingLine()) : null;
   let p;
@@ -5284,7 +5297,12 @@ async function renderPerformance() {
   } catch (e) {
     if (e.code === 401) return showKeywall();
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
-    v.appendChild(state('Numbers — ' + FEED_WORD[feedKind(e)], e.code === 503
+    // R27 Phase A (es-owner-c): appUi and the Q1 title pins read the English card's source as written, so the English is
+    // kept whole and the Spanish card is drawn beside it — the title one template, each sentence its own key.
+    v.appendChild(ES.lang === 'es' ? state(tf('Numbers — {state}', { state: FEED_WORD[feedKind(e)] }), e.code === 503
+      ? feedSays(e) + ' ' + T('Arbo cannot rate any area.')
+      : T('Could not read the numbers. This is not a claim that everything is fine.'))
+      : state('Numbers — ' + FEED_WORD[feedKind(e)], e.code === 503
       ? feedSays(e) + ' Arbo cannot rate any area.'
       : 'Could not read the numbers. This is not a claim that everything is fine.'));
     return;
@@ -5300,25 +5318,28 @@ async function renderPerformance() {
     return t;
   };
   hud.appendChild(tile(p.fleetRatePerCrewHour === null ? '\u2013' : dollars(p.fleetRatePerCrewHour),
-    'company avg per crew-hour', 'accent wide'));
-  hud.appendChild(tile(p.areas.filter((a) => a.verdict !== 'not_enough_data').length, 'areas rated'));
+    T('company avg per crew-hour'), 'accent wide'));
+  hud.appendChild(tile(p.areas.filter((a) => a.verdict !== 'not_enough_data').length, T('areas rated')));
   // Unrated is unmeasured, not underperforming, so it gets no warning colour.
-  hud.appendChild(tile(p.withheld.length, 'unrated'));
+  hud.appendChild(tile(p.withheld.length, T('unrated')));
   v.appendChild(hud);
   // What the benchmark covers. A number with no window reads as all-time.
   // One plain sentence in the help-text style (never the bold chip row), so a
   // wrapped line never ends on a separator.
   const counted = p.areas.reduce((s, a) => s + a.jobs, 0);
-  v.appendChild(el('div', 'storm-muted', 'Paid, completed jobs in the '
-    + (p.windowDays === 365 ? 'last 12 months' : 'last ' + p.windowDays + ' days')
-    + ': ' + plural(counted, 'job')
-    + (p.checkedAtIso ? ', checked ' + fmtWhen(p.checkedAtIso) : '') + '.'));
+  // R27 Phase A (es-owner-c): one whole sentence per case — the window, the count (one/many) and when it was checked are slots.
+  const when = p.checkedAtIso ? fmtWhen(p.checkedAtIso) : '';
+  v.appendChild(el('div', 'storm-muted', p.windowDays === 365
+    ? (when ? tn(counted, 'Paid, completed jobs in the last 12 months: {n} job, checked {when}.', 'Paid, completed jobs in the last 12 months: {n} jobs, checked {when}.', { when })
+      : tn(counted, 'Paid, completed jobs in the last 12 months: {n} job.', 'Paid, completed jobs in the last 12 months: {n} jobs.'))
+    : (when ? tn(counted, 'Paid, completed jobs in the last {days} days: {n} job, checked {when}.', 'Paid, completed jobs in the last {days} days: {n} jobs, checked {when}.', { days: p.windowDays, when })
+      : tn(counted, 'Paid, completed jobs in the last {days} days: {n} job.', 'Paid, completed jobs in the last {days} days: {n} jobs.', { days: p.windowDays }))));
 
   // §1B: what the numbers cannot see comes BEFORE the numbers.
   for (const b of p.blindSpots) {
     const w = el('div', 'card loop-card urgent');
-    w.appendChild(el('div', 'loop-kind', '\u26a0 BLIND SPOT'));
-    w.appendChild(el('div', 'scope', b));
+    w.appendChild(el('div', 'loop-kind', T('\u26a0 BLIND SPOT')));
+    w.appendChild(esSayTwin(el('div', 'scope'), { line: b }, 'line')); // the server's own line: English, marked, until Phase B
     v.appendChild(w);
   }
 
@@ -5326,25 +5347,25 @@ async function renderPerformance() {
   const unjudged = p.areas.filter((a) => a.verdict === 'not_enough_data');
 
   if (judged.length) {
-    const rated = v.appendChild(el('div', 'panel-title', 'Rated areas \u2014 ' + judged.length));
+    const rated = v.appendChild(el('div', 'panel-title', tf('Rated areas \u2014 {n}', { n: judged.length })));
     rated.id = 'perf-rated'; // where an area proposal lands (P14 review)
-    v.appendChild(el('div', 'storm-muted', 'Ranked by revenue per crew-hour, not per job, so big removals don\u2019t skew it.'));
+    v.appendChild(el('div', 'storm-muted', T('Ranked by revenue per crew-hour, not per job, so big removals don\u2019t skew it.')));
     for (const a of judged) v.appendChild(areaCard(a));
   }
 
   // Unrated areas are shown SEPARATELY, never as the bottom of a ranking.
   if (unjudged.length) {
-    v.appendChild(el('div', 'panel-title', 'Not enough work yet to rate \u2014 ' + unjudged.length));
-    v.appendChild(el('div', 'storm-muted', 'These are unmeasured, not underperforming \u2014 too few jobs to call them good or bad yet.'));
+    v.appendChild(el('div', 'panel-title', tf('Not enough work yet to rate \u2014 {n}', { n: unjudged.length })));
+    v.appendChild(el('div', 'storm-muted', T('These are unmeasured, not underperforming \u2014 too few jobs to call them good or bad yet.')));
     for (const a of unjudged) v.appendChild(areaCard(a));
   }
 
   if (!p.areas.length) {
-    v.appendChild(state('No completed work to rate yet',
-      'Areas appear here once jobs are completed with hours and crew size recorded.'));
+    v.appendChild(state(T('No completed work to rate yet'),
+      T('Areas appear here once jobs are completed with hours and crew size recorded.')));
   }
 
-  v.appendChild(el('div', 'panel-title', 'Campaigns'));
+  v.appendChild(el('div', 'panel-title', T('Campaigns')));
   // Its own slot, for the same reason the fleet list has one: the composer
   // below refreshes the LIST after a save, and re-rendering the whole view
   // would delete the composer along with the answer it just printed.
@@ -5360,11 +5381,11 @@ async function renderPerformance() {
 function renderCampaignList(slot, p) {
   slot.replaceChildren();
   if (!p.campaignsKnown) {
-    slot.appendChild(state('Campaigns — ' + FEED_WORD.unread, 'Arbo could not read the campaigns. This is not "no campaigns running".'));
+    slot.appendChild(state(tf('Campaigns — {state}', { state: FEED_WORD.unread }), T('Arbo could not read the campaigns. This is not "no campaigns running".')));
     return;
   }
   if (!p.campaigns.length) {
-    slot.appendChild(state('No campaigns on file', 'Add one below and its cost per booked job shows up here.'));
+    slot.appendChild(state(T('No campaigns on file'), T('Add one below and its cost per booked job shows up here.')));
     return;
   }
   for (const c of p.campaigns) {
@@ -5374,12 +5395,12 @@ function renderCampaignList(slot, p) {
     // A figure is gold; anything that is not a figure is plain ink. UNKNOWN is
     // for an untracked campaign only, as the form promises; a tracked zero is known.
     const figure = c.costPerBookedJob !== null;
-    const val = el('div', 'when', figure ? dollars(c.costPerBookedJob) + ' per booked job'
-      : c.bookedJobs === null ? 'Unknown' : c.cost === null ? 'Cost unknown' : '0 booked');
+    const val = el('div', 'when', figure ? tf('{amount} per booked job', { amount: dollars(c.costPerBookedJob) })
+      : c.bookedJobs === null ? T('Unknown') : c.cost === null ? T('Cost unknown') : T('0 booked'));
     if (!figure) val.style.color = 'var(--ink-3)';
     top.appendChild(val);
     card.appendChild(top);
-    card.appendChild(el('div', 'scope', c.line));
+    card.appendChild(esSayTwin(el('div', 'scope'), c, 'line')); // the server's own line: English, marked, until Phase B
     slot.appendChild(card);
   }
 }
@@ -5397,15 +5418,16 @@ async function refreshCampaignList(slot) {
 // §6D: register what was spent so the Numbers screen can say whether it paid.
 // Arbo still originates no figure (§3) — Mike types what he spent, and Arbo
 // divides it by what came back.
+// R27 Phase A (es-owner-c): the codes stay; their names are read once at load.
 const CAMPAIGN_TYPES = [
-  ['flyer', 'Flyer drop'], ['ads', 'Ads'], ['seasonal', 'Seasonal push'],
-  ['neighbor_around_job', 'Neighbors around a job'],
+  ['flyer', T('Flyer drop')], ['ads', T('Ads')], ['seasonal', T('Seasonal push')],
+  ['neighbor_around_job', T('Neighbors around a job')],
 ];
 function campaignComposer(listSlot) {
   const c = el('div', 'card');
-  c.appendChild(el('div', 'loop-kind', 'Register a campaign'));
+  c.appendChild(el('div', 'loop-kind', T('Register a campaign')));
   c.appendChild(el('div', 'scope',
-    'Without a tracking number Arbo cannot tell whether it worked — and it will say UNKNOWN rather than report it as zero.'));
+    T('Without a tracking number Arbo cannot tell whether it worked — and it will say UNKNOWN rather than report it as zero.')));
   // One labelled field per control: a placeholder vanishes once Mike types,
   // and a bare date box does not say which date it wants.
   const field = (label, n) => {
@@ -5427,17 +5449,17 @@ function campaignComposer(listSlot) {
     o.textContent = label;
     type.appendChild(o);
   }
-  field('Type', type);
+  field(T('Type'), type);
   const text = () => { const n = document.createElement('input'); n.type = 'text'; return n; };
   // Still a text box, so a typo reaches the server's bad_cost answer; the
   // number keyboard is only what opens on the phone.
-  const cost = field('What it cost ($)', text());
+  const cost = field(T('What it cost ($)'), text());
   cost.inputMode = 'decimal';
-  const track = field('Tracking number (optional)', text());
+  const track = field(T('Tracking number (optional)'), text());
   const sent = document.createElement('input');
   sent.type = 'date';
-  field('Date it went out', sent);
-  const btn = el('button', 'actbtn', 'Register it');
+  field(T('Date it went out'), sent);
+  const btn = el('button', 'actbtn', T('Register it'));
   const out = el('div', 'errline', '');
   btn.addEventListener('click', async () => {
     btn.disabled = true;
@@ -5451,7 +5473,7 @@ function campaignComposer(listSlot) {
       });
       // Untracked is a warning, not a win — it decides what the screen can say.
       out.style.color = res.attributionWired && res.costKnown ? 'var(--ok)' : 'var(--warning)';
-      out.textContent = res.line;
+      out.replaceChildren(esSayTwin(el('span'), res, 'line')); // the server's own line: English, marked, until Phase B
       cost.value = '';
       track.value = '';
       btn.disabled = false;
@@ -5461,10 +5483,10 @@ function campaignComposer(listSlot) {
       btn.disabled = false;
       out.style.color = '';
       out.textContent = e.message === 'bad_cost'
-        ? 'The cost has to be a number.'
+        ? T('The cost has to be a number.')
         : e.message === 'bad_sent_date'
-          ? 'That sent date is not a real date.'
-          : 'Could not register it. Nothing was written.';
+          ? T('That sent date is not a real date.')
+          : T('Could not register it. Nothing was written.');
     }
   });
   c.appendChild(btn);
@@ -5477,16 +5499,16 @@ function areaCard(a) {
   // amber BELOW chip ('watch') carries it, like every other needs-a-look state.
   const c = el('div', 'card');
   const top = el('div', 'toprow');
-  top.appendChild(el('div', 'who', a.areaKey));
+  top.appendChild(el('div', 'who', a.areaKey)); // the area's own name (a ZIP or a city): data
   // An unrated area's rate is not a headline: plain ink, so the biggest number
   // on the screen is never the one not to read. Its job count is the line below.
   const unjudged = a.verdict === 'not_enough_data';
   const rate = el('div', 'when', a.normalizedRatePerCrewHour === null ? '\u2013'
-    : dollars(a.normalizedRatePerCrewHour) + '/crew-hr');
+    : tf('{amount}/crew-hr', { amount: dollars(a.normalizedRatePerCrewHour) }));
   if (unjudged) rate.style.cssText = 'color:var(--ink-3);font-weight:500';
   top.appendChild(rate);
   c.appendChild(top);
-  c.appendChild(el('div', 'scope', a.line));
+  c.appendChild(esSayTwin(el('div', 'scope'), a, 'line')); // the server's own line: English, marked, until Phase B
   const b = el('div', 'badges');
   const [label, tone] = VERDICT_LABEL[a.verdict] || [String(a.verdict).toUpperCase(), 'watch'];
   b.appendChild(chip(label, tone));
@@ -5955,95 +5977,106 @@ function bouncieRows(b) {
   const s = b.signIn || {};
   const w = b.webhook || {};
   // Where the sign-in is kept (Supabase, sealed) has its own states: none of them is "not connected".
+  // R27 Phase A (es-owner-c): each row's chip word and sentence through the runtime (one template per sentence, the times
+  // and counts slots). EXPIRED stays its English code here — it is a safety badge word, said through the pair where the
+  // chip is drawn (bouncieSettings).
   const STORE_WHY = {
-    refused: 'Supabase refused Arbo’s key (SUPABASE_SERVICE_ROLE_KEY)',
-    mismatch: 'the sign-in table in Supabase doesn’t match what Arbo expects (migration 0021)',
+    refused: T('Arbo couldn’t read the saved Bouncie sign-in — Supabase refused Arbo’s key (SUPABASE_SERVICE_ROLE_KEY). This is not "not connected".'),
+    mismatch: T('Arbo couldn’t read the saved Bouncie sign-in — the sign-in table in Supabase doesn’t match what Arbo expects (migration 0021). This is not "not connected".'),
   };
-  if (s.state === 'keys_missing') rows.push(['NOT SET UP', 'watch', 'Bouncie sign-in isn’t set up on the server — add BOUNCIE_CLIENT_ID and BOUNCIE_CLIENT_SECRET on Railway, then deploy. Nothing is disconnected — it was never set up.']);
+  if (s.state === 'keys_missing') rows.push([T('NOT SET UP'), 'watch', T('Bouncie sign-in isn’t set up on the server — add BOUNCIE_CLIENT_ID and BOUNCIE_CLIENT_SECRET on Railway, then deploy. Nothing is disconnected — it was never set up.')]);
   // §3 vs "store the tokens in Supabase" is Mike's call: until he sets the switch, Supabase is not touched at all.
-  else if (s.state === 'store_cut') rows.push(['CUT', 'info', 'Bouncie can’t be connected yet — the sign-in is kept in Supabase, and that store is cut on purpose until ARBO_LINK_CREDENTIALS is set to live on Railway (you said yes on Oct 20; it opens the sign-in table only). Nothing is disconnected.']);
-  else if (s.state === 'store_unconfigured') rows.push(['NOT SET UP', 'watch', 'Bouncie can’t be connected yet — the sign-in is kept in Supabase, and Supabase isn’t configured on the server (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY). Nothing is disconnected.']);
-  else if (s.state === 'store_missing') rows.push(['NOT SET UP', 'watch', 'Bouncie can’t be connected yet — the sign-in table isn’t in Supabase (migration 0021 not applied). Apply it, then tap Connect Bouncie. Nothing is disconnected.']);
-  else if (s.state === 'store_unreadable') rows.push(['UNREADABLE', 'watch', 'Arbo couldn’t read the saved Bouncie sign-in — ' + (STORE_WHY[s.problem] || 'Supabase didn’t answer just now') + '. This is not "not connected". ' + RETRY]);
-  else if (s.state === 'store_locked') rows.push(['LOCKED', 'stop', 'The saved Bouncie sign-in can’t be opened — BOUNCIE_CLIENT_SECRET changed since it was saved. Tap Reconnect Bouncie. Positions stop until you do.']);
-  else if (s.state === 'unsaved') rows.push(['NOT SAVED', 'watch', 'Bouncie renewed the sign-in, but Supabase hasn’t taken the new one yet. Arbo holds it, unused, and tries again every minute, day or night; positions pause until it is saved. If Arbo restarts first, tap Reconnect Bouncie.']);
-  else if (s.state === 'not_connected') rows.push(['NOT CONNECTED', 'watch', 'The Bouncie keys are on the server, but Bouncie isn’t connected yet — tap Connect Bouncie and approve.']);
-  else if (s.state === 'expired') rows.push(['EXPIRED', 'stop', 'The Bouncie sign-in expired or was removed — tap Reconnect Bouncie. Positions stop until you do.']);
-  else rows.push(['CONNECTED', 'good', s.where === 'supabase'
-    ? 'Bouncie connected — saved in Supabase, sealed' + (s.savedAt ? ', ' + fmtWhen(s.savedAt) : '') + '. Survives redeploys.'
+  else if (s.state === 'store_cut') rows.push([T('CUT'), 'info', T('Bouncie can’t be connected yet — the sign-in is kept in Supabase, and that store is cut on purpose until ARBO_LINK_CREDENTIALS is set to live on Railway (you said yes on Oct 20; it opens the sign-in table only). Nothing is disconnected.')]);
+  else if (s.state === 'store_unconfigured') rows.push([T('NOT SET UP'), 'watch', T('Bouncie can’t be connected yet — the sign-in is kept in Supabase, and Supabase isn’t configured on the server (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY). Nothing is disconnected.')]);
+  else if (s.state === 'store_missing') rows.push([T('NOT SET UP'), 'watch', T('Bouncie can’t be connected yet — the sign-in table isn’t in Supabase (migration 0021 not applied). Apply it, then tap Connect Bouncie. Nothing is disconnected.')]);
+  else if (s.state === 'store_unreadable') rows.push([T('UNREADABLE'), 'watch', (STORE_WHY[s.problem] || T('Arbo couldn’t read the saved Bouncie sign-in — Supabase didn’t answer just now. This is not "not connected".')) + ' ' + RETRY]);
+  else if (s.state === 'store_locked') rows.push([T('LOCKED'), 'stop', T('The saved Bouncie sign-in can’t be opened — BOUNCIE_CLIENT_SECRET changed since it was saved. Tap Reconnect Bouncie. Positions stop until you do.')]);
+  else if (s.state === 'unsaved') rows.push([T('NOT SAVED'), 'watch', T('Bouncie renewed the sign-in, but Supabase hasn’t taken the new one yet. Arbo holds it, unused, and tries again every minute, day or night; positions pause until it is saved. If Arbo restarts first, tap Reconnect Bouncie.')]);
+  else if (s.state === 'not_connected') rows.push([T('NOT CONNECTED'), 'watch', T('The Bouncie keys are on the server, but Bouncie isn’t connected yet — tap Connect Bouncie and approve.')]);
+  else if (s.state === 'expired') rows.push(['EXPIRED', 'stop', T('The Bouncie sign-in expired or was removed — tap Reconnect Bouncie. Positions stop until you do.')]);
+  else rows.push([T('CONNECTED'), 'good', s.where === 'supabase'
+    ? (s.savedAt ? tf('Bouncie connected — saved in Supabase, sealed, {when}. Survives redeploys.', { when: fmtWhen(s.savedAt) }) : T('Bouncie connected — saved in Supabase, sealed. Survives redeploys.'))
     : s.where === 'disk'
-      ? 'Bouncie connected — saved on Arbo’s storage disk' + (s.savedAt ? ' ' + fmtWhen(s.savedAt) : '') + '. Survives redeploys.'
-      : 'Bouncie connected — but held in memory only (no storage disk). It will need connecting again after the next restart.']);
+      ? (s.savedAt ? tf('Bouncie connected — saved on Arbo’s storage disk {when}. Survives redeploys.', { when: fmtWhen(s.savedAt) }) : T('Bouncie connected — saved on Arbo’s storage disk. Survives redeploys.'))
+      : T('Bouncie connected — but held in memory only (no storage disk). It will need connecting again after the next restart.')]);
   // Mike, 2026-10-20: "Keep the sign-in alive". A daily renewal that failed is said, with when, until one succeeds.
   // Only on a connected sign-in: EXPIRED, NOT SAVED and the store rows already say what went wrong.
   const ka = b.keepAlive || {};
-  if (s.state === 'connected' && ka.failedAt) rows.push(['NOT RENEWED', 'watch', 'The daily keep-alive: Arbo couldn’t renew the sign-in at ' + fmtWhen(ka.failedAt) + ' — tap Reconnect if it keeps failing. It tries again within the hour.']);
+  if (s.state === 'connected' && ka.failedAt) rows.push([T('NOT RENEWED'), 'watch', tf('The daily keep-alive: Arbo couldn’t renew the sign-in at {when} — tap Reconnect if it keeps failing. It tries again within the hour.', { when: fmtWhen(ka.failedAt) })]);
   if (!b.link || !b.link.open) {
-    rows.push(['CUT', 'info', 'Truck positions are cut on purpose — Arbo reads and keeps none until ' + ((b.link && b.link.envVar) || 'ARBO_LINK_BOUNCIE') + ' is set to live on Railway. Nothing was deleted.'
-      + (w.whileCut ? ' Bouncie sent ' + plural(w.whileCut, 'update') + ' since Arbo last restarted; each was answered and dropped unread.' : '')]);
+    rows.push([T('CUT'), 'info', tf('Truck positions are cut on purpose — Arbo reads and keeps none until {variable} is set to live on Railway. Nothing was deleted.', { variable: (b.link && b.link.envVar) || 'ARBO_LINK_BOUNCIE' })
+      + (w.whileCut ? ' ' + tn(w.whileCut, 'Bouncie sent {n} update since Arbo last restarted; each was answered and dropped unread.', 'Bouncie sent {n} updates since Arbo last restarted; each was answered and dropped unread.') : '')]);
   } else if ((b.positions || {}).state === 'after_hours') {
-    rows.push(['AFTER HOURS', 'info', 'Positions on, but it is after hours — Arbo tracks trucks only 8am–8pm, Monday to Saturday. Nothing is read or kept now; tracking resumes at 8am on the next working day.']);
+    rows.push([T('AFTER HOURS'), 'info', T('Positions on, but it is after hours — Arbo tracks trucks only 8am–8pm, Monday to Saturday. Nothing is read or kept now; tracking resumes at 8am on the next working day.')]);
   } else {
     const p = (b.positions || {}).state;
     const tr = b.trucks || {};
-    rows.push(['OPEN', 'good', p === 'ok' ? 'Positions on — ' + plural(tr.known || 0, 'truck') + (tr.lastReportAt ? ', last report ' + fmtWhen(tr.lastReportAt) : ', no report since Arbo last restarted') + '.'
-      : p === 'no_trucks' ? 'Positions on — Bouncie answered and lists no trucks on this account.'
-        : p === 'unreadable' ? 'Positions on — but Arbo couldn’t read Bouncie just now. ' + RETRY
-          : 'Positions on — waiting on the Bouncie sign-in above.']);
+    rows.push([T('OPEN'), 'good', p === 'ok' ? (tr.lastReportAt
+      ? tn(tr.known || 0, 'Positions on — {n} truck, last report {when}.', 'Positions on — {n} trucks, last report {when}.', { when: fmtWhen(tr.lastReportAt) })
+      : tn(tr.known || 0, 'Positions on — {n} truck, no report since Arbo last restarted.', 'Positions on — {n} trucks, no report since Arbo last restarted.'))
+      : p === 'no_trucks' ? T('Positions on — Bouncie answered and lists no trucks on this account.')
+        : p === 'unreadable' ? T('Positions on — but Arbo couldn’t read Bouncie just now.') + ' ' + RETRY
+          : T('Positions on — waiting on the Bouncie sign-in above.')]);
   }
   if (!w.wired) {
-    rows.push(['NOT WIRED', 'watch', 'Live updates — BOUNCIE_WEBHOOK_KEY isn’t set on Railway, so Arbo refuses Bouncie’s live updates; this is not zero updates.'
-      + (w.refusedNotWired ? ' Something called the webhook ' + plural(w.refusedNotWired, 'time') + ' since Arbo last restarted.' : '')]);
+    rows.push([T('NOT WIRED'), 'watch', T('Live updates — BOUNCIE_WEBHOOK_KEY isn’t set on Railway, so Arbo refuses Bouncie’s live updates; this is not zero updates.')
+      + (w.refusedNotWired ? ' ' + tn(w.refusedNotWired, 'Something called the webhook {n} time since Arbo last restarted.', 'Something called the webhook {n} times since Arbo last restarted.') : '')]);
   } else if (!w.deliveries && !w.whileCut && !w.droppedKeysMissing && !w.afterHours) {
-    rows.push(['PENDING', 'watch', 'Live updates — the key is set, but nothing has arrived since Arbo last restarted. Turn the webhook on in the Bouncie portal with the address below.']);
+    rows.push([T('PENDING'), 'watch', T('Live updates — the key is set, but nothing has arrived since Arbo last restarted. Turn the webhook on in the Bouncie portal with the address below.')]);
   } else {
-    rows.push(['WIRED', 'good', 'Live updates — ' + plural(w.received || 0, 'update') + ' kept since Arbo last restarted' + (w.lastAt ? ', last heard from ' + fmtWhen(w.lastAt) : '') + '.']);
+    rows.push([T('WIRED'), 'good', w.lastAt
+      ? tn(w.received || 0, 'Live updates — {n} update kept since Arbo last restarted, last heard from {when}.', 'Live updates — {n} updates kept since Arbo last restarted, last heard from {when}.', { when: fmtWhen(w.lastAt) })
+      : tn(w.received || 0, 'Live updates — {n} update kept since Arbo last restarted.', 'Live updates — {n} updates kept since Arbo last restarted.')]);
   }
-  if (w.droppedKeysMissing) rows.push(['DROPPED', 'watch', 'Bouncie sent ' + plural(w.droppedKeysMissing, 'update') + ' since Arbo last restarted; each was answered and dropped unread because the Bouncie sign-in keys (BOUNCIE_CLIENT_ID and BOUNCIE_CLIENT_SECRET) aren’t on the server.']);
+  if (w.droppedKeysMissing) rows.push([T('DROPPED'), 'watch', tn(w.droppedKeysMissing, 'Bouncie sent {n} update since Arbo last restarted; each was answered and dropped unread because the Bouncie sign-in keys (BOUNCIE_CLIENT_ID and BOUNCIE_CLIENT_SECRET) aren’t on the server.', 'Bouncie sent {n} updates since Arbo last restarted; each was answered and dropped unread because the Bouncie sign-in keys (BOUNCIE_CLIENT_ID and BOUNCIE_CLIENT_SECRET) aren’t on the server.')]);
   if (w.afterHours || w.afterHoursReports) {
-    rows.push(['AFTER HOURS', 'info', (w.afterHours ? 'Bouncie sent ' + plural(w.afterHours, 'update') + ' after hours since Arbo last restarted; each was answered and dropped unread. ' : '')
-      + (w.afterHoursReports ? plural(w.afterHoursReports, 'report') + ' stamped after hours inside daytime updates ' + (w.afterHoursReports === 1 ? 'was' : 'were') + ' skipped too. ' : '')
-      + 'Arbo tracks trucks only 8am–8pm, Monday to Saturday.']);
+    // R27 Phase A (es-owner-c): up to three whole sentences, each its own key, joined by a space.
+    rows.push([T('AFTER HOURS'), 'info', [
+      w.afterHours ? tn(w.afterHours, 'Bouncie sent {n} update after hours since Arbo last restarted; each was answered and dropped unread.', 'Bouncie sent {n} updates after hours since Arbo last restarted; each was answered and dropped unread.') : '',
+      w.afterHoursReports ? tn(w.afterHoursReports, '{n} report stamped after hours inside daytime updates was skipped too.', '{n} reports stamped after hours inside daytime updates were skipped too.') : '',
+      T('Arbo tracks trucks only 8am–8pm, Monday to Saturday.'),
+    ].filter(Boolean).join(' ')]);
   }
   // BOUNCIE_API_KEY (Mike, 2026-10-20): the portal's per-user Authorization Code. Connect Bouncie gets its own — present, never used.
-  if (b.keys && b.keys.apiKey) rows.push(['NOT NEEDED', 'info', 'Not needed — Connect Bouncie gets its own code. You can delete BOUNCIE_API_KEY from Railway.']);
+  if (b.keys && b.keys.apiKey) rows.push([T('NOT NEEDED'), 'info', T('Not needed — Connect Bouncie gets its own code. You can delete BOUNCIE_API_KEY from Railway.')]);
   // Anyone on the internet can POST to the webhook address, so a refused call is only a WRONG KEY
   // when nothing from Bouncie has got through. Bouncie's own calls after the refusals: someone else knocking.
   if (w.rejected) {
-    const refused = 'Refused ' + plural(w.rejected, 'call') + ' to the webhook without Arbo’s key since Arbo last restarted';
     const lastOk = w.lastAuthenticAt ? Date.parse(w.lastAuthenticAt) : NaN;
     const lastNo = w.lastRejectedAt ? Date.parse(w.lastRejectedAt) : NaN;
-    if (Number.isNaN(lastOk)) rows.push(['WRONG KEY', 'stop', refused + ', and nothing from Bouncie has got through — if the webhook is on in the Bouncie portal, its key must match BOUNCIE_WEBHOOK_KEY exactly.']);
-    else if (Number.isNaN(lastNo) || lastOk >= lastNo) rows.push(['REFUSED', 'info', refused + '. Bouncie’s own updates got through after them (last ' + fmtWhen(w.lastAuthenticAt) + '), so they came from someone else — nothing to change.']);
-    else rows.push(['REFUSED', 'watch', refused + ' — the last one after Bouncie’s last update (' + fmtWhen(w.lastAuthenticAt) + '). A parked truck sends nothing, so this is usually someone else knocking; if a truck has driven since then and nothing new arrived, check the key in the Bouncie portal still matches BOUNCIE_WEBHOOK_KEY.']);
+    // R27 Phase A (es-owner-c): each of the three sentences whole, its count and time slots.
+    if (Number.isNaN(lastOk)) rows.push([T('WRONG KEY'), 'stop', tn(w.rejected, 'Refused {n} call to the webhook without Arbo’s key since Arbo last restarted, and nothing from Bouncie has got through — if the webhook is on in the Bouncie portal, its key must match BOUNCIE_WEBHOOK_KEY exactly.', 'Refused {n} calls to the webhook without Arbo’s key since Arbo last restarted, and nothing from Bouncie has got through — if the webhook is on in the Bouncie portal, its key must match BOUNCIE_WEBHOOK_KEY exactly.')]);
+    else if (Number.isNaN(lastNo) || lastOk >= lastNo) rows.push([T('REFUSED'), 'info', tn(w.rejected, 'Refused {n} call to the webhook without Arbo’s key since Arbo last restarted. Bouncie’s own updates got through after them (last {when}), so they came from someone else — nothing to change.', 'Refused {n} calls to the webhook without Arbo’s key since Arbo last restarted. Bouncie’s own updates got through after them (last {when}), so they came from someone else — nothing to change.', { when: fmtWhen(w.lastAuthenticAt) })]);
+    else rows.push([T('REFUSED'), 'watch', tn(w.rejected, 'Refused {n} call to the webhook without Arbo’s key since Arbo last restarted — the last one after Bouncie’s last update ({when}). A parked truck sends nothing, so this is usually someone else knocking; if a truck has driven since then and nothing new arrived, check the key in the Bouncie portal still matches BOUNCIE_WEBHOOK_KEY.', 'Refused {n} calls to the webhook without Arbo’s key since Arbo last restarted — the last one after Bouncie’s last update ({when}). A parked truck sends nothing, so this is usually someone else knocking; if a truck has driven since then and nothing new arrived, check the key in the Bouncie portal still matches BOUNCIE_WEBHOOK_KEY.', { when: fmtWhen(w.lastAuthenticAt) })]);
   }
   const skipped = (w.unknownTypes || 0) + (w.badEvents || 0) + (w.badJson || 0) + (w.oversized || 0) + (w.overCap || 0);
-  if (skipped) rows.push(['UNREADABLE', 'watch', plural(skipped, 'update') + ' from Bouncie couldn’t be read and were skipped since Arbo last restarted.']);
+  if (skipped) rows.push([T('UNREADABLE'), 'watch', tn(skipped, '{n} update from Bouncie couldn’t be read and were skipped since Arbo last restarted.', '{n} updates from Bouncie couldn’t be read and were skipped since Arbo last restarted.')]);
   return rows;
 }
 async function bouncieSettings(v, stale) {
-  v.appendChild(el('div', 'panel-title', 'Bouncie (truck tracking)'));
-  v.appendChild(el('div', 'storm-muted', 'Where the trucks are — for you only. The crew door never shows it.'));
+  v.appendChild(el('div', 'panel-title', T('Bouncie (truck tracking)')));
+  v.appendChild(el('div', 'storm-muted', T('Where the trucks are — for you only. The crew door never shows it.')));
   let b;
   try { b = await api('/api/bouncie'); }
   catch (e) {
     if (stale()) return;
     // The switches above just read with this same key, so a 401 here is the route's own lock (no APP_ACCESS_KEY).
-    v.appendChild(e.code === 401 ? el('div', 'feed-state unset', 'Bouncie: locked on the server — connecting needs APP_ACCESS_KEY set on Railway.') : feedLine(e, 'Bouncie status'));
+    v.appendChild(e.code === 401 ? el('div', 'feed-state unset', T('Bouncie: locked on the server — connecting needs APP_ACCESS_KEY set on Railway.')) : feedLine(e, T('Bouncie status')));
     return;
   }
   if (stale()) return;
   for (const [word, tone, text] of bouncieRows(b)) {
     const row = el('div', 'loc-strip');
-    row.appendChild(chip(word, tone));
+    // R27 #4: EXPIRED is a safety badge word — said through the pair (its review is not recorded yet: the pointer, then the English).
+    row.appendChild(word === 'EXPIRED' ? esSay(chip('', tone), 'EXPIRED') : chip(word, tone));
     row.appendChild(el('span', '', text));
     v.appendChild(row);
   }
   const st = (b.signIn || {}).state;
-  if (st === 'keys_missing' || st === 'store_cut' || st === 'store_unconfigured' || st === 'store_missing' || st === 'not_connected') v.appendChild(el('div', 'storm-muted', 'Redirect URI to register in the Bouncie portal: ' + b.redirectUri));
+  if (st === 'keys_missing' || st === 'store_cut' || st === 'store_unconfigured' || st === 'store_missing' || st === 'not_connected') v.appendChild(el('div', 'storm-muted', tf('Redirect URI to register in the Bouncie portal: {uri}', { uri: b.redirectUri })));
   // A keep-alive that keeps failing says "tap Reconnect", so a connected sign-in offers it then too.
   if (st === 'not_connected' || st === 'expired' || st === 'store_locked' || (st === 'connected' && (b.keepAlive || {}).failedAt)) {
-    const go = el('button', 'actbtn', st === 'not_connected' ? 'Connect Bouncie' : 'Reconnect Bouncie');
+    const go = el('button', 'actbtn', st === 'not_connected' ? T('Connect Bouncie') : T('Reconnect Bouncie'));
     const out = el('div', 'errline', '');
     go.addEventListener('click', async () => {
       go.disabled = true;
@@ -6053,19 +6086,19 @@ async function bouncieSettings(v, stale) {
         location.assign(r.authorizeUrl); // Bouncie's approval page; it comes back to Arbo's own result page
       } catch (e) {
         go.disabled = false;
-        out.textContent = 'Not opened — ' + (e.code === 401 ? 'connecting is locked on the server (APP_ACCESS_KEY).'
-          : e.message === 'bouncie_keys_missing' ? 'the Bouncie keys aren’t on the server.'
-            : e.message === 'bouncie_store_cut' ? 'the sign-in store in Supabase is cut on purpose (ARBO_LINK_CREDENTIALS isn’t live).'
-              : e.message === 'bouncie_store_missing' ? 'the sign-in table isn’t in Supabase yet (migration 0021).'
-                : e.message === 'bouncie_store_unconfigured' ? 'Supabase isn’t configured on the server, and the sign-in is kept only there.'
-                  : 'Arbo couldn’t start the sign-in. Try again.');
+        out.textContent = e.code === 401 ? T('Not opened — connecting is locked on the server (APP_ACCESS_KEY).')
+          : e.message === 'bouncie_keys_missing' ? T('Not opened — the Bouncie keys aren’t on the server.')
+            : e.message === 'bouncie_store_cut' ? T('Not opened — the sign-in store in Supabase is cut on purpose (ARBO_LINK_CREDENTIALS isn’t live).')
+              : e.message === 'bouncie_store_missing' ? T('Not opened — the sign-in table isn’t in Supabase yet (migration 0021).')
+                : e.message === 'bouncie_store_unconfigured' ? T('Not opened — Supabase isn’t configured on the server, and the sign-in is kept only there.')
+                  : T('Not opened — Arbo couldn’t start the sign-in. Try again.');
       }
     });
     v.appendChild(go);
     v.appendChild(out);
   }
   const w = b.webhook || {};
-  if (w.url && (!w.wired || !(w.deliveries || w.whileCut || w.droppedKeysMissing || w.afterHours))) v.appendChild(el('div', 'storm-muted', 'Webhook address for the Bouncie portal: ' + w.url));
+  if (w.url && (!w.wired || !(w.deliveries || w.whileCut || w.droppedKeysMissing || w.afterHours))) v.appendChild(el('div', 'storm-muted', tf('Webhook address for the Bouncie portal: {url}', { url: w.url })));
 }
 
 // ---------- Fleet (§6E: units, DOWN status, breakdown reports) ----------
@@ -6360,7 +6393,9 @@ $('bd-go').addEventListener('click', async () => {
 // newer draw owns the screen (DESK_GEN); an older one's panels fill slots no longer on it.
 // The slot ids are where Today's taps, Before you roll and the agents' proposals land (DESK_VIEW).
 // Direction B P14: Office's desk tiles read their small line here too — Teach Arbo's is "Learn" (the plan's table).
-const DESK_LINE = { followups: 'Chief of Staff', money: 'Yard Boss', fleet: 'Yard Boss', safety: 'Crew Chief', perf: 'Analyst', learn: 'Learn' };
+// R27 Phase A (es-owner-c): the R26 desk names are names (as the Agents roster the server sends); Teach Arbo's line
+// is a word, said in the page's language at load.
+const DESK_LINE = { followups: 'Chief of Staff', money: 'Yard Boss', fleet: 'Yard Boss', safety: 'Crew Chief', perf: 'Analyst', learn: T('Learn') };
 const DESK_GEN = {};
 async function deskView(view, sub, panels, headExtra) {
   const gen = DESK_GEN[view] = (DESK_GEN[view] || 0) + 1;
@@ -6597,10 +6632,10 @@ async function renderSettings() {
 async function buildSettings(v, gen) {
   // Appearance reads no feed, so it is drawn even when the switches cannot load.
   const appearance = () => {
-    v.appendChild(el('div', 'panel-title', 'Appearance'));
+    v.appendChild(el('div', 'panel-title', T('Appearance')));
     const seg = el('div', 'chips');
     const cur = themePref();
-    for (const [val, label] of [['auto', 'Auto'], ['light', 'Day'], ['dark', 'Night']]) {
+    for (const [val, label] of [['auto', T('Auto')], ['light', T('Day')], ['dark', T('Night')]]) {
       const b = el('button', 'loc-toggle' + (cur === val ? ' on' : ''), label);
       // Re-marked in place: a full redraw would empty the page and jump it to the top.
       b.addEventListener('click', () => { setTheme(val); for (const x of seg.children) x.classList.toggle('on', x === b); });
@@ -6611,18 +6646,19 @@ async function buildSettings(v, gen) {
   };
   // R26: the R25 desks' heading. It reads no feed, so it draws whatever fails below.
   const head = el('div', 'viewhead');
-  head.appendChild(el('div', 'eyebrow', 'Settings'));
-  head.appendChild(el('h1', '', 'Switches & connections'));
-  head.appendChild(el('p', '', 'Lead channels, today’s work ZIP, Google, the data links and webhooks — each one named, on or off.'));
+  head.appendChild(el('div', 'eyebrow', T('Settings')));
+  head.appendChild(el('h1', '', T('Switches & connections')));
+  head.appendChild(el('p', '', T('Lead channels, today’s work ZIP, Google, the data links and webhooks — each one named, on or off.')));
   v.appendChild(head);
-  v.appendChild(el('div', 'panel-title', 'Lead channel switches'));
+  v.appendChild(el('div', 'panel-title', T('Lead channel switches')));
   let s;
   try { s = await api('/api/settings/channels'); }
   catch (e) {
     if (gen !== settingsGen) return;
     if (e.code === 401) return showKeywall();
     // A dead settings feed is NAMED, in the shared feed words — and nothing was changed (§1B).
-    v.appendChild(state('Channel switches — ' + FEED_WORD[feedKind(e)], 'Nothing was changed.'));
+    // R27 Phase A (es-owner-c): appUi reads the English line's source as written; Spanish says it as one template.
+    v.appendChild(ES.lang === 'es' ? state(tf('Channel switches — {state}', { state: FEED_WORD[feedKind(e)] }), T('Nothing was changed.')) : state('Channel switches — ' + FEED_WORD[feedKind(e)], 'Nothing was changed.'));
     appearance();
     return;
   }
@@ -6636,41 +6672,41 @@ async function buildSettings(v, gen) {
     const r = ix.pipeline === 'no_gmail' ? (ix.gmailReason || '') : '';
     if (r === 'no Gmail credentials configured') {
       inboxDown = true;
-      v.appendChild(el('div', 'feed-state unset', 'Inbox check isn\u2019t running \u2014 Gmail isn\u2019t connected. These switches take effect once it is.'));
+      v.appendChild(el('div', 'feed-state unset', T('Inbox check isn\u2019t running \u2014 Gmail isn\u2019t connected. These switches take effect once it is.')));
     } else if (r && r !== 'inbox watch has not completed a pass') { // a first pass still under way is not a dead feed
       inboxDown = true;
-      v.appendChild(el('div', 'feed-state unread', 'Inbox check couldn\u2019t read Gmail on its last pass. These switches take effect once it can.'));
+      v.appendChild(el('div', 'feed-state unread', T('Inbox check couldn\u2019t read Gmail on its last pass. These switches take effect once it can.')));
     }
   } catch (e) {
     if (gen !== settingsGen) return;
-    if (e.code !== 401) { inboxDown = true; v.appendChild(feedLine(e, 'Inbox check')); }
+    if (e.code !== 401) { inboxDown = true; v.appendChild(feedLine(e, T('Inbox check'))); }
   }
   // The honesty line: these are runtime switches until the data links carry a
   // durable home. It never says "right away" under a line saying the check is down.
   v.appendChild(el('div', 'storm-muted', inboxDown
-    ? 'Your choices are saved now and used as soon as the inbox check runs. They go back to the standard set whenever Arbo restarts or is updated.'
-    : 'Switches apply to the inbox check right away. They go back to the standard set whenever Arbo restarts or is updated.'));
+    ? T('Your choices are saved now and used as soon as the inbox check runs. They go back to the standard set whenever Arbo restarts or is updated.')
+    : T('Switches apply to the inbox check right away. They go back to the standard set whenever Arbo restarts or is updated.')));
   for (const c of s.channels) {
     const cell = el('div'); // the switch row, plus its one error line if a save fails
     const row = el('div', 'loc-strip');
     // ON over a check that is down is drawn muted (.idle): chosen, but nothing is reading yet.
-    const btn = el('button', 'loc-toggle' + (c.on ? ' on' : '') + (c.on && inboxDown ? ' idle' : ''), c.on ? 'ON' : 'OFF');
+    const btn = el('button', 'loc-toggle' + (c.on ? ' on' : '') + (c.on && inboxDown ? ' idle' : ''), c.on ? T('ON') : T('OFF'));
     btn.onclick = async () => {
       // The page rebuilds off screen before it swaps, so the tap shows at once.
-      btn.disabled = true; btn.textContent = 'Saving\u2026';
+      btn.disabled = true; btn.textContent = T('Saving\u2026');
       try { await api('/api/settings/channels', { method: 'POST', body: { id: c.id, on: !c.on } }); }
-      catch (e) { btn.disabled = false; btn.textContent = c.on ? 'ON' : 'OFF'; showSaveFail(cell, e); return; } // refused: the switch stays as it was, and says so
+      catch (e) { btn.disabled = false; btn.textContent = c.on ? T('ON') : T('OFF'); showSaveFail(cell, e); return; } // refused: the switch stays as it was, and says so
       renderSettings();
     };
     row.appendChild(btn);
-    row.appendChild(el('span', '', c.label));
+    row.appendChild(el('span', '', c.label)); // the channel's name, as the server words it (Phase B twins it)
     cell.appendChild(row);
     v.appendChild(cell);
   }
 
   // R15: today's work ZIP — where the route and prep sheets start, and (while
   // Arbo's own phone line is on) what powers the "easy to fit you in this week" offer.
-  v.appendChild(el('div', 'panel-title', 'Today\u2019s work ZIP'));
+  v.appendChild(el('div', 'panel-title', T('Today\u2019s work ZIP')));
   let rz = null, rzErr = null;
   try { rz = await api('/api/settings/route'); } catch (e) { rzErr = e; }
   if (gen !== settingsGen) return;
@@ -6680,9 +6716,10 @@ async function buildSettings(v, gen) {
     // heading — a failed read never hides a section, and never reads as "off".
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
     if (gen !== settingsGen) return;
-    v.appendChild(feedLine(rzErr, 'Work ZIP', 'Nothing was changed.'));
-    v.appendChild(el('div', 'panel-title', 'Live location (office phone)'));
-    v.appendChild(feedLine(rzErr, 'Live location', 'That doesn\u2019t mean location is off.'));
+    // R27 Phase A (es-owner-c): appUi reads the English line's source as written; Spanish passes its own words.
+    v.appendChild(ES.lang === 'es' ? feedLine(rzErr, T('Work ZIP'), T('Nothing was changed.')) : feedLine(rzErr, 'Work ZIP', 'Nothing was changed.'));
+    v.appendChild(el('div', 'panel-title', T('Live location (office phone)')));
+    v.appendChild(feedLine(rzErr, T('Live location'), T('That doesn\u2019t mean location is off.')));
   } else {
     // Only Arbo's own phone line (ElevenLabs) offers a caller the nearby slot; while
     // it is cut the ZIP moves the route and prep sheets and nothing else.
@@ -6692,28 +6729,28 @@ async function buildSettings(v, gen) {
     const lineCut = !!(rsx && rsx.linkCut);
     // Three states, three sentences (§1B): an unread line status never reads as the live offer.
     v.appendChild(el('div', 'storm-muted', !rsx
-      ? 'Where you\u2019re working today \u2014 sets where your route and estimate prep sheets start. Arbo couldn\u2019t read whether its own phone line is on, so it can\u2019t say whether callers are offered the nearby estimate. Set it each morning; it resets whenever Arbo restarts or is updated.'
+      ? T('Where you\u2019re working today \u2014 sets where your route and estimate prep sheets start. Arbo couldn\u2019t read whether its own phone line is on, so it can\u2019t say whether callers are offered the nearby estimate. Set it each morning; it resets whenever Arbo restarts or is updated.')
       : lineCut
-      ? 'Where you\u2019re working today \u2014 sets where your route and estimate prep sheets start. Arbo\u2019s own phone line is off while Sona answers calls, so no caller is offered the nearby estimate right now. Set it each morning; it resets whenever Arbo restarts or is updated.'
-      : 'Where you\u2019re working today \u2014 callers in or near this ZIP get offered an easy weekday estimate, and your route and prep sheets start here. Set it each morning; it resets whenever Arbo restarts or is updated.'));
+      ? T('Where you\u2019re working today \u2014 sets where your route and estimate prep sheets start. Arbo\u2019s own phone line is off while Sona answers calls, so no caller is offered the nearby estimate right now. Set it each morning; it resets whenever Arbo restarts or is updated.')
+      : T('Where you\u2019re working today \u2014 callers in or near this ZIP get offered an easy weekday estimate, and your route and prep sheets start here. Set it each morning; it resets whenever Arbo restarts or is updated.')));
     const zrow = el('div', 'loc-strip');
     const zin = document.createElement('input');
-    zin.id = 'workzip-input'; zin.inputMode = 'numeric'; zin.maxLength = 5; zin.placeholder = '5-digit ZIP';
-    zin.setAttribute('aria-label', 'Today\u2019s work ZIP');
+    zin.id = 'workzip-input'; zin.inputMode = 'numeric'; zin.maxLength = 5; zin.placeholder = T('5-digit ZIP');
+    zin.setAttribute('aria-label', T('Today\u2019s work ZIP'));
     zin.value = rz.workZip || '';
     zin.className = 'input'; zin.style.cssText = 'width:120px;flex:none';
-    const zbtn = el('button', 'actbtn', 'Save');
+    const zbtn = el('button', 'actbtn', T('Save'));
     zbtn.style.marginTop = '0'; // level with the 52px box beside it
     const zmsg = el('div', 'errline');
     zmsg.hidden = true; // no empty gap under the ZIP until there is something to say
     zbtn.onclick = async () => {
       const z = zin.value.trim();
-      if (z && !/^23\d{3}$/.test(z)) { zmsg.hidden = false; zmsg.textContent = 'Not saved \u2014 use a 5-digit Hampton Roads ZIP starting with 23.'; return; }
+      if (z && !/^23\d{3}$/.test(z)) { zmsg.hidden = false; zmsg.textContent = T('Not saved \u2014 use a 5-digit Hampton Roads ZIP starting with 23.'); return; }
       zbtn.disabled = true;
       try { await api('/api/settings/route', { method: 'POST', body: { workZip: z || null } }); }
       catch (e) { // refused: what was typed stays in the box, and the line says nothing was saved
         zbtn.disabled = false; zmsg.hidden = false;
-        zmsg.textContent = e.message === 'bad_zip' ? 'Not saved \u2014 that ZIP was refused. Your entry is still in the box.' : saveFailText(e);
+        zmsg.textContent = e.message === 'bad_zip' ? T('Not saved \u2014 that ZIP was refused. Your entry is still in the box.') : saveFailText(e);
         return;
       }
       renderSettings();
@@ -6723,37 +6760,37 @@ async function buildSettings(v, gen) {
     // §1B: unset is said in words. A fresh office-phone ping is used ahead of the typed ZIP (routeAnchors).
     const liveZip = rz.location && rz.location.zip;
     // An unset ZIP is a gap, so it is named as one (.feed-state), not drawn as a help tip.
-    v.appendChild(el('div', (rz.workZip || liveZip) ? 'storm-muted' : 'feed-state unset', rz.workZip ? 'Set for today: ' + rz.workZip
-      : liveZip ? 'Not set today \u2014 the office phone\u2019s live ZIP (' + liveZip + ') is used while its ping is fresh.'
-      : !rsx ? 'Not set today \u2014 route and prep sheets have no starting ZIP.' // the intro above already says the line status went unread
-      : lineCut ? 'Not set today \u2014 route and prep sheets have no starting ZIP. Arbo\u2019s phone line is off, so callers aren\u2019t offered anything either way.'
-      : 'Not set today \u2014 callers near your work aren\u2019t offered the nearby slot (near-home offers still apply).'));
+    v.appendChild(el('div', (rz.workZip || liveZip) ? 'storm-muted' : 'feed-state unset', rz.workZip ? tf('Set for today: {zip}', { zip: rz.workZip })
+      : liveZip ? tf('Not set today \u2014 the office phone\u2019s live ZIP ({zip}) is used while its ping is fresh.', { zip: liveZip })
+      : !rsx ? T('Not set today \u2014 route and prep sheets have no starting ZIP.') // the intro above already says the line status went unread
+      : lineCut ? T('Not set today \u2014 route and prep sheets have no starting ZIP. Arbo\u2019s phone line is off, so callers aren\u2019t offered anything either way.')
+      : T('Not set today \u2014 callers near your work aren\u2019t offered the nearby slot (near-home offers still apply).')));
     v.appendChild(zmsg);
 
     // R15/R16: the live office-phone location — one honest toggle.
-    v.appendChild(el('div', 'panel-title', 'Live location (office phone)'));
+    v.appendChild(el('div', 'panel-title', T('Live location (office phone)')));
     const loc = rz.location || { enabled: false, zip: null, ageMinutes: null };
     const lcell = el('div'); // the toggle row, plus its one error line if a save fails
     const lrow = el('div', 'loc-strip');
-    const lbtn = el('button', 'loc-toggle' + (loc.enabled ? ' on' : ''), loc.enabled ? 'ON' : 'OFF');
+    const lbtn = el('button', 'loc-toggle' + (loc.enabled ? ' on' : ''), loc.enabled ? T('ON') : T('OFF'));
     lbtn.onclick = async () => {
-      lbtn.disabled = true; lbtn.textContent = 'Saving\u2026'; // shows at once; the rebuilt page swaps in after
+      lbtn.disabled = true; lbtn.textContent = T('Saving\u2026'); // shows at once; the rebuilt page swaps in after
       try { await api('/api/settings/location', { method: 'POST', body: { on: !loc.enabled } }); }
-      catch (e) { lbtn.disabled = false; lbtn.textContent = loc.enabled ? 'ON' : 'OFF'; showSaveFail(lcell, e); return; } // refused: the toggle stays as it was, and says so
+      catch (e) { lbtn.disabled = false; lbtn.textContent = loc.enabled ? T('ON') : T('OFF'); showSaveFail(lcell, e); return; } // refused: the toggle stays as it was, and says so
       renderSettings();
     };
     lrow.appendChild(lbtn);
     lrow.appendChild(el('span', '', loc.enabled
-      ? (loc.zip ? 'Live \u2014 last ping ' + loc.ageMinutes + ' min ago' : 'No fresh ping (the phone reports 8am\u20138pm, Mon\u2013Sat)')
-      : 'OFF \u2014 no location is received or kept'));
+      ? (loc.zip ? tf('Live \u2014 last ping {n} min ago', { n: loc.ageMinutes }) : T('No fresh ping (the phone reports 8am\u20138pm, Mon\u2013Sat)'))
+      : T('OFF \u2014 no location is received or kept')));
     lcell.appendChild(lrow);
     v.appendChild(lcell);
   }
 
   // Reconnect Google (Mike, 2026-09-28). Arbo swaps the code for the token
   // ON ITS SERVER and keeps it there \u2014 this card never shows a token.
-  v.appendChild(el('div', 'panel-title', 'Google'));
-  v.appendChild(el('div', 'storm-muted', 'Gmail, the calendar and Drive lead logs \u2014 read only.'));
+  v.appendChild(el('div', 'panel-title', 'Google')); // a name
+  v.appendChild(el('div', 'storm-muted', T('Gmail, the calendar and Drive lead logs \u2014 read only.')));
   try {
     const gs = await api('/api/google/connect');
     if (gen !== settingsGen) return;
@@ -6764,40 +6801,43 @@ async function buildSettings(v, gen) {
     // "Arbo's own sign-in": the business assistant (R28) reaches Google through its own connection, not this one.
     if (gs.readOnly) {
       const ro = el('div', 'loc-strip');
-      ro.appendChild(chip('READ-ONLY', t.stored ? 'good' : 'info'));
-      ro.appendChild(el('span', '', 'Arbo\u2019s own Google sign-in writes nothing: no email sent, no calendar holds, nothing changed in Drive.'));
+      ro.appendChild(chip(T('READ-ONLY'), t.stored ? 'good' : 'info'));
+      ro.appendChild(el('span', '', T('Arbo\u2019s own Google sign-in writes nothing: no email sent, no calendar holds, nothing changed in Drive.')));
       v.appendChild(ro);
-      for (const p of perms) v.appendChild(el('div', 'storm-muted', (t.stored ? '\u2713 ' : 'Arbo asks for: ') + p.what + ' \u2014 Google calls it \u201c' + p.googleSays + '\u201d'));
+      // R27 Phase A (es-owner-c): what each permission is (the server's words) and Google's own name for it (quoted, as Google writes it).
+      for (const p of perms) v.appendChild(el('div', 'storm-muted', t.stored ? tf('\u2713 {what} \u2014 Google calls it \u201c{google}\u201d', { what: p.what, google: p.googleSays })
+        : tf('Arbo asks for: {what} \u2014 Google calls it \u201c{google}\u201d', { what: p.what, google: p.googleSays })));
     }
     v.appendChild(el('div', t.stored ? 'storm-muted' : 'storm', t.stored
-      ? (t.where === 'disk' ? 'Connected \u2014 saved on Arbo\u2019s storage disk ' + (t.savedAt ? fmtTime(t.savedAt) : '') + '. Survives redeploys.' : 'Connected \u2014 but held in memory only (no storage disk). It will need reconnecting after the next restart.')
-      : 'Not reconnected here yet' + (gs.fallbackVariable ? ' \u2014 Arbo is using the older Railway token, which Google may have expired.' : '.')));
+      ? (t.where === 'disk' ? tf('Connected \u2014 saved on Arbo\u2019s storage disk {when}. Survives redeploys.', { when: t.savedAt ? fmtTime(t.savedAt) : '' }) : T('Connected \u2014 but held in memory only (no storage disk). It will need reconnecting after the next restart.'))
+      : gs.fallbackVariable ? T('Not reconnected here yet \u2014 Arbo is using the older Railway token, which Google may have expired.') : T('Not reconnected here yet.')));
     v.appendChild(el('div', 'storm-muted', gs.readOnly && perms.length
-      ? '1) Tap Open Google. Google’s screen will list exactly these three: ' + perms.map((p) => '\u201c' + p.googleSays + '\u201d').join(', ') + '. If it asks for anything that sends, edits or deletes, don\u2019t approve it.  2) Approve. You land on a page that will not load \u2014 copy its whole address.  3) Paste it below and tap Connect. Do it within a few minutes; the code expires.'
-      : '1) Tap Open Google and approve.  2) You land on a page that will not load \u2014 copy its whole address.  3) Paste it below and tap Connect. Do it within a few minutes; the code expires.'));
-    const open = el('a', 'callbtn', 'Open Google');
+      ? tf('1) Tap Open Google. Google’s screen will list exactly these three: {names}. If it asks for anything that sends, edits or deletes, don\u2019t approve it.  2) Approve. You land on a page that will not load \u2014 copy its whole address.  3) Paste it below and tap Connect. Do it within a few minutes; the code expires.', { names: perms.map((p) => '\u201c' + p.googleSays + '\u201d').join(', ') })
+      : T('1) Tap Open Google and approve.  2) You land on a page that will not load \u2014 copy its whole address.  3) Paste it below and tap Connect. Do it within a few minutes; the code expires.')));
+    const open = el('a', 'callbtn', T('Open Google'));
     open.href = gs.consentUrl; open.target = '_blank'; open.rel = 'noopener';
     v.appendChild(open);
     const box = el('textarea');
     box.className = 'input'; box.style.cssText = 'margin:10px 0;resize:vertical';
-    box.placeholder = 'Paste the http://localhost/?\u2026code=\u2026 address here';
+    box.placeholder = T('Paste the http://localhost/?\u2026code=\u2026 address here');
     box.rows = 3;
     v.appendChild(box);
-    const go = el('button', 'actbtn', 'Connect');
+    const go = el('button', 'actbtn', T('Connect'));
     const out = el('div', 'storm-muted');
     go.onclick = async () => {
-      go.disabled = true; out.textContent = 'Connecting\u2026';
+      go.disabled = true; out.textContent = T('Connecting\u2026');
       try {
         const r = await api('/api/google/connect', { method: 'POST', body: { pasted: box.value } });
         box.value = '';
         // R33: a box left unticked on Google's screen is named — never "all three are read" over a partial grant.
         const lacking = (r.missingScopes || []).map((sc) => (perms.find((p) => p.scope === sc) || { what: sc }).what);
+        // R27 Phase A (es-owner-c): each sentence its own key, joined whole; what Google did not grant is a slot.
         out.textContent = (lacking.length
-          ? 'Connected, but Google didn\u2019t grant: ' + lacking.join(', ') + ' \u2014 tap Open Google and approve all three.' + (r.where === 'disk' ? '' : ' There is no storage disk, so this lasts only until the next restart.')
-          : r.where === 'disk' ? 'Connected read-only. Gmail, the calendar and Drive are read again \u2014 saved on the storage disk.' : 'Connected for now \u2014 but there is no storage disk, so it lasts only until the next restart.')
+          ? tf('Connected, but Google didn\u2019t grant: {list} \u2014 tap Open Google and approve all three.', { list: lacking.join(', ') }) + (r.where === 'disk' ? '' : ' ' + T('There is no storage disk, so this lasts only until the next restart.'))
+          : r.where === 'disk' ? T('Connected read-only. Gmail, the calendar and Drive are read again \u2014 saved on the storage disk.') : T('Connected for now \u2014 but there is no storage disk, so it lasts only until the next restart.'))
           // R33: an older write permission Google kept is said, and is still never used to write.
-          + (r.extraScopes && r.extraScopes.length ? ' Google also kept an older permission that could write \u2014 Arbo never uses it to write.' : '');
-      } catch (e) { out.textContent = 'Not connected \u2014 ' + (e.message === 'code_expired_or_used' ? 'that code expired or was already used. Tap Open Google again and paste the new address right away.' : e.message === 'no_code' ? 'that paste has no Google code in it. Copy the whole address.' : 'Arbo could not finish it. Tap Open Google and try again.'); }
+          + (r.extraScopes && r.extraScopes.length ? ' ' + T('Google also kept an older permission that could write \u2014 Arbo never uses it to write.') : '');
+      } catch (e) { out.textContent = e.message === 'code_expired_or_used' ? T('Not connected \u2014 that code expired or was already used. Tap Open Google again and paste the new address right away.') : e.message === 'no_code' ? T('Not connected \u2014 that paste has no Google code in it. Copy the whole address.') : T('Not connected \u2014 Arbo could not finish it. Tap Open Google and try again.'); }
       go.disabled = false;
     };
     v.appendChild(go);
@@ -6807,17 +6847,17 @@ async function buildSettings(v, gen) {
     if (feedKind(e) === 'unset') { // on this route only the missing Google sign-in answers 503
       // Not set up is its own state (§1B): not an outage, and not a disconnect.
       const row = el('div', 'loc-strip');
-      row.appendChild(chip('NOT SET UP', 'watch'));
+      row.appendChild(chip(T('NOT SET UP'), 'watch'));
       // The two variable names Mike sets, in full. Their 'I' is escaped (\u0049) only
       // because appUi's §4.8 money-copy test finds a forbidden word inside the plain spelling.
-      row.appendChild(el('span', '', 'Google sign-in isn\u2019t set up on the server \u2014 add GMAIL_OAUTH_CL\u0049ENT_ID and GMAIL_OAUTH_CL\u0049ENT_SECRET on Railway. Nothing is disconnected \u2014 it was never set up.'));
+      row.appendChild(el('span', '', T('Google sign-in isn\u2019t set up on the server \u2014 add GMAIL_OAUTH_CL\u0049ENT_ID and GMAIL_OAUTH_CL\u0049ENT_SECRET on Railway. Nothing is disconnected \u2014 it was never set up.')));
       v.appendChild(row);
     } else if (e.code === 401) {
       // The switches above just read with this same key, so this 401 is the
       // route's own lock (no APP_ACCESS_KEY on the server), not a stale key.
-      v.appendChild(el('div', 'feed-state unset', 'Google: locked on the server \u2014 reconnecting needs APP_ACCESS_KEY set on Railway.'));
+      v.appendChild(el('div', 'feed-state unset', T('Google: locked on the server \u2014 reconnecting needs APP_ACCESS_KEY set on Railway.')));
     } else {
-      v.appendChild(feedLine(e, 'Google status'));
+      v.appendChild(feedLine(e, T('Google status')));
     }
   }
 
@@ -6825,13 +6865,13 @@ async function buildSettings(v, gen) {
   // Bouncie (an 8 s deadline per call), and the data links below never wait with it.
   // A card that breaks names itself in its slot (§1B), never a blank.
   const bouncieSlot = v.appendChild(el('div'));
-  bouncieSettings(bouncieSlot, () => gen !== settingsGen).catch((e) => { if (gen === settingsGen) bouncieSlot.appendChild(feedLine(e, 'Bouncie status')); });
+  bouncieSettings(bouncieSlot, () => gen !== settingsGen).catch((e) => { if (gen === settingsGen) bouncieSlot.appendChild(feedLine(e, T('Bouncie status'))); });
 
   // R19: the data links, one by one. Read-only here on purpose \u2014 a link
   // opens by setting its variable on Railway AFTER its verification passes,
   // never from a button in the app.
-  v.appendChild(el('div', 'panel-title', 'Data links'));
-  const LINK_LABEL = { contacts: 'Customers & contacts', properties: 'Properties & trees', leads: 'Leads', estimates: 'Estimates', jobs: 'Jobs & invoices', permits: 'Permits', photos: 'Photos', calls: 'Call & text logs', location: 'Saved location history', crew: 'Crew & certifications', equipment: 'Equipment', safety: 'Safety records', ops: 'Ops records' };
+  v.appendChild(el('div', 'panel-title', T('Data links')));
+  const LINK_LABEL = { contacts: T('Customers & contacts'), properties: T('Properties & trees'), leads: T('Leads'), estimates: T('Estimates'), jobs: T('Jobs & invoices'), permits: T('Permits'), photos: T('Photos'), calls: T('Call & text logs'), location: T('Saved location history'), crew: T('Crew & certifications'), equipment: T('Equipment'), safety: T('Safety records'), ops: T('Ops records') };
   try {
     const dl = await api('/api/links');
     if (gen !== settingsGen) return;
@@ -6840,16 +6880,17 @@ async function buildSettings(v, gen) {
     // R32 is its own sentence too: real records on screen, nothing saved, never worded as live or cut.
     const masterLook = dl.master === 'sim' ? 'feed-state sim' : dl.master === 'live' || dl.master === 'readonly' ? 'storm-muted' : 'feed-state cut';
     v.appendChild(el('div', masterLook, dl.master === 'sim'
-      ? 'SIMULATION \u2014 every screen is showing fake SIM- records, except the Calendar, which is always your live Google Calendar. No real database is connected; the real links below stay CUT.'
+      ? T('SIMULATION \u2014 every screen is showing fake SIM- records, except the Calendar, which is always your live Google Calendar. No real database is connected; the real links below stay CUT.')
       : dl.master === 'readonly'
-        ? 'Read-only: Arbo is reading your real records and saving nothing. A link marked CUT stays shut on purpose and says why.'
+        ? T('Read-only: Arbo is reading your real records and saving nothing. A link marked CUT stays shut on purpose and says why.')
         : dl.master === 'live'
-          ? 'Master switch LIVE. A CUT link is a closed door, not empty data \u2014 each opens after its verification.'
-          : 'Master switch CUT \u2014 every link is closed whatever its own setting. A closed door is not empty data.'));
+          ? T('Master switch LIVE. A CUT link is a closed door, not empty data \u2014 each opens after its verification.')
+          : T('Master switch CUT \u2014 every link is closed whatever its own setting. A closed door is not empty data.')));
     for (const l of dl.links) {
       const row = el('div', 'loc-strip');
       const readable = l.state === 'open' || l.state === 'read-only';
-      row.appendChild(chip(l.state === 'open' ? 'OPEN' : l.state === 'read-only' ? 'READ-ONLY' : 'CUT', readable ? 'good' : 'info')); // a status, not a switch
+      row.appendChild(chip(l.state === 'open' ? T('OPEN') : l.state === 'read-only' ? T('READ-ONLY') : T('CUT'), readable ? 'good' : 'info')); // a status, not a switch
+      // R27 Phase A (es-owner-c): the table names and their counts are the database's own words (data), the reason the server's line.
       const counts = l.rowCounts
         ? ' \u2014 ' + Object.entries(l.rowCounts).map(([t, n]) => t + ': ' + n).join(', ')
         : '';
@@ -6860,17 +6901,18 @@ async function buildSettings(v, gen) {
     }
   } catch (e) {
     if (gen !== settingsGen) return;
-    if (e.code !== 401) v.appendChild(feedLine(e, 'Data links'));
+    if (e.code !== 401) v.appendChild(feedLine(e, T('Data links')));
   }
 
   // R19: the webhook wires \u2014 every source that can push to Arbo, named.
   // Quo (Sona) has its own intake, so its row is read from /api/quo below.
-  v.appendChild(el('div', 'panel-title', 'Webhooks'));
-  const HOOK_LABEL = { resend: 'Resend (website form copies)', elevenlabs: 'ElevenLabs', railway: 'Railway (deploy notices)', twilio: 'Twilio' };
+  v.appendChild(el('div', 'panel-title', T('Webhooks')));
+  const HOOK_LABEL = { resend: T('Resend (website form copies)'), elevenlabs: 'ElevenLabs', railway: T('Railway (deploy notices)'), twilio: 'Twilio' };
   // Railway and Twilio are gated by a key in their webhook link, not a signing secret, so their unset rows name that variable.
+  // R27 Phase A (es-owner-c): each row one template, the source's name its slot.
   const HOOK_UNSET = {
-    railway: ' \u2014 RAILWAY_WEBHOOK_KEY (the key in the webhook link) isn\u2019t set, so Arbo can\u2019t count deploy notices; this is not zero events',
-    twilio: ' \u2014 TWILIO_SMS_WEBHOOK_KEY (the key in the webhook link) isn\u2019t set, so Arbo can\u2019t count incoming texts; this is not zero events',
+    railway: (label) => tf('{label} \u2014 RAILWAY_WEBHOOK_KEY (the key in the webhook link) isn\u2019t set, so Arbo can\u2019t count deploy notices; this is not zero events', { label }),
+    twilio: (label) => tf('{label} \u2014 TWILIO_SMS_WEBHOOK_KEY (the key in the webhook link) isn\u2019t set, so Arbo can\u2019t count incoming texts; this is not zero events', { label }),
   };
   try {
     const wh = await api('/api/webhooks');
@@ -6879,20 +6921,20 @@ async function buildSettings(v, gen) {
       const row = el('div', 'loc-strip');
       const label = HOOK_LABEL[name] || name;
       if ((wh.cut || []).indexOf(name) !== -1) {
-        row.appendChild(chip('CUT', 'info'));
-        row.appendChild(el('span', '', label + ' \u2014 disconnected while Sona handles calls'));
+        row.appendChild(chip(T('CUT'), 'info'));
+        row.appendChild(el('span', '', tf('{label} \u2014 disconnected while Sona handles calls', { label })));
         v.appendChild(row);
         continue;
       }
-      row.appendChild(chip(s.configured ? 'WIRED' : 'NOT WIRED', s.configured ? 'good' : 'watch'));
-      row.appendChild(el('span', '', label + (s.configured
-        ? ' \u2014 ' + s.received + ' received' + (s.lastAt ? ', last ' + fmtTime(s.lastAt) : ' since Arbo last restarted')
-        : (HOOK_UNSET[name] || ' \u2014 no signing secret set on Railway, so Arbo can\u2019t count what it sent; this is not zero events'))));
+      row.appendChild(chip(s.configured ? T('WIRED') : T('NOT WIRED'), s.configured ? 'good' : 'watch'));
+      row.appendChild(el('span', '', s.configured
+        ? (s.lastAt ? tf('{label} \u2014 {n} received, last {when}', { label, n: s.received, when: fmtTime(s.lastAt) }) : tf('{label} \u2014 {n} received since Arbo last restarted', { label, n: s.received }))
+        : (HOOK_UNSET[name] ? HOOK_UNSET[name](label) : tf('{label} \u2014 no signing secret set on Railway, so Arbo can\u2019t count what it sent; this is not zero events', { label }))));
       v.appendChild(row);
     }
   } catch (e) {
     if (gen !== settingsGen) return;
-    if (e.code !== 401) v.appendChild(feedLine(e, 'Webhooks'));
+    if (e.code !== 401) v.appendChild(feedLine(e, T('Webhooks')));
   }
   // Its own read, so a dead /api/webhooks never hides the Quo row (or the reverse).
   try {
@@ -6902,24 +6944,27 @@ async function buildSettings(v, gen) {
     const ok = reg.state === 'ok';
     const row = el('div', 'loc-strip');
     // R33: 'read_only' = a webhook Arbo won't create while Quo is read-only — its own word, never FAILED.
-    row.appendChild(chip(ok ? 'WIRED' : reg.state === 'failed' ? 'FAILED' : reg.state === 'pending' ? 'PENDING' : reg.state === 'read_only' ? 'HOOK MISSING' : 'NOT WIRED', ok ? 'good' : reg.state === 'failed' ? 'stop' : 'watch'));
+    row.appendChild(chip(ok ? T('WIRED') : reg.state === 'failed' ? T('FAILED') : reg.state === 'pending' ? T('PENDING') : reg.state === 'read_only' ? T('HOOK MISSING') : T('NOT WIRED'), ok ? 'good' : reg.state === 'failed' ? 'stop' : 'watch'));
     // The row names Quo once: Settings words the not-connected state itself, and
     // a failed or pending registration reads as the intake's own sentence after the label.
-    row.appendChild(el('span', '', 'Quo (Sona calls & texts) \u2014 ' + (ok ? q.received + ' received' + (q.lastAt ? ', last ' + fmtTime(q.lastAt) : ' since Arbo last restarted')
-      : reg.state === 'not_configured' ? 'not connected to Arbo yet, so Sona\u2019s calls aren\u2019t reaching Arbo' : reg.detail + (reg.retryAt ? ' Arbo tries again at ' + fmtTime(reg.retryAt) + ' \u2014 no redeploy needed.' : ''))));
+    // R27 Phase A (es-owner-c): each state one template; the intake's own sentence (reg.detail) is the server's, a slot.
+    row.appendChild(el('span', '', ok ? (q.lastAt ? tf('Quo (Sona calls & texts) \u2014 {n} received, last {when}', { n: q.received, when: fmtTime(q.lastAt) }) : tf('Quo (Sona calls & texts) \u2014 {n} received since Arbo last restarted', { n: q.received }))
+      : reg.state === 'not_configured' ? T('Quo (Sona calls & texts) \u2014 not connected to Arbo yet, so Sona\u2019s calls aren\u2019t reaching Arbo')
+        : reg.retryAt ? tf('Quo (Sona calls & texts) \u2014 {detail} Arbo tries again at {when} \u2014 no redeploy needed.', { detail: reg.detail, when: fmtTime(reg.retryAt) })
+          : tf('Quo (Sona calls & texts) \u2014 {detail}', { detail: reg.detail })));
     v.appendChild(row);
     // R33 (Mike, 2026-10-20: "connect quo as read only"): what Arbo may do in Quo — only as the server says it.
     if (reg.state !== 'not_configured' && q.quoWrites) {
       const wr = el('div', 'loc-strip');
-      wr.appendChild(chip(q.quoWrites === 'live' ? 'SENDS ON' : 'READ-ONLY', q.quoWrites === 'live' ? 'watch' : 'good'));
+      wr.appendChild(chip(q.quoWrites === 'live' ? T('SENDS ON') : T('READ-ONLY'), q.quoWrites === 'live' ? 'watch' : 'good'));
       wr.appendChild(el('span', '', q.quoWrites === 'live'
-        ? 'Quo \u2014 Arbo may send the \u201cstill interested?\u201d text, on your word.'
-        : 'Quo \u2014 Arbo reads calls, texts and transcripts and sends nothing. Send from the Quo app.'));
+        ? T('Quo \u2014 Arbo may send the \u201cstill interested?\u201d text, on your word.')
+        : T('Quo \u2014 Arbo reads calls, texts and transcripts and sends nothing. Send from the Quo app.')));
       v.appendChild(wr);
     }
   } catch (e) {
     if (gen !== settingsGen) return;
-    if (e.code !== 401) v.appendChild(feedLine(e, 'Quo (Sona)'));
+    if (e.code !== 401) v.appendChild(feedLine(e, T('Quo (Sona)')));
   }
 
   appearance();
@@ -7155,7 +7200,9 @@ function heroLoops() {
 // campaigns its own read carries; the plan's "ad spend, or dashed Ads: not set up yet"). part: what a
 // read that landed could not check (Follow-ups' storm and coming-due nudges, P14 review) — named, and
 // the head never reads calm over it.
-const OFFICE_DESKS = [{ view: 'followups', icon: 'i-queue', need: true, side: 'Recommended sends', part: 'Storm or coming-due nudges' }, { view: 'money', icon: 'i-flag', need: true }, { view: 'fleet', icon: 'i-truck', need: true }, { view: 'safety', icon: 'i-cone', need: true }, { view: 'perf', icon: 'i-numbers', side: 'Ads' }, { view: 'learn', icon: 'i-learn' }];
+// R27 Phase A (es-owner-c): side and part are names the tile and the feeds card say, read once at load (the office
+// app reloads on a language change).
+const OFFICE_DESKS = [{ view: 'followups', icon: 'i-queue', need: true, side: T('Recommended sends'), part: T('Storm or coming-due nudges') }, { view: 'money', icon: 'i-flag', need: true }, { view: 'fleet', icon: 'i-truck', need: true }, { view: 'safety', icon: 'i-cone', need: true }, { view: 'perf', icon: 'i-numbers', side: T('Ads') }, { view: 'learn', icon: 'i-learn' }];
 // One desk tile's words, from the same read its screen makes: { n, what, sub, side, part, tone }. n and
 // what are the count ("2", "overdue"); sub is the line under it; side is the FEED_WORD kind the row's
 // second line names, or null; part is the FEED_WORD kind of what the read could not check, or null; tone is 'hot' (red: it stops the day), 'warn' (amber: it waits on
@@ -7170,28 +7217,30 @@ async function officeDesk(view) {
     const s = await sends;
     const n = q.open.length;
     // Open loops and recommended sends both wait on Mike: either makes the desk amber.
-    const out = { n: n, what: n === 1 ? 'open loop' : 'open loops', sub: '', side: null, part: null, tone: n || (s.v && s.v.due.length) ? 'warn' : 'ok' };
+    // R27 Phase A (es-owner-c): `what` is the count's label beside its bold number — the one or the many form (tn).
+    const out = { n: n, what: tn(n, 'open loop', 'open loops'), sub: '', side: null, part: null, tone: n || (s.v && s.v.due.length) ? 'warn' : 'ok' };
     // R33: Arbo sends nothing — Mike texts them himself, from the Quo app.
     if (s.v) {
       // The server drops the storm and coming-due nudges it could not check, and says so (Follow-ups' own line):
       // the tile says some couldn't be checked, the feeds card names them, and the head never reads calm (§1B).
       if (s.v.seasonalUnavailable || s.v.growthUnavailable) out.part = 'unread';
-      out.sub = plural(s.v.due.length, 'recommended send') + ' — to text from the Quo app' + (out.part ? ' · some couldn’t be checked' : '');
+      // R27 Phase A (es-owner-c): each part of the " · " list is one whole template, its count a slot.
+      out.sub = tn(s.v.due.length, '{n} recommended send — to text from the Quo app', '{n} recommended sends — to text from the Quo app') + (out.part ? ' · ' + T('some couldn’t be checked') : '');
     } else if (!(s.e && s.e.code === 401)) { await LINKS_READY; out.side = feedKind(s.e); }
     return out;
   }
   if (view === 'money') {
     const c = moneyCounts(lists(await api('/api/money'), ['collections', 'drafts']));
-    return { n: c.over, what: 'overdue', side: null, tone: c.over ? 'hot' : c.bill || c.noFigure || c.unk ? 'warn' : 'ok',
-      sub: [c.bill + ' to bill', c.noFigure ? c.noFigure + ' no agreed figure' : '', c.unk ? c.unk + ' can’t tell' : ''].filter(Boolean).join(' · ') };
+    return { n: c.over, what: T('overdue'), side: null, tone: c.over ? 'hot' : c.bill || c.noFigure || c.unk ? 'warn' : 'ok',
+      sub: [tf('{n} to bill', { n: c.bill }), c.noFigure ? tf('{n} no agreed figure', { n: c.noFigure }) : '', c.unk ? tf('{n} can’t tell', { n: c.unk }) : ''].filter(Boolean).join(' · ') };
   }
   if (view === 'fleet') {
     const u = lists(await api('/api/fleet/units'), ['units']).units;
     const off = u.filter((x) => x.status === 'held' || x.status === 'down').length;
     const look = u.filter((x) => x.status === 'maintenance').length;
     const up = u.filter((x) => x.status === 'up').length;
-    return { n: off, what: 'held or down', side: null, tone: off ? 'hot' : look ? 'warn' : 'ok',
-      sub: !u.length ? 'No units on file' : plural(up, 'unit') + ' up' + (look ? ' · ' + look + (look === 1 ? ' needs' : ' need') + ' attention' : '') };
+    return { n: off, what: T('held or down'), side: null, tone: off ? 'hot' : look ? 'warn' : 'ok',
+      sub: !u.length ? T('No units on file') : tn(up, '{n} unit up', '{n} units up') + (look ? ' · ' + tn(look, '{n} needs attention', '{n} need attention') : '') };
   }
   if (view === 'safety') {
     const s = lists(await api('/api/safety'), ['aerialBlocked', 'blindSpots', 'certProblems']);
@@ -7199,13 +7248,13 @@ async function officeDesk(view) {
     const due = s.certProblems.filter((f) => typeof f.daysUntil === 'number' && f.daysUntil >= 0 && f.daysUntil <= 30).length;
     const rest = s.certProblems.length - due; // lapsed, missing or undated: named, never folded into "due"
     const blind = s.blindSpots.length;
-    return { n: n, what: 'no aerial', side: null, tone: n ? 'hot' : blind || s.certProblems.length ? 'warn' : 'ok',
-      sub: [plural(due, 'cert') + ' due in 30 days', rest ? rest + ' more ' + (rest === 1 ? 'needs' : 'need') + ' a look' : '', blind ? '⚠ ' + blind + ' can’t see' : ''].filter(Boolean).join(' · ') };
+    return { n: n, what: T('no aerial'), side: null, tone: n ? 'hot' : blind || s.certProblems.length ? 'warn' : 'ok',
+      sub: [tn(due, '{n} cert due in 30 days', '{n} certs due in 30 days'), rest ? tn(rest, '{n} more needs a look', '{n} more need a look') : '', blind ? tf('⚠ {n} can’t see', { n: blind }) : ''].filter(Boolean).join(' · ') };
   }
   if (view === 'perf') {
     const p = lists(await api('/api/performance'), ['areas']);
     const n = p.areas.filter((a) => a.verdict !== 'not_enough_data').length;
-    const out = { n: n, what: n === 1 ? 'area rated' : 'areas rated', sub: '', side: null, tone: '' };
+    const out = { n: n, what: tn(n, 'area rated', 'areas rated'), sub: '', side: null, tone: '' };
     // The ad spend from the same read Numbers draws its campaigns from (P14 review). Campaigns Arbo couldn't
     // read are "couldn't read it", as Numbers says; none on file is the plan's "Ads: not set up yet"; a
     // campaign with no cost on file is said beside the spend, never added in as $0.
@@ -7215,15 +7264,16 @@ async function officeDesk(view) {
     else {
       const known = c.filter((x) => typeof x.cost === 'number');
       const blank = c.length - known.length;
-      out.sub = 'Ads: ' + [known.length ? dollars(known.reduce((a, x) => a + x.cost, 0)) + ' spent' : '', blank ? blank + ' with no cost on file' : ''].filter(Boolean).join(' · ');
+      // R27 Phase A (es-owner-c): "Ads: …" is one template; its parts each whole, joined by the middle dot.
+      out.sub = tf('Ads: {parts}', { parts: [known.length ? tf('{amount} spent', { amount: dollars(known.reduce((a, x) => a + x.cost, 0)) }) : '', blank ? tf('{n} with no cost on file', { n: blank }) : ''].filter(Boolean).join(' · ') });
     }
     return out;
   }
   // Teach Arbo: the lessons waiting for Mike's answer, as Learn lists them.
   const st = await api('/api/sim/state');
   if (!st || !st.lessons) throw new Error('unreadable');
-  return { n: lessonsWaiting(st).length, what: 'to approve', side: null, tone: '',
-    sub: st.report && st.report.ranAt ? 'Last check ' + fmtWhen(st.report.ranAt) : 'No check run yet' };
+  return { n: lessonsWaiting(st).length, what: T('to approve'), side: null, tone: '',
+    sub: st.report && st.report.ranAt ? tf('Last check {when}', { when: fmtWhen(st.report.ranAt) }) : T('No check run yet') };
 }
 // Office's proposals card: P6's list (agentProposals, in the run's own order), each row opening the
 // screen where Mike acts on it (PROPOSAL_GO). No run this launch is said, with the same read-only run
@@ -7237,11 +7287,12 @@ function officeProposals() {
   const props = agentProposals(run);
   const c = el('div', 'card proposals office-props');
   c.dataset.age = officeRunAge(); // what this card shows: which run, and whether it was over 15 minutes old (officeAge)
-  c.appendChild(el('div', 'loop-kind', 'Agents' + (ranAt ? ' · ran ' + fmtWhen(ranAt) : '')));
-  c.appendChild(el('div', 'who', props.length ? 'Proposals for you (' + props.length + ')' : 'Proposals for you'));
-  if (stale) c.appendChild(el('div', 'feed-state unset', 'Ran ' + fmtWhen(ranAt) + ' — over 15 minutes old. Run again for a current read.'));
-  if (!run) c.appendChild(el('div', 'storm-muted', 'Not run since Arbo started. A run only looks.'));
-  else if (!ran) c.appendChild(el('div', 'storm', 'The run did not complete (' + run.error + '). No proposal is shown rather than a stale one.'));
+  // R27 Phase A (es-owner-c): each line one template; a time, a count and the run's error code are slots.
+  c.appendChild(el('div', 'loop-kind', ranAt ? tf('Agents · ran {when}', { when: fmtWhen(ranAt) }) : T('Agents')));
+  c.appendChild(el('div', 'who', props.length ? tf('Proposals for you ({n})', { n: props.length }) : T('Proposals for you')));
+  if (stale) c.appendChild(el('div', 'feed-state unset', tf('Ran {when} — over 15 minutes old. Run again for a current read.', { when: fmtWhen(ranAt) })));
+  if (!run) c.appendChild(el('div', 'storm-muted', T('Not run since Arbo started. A run only looks.')));
+  else if (!ran) c.appendChild(el('div', 'storm', tf('The run did not complete ({error}). No proposal is shown rather than a stale one.', { error: run.error })));
   else {
     const short = run.reports.filter((r) => r.status !== 'ok').length;
     // Four at most, so a big run never buries the desks below (P14 review); past four, the first three and
@@ -7250,20 +7301,23 @@ function officeProposals() {
     for (const p of shown) c.appendChild(proposalRow(p, true));
     if (shown.length < props.length) {
       const row = c.appendChild(el('div', 'prop-row'));
-      row.appendChild(el('div', 'prop-words', plural(props.length - shown.length, 'more proposal', 'more proposals') + ' — every one is on Agents'));
-      const b = row.appendChild(el('button', 'minibtn', 'Agents ›'));
+      row.appendChild(el('div', 'prop-words', tn(props.length - shown.length, '{n} more proposal — every one is on Agents', '{n} more proposals — every one is on Agents')));
+      const b = row.appendChild(el('button', 'minibtn', T('Agents ›')));
       b.type = 'button';
-      b.setAttribute('aria-label', 'Open Agents');
+      b.setAttribute('aria-label', T('Open Agents'));
       b.addEventListener('click', () => { switchTab('agents'); renderAgents(); });
     }
-    if (short) c.appendChild(el('div', 'feed-state unset', (props.length ? '' : 'No proposals — ') + plural(short, 'desk', 'desks') + ' couldn’t read everything (named on Agents)' + (props.length ? ' — there may be more.' : '.')));
-    else if (!props.length) c.appendChild(el('div', 'storm-muted', 'No proposals from this run.'));
+    // R27 Phase A (es-owner-c): the four sentences this line can be, each its own template (no piece glued).
+    if (short) c.appendChild(el('div', 'feed-state unset', props.length
+      ? tn(short, '{n} desk couldn’t read everything (named on Agents) — there may be more.', '{n} desks couldn’t read everything (named on Agents) — there may be more.')
+      : tn(short, 'No proposals — {n} desk couldn’t read everything (named on Agents).', 'No proposals — {n} desks couldn’t read everything (named on Agents).')));
+    else if (!props.length) c.appendChild(el('div', 'storm-muted', T('No proposals from this run.')));
   }
   if (!ran || stale) {
-    const b = el('button', 'actbtn wide-btn', ran ? 'Run all eight again' : 'Run all eight');
+    const b = el('button', 'actbtn wide-btn', ran ? T('Run all eight again') : T('Run all eight'));
     b.type = 'button';
     b.addEventListener('click', async () => {
-      b.disabled = true; b.textContent = 'Running the eight desks…';
+      b.disabled = true; b.textContent = T('Running the eight desks…');
       await runAllEight();
       renderMore();
     });
@@ -7293,7 +7347,7 @@ function officeAge() {
 // fill tiles no longer on screen.
 function officeHub(v) {
   const head = el('div', 'viewhead');
-  head.appendChild(el('div', 'eyebrow', 'The back office'));
+  head.appendChild(el('div', 'eyebrow', T('The back office')));
   const h1 = head.appendChild(el('h1', '', VIEW_TITLES.more));
   v.appendChild(head); // no help line under it (P14 review): the first screen is the proposals and the four job desks
 
@@ -7323,9 +7377,11 @@ function officeHub(v) {
       reading.replaceWith(c);
       // Each part keeps its count with its words, and the dot travels with the part after it — a line never ends on "·" or a bare number.
       if (r.sub) t.appendChild(el('small', '', r.sub.split(' · ').map((x) => x.replace(/^(\S+) /, '$1\u00a0')).join(' ·\u00a0')));
-      if (r.side) t.appendChild(el('small', 'ogap', d.side + ': ' + FEED_WORD[r.side]));
+      // R27 Phase A (es-owner-c): "Name: state" is one template — the name (OFFICE_DESKS, already in the page's
+      // language) and the shared feed word are its values.
+      if (r.side) t.appendChild(el('small', 'ogap', tf('{what}: {state}', { what: d.side, state: FEED_WORD[r.side] })));
       if (r.tone) t.classList.add(r.tone);
-      t.setAttribute('aria-label', VIEW_TITLES[d.view] + ': ' + r.n + ' ' + r.what + (r.sub ? '. ' + r.sub : ''));
+      t.setAttribute('aria-label', r.sub ? tf('{desk}: {n} {what}. {sub}', { desk: VIEW_TITLES[d.view], n: r.n, what: r.what, sub: r.sub }) : tf('{desk}: {n} {what}', { desk: VIEW_TITLES[d.view], n: r.n, what: r.what }));
       return { d: d, tone: r.tone, side: r.side, part: r.part || null };
     }, async (e) => {
       if (e && e.code === 401) { reading.remove(); return { d: d, key: true }; } // the key wall owns the screen
@@ -7336,7 +7392,7 @@ function officeHub(v) {
       reading.replaceWith(count('–'));
       t.appendChild(el('small', '', Cap(FEED_WORD[k])));
       t.classList.add('gap');
-      t.setAttribute('aria-label', VIEW_TITLES[d.view] + ': ' + FEED_WORD[k] + ' — not a zero');
+      t.setAttribute('aria-label', tf('{desk}: {state} — not a zero', { desk: VIEW_TITLES[d.view], state: FEED_WORD[k] }));
       return { d: d, kind: k };
     });
     // The card counts a desk Arbo couldn't read (and a second line's gap), names it, and leaves it in place.
@@ -7357,10 +7413,10 @@ function officeHub(v) {
     const off = rs.filter((r) => r.kind && r.kind !== 'unread').length;
     // "Could not be read" is said only of reads that failed; desks cut on purpose or not set up were never
     // read, and are "not counted" (P14 review, §1B: "couldn't read" and "cut" are different facts).
-    h1.textContent = need ? plural(need, 'desk needs you', 'desks need you')
-      : read === jobs.length ? 'No desk needs you right now' : counted ? 'No desk Arbo read needs you'
-        : jobs.every((r) => r.kind === 'unread') ? 'No desk could be read' : 'No desk counted';
-    const gaps = [unread ? unread + ' couldn’t be read' : '', off ? off + ' off' : ''].filter(Boolean).join(' · ');
+    h1.textContent = need ? tn(need, '{n} desk needs you', '{n} desks need you')
+      : read === jobs.length ? T('No desk needs you right now') : counted ? T('No desk Arbo read needs you')
+        : jobs.every((r) => r.kind === 'unread') ? T('No desk could be read') : T('No desk counted');
+    const gaps = [unread ? tf('{n} couldn’t be read', { n: unread }) : '', off ? tf('{n} off', { n: off }) : ''].filter(Boolean).join(' · ');
     if (gaps) h1.appendChild(el('span', 'h1-gap', ' · ' + gaps));
   });
   return feeds;
@@ -7370,7 +7426,7 @@ function renderMore() {
   v.replaceChildren();
   // Direction B P14: Office — the head, the agents' proposals and the counted desks, then the rest of Arbo.
   const feeds = officeHub(v);
-  v.appendChild(el('div', 'panel-title', 'Also here'));
+  v.appendChild(el('div', 'panel-title', T('Also here')));
   const grid = el('div', 'grid-tiles');
   const tile = (ic, title, note, go) => {
     const b = el('button', 'gtile');
@@ -7385,48 +7441,48 @@ function renderMore() {
   };
   // R28: the assistant's desk leads — it is where asks wait for Mike's OK. A count
   // when some wait; off, not set up or a read that failed is said on the tile (§1B).
-  const asst = tile('i-shield', 'Assistant', 'Asks you first', () => { switchTab('assistant'); renderAssistant(); });
+  const asst = tile('i-shield', T('Assistant'), T('Asks you first'), () => { switchTab('assistant'); renderAssistant(); });
   api('/api/assistant/approvals').then((d) => {
     const n = d && Array.isArray(d.approvals) ? d.approvals.length : null;
-    if (n === null) { asst.querySelector('small').textContent = 'Couldn’t read what’s waiting'; return; }
+    if (n === null) { asst.querySelector('small').textContent = T('Couldn’t read what’s waiting'); return; }
     if (!n) return;
     const count = el('span', 'count', String(n));
     count.setAttribute('aria-hidden', 'true'); // the tile's own label says it in words
     asst.appendChild(count);
-    asst.setAttribute('aria-label', 'Assistant: ' + n + ' waiting for your OK');
+    asst.setAttribute('aria-label', tf('Assistant: {n} waiting for your OK', { n: n }));
   }).catch((e) => {
     if (e.code === 401) return;
     const m = e.code === 503 ? e.message : '';
-    asst.querySelector('small').textContent = m === 'assistant_off' ? 'Switched off' : m === 'assistant_not_set_up' ? 'Not set up yet' : 'Couldn’t read what’s waiting';
+    asst.querySelector('small').textContent = m === 'assistant_off' ? T('Switched off') : m === 'assistant_not_set_up' ? T('Not set up yet') : T('Couldn’t read what’s waiting');
   });
-  tile('i-agents', 'Agents', 'Eight desks, one brain', () => { switchTab('agents'); renderAgents(); });
+  tile('i-agents', T('Agents'), T('Eight desks, one brain'), () => { switchTab('agents'); renderAgents(); });
   // Direction B P14: the four desks the Queue held, Numbers and Teach Arbo are Office's counted desk
   // tiles above (OFFICE_DESKS; no two Office tiles share an icon). P15/P19: Book, Permits and Measure live
   // under Estimate, which has its own dock tab now — Office carries no tile for it.
   // R26: look only — the crew's page, on this app's key, and it cannot sign,
   // file or clock in. Same tab on purpose: an installed iPhone app keeps its
   // own saved data, so a new tab might not have the key.
-  tile('i-crew', 'Crew', 'What the crew sees', () => { location.href = '/crew?preview=1'; });
+  tile('i-crew', T('Crew'), T('What the crew sees'), () => { location.href = '/crew?preview=1'; });
   // The old receptionist page, renamed "Phone line" by Mike (2026-10-20); "Talk" is only the R30 header button.
-  const talk = tile('i-message', 'Phone line', 'Arbo’s receptionist', () => window.open('/talk', '_blank', 'noopener'));
+  const talk = tile('i-message', T('Phone line'), T('Arbo’s receptionist'), () => window.open('/talk', '_blank', 'noopener'));
   // R21: the same switch Today reads. While Arbo's own line is cut the tile
   // says so instead of opening a page that can only say "off". A status Arbo
   // could not read leaves the tile as it is.
   api('/api/reception/status').then((s) => {
     if (!s.linkCut) return;
     talk.disabled = true;
-    talk.querySelector('small').textContent = 'Off while Sona answers calls';
+    talk.querySelector('small').textContent = T('Off while Sona answers calls');
   }).catch(() => {});
   v.appendChild(grid);
   // Settings opens from the header button on every screen (its icon is sliders, i-settings) — no second door here; this line only points to it.
-  v.appendChild(el('div', 'storm-muted office-gear', 'Settings open from the sliders button at the top.'));
+  v.appendChild(el('div', 'storm-muted office-gear', T('Settings open from the sliders button at the top.')));
   // Direction B P14: Office's feeds card — every desk Arbo couldn't read, counted and named (each stays in its place).
   v.appendChild(feeds.el);
 
-  v.appendChild(el('div', 'panel-title', 'Appearance'));
+  v.appendChild(el('div', 'panel-title', T('Appearance')));
   const seg = el('div', 'chips');
   const cur = themePref();
-  for (const [val, label] of [['auto', 'Auto'], ['light', 'Day'], ['dark', 'Night']]) {
+  for (const [val, label] of [['auto', T('Auto')], ['light', T('Day')], ['dark', T('Night')]]) {
     const b = el('button', 'loc-toggle' + (cur === val ? ' on' : ''), label);
     b.addEventListener('click', () => { setTheme(val); renderMore(); });
     seg.appendChild(b);
@@ -7438,7 +7494,7 @@ function renderMore() {
   // chips as Settings → Appearance (review round, UI 7).
   esLanguageChips(v, el, T('Language'));
 
-  v.appendChild(el('div', 'panel-title', 'Install'));
+  v.appendChild(el('div', 'panel-title', T('Install')));
   v.appendChild(installCard());
 }
 
@@ -7485,16 +7541,16 @@ function isStandalone() {
 function installCard() {
   const c = el('div', 'card');
   if (isStandalone()) {
-    c.appendChild(el('div', 'who', 'Installed'));
-    c.appendChild(el('div', 'scope', 'Arbo is running as an app on this phone.'));
+    c.appendChild(el('div', 'who', T('Installed')));
+    c.appendChild(el('div', 'scope', T('Arbo is running as an app on this phone.')));
     return c;
   }
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
-  c.appendChild(el('div', 'who', 'Put Arbo on your home screen'));
+  c.appendChild(el('div', 'who', T('Put Arbo on your home screen')));
   if (ios) {
-    c.appendChild(el('div', 'scope', 'In Safari: tap the Share button, then “Add to Home Screen”. Arbo opens full-screen like any app. You’ll enter your access key once more the first time you open it.'));
+    c.appendChild(el('div', 'scope', T('In Safari: tap the Share button, then “Add to Home Screen”. Arbo opens full-screen like any app. You’ll enter your access key once more the first time you open it.')));
   } else if (INSTALL_EVT) {
-    const b = el('button', 'actbtn', 'Install Arbo');
+    const b = el('button', 'actbtn', T('Install Arbo'));
     b.addEventListener('click', async () => {
       INSTALL_EVT.prompt();
       try { await INSTALL_EVT.userChoice; } catch (e) { /* dismissed */ }
@@ -7503,7 +7559,7 @@ function installCard() {
     });
     c.appendChild(b);
   } else {
-    c.appendChild(el('div', 'scope', 'In Chrome: open the ⋮ menu and choose “Install app” (or “Add to Home screen”).'));
+    c.appendChild(el('div', 'scope', T('In Chrome: open the ⋮ menu and choose “Install app” (or “Add to Home screen”).')));
   }
   return c;
 }
@@ -7825,20 +7881,23 @@ function factCard(f, isStale) {
 // or changes its own rules. An input it could not read is named with why.
 const AGENT_ICONS = { 'front-desk': 'i-calls', dispatcher: 'i-route', 'chief-of-staff': 'i-today', 'permit-desk': 'i-permit', arborist: 'i-tree', 'crew-chief': 'i-shield', 'yard-boss': 'i-flag', analyst: 'i-numbers' };
 // [chip, tone] in the shared feed words: a gap on purpose is grey info; a read that failed is amber.
-const INPUT_STATE = { read: ['READ', 'good'], cut: [FEED_TAG.cut.toUpperCase(), 'info'], sim: [FEED_TAG.sim.toUpperCase(), 'info'], notrun: ['NOT RUN', 'info'], notbuilt: ['NOT BUILT', 'info'], unreadable: [FEED_TAG.unread.toUpperCase(), 'watch'] };
-const REPORT_STATUS = { ok: ['OK', 'good'], degraded: ['MISSING INPUTS', 'watch'], blocked: ['BLOCKED', 'stop'] };
+// R27 Phase A (es-owner-c): the chips' words, read once at load (the office app reloads on a language change); the
+// feed tags are the shared vocabulary's own (FEED_TAG).
+const INPUT_STATE = { read: [T('READ'), 'good'], cut: [FEED_TAG.cut.toUpperCase(), 'info'], sim: [FEED_TAG.sim.toUpperCase(), 'info'], notrun: [T('NOT RUN'), 'info'], notbuilt: [T('NOT BUILT'), 'info'], unreadable: [FEED_TAG.unread.toUpperCase(), 'watch'] };
+const REPORT_STATUS = { ok: [T('OK'), 'good'], degraded: [T('MISSING INPUTS'), 'watch'], blocked: [T('BLOCKED'), 'stop'] };
 // Brief numbering (#2, §4.8, R7…) stays in the data and off the screen.
 const noRefs = (s) => s.replace(/^#\d+\s*/, '').replace(/\s*\((?:R\d+|§)[^)]*\)/g, '');
 // A proposal opens the screen where Mike acts on it: [button, tab]. A kind with no screen stays plain text.
 // Direction B P13: the Queue's proposals open the desk that holds their panel.
+// R27 Phase A (es-owner-c): [button, tab] — the button's words read once at load; its name drops the arrow, in either language.
 const PROPOSAL_GO = {
-  call_review: ['Open Calls & texts →', 'calls'],
-  route_fix: ['Open the Calendar →', 'cal'], weather_hold_review: ['Open the Calendar →', 'cal'],
-  decide_open_loops: ['Open Follow-ups →', 'followups'],
-  collections_review: ['Open Money →', 'money'],
-  parts_review: ['Open Fleet →', 'fleet'], signback_review: ['Open Fleet →', 'fleet'],
-  fix_credentials: ['Open Crew & safety →', 'safety'], lesson_draft: ['Open Crew & safety →', 'safety'], vet_reference: ['Open Crew & safety →', 'safety'],
-  area_review: ['Open Numbers →', 'perf'],
+  call_review: [T('Open Calls & texts →'), 'calls'],
+  route_fix: [T('Open the Calendar →'), 'cal'], weather_hold_review: [T('Open the Calendar →'), 'cal'],
+  decide_open_loops: [T('Open Follow-ups →'), 'followups'],
+  collections_review: [T('Open Money →'), 'money'],
+  parts_review: [T('Open Fleet →'), 'fleet'], signback_review: [T('Open Fleet →'), 'fleet'],
+  fix_credentials: [T('Open Crew & safety →'), 'safety'], lesson_draft: [T('Open Crew & safety →'), 'safety'], vet_reference: [T('Open Crew & safety →'), 'safety'],
+  area_review: [T('Open Numbers →'), 'perf'],
 };
 // Where on its screen each proposal lands (P14 review; spec: "agent proposals at the top, each jumping to
 // its panel"): a selector openPanel looks for while the screen draws, then scrolls to and flashes. A kind
@@ -7870,15 +7929,16 @@ function proposalRow(p, short) {
     // Office (review): the desk in front of what it proposes, two lines at most — a tap opens them whole (clampLine's way).
     const w = row.appendChild(el('div', 'prop-words clamp'));
     w.appendChild(el('span', 'loop-kind', p.desk));
-    w.appendChild(el('span', 'scope', p.text));
+    // R27 Phase A (es-owner-c): what a desk proposes is its own words (model output) — shown as written, marked English in Spanish.
+    w.appendChild(esSayTwin(el('span', 'scope'), p, 'text'));
     w.addEventListener('click', () => w.classList.toggle('open'));
   } else {
     row.appendChild(el('div', 'loop-kind', p.desk));
-    row.appendChild(el('div', 'scope', p.text));
+    row.appendChild(esSayTwin(el('div', 'scope'), p, 'text'));
   }
   const go = PROPOSAL_GO[p.kind];
   if (go) {
-    const b = el('button', 'minibtn', short ? VIEW_TITLES[go[1]] + ' ›' : go[0]);
+    const b = el('button', 'minibtn', short ? tf('{screen} ›', { screen: VIEW_TITLES[go[1]] }) : go[0]);
     if (short) b.setAttribute('aria-label', go[0].replace(/ →$/, ''));
     b.type = 'button';
     const at = PROPOSAL_AT[p.kind];
@@ -7903,20 +7963,20 @@ async function renderAgents() {
   const first = !v.hasChildNodes(); // Direction B P3: readingLine() where the read lands, on a first draw only
   v.replaceChildren();
   const head = el('div', 'viewhead');
-  head.appendChild(el('div', 'eyebrow', 'The brain'));
-  head.appendChild(el('h1', '', 'Eight desks, one rulebook'));
-  head.appendChild(el('p', '', 'Each section of Arbo has an agent. They read and propose — you decide. None of them can send, spend, or touch the calendar.'));
+  head.appendChild(el('div', 'eyebrow', T('The brain')));
+  head.appendChild(el('h1', '', T('Eight desks, one rulebook')));
+  head.appendChild(el('p', '', T('Each section of Arbo has an agent. They read and propose — you decide. None of them can send, spend, or touch the calendar.')));
   v.appendChild(head);
   const reading = first ? v.appendChild(readingLine()) : null;
   let roster;
   try { roster = await api('/api/agents/sections').finally(() => { if (reading) reading.remove(); }); } catch (e) {
     if (gen !== AGENT_GEN) return;
     if (e.code === 401) return showKeywall();
-    v.appendChild(feedState(e, 'The agent roster', 'an empty roster'));
+    v.appendChild(feedState(e, T('The agent roster'), T('an empty roster')));
     return;
   }
   if (gen !== AGENT_GEN) return;
-  const runBtn = el('button', 'actbtn wide-btn', AGENT_RUN ? 'Run all eight again' : 'Run all eight now');
+  const runBtn = el('button', 'actbtn wide-btn', AGENT_RUN ? T('Run all eight again') : T('Run all eight now'));
   v.appendChild(runBtn);
   // When it ran rides on the help line; past 15 minutes it is a warning line of its own.
   // Whether the hourly check is on is said on each NOT RUN row, not here.
@@ -7927,28 +7987,28 @@ async function renderAgents() {
   // stand-in they are built in. A newer draw owns the screen.
   const ageLines = (v) => {
     const stale = !!ranAt && Date.now() - Date.parse(ranAt) > 15 * 60 * 1000;
-    if (stale) v.appendChild(el('div', 'feed-state unset', 'Ran ' + fmtWhen(ranAt) + ' — over 15 minutes old. Run again for a current read.'));
-    return v.appendChild(el('div', 'storm-muted', (ranAt && !stale ? 'Ran ' + fmtWhen(ranAt) + '. ' : '') + 'Run only looks — it never changes anything.'));
+    if (stale) v.appendChild(el('div', 'feed-state unset', tf('Ran {when} — over 15 minutes old. Run again for a current read.', { when: fmtWhen(ranAt) })));
+    return v.appendChild(el('div', 'storm-muted', ranAt && !stale ? tf('Ran {when}. Run only looks — it never changes anything.', { when: fmtWhen(ranAt) }) : T('Run only looks — it never changes anything.')));
   };
   const help = ageLines(v);
   const fresh = ranAt ? Date.parse(ranAt) + 15 * 60 * 1000 - Date.now() : -1; // ms before the run goes stale
   if (fresh >= 0) setTimeout(() => { if (gen !== AGENT_GEN) return; const now = el('div'); ageLines(now); help.replaceWith(...now.children); }, fresh + 1000);
   v.appendChild(roster.brain === 'online'
-    ? el('div', 'storm-muted', 'Brain: Opus online — each desk gets a plain-English read.')
-    : el('div', 'feed-state unset', 'AI off — plain counts only, no AI key yet.'));
+    ? el('div', 'storm-muted', T('Brain: Opus online — each desk gets a plain-English read.'))
+    : el('div', 'feed-state unset', T('AI off — plain counts only, no AI key yet.')));
   runBtn.addEventListener('click', async () => {
-    runBtn.disabled = true; runBtn.textContent = 'Running the eight desks…';
+    runBtn.disabled = true; runBtn.textContent = T('Running the eight desks…');
     await runAllEight();
     renderAgents();
   });
-  if (AGENT_RUN && AGENT_RUN.error) v.appendChild(el('div', 'storm', 'The run did not complete (' + AGENT_RUN.error + '). No desk result is shown rather than a stale one.'));
+  if (AGENT_RUN && AGENT_RUN.error) v.appendChild(el('div', 'storm', tf('The run did not complete ({error}). No desk result is shown rather than a stale one.', { error: AGENT_RUN.error })));
   const reports = {};
   const summaries = {};
   if (AGENT_RUN && AGENT_RUN.reports) {
     for (const r of AGENT_RUN.reports) reports[r.agentId] = r;
     for (const s of AGENT_RUN.summaries || []) summaries[s.agentId] = s;
     // The cut is said once here, not on every row (the switches live in Settings).
-    if (AGENT_RUN.reports.some((r) => r.inputs.some((i) => i.state === 'cut'))) v.appendChild(el('div', 'feed-state cut', 'Data links are cut on purpose until each one is checked — rows marked CUT were not read.'));
+    if (AGENT_RUN.reports.some((r) => r.inputs.some((i) => i.state === 'cut'))) v.appendChild(el('div', 'feed-state cut', T('Data links are cut on purpose until each one is checked — rows marked CUT were not read.')));
   }
   // Direction B P6: every proposal above the first desk card; the stale line and a
   // run that did not complete sit above it. No run is never "no proposals", and a
@@ -7957,13 +8017,13 @@ async function renderAgents() {
   const props = agentProposals(AGENT_RUN, roster.agents);
   const short = ran ? roster.agents.filter((a) => !reports[a.id] || reports[a.id].status !== 'ok').length : 0;
   const pbox = el('div', 'card proposals');
-  pbox.appendChild(el('div', 'who', props.length ? 'Proposals for you (' + props.length + ')' : 'Proposals for you'));
-  if (!ran) pbox.appendChild(el('div', 'storm-muted', AGENT_RUN ? 'Run all eight again — proposals show here after a run that completes.' : 'Run all eight first — their proposals show here.'));
+  pbox.appendChild(el('div', 'who', props.length ? tf('Proposals for you ({n})', { n: props.length }) : T('Proposals for you')));
+  if (!ran) pbox.appendChild(el('div', 'storm-muted', AGENT_RUN ? T('Run all eight again — proposals show here after a run that completes.') : T('Run all eight first — their proposals show here.')));
   else if (props.length) {
     for (const p of props) pbox.appendChild(proposalRow(p));
-    if (short) pbox.appendChild(el('div', 'feed-state unset', plural(short, 'desk', 'desks') + ' couldn’t read everything (named below) — there may be more.'));
-  } else if (short) pbox.appendChild(el('div', 'feed-state unset', 'No proposals — ' + plural(short, 'desk', 'desks') + ' couldn’t read everything (named below).'));
-  else pbox.appendChild(el('div', 'storm-muted', 'No proposals from this run.'));
+    if (short) pbox.appendChild(el('div', 'feed-state unset', tn(short, '{n} desk couldn’t read everything (named below) — there may be more.', '{n} desks couldn’t read everything (named below) — there may be more.')));
+  } else if (short) pbox.appendChild(el('div', 'feed-state unset', tn(short, 'No proposals — {n} desk couldn’t read everything (named below).', 'No proposals — {n} desks couldn’t read everything (named below).')));
+  else pbox.appendChild(el('div', 'storm-muted', T('No proposals from this run.')));
   v.appendChild(pbox);
   for (const a of roster.agents) {
     const c = el('div', 'card agent');
@@ -7971,7 +8031,7 @@ async function renderAgents() {
     const ic = el('span', 'agent-ic'); ic.appendChild(icon(AGENT_ICONS[a.id] || 'i-agents'));
     top.appendChild(ic);
     const t = el('div');
-    t.appendChild(el('div', 'who', a.name));
+    t.appendChild(el('div', 'who', a.name)); // the desk's name (R26): a name, as the roster the server sends
     // One unbreakable span per part, and the dot travels with the part after
     // it, so a wrapped line never ends on '·'.
     const sub = el('div', 'loop-kind');
@@ -7989,19 +8049,22 @@ async function renderAgents() {
       b.appendChild(chip(st[0], st[1]));
       c.appendChild(b);
       const s = summaries[a.id];
-      if (s) c.appendChild(el('div', 'scope agent-say', noRefs(s.text)));
+      // R27 Phase A (es-owner-c): what the brain wrote (model output) — shown as written, marked English in Spanish.
+      if (s) c.appendChild(esSayTwin(el('div', 'scope agent-say'), { text: noRefs(s.text) }, 'text'));
       const ins = el('div', 'agent-inputs');
       for (const i of r.inputs) {
         const row = el('div', 'agent-in');
         const is = INPUT_STATE[i.state] || [i.state, 'watch'];
         row.appendChild(chip(is[0], is[1]));
-        row.appendChild(el('span', '', i.name + (i.state === 'read' ? '' : ' — ' + i.detail)));
+        // The input's name and why it was not read are the desk's own words (the server's) — kept as written, marked English.
+        row.appendChild(esSayTwin(el('span'), { line: i.state === 'read' ? i.name : i.name + ' — ' + i.detail }, 'line'));
         ins.appendChild(row);
       }
       c.appendChild(ins);
-      for (const f of r.findings) c.appendChild(el('div', f.severity === 'act' ? 'storm' : f.severity === 'watch' ? 'late' : 'storm-muted', noRefs(f.text)));
+      for (const f of r.findings) c.appendChild(esSayTwin(el('div', f.severity === 'act' ? 'storm' : f.severity === 'watch' ? 'late' : 'storm-muted'), { text: noRefs(f.text) }, 'text'));
       for (const p of r.proposals) {
-        const note = el('div', 'due-note', 'Proposal for you: ' + noRefs(p.text));
+        // R27 Phase A (es-owner-c): the frame in the page's language; what the desk proposes, as it wrote it (a value).
+        const note = el('div', 'due-note', tf('Proposal for you: {text}', { text: noRefs(p.text) }));
         const go = PROPOSAL_GO[p.kind];
         if (go) {
           const row = el('div', 'actions');
@@ -8012,14 +8075,15 @@ async function renderAgents() {
         }
         c.appendChild(note);
       }
-      if (r.error) c.appendChild(el('div', 'storm', 'Blocked: ' + r.error));
+      if (r.error) c.appendChild(el('div', 'storm', tf('Blocked: {why}', { why: r.error })));
     } else {
-      c.appendChild(el('div', 'scope', 'Reads: ' + a.reads.join(' · ')));
+      // R27 Phase A (es-owner-c): the frames in the page's language; the roster's lists are the server's words (Phase B), values.
+      c.appendChild(el('div', 'scope', tf('Reads: {list}', { list: a.reads.join(' · ') })));
     }
     const law = el('details', 'agent-law');
-    law.appendChild(el('summary', '', 'What it may and may not do'));
-    law.appendChild(el('div', 'factmeta', 'May: ' + a.can.map(x => x.replace(':', ' ').replace(/_/g, ' ')).join(' · ')));
-    law.appendChild(el('div', 'factmeta', 'Never: ' + a.cannot.map(noRefs).join(' · ')));
+    law.appendChild(el('summary', '', T('What it may and may not do')));
+    law.appendChild(el('div', 'factmeta', tf('May: {list}', { list: a.can.map(x => x.replace(':', ' ').replace(/_/g, ' ')).join(' · ') })));
+    law.appendChild(el('div', 'factmeta', tf('Never: {list}', { list: a.cannot.map(noRefs).join(' · ') })));
     c.appendChild(law);
     v.appendChild(c);
   }
@@ -8032,7 +8096,8 @@ async function renderAgents() {
 // with its confidence; a number that could not be measured says why.
 // [label, tone]: LOW is a confidence level, not a hazard, so it is amber like FAIR;
 // UNREADABLE is the same word and colour as on Agents.
-const CONF_BADGE = { good: ['GOOD', 'good'], fair: ['FAIR', 'watch'], low: ['LOW', 'watch'], unreadable: ['UNREADABLE', 'watch'] };
+// R27 Phase A (es-owner-c): the chips' words read once at load (the office app reloads on a language change).
+const CONF_BADGE = { good: [T('GOOD'), 'good'], fair: [T('FAIR'), 'watch'], low: [T('LOW'), 'watch'], unreadable: [T('UNREADABLE'), 'watch'] };
 let LIDAR_LAST = null;
 let LIDAR_UP = '';
 // Set when an Up change dropped a result: it was measured on the old axis, so it
@@ -8041,8 +8106,11 @@ let LIDAR_UP_CHANGED = false;
 
 // Which way Arbo read as up, in plain words, for the status line. The engine's
 // own reason rides on the line's hover title.
+// R27 Phase A (es-owner-c): one whole sentence per reason, the axis a slot; the leading space joins it to the line before.
 function upWords(ua) {
-  return !ua ? '' : ' Read ' + ua.axis.toUpperCase() + ' as up — ' + (ua.source === 'override' ? 'you chose this.' : ua.source === 'data' ? 'the ground in the scan lies flat that way.' : 'the usual way for this file type.');
+  if (!ua) return '';
+  const axis = ua.axis.toUpperCase();
+  return ' ' + (ua.source === 'override' ? tf('Read {axis} as up — you chose this.', { axis }) : ua.source === 'data' ? tf('Read {axis} as up — the ground in the scan lies flat that way.', { axis }) : tf('Read {axis} as up — the usual way for this file type.', { axis }));
 }
 
 function renderMeasure() {
@@ -8050,30 +8118,30 @@ function renderMeasure() {
   v.replaceChildren();
   const head = el('div', 'viewhead');
   head.appendChild(el('div', 'eyebrow', 'Arborist'));
-  head.appendChild(el('h1', '', 'Measure a tree'));
-  head.appendChild(el('p', '', 'Scan the tree with a LiDAR app, export the point cloud, open it here. Arbo reads trunk width at breast height, height, crown and lean.'));
+  head.appendChild(el('h1', '', T('Measure a tree')));
+  head.appendChild(el('p', '', T('Scan the tree with a LiDAR app, export the point cloud, open it here. Arbo reads trunk width at breast height, height, crown and lean.')));
   v.appendChild(head);
 
   const how = el('div', 'slot');
-  how.appendChild(el('div', 'panel-title', 'How to scan'));
+  how.appendChild(el('div', 'panel-title', T('How to scan')));
   for (const line of [
-    'iPhone Pro / iPad Pro with LiDAR: Polycam, 3d Scanner App (free), SiteScape or Scaniverse.',
-    'Stand 3–10 ft from the trunk and walk all the way round it at chest height. A full circle is what makes the trunk width trustworthy.',
-    'Crop to the one tree, then export a POINT CLOUD (PLY, LAS or XYZ) — not a mesh, not a video.',
-    'Phone LiDAR reads cleanly to about 13 ft (4 m). Trunk width is its strength; height and crown of a big tree read as a minimum.',
+    T('iPhone Pro / iPad Pro with LiDAR: Polycam, 3d Scanner App (free), SiteScape or Scaniverse.'),
+    T('Stand 3–10 ft from the trunk and walk all the way round it at chest height. A full circle is what makes the trunk width trustworthy.'),
+    T('Crop to the one tree, then export a POINT CLOUD (PLY, LAS or XYZ) — not a mesh, not a video.'),
+    T('Phone LiDAR reads cleanly to about 13 ft (4 m). Trunk width is its strength; height and crown of a big tree read as a minimum.'),
   ]) how.appendChild(el('div', 'storm-muted', line));
   v.appendChild(how);
 
   const pick = el('div', 'slot');
   const lab = el('label', 'filepick');
   lab.appendChild(icon('i-lidar'));
-  lab.appendChild(el('span', '', 'Open a scan file'));
+  lab.appendChild(el('span', '', T('Open a scan file')));
   const inp = document.createElement('input');
   inp.type = 'file'; inp.accept = '.ply,.las,.xyz,.pts,.txt';
   lab.appendChild(inp);
   pick.appendChild(lab);
   const seg = el('div', 'seg');
-  for (const [val, label] of [['', 'Auto'], ['y', 'Y is up'], ['z', 'Z is up']]) {
+  for (const [val, label] of [['', T('Auto')], ['y', T('Y is up')], ['z', T('Z is up')]]) {
     const b = el('button', LIDAR_UP === val ? 'on' : '', label);
     b.addEventListener('click', () => {
       if (LIDAR_UP === val) return;
@@ -8085,13 +8153,14 @@ function renderMeasure() {
     });
     seg.appendChild(b);
   }
-  const segRow = el('div', 'qrow'); segRow.appendChild(el('span', 'q', 'Which way is up in the file?')); segRow.appendChild(seg);
+  const segRow = el('div', 'qrow'); segRow.appendChild(el('span', 'q', T('Which way is up in the file?'))); segRow.appendChild(seg);
   pick.appendChild(segRow);
-  pick.appendChild(el('div', 'storm-muted', 'Leave on Auto unless height reads far too small or the trunk width looks wrong — iPhone apps usually export Y as up, LAS files Z.'));
+  pick.appendChild(el('div', 'storm-muted', T('Leave on Auto unless height reads far too small or the trunk width looks wrong — iPhone apps usually export Y as up, LAS files Z.')));
   // The status is a fact about this scan, not a tip, so it does not wear the tip style.
+  // R27 Phase A (es-owner-c): the count shown with esNum (es-US keeps the comma groups), the file's name as written.
   const status = el('div', 'factmeta', LIDAR_LAST
-    ? 'Measured ' + LIDAR_LAST.file.points.toLocaleString() + ' points from ' + LIDAR_LAST.file.name + '.' + upWords(LIDAR_LAST.file.upAxis)
-    : (LIDAR_UP_CHANGED ? 'Up changed — open the scan file again to measure with it.' : 'Nothing measured yet.'));
+    ? tf('Measured {n} points from {file}.', { n: esNum(LIDAR_LAST.file.points), file: LIDAR_LAST.file.name }) + upWords(LIDAR_LAST.file.upAxis)
+    : (LIDAR_UP_CHANGED ? T('Up changed — open the scan file again to measure with it.') : T('Nothing measured yet.')));
   if (LIDAR_LAST && LIDAR_LAST.file.upAxis) status.title = LIDAR_LAST.file.upAxis.reason || '';
   pick.appendChild(status);
   v.appendChild(pick);
@@ -8104,12 +8173,12 @@ function renderMeasure() {
     if (!f) return;
     if (f.size > 60 * 1048576) {
       status.className = 'storm';
-      status.textContent = 'That file is over 60 MB. Crop the scan to just the tree in the scanning app, export again, and open that.';
+      status.textContent = T('That file is over 60 MB. Crop the scan to just the tree in the scanning app, export again, and open that.');
       return;
     }
     status.className = 'factmeta';
     status.title = '';
-    status.textContent = 'Reading ' + f.name + ' (' + (f.size / 1048576).toFixed(1) + ' MB)…';
+    status.textContent = tf('Reading {file} ({mb} MB)…', { file: f.name, mb: (f.size / 1048576).toFixed(1) });
     out.replaceChildren();
     const upSent = LIDAR_UP;
     try {
@@ -8127,18 +8196,19 @@ function renderMeasure() {
       if (!res.ok) {
         status.className = 'storm';
         // Every server detail already ends in a full stop; drop it so the line never reads "..".
-        status.textContent = 'Not measured — ' + String(body.detail || body.error || ('server said ' + res.status)).replace(/\.\s*$/, '') + '. No number is better than a wrong one.';
+        // R27 Phase A (es-owner-c): the engine's own detail is a value (Phase B twins the LiDAR messages).
+        status.textContent = tf('Not measured — {why}. No number is better than a wrong one.', { why: String(body.detail || body.error || tf('server said {code}', { code: res.status })).replace(/\.\s*$/, '') });
         return;
       }
       if (LIDAR_UP !== upSent) return; // Up changed while it read: this result is on the old axis, so it is dropped
       LIDAR_LAST = body;
       LIDAR_UP_CHANGED = false;
-      status.textContent = 'Measured ' + body.file.points.toLocaleString() + ' points from ' + body.file.name + '.' + upWords(body.file.upAxis);
+      status.textContent = tf('Measured {n} points from {file}.', { n: esNum(body.file.points), file: body.file.name }) + upWords(body.file.upAxis);
       status.title = (body.file.upAxis && body.file.upAxis.reason) || '';
       out.appendChild(measureResult(body));
     } catch (e) {
       status.className = 'storm';
-      status.textContent = 'Could not reach Arbo to measure (no signal?). Nothing was measured.';
+      status.textContent = T('Could not reach Arbo to measure (no signal?). Nothing was measured.');
     }
   });
 }
@@ -8161,27 +8231,33 @@ function measureResult(r) {
   const round = (x, d) => Math.round(x * Math.pow(10, d)) / Math.pow(10, d);
   // Inches and feet lead (how a Virginia crew talks); cm and m ride in the caption.
   hud.appendChild(metric(m.dbhCm === null ? null : round(m.dbhCm / 2.54, 1), ' in', m.dbhCm === null ? '' : round(m.dbhCm, 1) + ' cm', 'DBH', m.confidence.dbh));
-  hud.appendChild(metric(m.heightM === null ? null : Math.round(m.heightM * 3.281), ' ft', m.heightM === null ? '' : round(m.heightM, 1) + ' m', 'height', m.confidence.height));
-  hud.appendChild(metric(m.crownSpreadM === null ? null : Math.round(m.crownSpreadM * 3.281), ' ft', m.crownSpreadM === null ? '' : round(m.crownSpreadM, 1) + ' m', 'crown', m.confidence.crown));
-  hud.appendChild(metric(m.leanDeg === null ? null : round(m.leanDeg, 1), '°', '', 'lean', m.confidence.lean));
+  hud.appendChild(metric(m.heightM === null ? null : Math.round(m.heightM * 3.281), ' ft', m.heightM === null ? '' : round(m.heightM, 1) + ' m', T('height'), m.confidence.height));
+  hud.appendChild(metric(m.crownSpreadM === null ? null : Math.round(m.crownSpreadM * 3.281), ' ft', m.crownSpreadM === null ? '' : round(m.crownSpreadM, 1) + ' m', T('crown'), m.confidence.crown));
+  hud.appendChild(metric(m.leanDeg === null ? null : round(m.leanDeg, 1), '°', '', T('lean'), m.confidence.lean));
   // Which way Arbo read as up is on the status line (upWords). Every number
   // below depends on it, so an axis the scan could not confirm is a warning.
   const ua = r.file.upAxis;
   // Warnings sit ABOVE the numbers they undercut; measure.ts puts the units warning first (D88).
-  for (const w of m.warnings) wrap.appendChild(el('div', 'late', w));
-  if (ua && ua.source === 'format' && /no clear ground layer/.test(ua.reason || '')) wrap.appendChild(el('div', 'late', 'Which way is up was not confirmed by the scan (read ' + ua.axis.toUpperCase() + ' as up). Every number depends on it — if height reads far too small, switch Up and open the file again.'));
+  for (const w of m.warnings) wrap.appendChild(esSayTwin(el('div', 'late'), { line: w }, 'line')); // the engine's own line: English, marked, until Phase B
+  if (ua && ua.source === 'format' && /no clear ground layer/.test(ua.reason || '')) wrap.appendChild(el('div', 'late', tf('Which way is up was not confirmed by the scan (read {axis} as up). Every number depends on it — if height reads far too small, switch Up and open the file again.', { axis: ua.axis.toUpperCase() })));
   wrap.appendChild(hud);
   // One line per figure. The r.summary paragraph stays in the API for agent and
   // crew text; here it only repeated these lines, the warnings and the sign-off.
   const card = el('div', 'card');
+  // R27 Phase A (es-owner-c): each figure's name and confidence word in the page's language (a level the page does not know
+  // is shown as the engine wrote it); the engine's reason is a value (Phase B twins the LiDAR messages).
+  const FIGURE = { dbh: 'DBH', height: T('HEIGHT'), crown: T('CROWN'), lean: T('LEAN') };
+  const LEVEL = { good: T('good'), fair: T('fair'), low: T('low'), unreadable: T('unreadable') };
   for (const k of ['dbh', 'height', 'crown', 'lean']) {
     const c = m.confidence[k];
-    card.appendChild(el('div', 'factmeta', k.toUpperCase() + ' — ' + c.level + ': ' + why(c.reason)
-      + (k === 'dbh' && m.dbhFit ? '; scatter ' + round(m.dbhFit.rmseCm / 2.54, 2) + ' in (' + round(m.dbhFit.rmseCm, 1) + ' cm)' : '')));
+    const say = { what: FIGURE[k], level: LEVEL[c.level] || c.level, why: why(c.reason) };
+    card.appendChild(el('div', 'factmeta', k === 'dbh' && m.dbhFit
+      ? tf('{what} — {level}: {why}; scatter {in} in ({cm} cm)', Object.assign(say, { in: round(m.dbhFit.rmseCm / 2.54, 2), cm: round(m.dbhFit.rmseCm, 1) }))
+      : tf('{what} — {level}: {why}', say)));
   }
   wrap.appendChild(card);
-  for (const n of r.file.notes) wrap.appendChild(el('div', 'storm-muted', n));
-  wrap.appendChild(el('div', 'internal-tag', r.signOff));
+  for (const n of r.file.notes) wrap.appendChild(esSayTwin(el('div', 'storm-muted'), { line: n }, 'line')); // the engine's own line: English, marked
+  wrap.appendChild(esSayTwin(el('div', 'internal-tag'), r, 'signOff')); // the engine's sign-off: English, marked, until Phase B
   return wrap;
 }
 
@@ -8190,7 +8266,8 @@ function measureResult(r) {
 // failure becomes a lesson PROPOSAL. Nothing retrains itself — Mike approves
 // or rejects, and an approved lesson is an instruction for the next revision.
 const SECTION_NAMES = { front_desk: 'Front Desk', dispatcher: 'Dispatcher', chief_of_staff: 'Chief of Staff', permit_desk: 'Permit Desk', arborist: 'Arborist', crew_chief: 'Crew Chief', yard_boss: 'Yard Boss', analyst: 'Analyst' };
-const BRAIN_LABEL = { scripted: 'rule check', opus: 'Opus' };
+// R27 Phase A (es-owner-c): the desks' names are names (as the Agents roster); the rule check's name is read once at load.
+const BRAIN_LABEL = { scripted: T('rule check'), opus: 'Opus' };
 // A lesson's key ('behaviour:stay_clear', 'must_not:argue', a rule id) as its
 // KIND only — the card text below says the lesson in words, so the raw key
 // never reaches the eyebrow. The stored keys stay — lesson ids depend on them.
@@ -8198,10 +8275,10 @@ function lessonLabel(k) {
   const i = k.indexOf(':');
   const kind = i < 0 ? '' : k.slice(0, i);
   const rest = i < 0 ? k : k.slice(i + 1);
-  if (kind === 'unhandled') return (SECTION_NAMES[rest] || rest.replace(/_/g, ' ')) + ' · can’t answer yet';
-  if (kind === 'behaviour') return 'Missed something';
-  if (kind === 'must_not') return 'Did what it shouldn’t';
-  return 'Broke a rule';
+  if (kind === 'unhandled') return tf('{desk} · can’t answer yet', { desk: SECTION_NAMES[rest] || rest.replace(/_/g, ' ') });
+  if (kind === 'behaviour') return T('Missed something');
+  if (kind === 'must_not') return T('Did what it shouldn’t');
+  return T('Broke a rule');
 }
 // Rule breaks before missed behaviours, then most scenarios — the harness's
 // order, applied here too so a book saved before it still reads that way.
@@ -8220,36 +8297,36 @@ async function renderLearn() {
   const first = !v.hasChildNodes(); // Direction B P3: readingLine() where the read lands, on a first draw only
   v.replaceChildren();
   const head = el('div', 'viewhead');
-  head.appendChild(el('div', 'eyebrow', 'Training ground'));
-  head.appendChild(el('h1', '', 'Teach the brain'));
-  head.appendChild(el('p', '', 'Every problem a caller, a crew or a permit office can throw at a tree service — played against Arbo with made-up people. What it gets wrong becomes a lesson for you to approve. Nothing changes itself.'));
+  head.appendChild(el('div', 'eyebrow', T('Training ground')));
+  head.appendChild(el('h1', '', T('Teach the brain')));
+  head.appendChild(el('p', '', T('Every problem a caller, a crew or a permit office can throw at a tree service — played against Arbo with made-up people. What it gets wrong becomes a lesson for you to approve. Nothing changes itself.')));
   v.appendChild(head);
   const reading = first ? v.appendChild(readingLine()) : null;
   let cat, st;
   try { [cat, st] = await Promise.all([api('/api/sim/catalog'), api('/api/sim/state')]).finally(() => { if (reading) reading.remove(); }); } catch (e) {
     if (gen !== LEARN_GEN) return;
     if (e.code === 401) return showKeywall();
-    v.appendChild(feedState(e, 'The training ground', 'an empty catalog'));
+    v.appendChild(feedState(e, T('The training ground'), T('an empty catalog')));
     return;
   }
   if (gen !== LEARN_GEN) return;
   const r = st.report;
   const hud = el('div', 'hud');
   const tile = (n, label, cls, small) => { const t = el('div', 'tile' + (cls ? ' ' + cls : '')); t.appendChild(el('b', '', String(n))); t.appendChild(el('span', '', label)); if (small) t.appendChild(small); return t; };
-  hud.appendChild(tile(cat.total, 'scenarios', 'accent'));
+  hud.appendChild(tile(cat.total, T('scenarios'), 'accent'));
   const ruleIds = Object.keys(cat.rules);
   // Checked = the run actually judged it (handled without a break, or broke it) — not merely listed.
   const exercised = r ? ruleIds.filter((k) => r.byRule[k] && r.byRule[k].passed + r.byRule[k].violations > 0).length : 0;
-  hud.appendChild(r ? tile(exercised + '/' + ruleIds.length, 'rules checked') : tile(ruleIds.length, 'rules on file'));
+  hud.appendChild(r ? tile(exercised + '/' + ruleIds.length, T('rules checked')) : tile(ruleIds.length, T('rules on file')));
   // The label stays one word; what it could not answer is the tile's small line, and the brain is named in the line below.
-  hud.appendChild(r ? tile(Math.round(r.passRate * 100) + '%', 'passed', r.passRate >= 0.9 ? 'ok-t' : 'warn', r.unhandled > 0 ? el('small', '', r.unhandled + ' can’t answer yet') : null) : tile('–', 'no run yet'));
+  hud.appendChild(r ? tile(Math.round(r.passRate * 100) + '%', T('passed'), r.passRate >= 0.9 ? 'ok-t' : 'warn', r.unhandled > 0 ? el('small', '', tf('{n} can’t answer yet', { n: r.unhandled })) : null) : tile('–', T('no run yet')));
   v.appendChild(hud);
-  if (r) v.appendChild(el('div', 'storm-muted', 'Last ' + (st.brain === 'opus' ? 'Opus run' : 'rule check') + ': ' + fmtWhen(r.ranAt) + '. Clears when the app is redeployed.'));
+  if (r) v.appendChild(el('div', 'storm-muted', st.brain === 'opus' ? tf('Last Opus run: {when}. Clears when the app is redeployed.', { when: fmtWhen(r.ranAt) }) : tf('Last rule check: {when}. Clears when the app is redeployed.', { when: fmtWhen(r.ranAt) })));
 
   const runs = el('div', 'actions');
-  const b1 = el('button', 'actbtn', 'Run the rule check');
+  const b1 = el('button', 'actbtn', T('Run the rule check'));
   // Both labels stay short so the two buttons share one row on a phone; the cost and why Opus is off go in the lines below.
-  const b2 = el('button', 'actbtn alt', 'Run with Opus');
+  const b2 = el('button', 'actbtn alt', T('Run with Opus'));
   b2.disabled = !st.opusAvailable || st.status === 'running';
   b1.disabled = st.status === 'running';
   const go = async (brain) => {
@@ -8261,18 +8338,18 @@ async function renderLearn() {
   b2.addEventListener('click', () => go('opus'));
   runs.appendChild(b1); runs.appendChild(b2);
   v.appendChild(runs);
-  v.appendChild(el('div', 'storm-muted', 'Rule check: tests the fixed safety rules in a few seconds. Opus: answers all ' + plural(cat.total, 'scenario') + ' the way it would on a real call — one model call each.'));
+  v.appendChild(el('div', 'storm-muted', tn(cat.total, 'Rule check: tests the fixed safety rules in a few seconds. Opus: answers all {n} scenario the way it would on a real call — one model call each.', 'Rule check: tests the fixed safety rules in a few seconds. Opus: answers all {n} scenarios the way it would on a real call — one model call each.')));
   // No key is a gap that is not set up, so it is named in the feed words' look, as on Agents — never only a greyed button.
-  if (!st.opusAvailable) v.appendChild(el('div', 'feed-state unset', 'Opus practice is off — no AI key on the server yet.'));
+  if (!st.opusAvailable) v.appendChild(el('div', 'feed-state unset', T('Opus practice is off — no AI key on the server yet.')));
   if (st.status === 'running') {
-    v.appendChild(el('div', 'late', 'Running with ' + (BRAIN_LABEL[st.brain] || st.brain) + ' since ' + fmtWhen(st.startedAt) + '…'));
+    v.appendChild(el('div', 'late', tf('Running with {brain} since {when}…', { brain: BRAIN_LABEL[st.brain] || st.brain, when: fmtWhen(st.startedAt) })));
     clearTimeout(LEARN_POLL);
     LEARN_POLL = setTimeout(() => { if ($('view-learn').classList.contains('active')) renderLearn(); }, 5000);
   }
-  if (st.status === 'failed') v.appendChild(el('div', 'storm', 'The last run failed before it finished. No result is shown rather than a partial one.'));
+  if (st.status === 'failed') v.appendChild(el('div', 'storm', T('The last run failed before it finished. No result is shown rather than a partial one.')));
 
   if (r) {
-    v.appendChild(el('div', 'panel-title', 'By desk'));
+    v.appendChild(el('div', 'panel-title', T('By desk')));
     for (const [sec, s] of Object.entries(r.bySection)) {
       const row = el('div', 'card learn-row');
       row.appendChild(el('div', 'who', SECTION_NAMES[sec] || sec));
@@ -8284,7 +8361,7 @@ async function renderLearn() {
       const un = el('i', 'u'); un.style.width = (s.total ? (s.unhandled / s.total) * 100 : 0) + '%';
       bar.appendChild(pass); bar.appendChild(brk); bar.appendChild(mis); bar.appendChild(un);
       row.appendChild(bar);
-      row.appendChild(el('div', 'factmeta', s.passed + ' passed · ' + s.broke + ' broke a rule · ' + s.missed + ' missed something · ' + s.unhandled + ' can’t answer yet'));
+      row.appendChild(el('div', 'factmeta', [tf('{n} passed', { n: s.passed }), tf('{n} broke a rule', { n: s.broke }), tf('{n} missed something', { n: s.missed }), tf('{n} can’t answer yet', { n: s.unhandled })].join(' · ')));
       v.appendChild(row);
     }
   }
@@ -8293,28 +8370,29 @@ async function renderLearn() {
   // book may still hold one). By desk above names those as "can't answer yet".
   const lessons = lessonsWaiting(st)
     .sort((a, b) => lessonTier(a) - lessonTier(b) || b.scenarioIds.length - a.scenarioIds.length);
-  v.appendChild(el('div', 'panel-title', 'Lessons waiting for you'));
-  if (st.lessons.where === 'memory') v.appendChild(el('div', 'storm-muted', 'No storage disk — lessons are held in memory and clear on the next deploy.'));
-  if (!lessons.length) v.appendChild(el('div', 'storm-muted', r ? 'Nothing waiting — every lesson from the last run has your answer.' + (r.unhandled ? ' The ' + plural(r.unhandled, 'scenario') + ' it couldn’t answer ' + (r.unhandled === 1 ? 'is' : 'are') + ' counted under By desk.' : '') : 'Run a check to see what the brain gets wrong.'));
+  v.appendChild(el('div', 'panel-title', T('Lessons waiting for you')));
+  if (st.lessons.where === 'memory') v.appendChild(el('div', 'storm-muted', T('No storage disk — lessons are held in memory and clear on the next deploy.')));
+  if (!lessons.length) v.appendChild(el('div', 'storm-muted', r ? T('Nothing waiting — every lesson from the last run has your answer.') + (r.unhandled ? ' ' + tn(r.unhandled, 'The {n} scenario it couldn’t answer is counted under By desk.', 'The {n} scenarios it couldn’t answer are counted under By desk.') : '') : T('Run a check to see what the brain gets wrong.')));
   for (const l of lessons.slice(0, 25)) {
     const c = el('div', 'card loop-card');
     // The kind and the count sit apart on one row, so the count never wraps alone.
     const k = el('div', 'loop-kind lesson-kind');
     k.appendChild(el('span', '', lessonLabel(l.rule)));
-    k.appendChild(el('span', 'n', plural(l.scenarioIds.length, 'scenario')));
+    k.appendChild(el('span', 'n', tn(l.scenarioIds.length, '{n} scenario', '{n} scenarios')));
     c.appendChild(k);
-    c.appendChild(el('div', 'scope', l.proposedLesson));
+    // R27 Phase A (es-owner-c): the lesson and the scenarios are the server's own words (Phase B) — English, marked.
+    c.appendChild(esSayTwin(el('div', 'scope'), l, 'proposedLesson'));
     // Words the brain said are quoted, so they never read as the app's own statement.
-    if (l.evidence) c.appendChild(el('div', 'internal-note', l.evidenceSaid ? 'It said: “' + l.evidence + '”' : 'What the check found: ' + l.evidence));
+    if (l.evidence) c.appendChild(el('div', 'internal-note', l.evidenceSaid ? tf('It said: “{said}”', { said: l.evidence }) : tf('What the check found: {found}', { found: l.evidence })));
     const titles = l.scenarioIds.map((id) => (cat.scenarios.find((s) => s.id === id) || {}).title).filter(Boolean);
     if (titles.length) {
       const dd = el('details', 'agent-law');
-      dd.appendChild(el('summary', '', 'Which situations'));
-      for (const t of titles) dd.appendChild(el('div', 'factmeta', t));
+      dd.appendChild(el('summary', '', T('Which situations')));
+      for (const t of titles) dd.appendChild(esSayTwin(el('div', 'factmeta'), { line: t }, 'line'));
       c.appendChild(dd);
     }
     const act = el('div', 'actions');
-    for (const [d, label, cls] of [['approved', 'Approve', 'ok'], ['rejected', 'Reject', 'bad']]) {
+    for (const [d, label, cls] of [['approved', T('Approve'), 'ok'], ['rejected', T('Reject'), 'bad']]) {
       const b = el('button', 'minibtn ' + cls, label);
       b.addEventListener('click', async () => {
         b.disabled = true;
@@ -8326,23 +8404,24 @@ async function renderLearn() {
     c.appendChild(act);
     v.appendChild(c);
   }
-  if (lessons.length > 25) v.appendChild(el('div', 'storm-muted', 'Showing 25 of ' + lessons.length + ' — answer these and the other ' + (lessons.length - 25) + (lessons.length === 26 ? ' moves up.' : ' move up.')));
+  if (lessons.length > 25) v.appendChild(el('div', 'storm-muted', tn(lessons.length - 25, 'Showing 25 of {all} — answer these and the other {n} moves up.', 'Showing 25 of {all} — answer these and the other {n} move up.', { all: lessons.length })));
   const approved = (st.lessons.lessons || []).filter(l => l.status === 'approved' && !l.rule.startsWith('unhandled:'));
   if (approved.length) {
-    v.appendChild(el('div', 'panel-title', 'Approved — for the next prompt revision'));
-    for (const l of approved) v.appendChild(el('div', 'due-note', l.proposedLesson));
+    v.appendChild(el('div', 'panel-title', T('Approved — for the next prompt revision')));
+    for (const l of approved) v.appendChild(esSayTwin(el('div', 'due-note'), l, 'proposedLesson'));
   }
 
-  v.appendChild(el('div', 'panel-title', 'The problems it trains on'));
+  v.appendChild(el('div', 'panel-title', T('The problems it trains on')));
   const bySec = {};
   for (const s of cat.scenarios) (bySec[s.section] = bySec[s.section] || []).push(s);
   for (const [sec, list] of Object.entries(bySec)) {
     const d = el('details', 'agent-law card');
     const sum = el('summary');
     sum.appendChild(el('span', 'who', SECTION_NAMES[sec] || sec));
-    sum.appendChild(el('span', 'n', plural(list.length, 'problem')));
+    sum.appendChild(el('span', 'n', tn(list.length, '{n} problem', '{n} problems')));
     d.appendChild(sum);
-    for (const s of list) d.appendChild(el('div', 'factmeta', '• ' + s.title + ' (' + s.persona + ', level ' + s.difficulty + ')'));
+    // R27 Phase A (es-owner-c): the scenario's title and its made-up person are the server's words (Phase B) — values.
+    for (const s of list) d.appendChild(el('div', 'factmeta', tf('• {title} ({persona}, level {level})', { title: s.title, persona: s.persona, level: s.difficulty })));
     v.appendChild(d);
   }
 }

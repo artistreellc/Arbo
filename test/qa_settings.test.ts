@@ -29,10 +29,11 @@ describe('Settings screen (QA round)', () => {
 
   it('an unset work ZIP says so in words, with no real ZIP as a placeholder (S-zip)', () => {
     expect(settings).not.toContain("zin.placeholder = '23452'");
-    expect(settings).toContain("zin.placeholder = '5-digit ZIP'");
-    expect(settings).toContain("zin.setAttribute('aria-label', 'Today");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same placeholder and name, said through T.
+    expect(settings).toContain("zin.placeholder = T('5-digit ZIP')");
+    expect(settings).toContain("zin.setAttribute('aria-label', T('Today");
     expect(settings).toContain("zin.className = 'input'; zin.style.cssText = 'width:120px;flex:none';");
-    expect(settings).toContain("'Set for today: ' + rz.workZip");
+    expect(settings).toContain("tf('Set for today: {zip}', { zip: rz.workZip })"); // pin moved (R27 Phase A, owner app c): the ZIP a slot of its template
     // What an unset ZIP costs depends on Arbo's own phone line (QA round 2): never "no caller gets" while the line is cut.
     expect(settings).not.toContain('no caller gets the nearby-estimate offer.');
     expect(settings).toContain('callers near your work aren\\u2019t offered the nearby slot (near-home offers still apply).');
@@ -51,11 +52,11 @@ describe('Settings screen (QA round)', () => {
     // google_client_missing is the route's only 503, and feedKind words it 'unset'. The code name
     // itself stays out of the page: appUi's §4.8 test forbids the substring it contains.
     expect(settings).toContain("if (feedKind(e) === 'unset')");
-    expect(settings).toContain("chip('NOT SET UP', 'watch')");
+    expect(settings).toContain("chip(T('NOT SET UP'), 'watch')"); // pin moved (R27 Phase A, owner app c): the same word, through T
     // The variable names Mike must set, in full (QA round 2); the 'I' is a source escape for the §4.8 test.
     expect(settings).toContain('add GMAIL_OAUTH_CL\\u0049ENT_ID and GMAIL_OAUTH_CL\\u0049ENT_SECRET on Railway. Nothing is disconnected \\u2014 it was never set up.');
     expect(settings).not.toContain('This is not a disconnect.');
-    expect(settings).toContain("feedLine(e, 'Google status')");
+    expect(settings).toContain("feedLine(e, T('Google status'))"); // pin moved (R27 Phase A, owner app c): the same name, through T
     expect(settings).not.toContain('Google reconnect: unavailable right now');
     // An unknown Connect refusal is said in words, never printed as its code.
     expect(settings).toContain('Arbo could not finish it. Tap Open Google and try again.');
@@ -68,8 +69,9 @@ describe('Settings screen (QA round)', () => {
     expect(quo).toBeGreaterThan(hooks);
     expect(settings).toContain('Quo (Sona calls & texts)');
     // R33: a webhook Arbo won't create while Quo is read-only is its own word, never FAILED.
-    expect(settings).toContain("reg.state === 'failed' ? 'FAILED' : reg.state === 'pending' ? 'PENDING' : reg.state === 'read_only' ? 'HOOK MISSING' : 'NOT WIRED'");
-    expect(settings).toContain("feedLine(e, 'Quo (Sona)')");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same words in the same order, each through T.
+    expect(settings).toContain("reg.state === 'failed' ? T('FAILED') : reg.state === 'pending' ? T('PENDING') : reg.state === 'read_only' ? T('HOOK MISSING') : T('NOT WIRED')");
+    expect(settings).toContain("feedLine(e, T('Quo (Sona)'))");
   });
 
   it('a stale render stops appending, and a refused tap says so instead of redrawing (S-fail)', () => {
@@ -84,8 +86,9 @@ describe('Settings screen (QA round)', () => {
     // No tap swallows its failure and redraws over it.
     expect(settings).not.toMatch(/catch \(e\) \{\}\s*renderSettings\(\)/);
     // QA round 3: a refused tap also puts the switch's own label back (it read 'Saving…').
-    expect(settings).toContain("catch (e) { btn.disabled = false; btn.textContent = c.on ? 'ON' : 'OFF'; showSaveFail(cell, e); return; }");
-    expect(settings).toContain("catch (e) { lbtn.disabled = false; lbtn.textContent = loc.enabled ? 'ON' : 'OFF'; showSaveFail(lcell, e); return; }");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: a refused tap still puts the switch's own word back (ON/OFF through T) and says why.
+    expect(settings).toContain("catch (e) { btn.disabled = false; btn.textContent = c.on ? T('ON') : T('OFF'); showSaveFail(cell, e); return; }");
+    expect(settings).toContain("catch (e) { lbtn.disabled = false; lbtn.textContent = loc.enabled ? T('ON') : T('OFF'); showSaveFail(lcell, e); return; }");
     expect(settings).toContain('use a 5-digit Hampton Roads ZIP starting with 23.');
     expect(settings).toContain("e.message === 'bad_zip'");
     expect(settings).toContain('Your entry is still in the box.');
@@ -96,10 +99,11 @@ describe('Settings screen (QA round)', () => {
   it('read-only states are chips by tone, not look-alike switches (S-status-tags)', () => {
     expect(settings).not.toContain("el('span', 'loc-toggle'");
     // R32 added a fourth link state: READ-ONLY reads, so it wears good like OPEN; CUT stays info.
-    expect(settings).toContain("chip(l.state === 'open' ? 'OPEN' : l.state === 'read-only' ? 'READ-ONLY' : 'CUT', readable ? 'good' : 'info')");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same chips and tones, their words through T.
+    expect(settings).toContain("chip(l.state === 'open' ? T('OPEN') : l.state === 'read-only' ? T('READ-ONLY') : T('CUT'), readable ? 'good' : 'info')");
     expect(settings).toContain("const readable = l.state === 'open' || l.state === 'read-only';");
-    expect(settings).toContain("chip('CUT', 'info')");
-    expect(settings).toContain("chip(s.configured ? 'WIRED' : 'NOT WIRED', s.configured ? 'good' : 'watch')");
+    expect(settings).toContain("chip(T('CUT'), 'info')");
+    expect(settings).toContain("chip(s.configured ? T('WIRED') : T('NOT WIRED'), s.configured ? 'good' : 'watch')");
     expect(settings).toContain("ok ? 'good' : reg.state === 'failed' ? 'stop' : 'watch'");
     // No legacy badge colour is left on this screen: every status chip has a tone.
     expect(settings).not.toMatch(/\bbadge\(/);
@@ -110,13 +114,14 @@ describe('Settings screen (QA round)', () => {
     for (const gone of ['coded defaults', 'durable home comes', 'Where Mike is', 'In-memory:', 'resets on redeploy', '(R21)', '(R19).', 'since deploy', 'no fresh ping yet (phone posts', 'no secret on the server;', 'the GMAIL_OAUTH_ variables']) {
       expect(settings, gone).not.toContain(gone);
     }
-    expect(settings).toContain("location: 'Saved location history'");
+    expect(settings).toContain("location: T('Saved location history')"); // pin moved (R27 Phase A, owner app c): the same name, through T
     expect(settings).toContain('(LINK_LABEL[l.link] || l.link)');
-    expect(settings).toContain("resend: 'Resend (website form copies)'");
-    expect(settings).toContain("railway: 'Railway (deploy notices)'");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same names, through T.
+    expect(settings).toContain("resend: T('Resend (website form copies)')");
+    expect(settings).toContain("railway: T('Railway (deploy notices)')");
     expect(settings).toContain('const label = HOOK_LABEL[name] || name;');
     expect(settings).toContain('t count what it sent; this is not zero events');
-    expect(settings).toContain("' since Arbo last restarted'");
+    expect(settings).toContain("received since Arbo last restarted'"); // pin moved (R27 Phase A, owner app c): the row's own template
   });
 
   it('the inbox check behind the switches is named above them (S-inbox-state)', () => {
@@ -124,20 +129,22 @@ describe('Settings screen (QA round)', () => {
     expect(read).toBeGreaterThan(-1);
     expect(read).toBeLessThan(settings.indexOf('for (const c of s.channels)'));
     expect(settings).toContain("r === 'no Gmail credentials configured'");
-    expect(settings).toContain("'feed-state unset', 'Inbox check isn");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same line and name, through T.
+    expect(settings).toContain("'feed-state unset', T('Inbox check isn");
     expect(settings).toContain('These switches take effect once it is.');
-    expect(settings).toContain("feedLine(e, 'Inbox check')");
+    expect(settings).toContain("feedLine(e, T('Inbox check'))");
   });
 
   it('submit buttons are main buttons; the pill is only for real toggles (S-buttons)', () => {
-    expect(settings).toContain("el('button', 'actbtn', 'Save')");
-    expect(settings).toContain("el('button', 'actbtn', 'Connect')");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same main buttons, their words through T.
+    expect(settings).toContain("el('button', 'actbtn', T('Save'))");
+    expect(settings).toContain("el('button', 'actbtn', T('Connect'))");
     expect(settings).not.toContain("'loc-toggle on', 'Save'");
     expect(settings).not.toContain("'loc-toggle', 'Connect'");
   });
 
   it('Appearance is on Settings too, even when the switches cannot load (S-appearance)', () => {
-    expect(settings).toContain("el('div', 'panel-title', 'Appearance')");
+    expect(settings).toContain("el('div', 'panel-title', T('Appearance'))"); // pin moved (R27 Phase A, owner app c): the same title, through T
     expect(settings).toContain('const cur = themePref();');
     expect(settings).toContain('setTheme(val);');
     // Drawn on the failure path and at the end, never after a stale render.

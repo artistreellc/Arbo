@@ -87,12 +87,14 @@ describe('#17 — one help line under the Run button, and a short AI-off line', 
   it('the time rides on the help line; stale, it is a warning line of its own', () => {
     expect(agents).toContain('const ranAt = AGENT_RUN && AGENT_RUN.ranAt;');
     expect(agents).toContain("const stale = !!ranAt && Date.now() - Date.parse(ranAt) > 15 * 60 * 1000;");
-    expect(agents).toContain("v.appendChild(el('div', 'storm-muted', (ranAt && !stale ? 'Ran ' + fmtWhen(ranAt) + '. ' : '') + 'Run only looks — it never changes anything.'));");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the time on the help line, one template with it and one without (no sentence glued).
+    expect(agents).toContain("return v.appendChild(el('div', 'storm-muted', ranAt && !stale ? tf('Ran {when}. Run only looks — it never changes anything.', { when: fmtWhen(ranAt) }) : T('Run only looks — it never changes anything.')));");
   });
 
   it('the hourly sentence is gone from the notes (each NOT RUN row says it), and AI off is one short line', () => {
     expect(agents).not.toContain('Booking, collections, safety, permits and the morning briefing');
-    expect(agents).toContain("el('div', 'feed-state unset', 'AI off — plain counts only, no AI key yet.')");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same short line, said through T.
+    expect(agents).toContain("el('div', 'feed-state unset', T('AI off — plain counts only, no AI key yet.'))");
     // Still a named gap (§1B), never a help tip.
     expect(agents).not.toContain("el('div', 'storm-muted', 'AI off");
   });
@@ -139,7 +141,8 @@ describe('#18 — a proposal points at a real screen', () => {
   });
 
   it('the button rides inside the proposal note and only switches the tab', () => {
-    expect(agents).toContain("const note = el('div', 'due-note', 'Proposal for you: ' + noRefs(p.text));");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same note, one template with the desk's words as its value.
+    expect(agents).toContain("const note = el('div', 'due-note', tf('Proposal for you: {text}', { text: noRefs(p.text) }));");
     expect(agents).toContain('const go = PROPOSAL_GO[p.kind];');
     expect(agents).toContain("b.addEventListener('click', () => switchTab(go[1]));");
   });
@@ -214,7 +217,9 @@ describe('#20 — every Measure reason reads feet first', () => {
     // A plain reason (no code word) passes through untouched.
     expect(why('no validated phone-LiDAR crown method; counts everything')).toBe('no validated phone-LiDAR crown method; counts everything');
     expect(result).toContain('b.title = why(conf.reason);');
-    expect(result).toContain("k.toUpperCase() + ' — ' + c.level + ': ' + why(c.reason)");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: each figure's line is one template; the reason still goes through why() (the code word stripped).
+    expect(result).toContain("const say = { what: FIGURE[k], level: LEVEL[c.level] || c.level, why: why(c.reason) };");
+    expect(result).toContain("tf('{what} — {level}: {why}', say)");
   });
 
   it('the agent and crew summary leads with feet and inches too', () => {
@@ -251,14 +256,16 @@ describe('#21 — the Measure status line does not look like the help tip above 
 
 describe('#22 — short run buttons, and the why in the lines under them', () => {
   it('the Opus button keeps one short label and stays disabled with no key', () => {
-    expect(learn).toContain("const b2 = el('button', 'actbtn alt', 'Run with Opus');");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same short label, said through T.
+    expect(learn).toContain("const b2 = el('button', 'actbtn alt', T('Run with Opus'));");
     expect(learn).toContain("b2.disabled = !st.opusAvailable || st.status === 'running';");
     expect(learn).not.toContain("st.opusAvailable ? 'Run with Opus (");
   });
 
   it('the cost and the missing key are said under the buttons, the key as a not-set-up line', () => {
-    expect(learn).toContain("Opus: answers all ' + plural(cat.total, 'scenario') + ' the way it would on a real call — one model call each.'");
-    expect(learn).toContain("if (!st.opusAvailable) v.appendChild(el('div', 'feed-state unset', 'Opus practice is off — no AI key on the server yet.'));");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same two lines, the count a slot (one and many forms) and the key line through T.
+    expect(learn).toContain("Opus: answers all {n} scenarios the way it would on a real call — one model call each.')");
+    expect(learn).toContain("if (!st.opusAvailable) v.appendChild(el('div', 'feed-state unset', T('Opus practice is off — no AI key on the server yet.')));");
   });
 
   it('the line under the buttons keeps its distance, on Learn only', () => {

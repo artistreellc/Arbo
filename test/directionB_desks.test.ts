@@ -380,7 +380,8 @@ describe('every link into the Queue lands on its desk (P13)', () => {
   it('More (Office since P14): no two tiles share an icon, and every icon is in the sprite, drawn in its grammar', () => {
     const sprite = readFileSync(new URL('../src/app/sprite.svg', import.meta.url), 'utf8');
     const desks = constVal<Array<{ view: string; icon: string }>>('OFFICE_DESKS').map((d) => [d.icon, VIEW_TITLES[d.view]!] as const);
-    const icons = [...desks, ...[...fnSrc('renderMore').matchAll(/tile\('(i-[a-z-]+)', '([^']+)'/g)].map((m) => [m[1]!, m[2]!] as const)];
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same tiles, their titles now said through T('…').
+    const icons = [...desks, ...[...fnSrc('renderMore').matchAll(/tile\('(i-[a-z-]+)', T\('([^']+)'\)/g)].map((m) => [m[1]!, m[2]!] as const)];
     // Direction B P15: Book, Permits and Measure moved under Estimate; P19: Estimate has its own dock tab, so Office
     // carries no Estimate tile — the whole list, exactly.
     expect(icons.map(([, t]) => t)).toEqual(['Follow-ups', 'Money', 'Fleet', 'Crew & safety', 'Numbers', 'Teach Arbo', 'Assistant', 'Agents', 'Crew', 'Phone line']);

@@ -198,6 +198,26 @@
       "backTranslation": "PERMIT CHECK NOT DONE — status UNKNOWN, there is no check recorded. Consult with the office before starting the work that requires a permit (protected work).",
       "on": "2026-10-22",
       "note": "Not recorded (D112). The blind back-translation (2026-10-22) found no drift, and \"el trabajo que requiere permiso (protected work)\" came back as \"the work that requires a permit (protected work)\" without the English. Held because no blind second translation has agreed with these words: the only one (D111’s review round) wrote \"el trabajo en zona protegida (protected work)\" — work in a protected zone, a different meaning (src/permitting/permitRecord.ts requiresClearance also counts a permit flag outside any zone) — and D111 chose these words after it. Also for that pass: the headline says the check was not done, the body that none is on file — the English PENDING / \"no screen on file\" differ the same way. Owed: a blind second translation of L12, L14, L15 and L16 from the English alone, with the glossary (TRADE_TERMS: protected work → \"el trabajo que requiere permiso (protected work)\"); then this entry can be recorded as is — its back-translation stands while the Spanish is unchanged."
+    },
+    {
+      "en": "EXPIRED",
+      "es": "VENCIDO",
+      "sha": "4d65a24f76f7f02d68096f8732b30132fb90ddd3f2f30c248c122320e79f8e91",
+      "where": "dict:app-settings",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A, owner app (Office, Numbers, Settings, Agents, Measure, Teach Arbo, the assistant), first translation pass",
+      "on": "2026-10-22",
+      "note": "Not recorded — new in R27 Phase A (owner app): a first translation only. No blind second translation and no blind back-translation yet, so it is served in English under the Spanish pointer until both are recorded (R27 #5, D112)."
+    },
+    {
+      "en": "Every text, before it goes out. Texts to customers also need their consent, stop for good on STOP, and only go 8am–9pm ET.",
+      "es": "Cada mensaje de texto, antes de que salga. Los mensajes a clientes además necesitan el consentimiento del cliente, se detienen para siempre con STOP y solo salen de 8am–9pm ET.",
+      "sha": "834ccdde5d0a679dc474aae8fec54b0386d066131df53b26712bc8806519cdf6",
+      "where": "dict:app-assistant",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A, owner app (Office, Numbers, Settings, Agents, Measure, Teach Arbo, the assistant), first translation pass",
+      "on": "2026-10-22",
+      "note": "Not recorded — new in R27 Phase A (owner app): a first translation only. No blind second translation and no blind back-translation yet, so it is served in English under the Spanish pointer until both are recorded (R27 #5, D112)."
     }
   ]
 }

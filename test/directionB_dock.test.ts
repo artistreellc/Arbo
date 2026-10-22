@@ -250,7 +250,7 @@ describe('the words that named the old screens move with them (ruling strings st
   });
 
   it('a proposal for a call review opens Calls & texts, by that name', () => {
-    expect(html).toContain("call_review: ['Open Calls & texts →', 'calls'],");
+    expect(html).toContain("call_review: [T('Open Calls & texts →'), 'calls'],"); // pin moved (R27 Phase A, owner app c): the same name, through T
   });
 
   it('the server\'s own lines point to Office → Assistant', () => {
