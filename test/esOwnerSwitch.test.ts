@@ -55,7 +55,8 @@ describe('Office → Appearance — English | Español, beside the theme', () =>
   const run = (r: ReturnType<typeof loadI18n>) => {
     const v = new FakeNode('div');
     const el = (tag: string, cls?: string, text?: string) => { const n = new FakeNode(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
-    new Function('v', 'el', 'T', 'ES', 'ES_LANG_NAME', 'esChange', block)(v, el, r.T, r.ES, r.ES_LANG_NAME, r.esChange);
+    // Review round (D110, UI 7): the chips are the runtime's esLanguageChips, drawn here and in Settings.
+    new Function('v', 'el', 'T', 'ES', 'ES_LANG_NAME', 'esChange', 'esLanguageChips', block)(v, el, r.T, r.ES, r.ES_LANG_NAME, r.esChange, r.esLanguageChips);
     r.doc.querySelector('main')!.appendChild(v);
     return v;
   };
@@ -141,5 +142,55 @@ describe('times a machine compares stay en-US / en-CA; money stays en-US in both
     expect(fnSrc(crew, 'etDayNow')).toContain("new Intl.DateTimeFormat('en-CA'");
     expect(fnSrc(crew, 'isFridayEt')).not.toMatch(/esLocale|esNum/);
     expect(fnSrc(crew, 'etDayNow')).not.toMatch(/esLocale|esNum/);
+  });
+});
+
+// ── Review round (D110) ─────────────────────────────────────────────────────
+const crewCss = crew.slice(crew.indexOf('<style>'), crew.indexOf('</style>'));
+const mkEl = (tag: string, cls?: string, text?: string) => { const n = new FakeNode(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+
+describe('review round — the language row reads as Spanish in Spanish (UI 8), and Settings has it too (UI 7)', () => {
+  it('"Idioma" carries lang="es" in Spanish mode; in English the row carries no lang of its own', () => {
+    for (const [stored, label, lang] of [[{ arboLang: 'es' }, 'Idioma', 'es'], [{}, 'Language', null]] as const) {
+      const r = loadI18n({ door: 'app', units: appUnits, stored });
+      const v = new FakeNode('div');
+      r.esLanguageChips(v, mkEl, r.T('Language'));
+      expect(v.children[0]!.textContent).toBe(label);
+      expect(v.children[0]!.getAttribute('lang')).toBe(lang);
+    }
+  });
+  it('Settings → Appearance draws the same English | Español chips under its theme chips', () => {
+    const settings = fnSrc(raw, 'buildSettings');
+    const appearance = settings.slice(settings.indexOf('const appearance = () => {'), settings.indexOf('  };', settings.indexOf('const appearance = () => {')));
+    expect(appearance.indexOf('v.appendChild(seg);')).toBeGreaterThan(0);
+    expect(appearance.indexOf("esLanguageChips(v, el, T('Language'));")).toBeGreaterThan(appearance.indexOf('v.appendChild(seg);'));
+    expect(fnSrc(raw, 'renderMore')).toContain("esLanguageChips(v, el, T('Language'));");
+  });
+});
+
+describe('review round — the "en inglés" chip on a wide screen spans the desk’s two columns (correctness #7, UI 4)', () => {
+  it('at 900px and up the chip is a full row of its own, sized to its words — the cards keep their order', () => {
+    expect(css).toMatch(/@media \(min-width:900px\)\{\.view\[data-es-en\]::before\{grid-column:1 \/ -1;justify-self:start\}\}/);
+  });
+});
+
+describe('review round — the safety pair: the English beneath is always the smaller, and its tag stands apart (UI 1, UI 6)', () => {
+  for (const [door, sheet] of [['office', css], ['crew', crewCss]] as const) {
+    it(`${door}: .es-pair-en is sized relative to its label, smaller than it`, () => {
+      const rule = /\.es-pair-en\{([^}]*)\}/.exec(sheet)?.[1] ?? '';
+      const em = /font-size:(0?\.\d+)em/.exec(rule);
+      expect(em, rule).not.toBeNull();
+      expect(Number(em![1])).toBeLessThan(1);
+    });
+    it(`${door}: the "inglés" tag is boxed and muted, so it never reads as part of the label`, () => {
+      const rule = /\.es-pair-tag\{([^}]*)\}/.exec(sheet)?.[1] ?? '';
+      expect(rule).toMatch(/border:1px solid/);
+      expect(rule).toMatch(/opacity:/);
+    });
+  }
+  it('office: a badge holding a pair is a rounded box that wraps, not a one-line pill', () => {
+    const rule = /\.badge:has\(> \.es-pair-es\)\{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(rule).toMatch(/border-radius:var\(--r-md\)/);
+    expect(rule).toMatch(/white-space:normal/);
   });
 });

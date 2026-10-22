@@ -47,6 +47,10 @@ export const TRADE_TERMS: readonly GlossaryPair[] = [
   { en: 'work order', es: 'orden de trabajo (work order)' },
   { en: 'near miss', es: 'casi accidente (near miss)' },
   { en: 'power line', es: 'línea eléctrica (power line)' },
+  // Review round (D110, UI 5): what 811 marks is every buried line — gas, water, power, phone — never
+  // the power company's alone. "Compañía de luz" there would tell a crew only electric was marked.
+  { en: 'utility lines', es: 'líneas de servicios públicos (utility lines)', note: 'Gas, water, power and phone — what 811 marks.' },
+  { en: 'utility markings', es: 'marcas de servicios públicos (utility markings)', note: 'Never "marcas de la compañía de luz".' },
   { en: 'permit', es: 'permiso (permit)' },
   { en: 'overlay', es: 'zona protegida del mapa (overlay)', note: 'Never "zona marcada": an overlay is a map layer the city verifies.' },
   { en: 'city inspector', es: 'inspector de la ciudad (city inspector)' },
@@ -55,7 +59,10 @@ export const TRADE_TERMS: readonly GlossaryPair[] = [
 /** The known false friends, pinned: the Spanish to use, and the words that read as something else. */
 export const FALSE_FRIENDS: ReadonlyArray<GlossaryPair & { never: string[]; why: string }> = [
   { en: 'conductor (electrical)', es: 'cable / línea eléctrica', never: ['conductor'], why: '"conductor" reads as "driver".' },
-  { en: 'utility', es: 'la compañía de luz', never: ['utilidad'], why: '"utilidad" means usefulness or profit.' },
+  {
+    en: 'utility', es: 'la compañía de luz', never: ['utilidad'],
+    why: '"utilidad" means usefulness or profit. "La compañía de luz" is the power company only (Dominion, line clearance); utility LINES and 811 markings are "servicios públicos" (gas, water, power, phone) — see TRADE_TERMS.',
+  },
   { en: 'applied', es: 'SOLICITADO', never: ['aplicado'], why: 'A permit that was applied for is SOLICITADO; "aplicado" means put into effect.' },
   { en: 'licensed', es: 'con licencia (licensed)', never: ['licenciado'], why: '"licenciado" means someone with a degree.' },
   { en: 'accredited', es: 'quoted in English: "accredited"', never: ['acreditado'], why: 'Never claim a credential the company does not hold (R14, R26).' },

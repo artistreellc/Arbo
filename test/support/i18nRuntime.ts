@@ -13,7 +13,7 @@ export const RUNTIME_SRC = readFileSync(new URL('../../src/app/i18n/runtime.js',
 /** The names the runtime defines for a page — the stubs every harness gets. */
 export const RUNTIME_NAMES = [
   'ES', 'T', 'tf', 'tn', 'esPick', 'esPickEl', 'esPair', 'esEnMark', 'esLocale', 'esNum', 'esMarkPlaces',
-  'esBrokenNotice', 'esSayStorage', 'esChange', 'esKeepLang', 'esSwitchInPlace', 'esToggleButton', 'esNotice',
+  'esBrokenNotice', 'esSayStorage', 'esChange', 'esKeepLang', 'esSwitchInPlace', 'esToggleButton', 'esNotice', 'esLanguageChips',
   'ES_BROKEN_LINE', 'ES_STORAGE_LINE', 'ES_LANG_NAME', 'ES_SWITCH_LABEL',
 ] as const;
 

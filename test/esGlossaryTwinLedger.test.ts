@@ -186,3 +186,26 @@ describe('review round — a ledger that cannot be read fails closed, and never 
     expect(readLedger().entries).toEqual(loadLedger());
   });
 });
+
+// UI review #5: "la compañía de luz" is the POWER company. Utility lines and
+// 811 markings also cover gas, water and phone — a crew member who read
+// "compañía de luz" there would take it that only electric lines were marked.
+describe('review round — "utility" is the power company only; utility lines and markings are all of them', () => {
+  it('keeps the plan’s "la compañía de luz" for the utility (the power company), with the narrow sense said', () => {
+    const ff = Object.fromEntries(FALSE_FRIENDS.map((f) => [f.en, f]));
+    expect(ff.utility!.es).toBe('la compañía de luz');
+    expect(ff.utility!.why).toMatch(/power company/i);
+    expect(ff.utility!.why).toMatch(/servicios públicos/);
+  });
+  it('utility lines and utility markings are "servicios públicos", the English beside', () => {
+    const by = Object.fromEntries(TRADE_TERMS.map((t) => [t.en, t.es]));
+    expect(by['utility lines']).toBe('líneas de servicios públicos (utility lines)');
+    expect(by['utility markings']).toBe('marcas de servicios públicos (utility markings)');
+  });
+  it('a gate catches utility lines or markings narrowed to the power company', () => {
+    expect(esGateProblems('Utility markings expire.', 'Las marcas de la compañía de luz vencen.').join(' ')).toMatch(/power/);
+    expect(esGateProblems('Wait for the utility lines to be marked.', 'Espere a que marquen las líneas de luz.').join(' ')).toMatch(/power/);
+    expect(esGateProblems('Utility markings expire.', 'Las marcas de servicios públicos vencen.')).toEqual([]);
+    expect(esGateProblems('Call the utility.', 'Llame a la compañía de luz.')).toEqual([]);
+  });
+});

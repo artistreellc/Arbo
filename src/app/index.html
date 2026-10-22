@@ -851,9 +851,17 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 .es-en-mark{display:inline-block;margin-left:6px;padding:1px 6px;border:1px solid var(--border);border-radius:999px;font-size:12px;font-weight:700;color:var(--ink-3);vertical-align:middle}
 .view[data-es-en]::before,#keywall[data-es-en]::before{content:attr(data-es-en);display:inline-block;margin:0 0 8px;padding:2px 8px;border:1px solid var(--border);border-radius:999px;font-size:12px;font-weight:700;color:var(--ink-3)}
 #keywall[data-es-en]::before{position:absolute;top:calc(14px + env(safe-area-inset-top));left:16px;border-color:rgba(244,239,224,.35);color:rgba(244,239,224,.85)}
+/* Review round (D110, UI 4): on the desk's two-column grid the chip is a row of its own, sized to its
+   words — as a grid cell it filled the left column and pushed the first card to the right. */
+@media (min-width:900px){.view[data-es-en]::before{grid-column:1 / -1;justify-self:start}}
+/* Review round (D110, UI 1, UI 6): the English beneath a safety label is always the smaller — sized from
+   the label it sits in — and its "inglés" tag is boxed and muted, so it never reads as part of the label.
+   A badge holding a pair is a rounded box that wraps, not a one-line pill: two to four lines ran into
+   the pill's corners at 320px. */
 .es-pair-es{display:block}
-.es-pair-en{display:block;margin-top:2px;font-size:12.5px;font-weight:600;opacity:.85}
-.es-pair-tag{font-weight:800;letter-spacing:.06em;text-transform:uppercase;margin-right:4px}
+.es-pair-en{display:block;margin-top:2px;font-size:.85em;font-weight:600;opacity:.85}
+.es-pair-tag{display:inline-block;margin-right:5px;padding:0 4px;border:1px solid currentColor;border-radius:4px;opacity:.75;font-size:.9em;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.badge:has(> .es-pair-es){display:inline-block;border-radius:var(--r-md);white-space:normal;text-align:left;max-width:100%}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -6576,6 +6584,7 @@ async function buildSettings(v, gen) {
       seg.appendChild(b);
     }
     v.appendChild(seg);
+    esLanguageChips(v, el, T('Language')); // R27 review round (D110, UI 7): the language lives beside the theme here too
   };
   // R26: the R25 desks' heading. It reads no feed, so it draws whatever fails below.
   const head = el('div', 'viewhead');
@@ -7402,17 +7411,9 @@ function renderMore() {
   v.appendChild(seg);
   // R27 (D110): the language, beside the theme — each named in its own language, the one on this
   // phone lit. A tap stores arboLang and reloads (the runtime's esChange); storage that refuses
-  // is said in both languages under the chips.
-  v.appendChild(el('div', 'es-lang-label', T('Language')));
-  const langs = el('div', 'chips');
-  for (const lang of ['en', 'es']) {
-    const b = el('button', 'loc-toggle' + (ES.wanted === lang ? ' on' : ''), ES_LANG_NAME[lang]);
-    b.setAttribute('lang', lang);
-    b.setAttribute('aria-pressed', ES.wanted === lang ? 'true' : 'false');
-    b.addEventListener('click', () => esChange(lang, langs));
-    langs.appendChild(b);
-  }
-  v.appendChild(langs);
+  // is said in both languages under the chips. Drawn by the runtime (esLanguageChips), the same
+  // chips as Settings → Appearance (review round, UI 7).
+  esLanguageChips(v, el, T('Language'));
 
   v.appendChild(el('div', 'panel-title', 'Install'));
   v.appendChild(installCard());
@@ -7433,6 +7434,8 @@ function setTheme(val) {
 applyTheme(themePref());
 
 // ---------- Language (R27, D110): English | Español, remembered on this phone as arboLang ----------
+// The chips beside the theme, in Office → Appearance and (review round, UI 7) Settings → Appearance,
+// are the runtime's esLanguageChips.
 // The runtime (src/app/i18n/runtime.js, inlined just above this script) read arboLang before this
 // line: only the exact stored "es" turns Spanish on. A change reloads the page — the plain way to
 // leave no half-translated screen. The two switches are the key screen's toggle (an employee meets
