@@ -51,6 +51,24 @@ describe('esSay — a safety line from the dictionary, into the page’s own nod
     r.esSay(b, 'Do not start work — call the office.');
     expect(b.children).toHaveLength(1);
   });
+  // D111: a failure line is its reason, then the stop-work order — two sentences, each its own key.
+  it('a lead-in (the sentence before the order): English is ONE text node, byte-identical; Spanish keeps the lead, then the pair', () => {
+    const lead = 'Your sign-off could not be recorded (the office didn’t answer). ';
+    const b = new FakeNode('div');
+    en().esSay(b, 'Do not start work — call the office.', lead);
+    expect(b.textContent).toBe(lead + 'Do not start work — call the office.');
+    expect(b.children.map((c) => c.tagName)).toEqual(['#text']);
+    const s = new FakeNode('div');
+    es().esSay(s, 'Do not start work — call the office.', 'No se pudo registrar su firma (la oficina no contestó). ');
+    expect(s.children.map((c) => (c.tagName === '#text' ? '#text' : c.className))).toEqual(['#text', 'es-pair']);
+    expect(s.children[0]!.textContent).toBe('No se pudo registrar su firma (la oficina no contestó). ');
+    expect(s.children[1]!.children[0]!.textContent).toBe('No empiece a trabajar — llame a la oficina.');
+  });
+  it('a held line keeps its lead-in too, and the English it shows is marked', () => {
+    const s = new FakeNode('div');
+    es().esSay(s, 'Your work orders stay locked — do not start work; call the office to log your briefing.', 'Lead. ');
+    expect(s.textContent).toBe('Lead. Your work orders stay locked — do not start work; call the office to log your briefing.en inglés');
+  });
 });
 
 describe('esSayPick — a server-written safety line and its twin, as a pair', () => {

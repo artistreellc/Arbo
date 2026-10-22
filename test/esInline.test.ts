@@ -14,6 +14,7 @@ import { loadDoorDictionary, unitFiles, readUnit } from '../src/i18n/dictionarie
 import { esGateProblems } from '../src/i18n/gates.js';
 import { findBannedEs } from '../src/i18n/banList.js';
 import { RUNTIME_SRC } from './support/i18nRuntime.js';
+import { isSafetyClass, loadLedger } from '../src/i18n/ledger.js';
 
 const raw = (f: string) => readFileSync(new URL(`../src/app/${f}`, import.meta.url), 'utf8');
 const MARK = '<!--ARBO:I18N-->';
@@ -152,7 +153,14 @@ describe('every dictionary entry in the repo passes the ban list and every gate,
         expect(findBannedEs(es), `${en} → ${es}`).toEqual([]);
         expect(esGateProblems(en, es), `${en} → ${es}`).toEqual([]);
       }
-      expect(loadDoorDictionary(u.door).held.filter((h) => h.unit === u.unit)).toEqual([]);
+      // D111 (pin moved, meaning kept): nothing is held back but a safety line waiting for its review —
+      // a safety-class key whose exact pair the ledger names as a draft. A banned or unservable entry,
+      // or a safety line with no ledger entry at all, still fails here.
+      const held = loadDoorDictionary(u.door).held.filter((h) => h.unit === u.unit);
+      for (const h of held) {
+        expect(isSafetyClass(h.key), `${u.unit}: ${h.key} is held back`).toBe(true);
+        expect(loadLedger().some((e) => e.en === h.key && e.es === entries![h.key] && e.pass === 'draft'), `${u.unit}: ${h.key} has no draft ledger entry`).toBe(true);
+      }
     });
   }
 });

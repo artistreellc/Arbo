@@ -169,7 +169,8 @@ describe('Crew door — library and near miss say "cut" before anyone types (ite
   });
 
   it('the after-the-tap wording stays as the backstop', () => {
-    expect(crew).toContain("'Library: ' + crewWhy(e) + '. That is NOT \"nothing on file\" — ask the office.'");
-    expect(crew).toContain("'Did not save — ' + crewWhy(e) + '.'");
+    // D111 (pins moved, meaning kept): the same backstop lines, each one template with the crewWhy reason in it.
+    expect(crew).toContain("tf('Library: {why}.', { why: crewWhy(e) }) + ' ' + T('That is NOT \"nothing on file\" — ask the office.')");
+    expect(crew).toContain("tf('Did not save — {why}.', { why: crewWhy(e) })");
   });
 });

@@ -225,7 +225,8 @@ describe('reference library on the crew door (§6U)', () => {
 
   it('a library it could not read is NEVER drawn as an empty one (§1B)', () => {
     // QA round 2: the reason is the crew door's one wording for a failed read (crewWhy).
-    expect(html).toContain("'Library: ' + crewWhy(e)");
+    // D111 (pin moved, meaning kept): one template now, the reason a value in it (R27).
+    expect(html).toContain("tf('Library: {why}.', { why: crewWhy(e) })");
     expect(html).toContain('cut on purpose');
     expect(html).toContain('not part of the practice data');
     expect(html).toContain('That is NOT "nothing on file"');
@@ -322,7 +323,10 @@ describe('C1 — the five catches name their failure through crewWhy', () => {
   // pin follows them there with the same meaning.
   it('renderWork, submitQuiz, renderQuiz, sendArrival and sendChangeOrder wait for /health, then call crewWhy — no bare retry left', () => {
     for (const name of ['renderWork', 'submitQuiz', 'renderQuiz', 'sendArrival', 'sendChangeOrder']) {
-      const s = src(name);
+      // D111 (pin followed, meaning kept): submitQuiz words its failure through quizSaveErr, the one
+      // line it shares with a redraw after a language change — and that line calls crewWhy.
+      const s = name === 'submitQuiz' ? `${src(name)}\n${src('quizSaveErr')}` : src(name);
+      if (name === 'submitQuiz') expect(src(name)).toContain('quizSaveErr(e)');
       expect(s, name).toContain('await LINKS_READY');
       expect(s, name).toContain('crewWhy(');
       expect(s, name).not.toContain('Try again.');
@@ -437,6 +441,8 @@ describe('C1 — the clock-in question names an empty pool and a failed read', (
       $: (id: string) => (id === 'quiz' ? quizNode : go), el: el1, api: refused(503, 'read_only'), CREW_ID: 'x',
       QUIZ: { context: 'clock_in_gate', items: [question], answers: { q1: 0 }, startedAt: '' },
       LINKS_READY: Promise.resolve(), crewWhy: crewWhyAt('readonly'),
+      // D111: the line is quizSaveErr's (shared with the redraw after a language change).
+      quizSaveErr: lift<(e: unknown) => string>('quizSaveErr', { crewWhy: crewWhyAt('readonly') }),
     });
     await submitQuiz();
     const line = quizNode.querySelector('.errline')!.textContent;

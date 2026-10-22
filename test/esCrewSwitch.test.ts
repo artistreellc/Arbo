@@ -38,6 +38,14 @@ class N {
 }
 const el = (tag: string, cls?: string, text?: string) => new N(tag, cls ?? '', text ?? '');
 const doc = { createElement: (t: string) => new N(t), createTextNode: (t: string) => new N('#text', '', t), querySelector: () => new N('main') };
+// D111 (pins moved, meaning kept): Phase A unit 1 redraws every panel in place — the header's date, the
+// name line or the door-key card, and the near-miss card — so each crewRedraw harness gains their stubs
+// (the foundation's harnesses gained NM and crewEsMark the same way). Each does nothing here; what they
+// draw is proven in test/esCrewDraw.test.ts.
+const REDRAW_STUBS = {
+  crewWords: () => {}, paintDateline: () => {}, renderWhoAmI: () => true, DOOR_KEY_ASKED: false,
+  renderDoorKey: Object.assign(() => {}, { args: null }), renderNearMiss: () => {}, nmSay: () => {},
+};
 
 describe('the header toggle — on every screen, the door-key screen included', () => {
   it('is put in the header at boot, before the door answers, so the key screen has it too', () => {
@@ -77,6 +85,7 @@ describe('a change BEFORE sign-off reloads — the gate restarts in the new lang
   const run = async (gate: Record<string, unknown>) => {
     const did: string[] = [];
     const p = lift<{ crewLangChange: (to: string) => Promise<void> }>(['crewLangChange', 'crewRedraw'], {
+      ...REDRAW_STUBS,
       GATE: gate, QUIZ: { sending: false }, NM: { sending: false }, location: { reload: () => did.push('reload') },
       esSwitchInPlace: (to: string) => did.push('inplace:' + to), crewEsMark: () => {}, paintSigned: () => did.push('paint'),
       renderQuiz: () => did.push('quiz'), renderWork: () => did.push('work'), renderLibrary: () => did.push('library'),
@@ -95,6 +104,7 @@ describe('a change BEFORE sign-off reloads — the gate restarts in the new lang
     const gate = { unlocked: false, sending: true };
     const did: string[] = [];
     const p = lift<{ crewLangChange: (to: string) => Promise<void> }>(['crewLangChange', 'crewRedraw'], {
+      ...REDRAW_STUBS,
       GATE: gate, QUIZ: { sending: false, done: true, result: null }, NM: { sending: false }, location: { reload: () => did.push('reload') },
       esSwitchInPlace: () => did.push('inplace'), crewEsMark: () => {}, paintSigned: () => did.push('paint'), quizLogged: () => did.push('logged'),
       renderQuiz: () => did.push('quiz'), renderWork: Object.assign(() => did.push('work'), { lastDay: null }), renderLibrary: () => did.push('library'),
@@ -118,6 +128,7 @@ describe('a change AFTER sign-off redraws in place — no reload, no read, no se
     const day = { workOrders: [], notWorkOrders: 0, contractLookupFailed: false };
     const lib = new N('input'); lib.value = 'rigging a heav';
     const p = lift<{ crewLangChange: (to: string) => Promise<void> }>(['crewLangChange', 'crewRedraw'], {
+      ...REDRAW_STUBS,
       GATE: { unlocked: true, sending: false }, QUIZ: { sending: false, done: false, pool: { items: [] }, context: 'clock_in_gate' }, NM: { sending: false },
       location: { reload: () => did.push('reload') },
       esSwitchInPlace: (to: string) => did.push('inplace:' + to), crewEsMark: () => {}, paintSigned: () => did.push('paint'), quizLogged: () => did.push('logged'),
@@ -139,6 +150,7 @@ describe('a change AFTER sign-off redraws in place — no reload, no read, no se
     const did: string[] = [];
     const res = { payableMinutes: 2 };
     const p = lift<{ crewLangChange: (to: string) => Promise<void> }>(['crewLangChange', 'crewRedraw'], {
+      ...REDRAW_STUBS,
       GATE: { unlocked: true, sending: false }, QUIZ: { sending: false, done: true, result: res }, NM: { sending: false },
       location: { reload: () => did.push('reload') }, esSwitchInPlace: () => {}, crewEsMark: () => {}, paintSigned: () => {},
       quizLogged: (_v: unknown, r: unknown) => did.push('logged:' + (r === res)), renderQuiz: () => did.push('quiz'),
@@ -152,6 +164,7 @@ describe('a change AFTER sign-off redraws in place — no reload, no read, no se
     const did: string[] = [];
     const quiz = { sending: true, done: false, pool: null, context: 'clock_in_gate' };
     const p = lift<{ crewLangChange: (to: string) => Promise<void> }>(['crewLangChange', 'crewRedraw'], {
+      ...REDRAW_STUBS,
       GATE: { unlocked: true, sending: false }, QUIZ: quiz, NM: { sending: false }, location: { reload: () => did.push('reload') },
       esSwitchInPlace: () => did.push('inplace'), crewEsMark: () => {}, paintSigned: () => {}, quizLogged: () => {}, renderQuiz: () => did.push('quiz'),
       renderWork: Object.assign(() => {}, { lastDay: null }), renderLibrary: () => {}, libSearch: Object.assign(() => {}, { last: null }), $: () => new N('div'),
@@ -236,8 +249,9 @@ describe('the page’s own drawing, redrawn from memory', () => {
     expect(s).toContain('paintSigned();');
     expect(s.indexOf('paintSigned();')).toBeLessThan(s.indexOf('renderQuiz();'));
     const p = fnSrc('paintSigned');
-    expect(p).toContain("head.textContent = 'Briefing acknowledged — logged';");
-    expect(p).toContain("go.textContent = 'DAY UNLOCKED ✓';");
+    // D111 (pin moved, meaning kept): the same words, through T.
+    expect(p).toContain("head.textContent = T('Briefing acknowledged — logged');");
+    expect(p).toContain("go.textContent = T('DAY UNLOCKED ✓');");
   });
 });
 
@@ -295,6 +309,7 @@ describe('review round — the library redraws exactly what it last had, a failu
     const did: string[] = [];
     const err = Object.assign(new Error('link_cut'), { code: 503 });
     const p = lift<{ crewLangChange: (to: string) => Promise<void> }>(['crewLangChange', 'crewRedraw'], {
+      ...REDRAW_STUBS,
       GATE: { unlocked: true, sending: false }, QUIZ: { sending: false, done: true, result: null }, NM: { sending: false },
       location: { reload: () => did.push('reload') }, esSwitchInPlace: () => {}, crewEsMark: () => {}, paintSigned: () => {}, quizLogged: () => {}, renderQuiz: () => {},
       renderWork: Object.assign(() => {}, { lastDay: null }), renderLibrary: () => {},
@@ -308,6 +323,7 @@ describe('review round — the library redraws exactly what it last had, a failu
     const did: string[] = [];
     const libSearch = Object.assign(() => did.push('lib'), { last: null as unknown, pending: 1 });
     const p = lift<{ crewLangChange: (to: string) => Promise<void> }>(['crewLangChange', 'crewRedraw'], {
+      ...REDRAW_STUBS,
       GATE: { unlocked: true, sending: false }, QUIZ: { sending: false, done: true, result: null }, NM: { sending: false },
       location: { reload: () => did.push('reload') }, esSwitchInPlace: () => did.push('inplace'), crewEsMark: () => {}, paintSigned: () => {}, quizLogged: () => {}, renderQuiz: () => {},
       renderWork: Object.assign(() => {}, { lastDay: null }), renderLibrary: () => {}, libSearch, $: () => new N('input'),
@@ -337,6 +353,7 @@ describe('review round — a change before sign-off never reloads over a near-mi
     const box = new N('textarea'); box.value = o.typed ?? '';
     const nm = o.nm ?? { sending: false };
     const p = lift<{ crewLangChange: (to: string) => Promise<void> }>(['crewLangChange', 'crewRedraw'], {
+      ...REDRAW_STUBS,
       GATE: { unlocked: false, sending: false }, QUIZ: { sending: false }, NM: nm, NM_HOLD: { typed: 'TYPED', sent: 'SENT' },
       location: { reload: () => did.push('reload') }, esSwitchInPlace: () => did.push('inplace'), crewEsMark: () => {},
       crewLangHold: (line: string) => did.push('hold:' + line), libSearch: Object.assign(() => {}, { pending: 0 }),

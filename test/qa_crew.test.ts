@@ -29,25 +29,32 @@ describe('the briefing gate keeps the server’s answer on screen', () => {
     const submit = fn('submitGate');
     expect(submit).toMatch(/go\.disabled = true;\s*GATE\.serverMsg = '';/);
     // QA round 2: read time is left to the live countdown, so only the other codes are held.
-    expect(submit).toContain("GATE.serverMsg = other.length ? 'Still needed: '");
-    expect(submit).toMatch(/GATE\.serverMsg = e\.code === 400/);
+    // D111 (pins moved, meaning kept): the same lines through tf/T; the 400 crew-code test is named first.
+    expect(submit).toContain("GATE.serverMsg = other.length ? tf('Still needed: {list}'");
+    expect(submit).toContain("const rejected = e.code === 400 && (e.message === 'unknown_crew' || e.message === 'bad_crew_id');");
+    expect(submit).toMatch(/GATE\.serverMsg = rejected/);
     expect(submit).not.toContain("$('gate-status').textContent");
     expect(fn('renderGate')).toContain("GATE.checked = cb.checked; GATE.serverMsg = '';");
   });
 
   it('the server’s missing codes are read out in words, never as codes', () => {
-    expect(html).toContain("scroll: 'scroll to the bottom', checkbox: 'tick the box', read_time: 'read for longer'");
+    // D111 (pin moved, meaning kept): the same words, read through T each time they are said.
+    expect(html).toContain("get scroll() { return T('scroll to the bottom'); },");
+    expect(html).toContain("get checkbox() { return T('tick the box'); },");
+    expect(html).toContain("get read_time() { return T('read for longer'); },");
     expect(fn('submitGate')).toContain('.map((m) => GATE_NEED[m]');
   });
 
   it('a failed sign-off says the day stays locked, never "not blocked"', () => {
     const submit = fn('submitGate');
     expect(html).not.toMatch(/not blocked/i);
-    expect(submit).toContain('Your work orders stay locked');
-    expect(submit).toContain('do not start work; call the office to log your briefing');
+    // D111 (pins moved, meaning kept): the stop-work order is its own sentence, said by refreshGate
+    // after the reason as a safety line, whenever submitGate marks it (serverOrder).
+    expect(fn('refreshGate')).toContain('Your work orders stay locked — do not start work; call the office to log your briefing.');
+    expect(submit).toContain('GATE.serverOrder = !rejected && !retry && e.code !== 409;');
     // QA round 2: the reason comes from crewWhy, the crew door's one wording for a failed read.
-    expect(submit).toContain("'Your sign-off could not be recorded (' + crewWhy(e) + ').'");
-    expect(fn('crewWhy')).toContain("if (m === 'not_simulated') return 'not part of the practice data';");
+    expect(submit).toContain("tf('Your sign-off could not be recorded ({why}).', { why: crewWhy(e) })");
+    expect(fn('crewWhy')).toContain("if (m === 'not_simulated') return T('not part of the practice data');");
   });
 
   it('the acknowledgement box sits inside its label, one full-row target', () => {
@@ -70,13 +77,16 @@ describe('the work-order list never draws an unreadable or held-back day as empt
   it('"Nothing scheduled" is reached only after the unreadable check, and only with nothing held', () => {
     const work = fn('renderWork');
     expect(work.indexOf('data.contractLookupFailed')).toBeLessThan(work.indexOf("'Nothing scheduled'"));
-    expect(work).toContain("held ? 'Nothing confirmed to start' : 'Nothing scheduled'");
+    // D111 (pin moved, meaning kept): the same choice, through T.
+    expect(work).toContain("held ? T('Nothing confirmed to start') : T('Nothing scheduled')");
     expect(work).toContain("Can’t confirm today’s jobs");
   });
 
   it('the held count is named with a real plural, above the list when some jobs did go out', () => {
     const work = fn('renderWork');
-    expect(work).toContain("held === 1 ? ' job on today’s sheet is' : ' jobs on today’s sheet are'");
+    // D111 (pin moved, meaning kept): the real plural is tn's one/many pair, each a whole sentence.
+    expect(work).toContain("tn(held, '{n} job on today’s sheet is on hold — no signed contract yet. Check with the office.',");
+    expect(work).toContain("'{n} jobs on today’s sheet are on hold — no signed contract yet. Check with the office.');");
     expect(work).toContain("if (held) v.appendChild(el('div', 'shortfall', heldLine));");
     expect(work.indexOf("'shortfall', heldLine")).toBeLessThan(work.indexOf('for (const wo of data.workOrders)'));
   });
@@ -87,9 +97,10 @@ describe('the work-order list never draws an unreadable or held-back day as empt
     // crewWhy's words; it is still the warning box and still not an empty day.
     const work = fn('renderWork');
     expect(work).toContain("const s = el('div', 'state err');");
-    expect(work).toContain("s.appendChild(el('b', '', 'Could not load your work orders'));");
+    // D111 (pins moved, meaning kept): the same lines, through T.
+    expect(work).toContain("s.appendChild(el('b', '', T('Could not load your work orders')));");
     expect(work).toContain('const why = crewWhy(e);');
-    expect(work).toContain("s.appendChild(el('div', '', 'That is not an empty day — call the office.'));");
+    expect(work).toContain("s.appendChild(el('div', '', T('That is not an empty day — call the office.')));");
   });
 });
 
@@ -104,7 +115,8 @@ describe('a failure looks like a failure (§1B)', () => {
     // C4 (D109): the read now carries the crew code, so the slice starts at the call itself.
     const boot = html.slice(html.indexOf("api('/api/crew/briefing' + (CREW_ID"));
     expect(boot.length).toBeLessThan(html.length);
-    expect(boot).toMatch(/if \(e\.code === 404\) \{\s*\$\('gate-slot'\)\.appendChild\(el\('div', 'state', 'No briefing published/);
+    // D111 (pin moved, meaning kept): the same plain box, its line through T.
+    expect(boot).toMatch(/if \(e\.code === 404\) \{\s*\$\('gate-slot'\)\.appendChild\(el\('div', 'state', T\('No briefing published/);
     expect(boot).toContain("const s = el('div', 'state err');");
     expect(boot).toContain("Briefing didn\\u2019t come through");
     expect(boot).toContain('Do not start work');
@@ -113,11 +125,14 @@ describe('a failure looks like a failure (§1B)', () => {
 
 describe('near-miss filing tells the crew the truth', () => {
   it('a failed filing is told in words, never as the server’s code', () => {
-    const nm = fn('renderNearMiss');
+    // D111 (pin followed, meaning kept): the card's answer is drawn by nmSay — after File it, and again
+    // after a language change — so the failure's words live there.
+    expect(fn('renderNearMiss')).toContain('nmSay(out, NM.last);');
+    const nm = `${fn('renderNearMiss')}\n${fn('nmSay')}`;
     expect(nm).not.toContain("'Did not save ('");
     expect(nm).not.toMatch(/\+ \(?e\.message/);
     // QA round 2: every other failure is worded by crewWhy ('not part of the practice data', 'cut on purpose', …).
-    expect(nm).toContain("'Did not save — ' + crewWhy(e) + '.'");
+    expect(nm).toContain("tf('Did not save — {why}.', { why: crewWhy(e) })");
     expect(nm).toContain('the office did not recognise your crew code');
   });
 
@@ -132,7 +147,8 @@ describe('near-miss filing tells the crew the truth', () => {
 describe('identity and the door key', () => {
   it('claims no sign-in the page has not checked', () => {
     expect(html).not.toContain("'Signed in");
-    expect(fn('renderWhoAmI')).toContain("'Crew code on this phone \\u00b7 ' + CREW_ID.slice(0, 8)");
+    // D111 (pin moved, meaning kept): the same stored-code line, one template through tf.
+    expect(fn('renderWhoAmI')).toContain("tf('Crew code on this phone \\u00b7 {code}', { code: CREW_ID.slice(0, 8) })");
   });
 
   it('"Not you?" is a 48px target', () => {
@@ -150,7 +166,8 @@ describe('identity and the door key', () => {
   it('the normal card says the key is not the crew code, and lets the crew see what they typed', () => {
     const door = fn('renderDoorKey');
     expect(door).toContain('It is not your crew code');
-    expect(door).toContain("el('button', 'keyshow', 'Show key')");
+    // D111 (pin moved, meaning kept): the same button, its words through T.
+    expect(door).toContain("el('button', 'keyshow', T('Show key'))");
     expect(door).toContain("show.type = 'button'");
     expect(door).toContain('input.spellcheck = false');
     expect(html).toContain('#whoami #doorkey{font-family:inherit}');
@@ -200,7 +217,8 @@ describe('one primary button style, one card style', () => {
 
 describe('the library note', () => {
   it('the whole clause follows the count', () => {
-    expect(fn('libSearch')).toContain("' more entry is written but not yet signed off by a person, so it is held back.'");
-    expect(fn('libSearch')).toContain("' more entries are written but not yet signed off by a person, so they are held back.'");
+    // D111 (pins moved, meaning kept): the whole clause still follows the count — tn's one/many pair.
+    expect(fn('libSearch')).toContain("'{n} more entry is written but not yet signed off by a person, so it is held back.'");
+    expect(fn('libSearch')).toContain("'{n} more entries are written but not yet signed off by a person, so they are held back.'");
   });
 });

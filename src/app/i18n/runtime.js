@@ -206,11 +206,15 @@ function esPairInto(node, prefix, text, es) {
  * as written; in Spanish the Spanish first and the full English beneath — or, while its review is not
  * recorded (the entry is held back), the English marked "en inglés". The key is written out at the
  * call site, as T's is, so parity can check it. STOP alone is never translated.
+ * `lead` (optional) is the sentence before the line, already in the page's language — a failure's
+ * reason before its stop-work order. In English the node holds ONE text node, lead + line, exactly
+ * as the page wrote it before (D111).
  */
-function esSay(node, en) {
+function esSay(node, en, lead) {
   const text = String(en);
-  if (ES.lang !== 'es' || /^\s*STOP\s*$/.test(text)) { node.textContent = text; return node; }
-  return esPairInto(node, '', text, ES.dict[text]);
+  const pre = lead || '';
+  if (ES.lang !== 'es' || /^\s*STOP\s*$/.test(text)) { node.textContent = pre + text; return node; }
+  return esPairInto(node, pre, text, ES.dict[text]);
 }
 
 const esTwinOf = (obj, field) => (obj && obj.es && typeof obj.es[field] === 'string' && obj.es[field] ? obj.es[field] : null);

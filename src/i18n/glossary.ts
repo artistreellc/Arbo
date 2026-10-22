@@ -56,6 +56,27 @@ export const TRADE_TERMS: readonly GlossaryPair[] = [
   { en: 'city inspector', es: 'inspector de la ciudad (city inspector)' },
 ];
 
+/**
+ * The app's own words (R27 Phase A, D111): one Spanish each, so every unit says them the same way —
+ * test/esCrewDoor.test.ts holds the crew door to them. Not trade terms, so no English beside them.
+ */
+export const APP_TERMS: readonly GlossaryPair[] = [
+  { en: 'crew code', es: 'código de cuadrilla', note: 'The code on the roster that names one person.' },
+  { en: 'crew member', es: 'miembro de la cuadrilla' },
+  { en: 'crew door', es: 'puerta de la cuadrilla', note: 'The crew’s own way into Arbo (/crew).' },
+  { en: 'door key', es: 'clave de la puerta', note: 'The one phrase the whole crew shares — never the crew code.' },
+  { en: 'sign-in link', es: 'enlace de acceso' },
+  { en: 'briefing', es: 'charla de seguridad', note: 'The day’s tailgate briefing (see TRADE_TERMS).' },
+  { en: 'sign-off', es: 'firma', note: 'Signing the day’s briefing; the office’s approval of a level is "aprobado por la oficina".' },
+  { en: 'roster', es: 'lista', note: 'The office’s list of who is on the crew.' },
+  { en: 'office', es: 'oficina' },
+  { en: 'paid time', es: 'tiempo pagado' },
+  { en: 'read-only', es: 'solo lectura' },
+  { en: 'data link', es: 'conexión de datos' },
+  { en: 'practice data', es: 'datos de práctica' },
+  { en: 'library', es: 'biblioteca' },
+];
+
 /** The known false friends, pinned: the Spanish to use, and the words that read as something else. */
 export const FALSE_FRIENDS: ReadonlyArray<GlossaryPair & { never: string[]; why: string }> = [
   { en: 'conductor (electrical)', es: 'cable / línea eléctrica', never: ['conductor'], why: '"conductor" reads as "driver".' },
@@ -101,6 +122,7 @@ export const CREDENTIAL_GLOSS: GlossaryPair = { en: 'licensed and insured', es: 
 export function glossaryPairs(): Array<GlossaryPair & { where: string }> {
   return [
     ...TRADE_TERMS.map((p) => ({ ...p, where: 'glossary:trade' })),
+    ...APP_TERMS.map((p) => ({ ...p, where: 'glossary:app' })),
     ...FALSE_FRIENDS.filter((f) => !f.es.startsWith('none') && !f.es.startsWith('quoted')).map(({ en, es }) => ({ en, es, where: 'glossary:false-friend' })),
     ...SAFETY_PAIRS.map((p) => ({ ...p, where: 'glossary:safety' })),
     { ...CREDENTIAL_GLOSS, where: 'glossary:credential' },

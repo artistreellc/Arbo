@@ -331,7 +331,10 @@ const el = (tag, cls, text) => {
 // A throwing read would stop this whole script and leave a blank page; a
 // failed save must be SAID, never followed by a reload into the same screen.
 const load = (k) => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
-const STORAGE_BLOCKED = 'This phone’s browser is blocking saved data (private browsing or site data off). Turn that off, then try again.';
+// R27 (D111): said in the page's language. A change after sign-off redraws in place, so crewWords()
+// says these again then (crewRedraw); before sign-off a change reloads.
+let STORAGE_BLOCKED = '';
+let BAD_LINK = '';
 // R26 (Mike, 2026-10-20): the office app's Crew tile opens this page as a
 // LOOK-ONLY preview (/crew?preview=1 — same phone, same site). It runs on the
 // office app's own key and never asks for a crew code or the crew door key.
@@ -339,8 +342,9 @@ const STORAGE_BLOCKED = 'This phone’s browser is blocking saved data (private 
 // control that would write is switched off with the reason beside it, and the
 // server refuses a crew write that carries the preview header (403).
 const PREVIEW = new URLSearchParams(location.search).get('preview') === '1';
-const PREVIEW_BANNER = 'Preview — this is what the crew sees. Nothing here signs, files or clocks in.';
-const PREVIEW_WHY = 'Off in the preview — nothing here signs, files or clocks in.';
+// R27 (D111): the preview never signs, so it never changes language in place — a change reloads it.
+const PREVIEW_BANNER = T('Preview — this is what the crew sees. Nothing here signs, files or clocks in.');
+const PREVIEW_WHY = T('Off in the preview — nothing here signs, files or clocks in.');
 let KEY = PREVIEW ? load('arborKey') : load('arboCrewKey');
 let CREW_ID = PREVIEW ? '' : load('arboCrewId');
 // ---- C3 (CREW_PLAN, D109): the sign-in link. The office's roster hands each
@@ -348,7 +352,11 @@ let CREW_ID = PREVIEW ? '' : load('arboCrewId');
 // door key. A browser never sends a fragment to a server, and this page never
 // sends this one either: only the code goes out, as crewMemberId, as before.
 const CREW_CODE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const BAD_LINK = 'That sign-in link is broken — ask the office for a new one.';
+function crewWords() {
+  STORAGE_BLOCKED = T('This phone’s browser is blocking saved data (private browsing or site data off). Turn that off, then try again.');
+  BAD_LINK = T('That sign-in link is broken — ask the office for a new one.');
+}
+crewWords();
 /** The crew code in a pasted link, in its #crew= part, or a bare code. '' when it is none of those. */
 function crewCodeFrom(text) {
   let s = String(text || '').trim();
@@ -406,39 +414,40 @@ const LINKS_READY = api('/health').then((h) => { LINKS = h.dataLinks || 'unknown
 function crewWhy(e) {
   // The key gate's 429: one phone sent 10 different wrong door keys from this
   // connection (the yard Wi-Fi is shared) — a wait, not the office down.
-  if (e && e.code === 429 && e.message === 'too_many_attempts') return 'too many wrong door keys from this connection — wait a minute and try again, or switch between Wi-Fi and cellular';
+  if (e && e.code === 429 && e.message === 'too_many_attempts') return T('too many wrong door keys from this connection — wait a minute and try again, or switch between Wi-Fi and cellular');
   // C3 (D109): a refusal's own name is read on every status, so the crew hears
   // what was refused — never "the office didn’t answer" over an answer.
   const name = e && typeof e.message === 'string' ? e.message : '';
-  if (name === 'off_roster') return 'this crew code is off the roster — check with the office';
-  if (name === 'unknown_crew' || name === 'bad_crew_id') return 'the office doesn’t know this crew code — check it with the office';
-  if (name === 'roster_unreadable') return 'Arbo couldn’t read the roster just now';
-  if (name === 'crew_key_not_set') return 'no crew door key is set up on the server yet';
-  if (name === 'no_app_key') return 'the crew door is locked on the server right now — tell the office';
+  if (name === 'off_roster') return T('this crew code is off the roster — check with the office');
+  if (name === 'unknown_crew' || name === 'bad_crew_id') return T('the office doesn’t know this crew code — check it with the office');
+  if (name === 'roster_unreadable') return T('Arbo couldn’t read the roster just now');
+  if (name === 'crew_key_not_set') return T('no crew door key is set up on the server yet');
+  if (name === 'no_app_key') return T('the crew door is locked on the server right now — tell the office');
   // C4 (D109): the server owns the day.
   // Review round (D109, UI 6): the lock reads the sign-off by crew code, and is reached
   // only under an opened gate — so it says the record is missing and who logs it.
-  if (name === 'briefing_not_signed') return 'Arbo has no sign-off on file for this crew code today — the office has to log it';
-  if (name === 'not_todays_briefing') return 'that was not today’s briefing';
-  if (name === 'signoff_unreadable') return 'Arbo couldn’t check your sign-off';
+  if (name === 'briefing_not_signed') return T('Arbo has no sign-off on file for this crew code today — the office has to log it');
+  if (name === 'not_todays_briefing') return T('that was not today’s briefing');
+  if (name === 'signoff_unreadable') return T('Arbo couldn’t check your sign-off');
   // Review round (D109): the sign-off's start and finish the server cannot use (unreadable or reversed).
-  if (name === 'bad_times') return 'this phone’s clock gave times the office can’t use — check the phone’s date and time';
+  if (name === 'bad_times') return T('this phone’s clock gave times the office can’t use — check the phone’s date and time');
   // Any other 400 is still an answer: the office turned it down. Never "didn’t answer" over an answer.
-  if (e && e.code === 400) return 'the office couldn’t use what this phone sent';
+  if (e && e.code === 400) return T('the office couldn’t use what this phone sent');
   // A 401 that names nothing else: the door key on this phone stopped working (it was changed).
-  if (e && e.code === 401) return 'the door key on this phone no longer opens the crew door — ask the office for the new one';
+  if (e && e.code === 401) return T('the door key on this phone no longer opens the crew door — ask the office for the new one');
   const m = e && e.code === 503 ? e.message : '';
-  if (m === 'not_simulated') return 'not part of the practice data';
+  if (m === 'not_simulated') return T('not part of the practice data');
   // R32: Arbo is reading but not saving — nothing from this phone was written.
-  if (m === 'read_only') return 'Arbo is read-only right now — it can look but not save, so nothing was written';
+  if (m === 'read_only') return T('Arbo is read-only right now — it can look but not save, so nothing was written');
   // A named link held cut (link_cut) is a cut on purpose too, the same as feedKind.
-  if (m === 'link_cut' || (m === 'db_not_configured' && LINKS !== 'live' && LINKS !== 'readonly')) return 'the office data link is cut on purpose';
-  if (m === 'db_not_configured' || m === 'not_built') return 'not set up on the server yet';
-  return 'the office didn’t answer';
+  if (m === 'link_cut' || (m === 'db_not_configured' && LINKS !== 'live' && LINKS !== 'readonly')) return T('the office data link is cut on purpose');
+  if (m === 'db_not_configured' || m === 'not_built') return T('not set up on the server yet');
+  return T('the office didn’t answer');
 }
 function fmtTime(iso) {
   if (!iso) return '';
-  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  // R27 (D111): es-US in Spanish (esLocale) — the phone's own ([]) in English, as before.
+  return new Date(iso).toLocaleTimeString(esLocale(), { hour: 'numeric', minute: '2-digit' });
 }
 
 // ---- The gate (§6V.4). Three conditions; the SERVER decides, not this page.
@@ -458,6 +467,9 @@ const GATE = {
   // True when pressing again cannot help (400 wrong crew code; 503 cut, practice
   // data, not set up): GO stays tappable but is never green under that line.
   serverHold: false,
+  // R27 (D111): true when the stop-work order follows serverMsg — refreshGate says it after the
+  // reason, as a safety line. Read only beside a serverMsg, so clearing serverMsg clears it too.
+  serverOrder: false,
   // C1 review (D107): true once /health says read-only. The sign-off cannot be
   // saved, so GO is held for good — unlike serverHold, ticking the box again
   // cannot lift it. Set with the read-only note above GO; C5 rekeys both.
@@ -474,8 +486,13 @@ const GATE = {
   // GATE, so the gate's own functions read it with the rest of its state.
   preview: PREVIEW ? PREVIEW_WHY : '',
 };
-// The server names what is missing in codes; the crew reads them in words.
-const GATE_NEED = { scroll: 'scroll to the bottom', checkbox: 'tick the box', read_time: 'read for longer' };
+// The server names what is missing in codes; the crew reads them in words — in the page's language,
+// read each time they are said (R27, D111).
+const GATE_NEED = {
+  get scroll() { return T('scroll to the bottom'); },
+  get checkbox() { return T('tick the box'); },
+  get read_time() { return T('read for longer'); },
+};
 
 function renderGate(brief) {
   document.querySelector('main').classList.remove('door-locked'); // the door answered: show the panels
@@ -496,14 +513,25 @@ function renderGate(brief) {
   slot.replaceChildren();
   const box = el('div', 'locked');
   box.id = 'gate';
-  box.appendChild(el('div', 'gate-head', 'Morning safety briefing — required'));
+  box.appendChild(el('div', 'gate-head', T('Morning safety briefing — required')));
 
   const body = el('div');
   body.id = 'brief-body';
-  for (const para of brief.body.split('\n').filter(Boolean)) body.appendChild(el('p', '', para));
-  if (brief.standardRefs && brief.standardRefs.length) {
-    body.appendChild(el('div', 'clause', 'Per ' + brief.standardRefs.join(' · ') + ' — verify on site.'));
-  }
+  // R27 (D111): the briefing is the office's own words — data, never translated by Arbo. Spanish
+  // shows only as the reviewed twin the server sent (brief.es.body, src/i18n/dataTwins.ts); with
+  // none, a Spanish reader gets the English, lang="en" and marked "en inglés". Drawn here, and again
+  // by a language change after sign-off (GATE.words) — the same words, never a read.
+  const drawBody = () => {
+    body.replaceChildren();
+    const twin = ES.lang === 'es' && brief.es && typeof brief.es.body === 'string' && brief.es.body ? brief.es.body : '';
+    for (const para of (twin || brief.body).split('\n').filter(Boolean)) body.appendChild(el('p', '', para));
+    if (ES.lang === 'es' && !twin) { body.setAttribute('lang', 'en'); body.insertBefore(esEnMark(), body.firstChild); }
+    else if (body.lang) body.removeAttribute('lang');
+    if (brief.standardRefs && brief.standardRefs.length) {
+      body.appendChild(el('div', 'clause', tf('Per {refs} — verify on site.', { refs: brief.standardRefs.join(' · ') })));
+    }
+  };
+  drawBody();
   body.addEventListener('scroll', () => {
     if (body.scrollTop + body.clientHeight >= body.scrollHeight - 4) { GATE.scrolled = true; refreshGate(); }
   });
@@ -514,24 +542,34 @@ function renderGate(brief) {
   cb.type = 'checkbox'; cb.id = 'ackbox';
   cb.addEventListener('change', () => { GATE.checked = cb.checked; GATE.serverMsg = ''; GATE.serverErr = false; GATE.serverHold = false; refreshGate(); });
   // The box sits INSIDE its label, so the whole row is one gloved-thumb target.
-  const lab = el('label', '', 'I read this briefing and understand it.');
+  const lab = el('label', '', T('I read this briefing and understand it.'));
   lab.prepend(cb);
   row.appendChild(lab);
   box.appendChild(row);
   // C4 (D109): Arbo could not read whether this crew member already signed
   // today — said above the box, never taken as "not signed" or as a pass.
   // signedCheck rides only a crew phone's read (the preview sends no code).
-  if (brief.signedCheck && brief.signedCheck !== 'read' && !brief.signedAt) {
+  const gapWords = () => {
     const why = brief.signedCheck === 'signoff_unreadable' ? '' : crewWhy({ code: 503, message: brief.signedCheck });
-    box.insertBefore(el('div', 'gapline', why
-      ? 'Arbo couldn’t check for an earlier sign-off today (' + why + ').'
-      : 'Arbo couldn’t check for an earlier sign-off today.'), row);
-  }
+    return why
+      ? tf('Arbo couldn’t check for an earlier sign-off today ({why}).', { why })
+      : T('Arbo couldn’t check for an earlier sign-off today.');
+  };
+  const gap = brief.signedCheck && brief.signedCheck !== 'read' && !brief.signedAt
+    ? box.insertBefore(el('div', 'gapline', gapWords()), row) : null;
+  // R27 (D111): the gate's words said again in the page's language after a change (paintSigned) —
+  // the briefing, the box's line, the gap line. The box itself stays: it is ticked and signed.
+  GATE.words = () => {
+    drawBody();
+    const t = lab.lastChild;
+    if (t && t !== cb) t.textContent = T('I read this briefing and understand it.');
+    if (gap) gap.textContent = gapWords();
+  };
 
   box.appendChild(el('div', 'gate-status', ''))
     .setAttribute('id', 'gate-status');
 
-  const go = el('button', '', 'GO');
+  const go = el('button', '', T('GO'));
   go.id = 'gobtn';
   go.disabled = true;
   go.addEventListener('click', submitGate);
@@ -544,8 +582,9 @@ function renderGate(brief) {
     // C4: a day already signed (read back from the server) needs no save.
     if (LINKS !== 'readonly' || GATE.unlocked) return;
     const ro = el('div', 'ro-note');
-    ro.appendChild(el('div', '', 'Arbo is read-only today — your sign-off can’t be saved on this phone.'));
-    ro.appendChild(el('b', '', 'Do not start work — call the office.'));
+    ro.appendChild(el('div', '', T('Arbo is read-only today — your sign-off can’t be saved on this phone.')));
+    // R27 (D111): a stop-work order is a safety line — in Spanish, the Spanish over its full English.
+    ro.appendChild(esSay(el('b'), 'Do not start work — call the office.'));
     box.insertBefore(ro, go);
     // Review D1: a GO that cannot save never arms under this note (refreshGate).
     GATE.readOnly = true;
@@ -568,14 +607,18 @@ function secondsOnScreen() { return Math.floor((Date.now() - GATE.openedMs) / 10
 function refreshGate() {
   if (GATE.unlocked) return;
   const need = [];
-  if (!GATE.scrolled) need.push('scroll to the bottom');
-  if (!GATE.checked) need.push('tick the box');
+  if (!GATE.scrolled) need.push(T('scroll to the bottom'));
+  if (!GATE.checked) need.push(T('tick the box'));
   const required = GATE.requiredSeconds || 10;
   const left = required - secondsOnScreen();
-  if (left > 0) need.push('read for ' + left + 's more');
+  if (left > 0) need.push(tf('read for {n}s more', { n: left }));
   const status = $('gate-status');
   if (status) {
-    status.textContent = GATE.serverMsg || (need.length ? 'Still needed: ' + need.join(' · ') : 'Ready — press GO.');
+    status.textContent = GATE.serverMsg || (need.length ? tf('Still needed: {list}', { list: need.join(' · ') }) : T('Ready — press GO.'));
+    // R27 (D111): a refused sign-off's stop-work order is its own sentence after the reason — a
+    // safety line, so it goes through esSay (in Spanish, the Spanish over its full English). In
+    // English the line reads exactly as before: the reason, a space, the order.
+    if (GATE.serverMsg && GATE.serverOrder) esSay(status, 'Your work orders stay locked — do not start work; call the office to log your briefing.', GATE.serverMsg + ' ');
     status.classList.toggle('err', Boolean(GATE.serverMsg && GATE.serverErr));
   }
   const go = $('gobtn');
@@ -629,7 +672,8 @@ function keptGateStart(briefId) {
 
 // C4 (D109): the day opens on a sign-off the SERVER has on file — just
 // written, or read back after a reload. "Signed at …" is said only over a time
-// the server gave; otherwise `line` says what the server said.
+// the server gave; otherwise `line` says what the server said — by code (R27, D111:
+// 'duplicate', 'unchecked' or ''), so a language change after sign-off says it again.
 function showSigned(signedAtIso, line) {
   GATE.unlocked = true;
   GATE.serverMsg = ''; GATE.serverErr = false; GATE.serverHold = false;
@@ -640,6 +684,13 @@ function showSigned(signedAtIso, line) {
   renderWork();
 }
 
+// R27 (D111): the signed line the server's answer called for, in the page's language.
+function signedWords(code) {
+  if (code === 'duplicate') return T('Already logged earlier — not counted twice.');
+  if (code === 'unchecked') return T('Logged — Arbo couldn’t check for an earlier sign-off today, so tell the office if you already signed.');
+  return '';
+}
+
 // The unlocked gate's words — its head, its line and GO — drawn by one function, so the sign-off
 // and a language change after it (crewRedraw) draw them the same way. Never a read, never a send.
 function paintSigned() {
@@ -647,8 +698,10 @@ function paintSigned() {
   const line = GATE.signed ? GATE.signed.line : '';
   const gate = $('gate');
   if (gate) gate.className = 'unlocked';
+  // R27 (D111): the briefing and the box's line, in the page's language (after a change: crewRedraw).
+  if (GATE.words) GATE.words();
   const head = document.querySelector('.gate-head');
-  if (head) head.textContent = 'Briefing acknowledged — logged';
+  if (head) head.textContent = T('Briefing acknowledged — logged');
   // Read-only refuses a NEW sign-off; this one is already on file.
   const ro = document.querySelector('#gate .ro-note');
   if (ro) ro.remove();
@@ -657,10 +710,10 @@ function paintSigned() {
   const status = $('gate-status');
   if (status) {
     status.classList.toggle('err', false);
-    status.textContent = signedAtIso ? 'Signed at ' + fmtTime(signedAtIso) + ' — logged.' + ' Not counted twice.' : line;
+    status.textContent = signedAtIso ? tf('Signed at {time} — logged. Not counted twice.', { time: fmtTime(signedAtIso) }) : signedWords(line);
   }
   const go = $('gobtn');
-  if (go) { go.textContent = 'DAY UNLOCKED ✓'; go.className = 'done'; go.disabled = true; }
+  if (go) { go.textContent = T('DAY UNLOCKED ✓'); go.className = 'done'; go.disabled = true; }
 }
 
 async function submitGate() {
@@ -691,7 +744,8 @@ async function submitGate() {
       // Read time is left to the live countdown, which says how many seconds
       // are left and clears itself; a fixed "read for longer" would freeze on screen.
       const other = (res.missing || []).filter((m) => m !== 'read_time');
-      GATE.serverMsg = other.length ? 'Still needed: ' + other.map((m) => GATE_NEED[m] || 'ask the office').join(' · ') : '';
+      GATE.serverMsg = other.length ? tf('Still needed: {list}', { list: other.map((m) => GATE_NEED[m] || T('ask the office')).join(' · ') }) : '';
+      GATE.serverOrder = false;
       refreshGate();
       return;
     }
@@ -699,9 +753,7 @@ async function submitGate() {
     // with no second row: "Signed at …" when the server read the time back.
     // A first sign-off whose duplicate check could not be read was written —
     // and says so, so the office can look for a second one.
-    showSigned(res.signedAt || '', res.duplicate
-      ? 'Already logged earlier — not counted twice.'
-      : res.signedCheck ? 'Logged — Arbo couldn’t check for an earlier sign-off today, so tell the office if you already signed.' : '');
+    showSigned(res.signedAt || '', res.duplicate ? 'duplicate' : res.signedCheck ? 'unchecked' : '');
   } catch (e) {
     GATE.sending = false;
     await LINKS_READY; // 'cut on purpose' vs 'not set up' needs /health's answer
@@ -717,14 +769,17 @@ async function submitGate() {
     GATE.serverHold = !retry;
     // Review round (D109): only a crew code the office does not know keeps the
     // crew-code line; any other 400 (bad_times, bad_request) goes through crewWhy.
-    GATE.serverMsg = e.code === 400 && (e.message === 'unknown_crew' || e.message === 'bad_crew_id')
-      ? 'That sign-off was rejected — check your crew code with the office.'
+    // R27 (D111): one sentence per key. A held refusal is its reason, then — its own sentence —
+    // what to do: read again (409), or the stop-work order, which refreshGate says after the reason
+    // as a safety line (serverOrder; in Spanish the Spanish over its full English).
+    const rejected = e.code === 400 && (e.message === 'unknown_crew' || e.message === 'bad_crew_id');
+    GATE.serverMsg = rejected
+      ? T('That sign-off was rejected — check your crew code with the office.')
       : retry
-        ? 'Could not record that — try once more.'
-        : 'Your sign-off could not be recorded (' + crewWhy(e) + ').'
-          + (e.code === 409
-            ? ' Read today’s briefing above and sign again.'
-            : ' Your work orders stay locked — do not start work; call the office to log your briefing.');
+        ? T('Could not record that — try once more.')
+        : tf('Your sign-off could not be recorded ({why}).', { why: crewWhy(e) })
+          + (e.code === 409 ? ' ' + T('Read today’s briefing above and sign again.') : '');
+    GATE.serverOrder = !rejected && !retry && e.code !== 409;
     // C4 (D109): a 409 means the server has another briefing for today (or
     // none) — read it again. The held line stays over the new gate until its
     // box is ticked; a day with no briefing gets the plain "none yet" card.
@@ -746,9 +801,10 @@ function isFridayEt() {
     .format(new Date()) === 'Fri';
 }
 
+// R27 (D111): read each time it is drawn, so a redraw after a language change says it again.
 const QUIZ_TITLE = {
-  clock_in_gate: 'Question before you roll',
-  friday_questionnaire: "Friday check \u2014 this week's questions",
+  get clock_in_gate() { return T('Question before you roll'); },
+  get friday_questionnaire() { return T("Friday check \u2014 this week's questions"); },
 };
 
 async function renderQuiz(context, kept) {
@@ -770,11 +826,11 @@ async function renderQuiz(context, kept) {
     // rejected crew code is said as one: the office did answer.
     await LINKS_READY; // 'cut on purpose' vs 'not set up' needs /health's answer
     if (gen !== QUIZ.gen) return;
-    const why = e.code === 400 ? 'the office did not recognise your crew code' : crewWhy(e);
+    const why = e.code === 400 ? T('the office did not recognise your crew code') : crewWhy(e);
     const s = el('div', 'state err');
-    s.appendChild(el('b', '', 'Today’s questions did not load'));
+    s.appendChild(el('b', '', T('Today’s questions did not load')));
     s.appendChild(document.createTextNode(why.charAt(0).toUpperCase() + why.slice(1) + '.'));
-    s.appendChild(el('div', '', 'Not your fault — carry on, and tell the office; do not skip it quietly.'));
+    s.appendChild(el('div', '', T('Not your fault — carry on, and tell the office; do not skip it quietly.')));
     v.appendChild(s);
     if (e.code === 401) doorKeyChanged(e); // review round (D109): somewhere to put the new key
     return;
@@ -783,16 +839,16 @@ async function renderQuiz(context, kept) {
   // §1B: questions that could not be read wear the warning box, so they never
   // look like the plain "none published" box below.
   if (!q.itemsLoaded) {
-    v.appendChild(el('div', 'state err', 'Today\'s questions could not be loaded. This is not "no questions" — tell the office.'));
+    v.appendChild(el('div', 'state err', T('Today\'s questions could not be loaded. This is not "no questions" — tell the office.')));
     return;
   }
   // C1: a pool with no quiz_question has nothing to ask — the office's gap,
   // named over a read that succeeded, never a silent skip and never a pass.
   if (!q.items.some((i) => i.type === 'quiz_question')) {
-    v.appendChild(el('div', 'panel-title', QUIZ_TITLE[ctx] || 'Questions'));
+    v.appendChild(el('div', 'panel-title', QUIZ_TITLE[ctx] || T('Questions')));
     const s = el('div', 'state');
-    s.appendChild(el('b', '', 'The office hasn’t published any questions yet — nothing to answer today.'));
-    s.appendChild(document.createTextNode('That is the office’s gap, not a pass.'));
+    s.appendChild(el('b', '', T('The office hasn’t published any questions yet — nothing to answer today.')));
+    s.appendChild(document.createTextNode(T('That is the office’s gap, not a pass.')));
     v.appendChild(s);
     return;
   }
@@ -804,13 +860,13 @@ async function renderQuiz(context, kept) {
   QUIZ.context = ctx;
   QUIZ.pool = q;
 
-  v.appendChild(el('div', 'panel-title', QUIZ_TITLE[ctx] || 'Questions'));
-  v.appendChild(el('div', 'paynote', 'This is paid time \u2014 it is on the clock.'));
+  v.appendChild(el('div', 'panel-title', QUIZ_TITLE[ctx] || T('Questions')));
+  v.appendChild(el('div', 'paynote', T('This is paid time \u2014 it is on the clock.')));
 
   // §1B: a short pool must not be dressed up as a full questionnaire.
   if (q.shortfall > 0) {
     v.appendChild(el('div', 'shortfall',
-      'Only ' + q.items.length + ' question(s) available \u2014 the office has not published enough yet. This is not a short week.'));
+      tf('Only {n} question(s) available \u2014 the office has not published enough yet. This is not a short week.', { n: q.items.length })));
   }
 
   const progress = el('div', 'qprogress');
@@ -818,19 +874,27 @@ async function renderQuiz(context, kept) {
   const answerable = q.items.filter((i) => !i.readOnly).length;
   const updateProgress = () => {
     const done = Object.keys(QUIZ.answers).length;
-    progress.textContent = answerable ? done + ' of ' + answerable + ' answered' : 'Nothing to answer \u2014 read and submit.';
+    progress.textContent = answerable ? tf('{done} of {total} answered', { done, total: answerable }) : T('Nothing to answer \u2014 read and submit.');
     const go = $('quiz-go');
     if (go) go.disabled = done < answerable;
   };
 
   q.items.forEach((item, n) => {
     const card = el('div', 'card');
+    // The topic is the office's own label — data, passed through as written.
     card.appendChild(el('div', 'qtopic', (q.items.length > 1 ? (n + 1) + '. ' : '') + item.topic));
-    card.appendChild(el('div', 'qprompt', item.prompt));
+    // R27 (D111): an item is the office's own words — data. Its Spanish shows only as the reviewed
+    // twin the server sent (item.es: the same options in the same order, its keyed answer re-checked,
+    // src/i18n/dataTwins.ts); answers stay keyed by position, and grading never sees Spanish. With
+    // no twin a Spanish reader gets the English, lang="en" and marked "en inglés".
+    const tw = ES.lang === 'es' && item.es && typeof item.es.prompt === 'string' && Array.isArray(item.es.options)
+      && item.es.options.length === item.options.length ? item.es : null;
+    const prompt = card.appendChild(el('div', 'qprompt', tw ? tw.prompt : item.prompt));
+    if (ES.lang === 'es' && !tw) { card.setAttribute('lang', 'en'); prompt.appendChild(esEnMark()); }
     if (item.readOnly) {
-      card.appendChild(el('div', 'scope', 'Read this one \u2014 there is nothing to answer.'));
+      card.appendChild(el('div', 'scope', T('Read this one \u2014 there is nothing to answer.')));
     } else {
-      item.options.forEach((opt, idx) => {
+      (tw ? tw.options : item.options).forEach((opt, idx) => {
         const b = el('button', 'qopt', opt);
         if (QUIZ.answers[item.id] === idx) b.classList.add('picked'); // R27: a redraw keeps the pick
         b.addEventListener('click', () => {
@@ -845,11 +909,12 @@ async function renderQuiz(context, kept) {
     v.appendChild(card);
   });
 
-  const go = el('button', 'gate-go', 'Submit');
+  const go = el('button', 'gate-go', T('Submit'));
   go.id = 'quiz-go';
   go.addEventListener('click', submitQuiz);
   v.appendChild(go);
-  v.appendChild(el('div', 'errline', ''));
+  // R27 (D111): an answer that did not save is said again after a language change (QUIZ.saveErr).
+  v.appendChild(el('div', 'errline', QUIZ.saveErr ? quizSaveErr(QUIZ.saveErr) : ''));
   updateProgress();
 }
 
@@ -859,6 +924,7 @@ async function submitQuiz() {
   let res;
   // R27 (D110): a language change waits for this answer, so a redraw never offers a second Submit.
   QUIZ.sending = true;
+  QUIZ.saveErr = null;
   try {
     res = await api('/api/crew/quiz/complete', {
       method: 'POST',
@@ -876,9 +942,8 @@ async function submitQuiz() {
     await LINKS_READY; // 'cut on purpose' vs 'not set up' needs /health's answer
     go.disabled = false;
     // C1: the reason, in crewWhy's words, instead of a bare retry.
-    $('quiz').querySelector('.errline').textContent = e.code === 400
-      ? 'That did not save \u2014 check your crew code with the office.'
-      : 'Your answers were not saved (' + crewWhy(e) + ').' + ' Tell the office so your paid time is logged.';
+    QUIZ.saveErr = e; // R27 (D111): kept, so a redraw after a language change says it again
+    $('quiz').querySelector('.errline').textContent = quizSaveErr(e);
     if (e.code === 401) doorKeyChanged(e); // review round (D109): somewhere to put the new key
     return;
   }
@@ -888,33 +953,41 @@ async function submitQuiz() {
   quizLogged($('quiz'), res);
 }
 
+// Why the answers did not save, in crewWhy's words (C1) — one line, said after Submit and again after
+// a language change (renderQuiz, R27 D111).
+function quizSaveErr(e) {
+  return e.code === 400
+    ? T('That did not save \u2014 check your crew code with the office.')
+    : tf('Your answers were not saved ({why}).', { why: crewWhy(e) }) + ' ' + T('Tell the office so your paid time is logged.');
+}
+
 // The logged card, drawn by one function after Submit and after a language change (crewRedraw).
 function quizLogged(v, res) {
   v.replaceChildren();
-  v.appendChild(el('div', 'panel-title', 'Logged'));
+  v.appendChild(el('div', 'panel-title', T('Logged')));
   const box = el('div', 'card');
   // Show the pay. §4.6 is only real to a crew member if they can see it.
-  box.appendChild(el('div', 'qprompt', res.payableMinutes + ' min paid \u2014 on the clock.'));
+  box.appendChild(el('div', 'qprompt', tf('{n} min paid \u2014 on the clock.', { n: res.payableMinutes })));
   if (res.gradedOk === false) {
-    box.appendChild(el('div', 'scope', 'Your answers were recorded, but Arbo could not score them right now.'));
+    box.appendChild(el('div', 'scope', T('Your answers were recorded, but Arbo could not score them right now.')));
   } else if (res.score !== null && res.score !== undefined) {
-    box.appendChild(el('div', 'scope', res.correct + ' of ' + res.answered + ' correct.'));
+    box.appendChild(el('div', 'scope', tf('{correct} of {answered} correct.', { correct: res.correct, answered: res.answered })));
   }
-  if (res.duplicate) box.appendChild(el('div', 'scope', 'Already recorded earlier \u2014 not counted twice.'));
+  if (res.duplicate) box.appendChild(el('div', 'scope', T('Already recorded earlier \u2014 not counted twice.')));
   v.appendChild(box);
 }
 
 // ---- Work orders (§6F). Rendered ONLY after the gate passes.
-async function renderWork(kept) {
+async function renderWork(kept, keptErr) {
   const v = $('work');
   v.replaceChildren();
   // R26: the office preview reads the day without a sign-off. It can act on
   // none of it — every button on the card below is switched off.
   if (!GATE.unlocked && !PREVIEW) {
-    v.appendChild(el('div', 'locked-note', 'Your work orders unlock after the safety briefing.'));
+    v.appendChild(el('div', 'locked-note', T('Your work orders unlock after the safety briefing.')));
     return;
   }
-  v.appendChild(el('div', 'panel-title', "Today's work orders"));
+  v.appendChild(el('div', 'panel-title', T("Today's work orders")));
   let data;
   try {
     // C4 (D109, M11): the server opens a crew phone's work orders only on a
@@ -922,39 +995,46 @@ async function renderWork(kept) {
     // bare — Mike's own key is the one exemption, never a header or a code.
     // R27 (D110): a language change after sign-off redraws the day this phone already read (kept) —
     // never a second read that could fail and put an error where a good list was.
+    // R27 (D111): and a read that failed is redrawn as that failure (keptErr), never as a new read.
+    if (keptErr) throw keptErr;
     data = kept || await api('/api/crew/workorders' + (PREVIEW ? '' : '?crewMemberId=' + encodeURIComponent(CREW_ID)));
   } catch (e) {
+    renderWork.lastErr = e; // R27 (D111): what crewRedraw redraws — the failure, never an older day
+    renderWork.lastDay = null;
     // §1B: an unreadable day is never an empty one. C1: the reason is named
     // in crewWhy's words (the jobs link kept cut, read-only, the throttle…).
     await LINKS_READY; // 'cut on purpose' vs 'not set up' needs /health's answer
     const why = crewWhy(e);
     const s = el('div', 'state err');
-    s.appendChild(el('b', '', 'Could not load your work orders'));
+    s.appendChild(el('b', '', T('Could not load your work orders')));
     s.appendChild(document.createTextNode(why.charAt(0).toUpperCase() + why.slice(1) + '.'));
-    s.appendChild(el('div', '', 'That is not an empty day — call the office.'));
+    s.appendChild(el('div', '', T('That is not an empty day — call the office.')));
     v.appendChild(s);
     if (e.code === 401) doorKeyChanged(e); // review round (D109): somewhere to put the new key
     return;
   }
+  renderWork.lastErr = null;
   renderWork.lastDay = data; // R27 (D110): what crewRedraw redraws
   // R9 + §1B: the server holds back every row without a signed contract, and
   // holds back EVERYTHING when it could not read the contract list. Neither
   // is an empty day, so neither may say "Nothing scheduled". The server's own
   // note is written for Mike, not the crew, so it is never shown raw here.
   const held = data.notWorkOrders || 0;
-  const heldLine = held + (held === 1 ? ' job on today’s sheet is' : ' jobs on today’s sheet are')
-    + ' on hold — no signed contract yet. Check with the office.';
+  const heldLine = tn(held, '{n} job on today’s sheet is on hold — no signed contract yet. Check with the office.',
+    '{n} jobs on today’s sheet are on hold — no signed contract yet. Check with the office.');
   if (data.contractLookupFailed) {
     const s = el('div', 'state err');
-    s.appendChild(el('b', '', 'Can’t confirm today’s jobs'));
-    s.appendChild(document.createTextNode('Arbo could not read the contract list, so no job is confirmed. This is not an empty day — do not start work; call the office.'));
+    s.appendChild(el('b', '', T('Can’t confirm today’s jobs')));
+    // R27 (D111): the reason, then the stop-work order — a safety line (in Spanish, the Spanish over its English).
+    s.appendChild(esSay(el('span'), 'This is not an empty day — do not start work; call the office.',
+      T('Arbo could not read the contract list, so no job is confirmed.') + ' '));
     v.appendChild(s);
     return;
   }
   if (!data.workOrders.length) {
     const s = el('div', 'state');
-    s.appendChild(el('b', '', held ? 'Nothing confirmed to start' : 'Nothing scheduled'));
-    s.appendChild(document.createTextNode(held ? heldLine : 'Check with the office.'));
+    s.appendChild(el('b', '', held ? T('Nothing confirmed to start') : T('Nothing scheduled')));
+    s.appendChild(document.createTextNode(held ? heldLine : T('Check with the office.')));
     v.appendChild(s);
     return;
   }
@@ -970,7 +1050,8 @@ async function renderWork(kept) {
     // C2: the address and Navigate both come from the one maps builder. A stop
     // with no street is never routed to the bare city: Navigate is off, and says why.
     const url = crewMapsUrl(wo.address, wo.city);
-    const place = (wo.address || 'Street not on file') + (wo.city ? ', ' + wo.city : '');
+    // The address and city are data, passed through as written (R27 #2).
+    const place = (wo.address || T('Street not on file')) + (wo.city ? ', ' + wo.city : '');
     const addr = el('div', 'addr');
     // Review round (D109, UI 5): in the preview Navigate is off, so the address
     // is plain text too — two controls for one route never disagree on screen.
@@ -985,20 +1066,26 @@ async function renderWork(kept) {
     // preview's reason directly under it (review UI 2, D107) — it is the one
     // control on the card that is off because of the preview.
     const go = url && !PREVIEW;
-    const nav = el(go ? 'a' : 'button', 'navbtn', 'Navigate');
+    const nav = el(go ? 'a' : 'button', 'navbtn', T('Navigate'));
     if (go) { nav.href = url; nav.target = '_blank'; nav.rel = 'noopener'; } else nav.disabled = true;
     c.appendChild(nav);
     if (PREVIEW) c.appendChild(el('div', 'preview-why', PREVIEW_WHY));
-    if (!url) c.appendChild(el('div', 'jobwhy', 'No street on file — ask the office for the address.'));
+    if (!url) c.appendChild(el('div', 'jobwhy', T('No street on file — ask the office for the address.')));
+    // The scope is the office's own words — data, passed through as written (R27 #2).
     if (wo.scope) c.appendChild(el('div', 'scope', wo.scope));
-    for (const h of wo.hazards || []) {
-      c.appendChild(el('div', 'hz' + (h.indexOf('POWER') === 0 ? ' power' : ''), '⚠ ' + h));
-    }
-    if (wo.permitNote) c.appendChild(el('div', 'permit', wo.permitNote));
+    // R27 (D111): the hazards and the permit note are lines the server writes (src/crew/workOrder.ts),
+    // every one a safety line. A twin rides under wo.es (hazards by position) only once its review is
+    // recorded; in Spanish it shows over the full English (esSayPick), and with none the English
+    // shows, marked "en inglés". In English the card reads exactly as before.
+    (wo.hazards || []).forEach((h, i) => {
+      const line = { h, es: { h: wo.es && wo.es.hazards ? wo.es.hazards[i] : null } };
+      c.appendChild(esSayPick(el('div', 'hz' + (h.indexOf('POWER') === 0 ? ' power' : '')), line, 'h', '⚠ '));
+    });
+    if (wo.permitNote) c.appendChild(esSayPick(el('div', 'permit'), wo, 'permitNote'));
     if (wo.requiresBeforeAfterPhotos) {
       // C2 (D107, Q9): the law still rides every card, without promising a
       // close flow or a camera the app does not have yet.
-      c.appendChild(el('div', 'photos', '📷 Before + after photos are required — the app can’t take them yet; ask the office how to send them.'));
+      c.appendChild(el('div', 'photos', T('📷 Before + after photos are required — the app can’t take them yet; ask the office how to send them.')));
     }
     // §6 arrival record + change order. On the job card, because that is where
     // the crew is standing when both things need doing. C2: both need a real job
@@ -1008,7 +1095,7 @@ async function renderWork(kept) {
     c.appendChild(changeOrderButton());
     // Their reason is the same on the crew phone and in the preview, so it is
     // the one beside them; the preview's own line sits under Navigate above.
-    c.appendChild(el('div', 'jobwhy', 'No job record yet — tell the office what you found.'));
+    c.appendChild(el('div', 'jobwhy', T('No job record yet — tell the office what you found.')));
     v.appendChild(c);
   }
 }
@@ -1034,7 +1121,7 @@ function crewMapsUrl(address, city) {
 // sendArrival below, which nothing calls until then.
 function arrivalButton() {
   const wrap = el('div', 'jobaction');
-  const btn = el('button', 'jobbtn', '📷 Log arrival condition');
+  const btn = el('button', 'jobbtn', T('📷 Log arrival condition'));
   btn.disabled = true;
   wrap.appendChild(btn);
   return wrap;
@@ -1055,17 +1142,19 @@ async function sendArrival(jobId, notes, btn, out) {
       },
     });
     out.replaceChildren();
-    btn.textContent = 'Arrival logged';
+    btn.textContent = T('Arrival logged');
     btn.className = 'jobbtn done';
-    // The gaps matter more than the confirmation — show them first.
-    for (const line of res.lines || []) out.appendChild(el('div', 'gapline', '⚠ ' + line));
-    if (res.defensible) out.appendChild(el('div', 'okline', 'Photos on file — this record can back you up.'));
+    // The gaps matter more than the confirmation — show them first. They are server lines with no
+    // twin yet (src/ops/changeOrders.ts): this form is switched off (C2), so nothing draws them today;
+    // in Spanish they show in English, marked "en inglés", until they get twins with the form.
+    for (const line of res.lines || []) out.appendChild(esSayTwin(el('div', 'gapline'), { line }, 'line', '⚠ '));
+    if (res.defensible) out.appendChild(el('div', 'okline', T('Photos on file — this record can back you up.')));
   } catch (e) {
     // C1: the reason, in crewWhy's words, instead of a bare retry.
     await LINKS_READY; // 'cut on purpose' vs 'not set up' needs /health's answer
     btn.disabled = false;
-    out.textContent = 'Arrival not logged (' + (e.code === 400 ? 'the office did not accept it' : crewWhy(e)) + ').'
-      + ' Tell the office what you found.';
+    out.textContent = tf('Arrival not logged ({why}).', { why: e.code === 400 ? T('the office did not accept it') : crewWhy(e) })
+      + ' ' + T('Tell the office what you found.');
   }
 }
 
@@ -1075,7 +1164,7 @@ async function sendArrival(jobId, notes, btn, out) {
 // way; the form to come calls sendChangeOrder, which nothing calls until then.
 function changeOrderButton() {
   const wrap = el('div', 'jobaction');
-  const btn = el('button', 'jobbtn', '+ Extra work agreed');
+  const btn = el('button', 'jobbtn', T('+ Extra work agreed'));
   btn.disabled = true;
   wrap.appendChild(btn);
   return wrap;
@@ -1095,17 +1184,17 @@ async function sendChangeOrder(jobId, description, agreedBy, btn, out) {
         agreedAtIso: new Date().toISOString(),
       },
     });
-    btn.textContent = 'Recorded — office will confirm';
+    btn.textContent = T('Recorded — office will confirm');
     btn.className = 'jobbtn done';
-    out.appendChild(el('div', 'okline', 'Logged for the office to confirm before it goes on the bill.'));
+    out.appendChild(el('div', 'okline', T('Logged for the office to confirm before it goes on the bill.')));
   } catch (e) {
     // C1: the reason, in crewWhy's words, instead of a bare retry.
     await LINKS_READY; // 'cut on purpose' vs 'not set up' needs /health's answer
     btn.disabled = false;
     out.textContent = e.message === 'no_agreed_by'
-      ? 'Needs the name of whoever agreed to it.'
-      : 'Extra work not recorded (' + (e.code === 400 ? 'the office did not accept it' : crewWhy(e)) + ').'
-        + ' Tell the office what was agreed.';
+      ? T('Needs the name of whoever agreed to it.')
+      : tf('Extra work not recorded ({why}).', { why: e.code === 400 ? T('the office did not accept it') : crewWhy(e) })
+        + ' ' + T('Tell the office what was agreed.');
   }
 }
 
@@ -1121,18 +1210,21 @@ async function sendChangeOrder(jobId, description, agreedBy, btn, out) {
 function renderLibrary() {
   const box = $('library');
   box.replaceChildren();
-  box.appendChild(el('div', 'panel-title', 'How do I…'));
+  box.appendChild(el('div', 'panel-title', T('How do I…')));
   const card = el('div');
   card.id = 'lib-card';
   card.appendChild(el('div', 'why',
-    'Look up a technique. Arbo gives you the method and the clause to check — '
-    + 'it never reprints the standard, so the book on the truck is still the book.'));
+    T('Look up a technique. Arbo gives you the method and the clause to check — it never reprints the standard, so the book on the truck is still the book.')));
+  // R27 (D111): the entries are the office's own English (data, never translated) and a search matches
+  // their words, so a Spanish reader is told to search in English — or "nothing matches" would mislead.
+  // Drawn only in Spanish; English reads as before.
+  if (ES.lang === 'es') card.appendChild(el('div', 'why', T('The library is written in English, so search with English words.')));
   const input = document.createElement('input');
   input.id = 'lib-q';
-  input.placeholder = 'e.g. rigging a heavy limb';
+  input.placeholder = T('e.g. rigging a heavy limb');
   input.autocomplete = 'off';
   card.appendChild(input);
-  const btn = el('button', '', 'Look it up');
+  const btn = el('button', '', T('Look it up'));
   btn.id = 'lib-go';
   card.appendChild(btn);
   const out = el('div');
@@ -1143,7 +1235,7 @@ function renderLibrary() {
   // anyone types. Only an exact 'cut': a /health with no answer is not a cut,
   // and the catch in libSearch stays the backstop for that and a named link.
   LINKS_READY.then(() => {
-    if (LINKS === 'cut') card.insertBefore(el('div', 'lib-warn', 'Off while the office data link is cut on purpose — ask the office.'), input);
+    if (LINKS === 'cut') card.insertBefore(el('div', 'lib-warn', T('Off while the office data link is cut on purpose — ask the office.')), input);
   });
 
   const run = () => libSearch(input.value.trim(), out, btn);
@@ -1169,7 +1261,7 @@ async function libSearch(q, out, btn, kept, keptErr) {
     // §1B: a library Arbo could not read is not an empty library. Say which
     // one this is, so nobody concludes there is no guidance on file.
     await LINKS_READY;
-    out.appendChild(el('div', 'lib-warn', 'Library: ' + crewWhy(e) + '. That is NOT "nothing on file" — ask the office.'));
+    out.appendChild(el('div', 'lib-warn', tf('Library: {why}.', { why: crewWhy(e) }) + ' ' + T('That is NOT "nothing on file" — ask the office.')));
     btn.disabled = false;
     if (live) libSearch.pending -= 1;
     if (e.code === 401) doorKeyChanged(e); // review round (D109): somewhere to put the new key
@@ -1183,34 +1275,33 @@ async function libSearch(q, out, btn, kept, keptErr) {
   // Everything Arbo could not do goes ABOVE the answers, never underneath.
   if (res.queryTooShort) {
     out.appendChild(el('div', 'lib-warn',
-      'Those words were too short to search on — this is the whole library, not matches. Try a longer word.'));
+      T('Those words were too short to search on — this is the whole library, not matches. Try a longer word.')));
   }
   if (res.unpublishedHeld > 0) {
     out.appendChild(el('div', 'lib-note',
-      res.unpublishedHeld + (res.unpublishedHeld === 1
-        ? ' more entry is written but not yet signed off by a person, so it is held back.'
-        : ' more entries are written but not yet signed off by a person, so they are held back.')
-      + ' Ask the office if you need one.'));
+      tn(res.unpublishedHeld, '{n} more entry is written but not yet signed off by a person, so it is held back.',
+        '{n} more entries are written but not yet signed off by a person, so they are held back.')
+      + ' ' + T('Ask the office if you need one.')));
   }
   if (res.refsDropped > 0) {
     out.appendChild(el('div', 'lib-note',
-      res.refsDropped + ' reference(s) were withheld for not being a clause citation. Check the book on site.'));
+      tf('{n} reference(s) were withheld for not being a clause citation.', { n: res.refsDropped }) + ' ' + T('Check the book on site.')));
   }
   if (res.skillKnown === false) {
     out.appendChild(el('div', 'lib-note',
-      'Arbo could not read your signed-off level, so nothing below is flagged as above it. That is not a sign-off.'));
+      T('Arbo could not read your signed-off level, so nothing below is flagged as above it. That is not a sign-off.')));
   }
   // C3 (D109, Q7): the library answers whatever the roster says — and names it.
-  if (res.roster === 'off') out.appendChild(el('div', 'lib-warn', 'This crew code is off the roster — check with the office.'));
-  else if (res.roster === 'unknown') out.appendChild(el('div', 'lib-warn', 'The office doesn’t know this crew code — check it with the office.'));
-  else if (res.roster === 'unchecked') out.appendChild(el('div', 'lib-note', 'Arbo couldn’t check the roster just now.'));
+  if (res.roster === 'off') out.appendChild(el('div', 'lib-warn', T('This crew code is off the roster — check with the office.')));
+  else if (res.roster === 'unknown') out.appendChild(el('div', 'lib-warn', T('The office doesn’t know this crew code — check it with the office.')));
+  else if (res.roster === 'unchecked') out.appendChild(el('div', 'lib-note', T('Arbo couldn’t check the roster just now.')));
 
   if (!entries.length) {
     // "Your words did not match" is an ordinary outcome. "There is nothing in
     // here at all" is a hole in the library, and reads as the louder one.
     out.appendChild(res.noMatch
-      ? el('div', 'lib-note', 'Nothing published matches that. Try a different word — and tell the office what you were after.')
-      : el('div', 'lib-warn', 'Nothing is published in the library yet. Ask somebody; do not work it out on the tree.'));
+      ? el('div', 'lib-note', T('Nothing published matches that. Try a different word — and tell the office what you were after.'))
+      : el('div', 'lib-warn', T('Nothing is published in the library yet. Ask somebody; do not work it out on the tree.')));
     return;
   }
 
@@ -1219,45 +1310,48 @@ async function libSearch(q, out, btn, kept, keptErr) {
 
 function libEntry(e) {
   const c = el('div', 'lib-entry');
+  // R27 (D111): an entry is the office's own words — its name, how-to, pros, cons and limits are data,
+  // passed through as written; only the library's own framing around them is in the page's language.
   c.appendChild(el('div', 'lib-name', e.techniqueName));
   if (e.aboveSkillLevel) {
     c.appendChild(el('div', 'lib-above',
-      '⚠ Above your signed-off level — read it, but do not run it until the office signs you off.'));
+      T('⚠ Above your signed-off level — read it, but do not run it until the office signs you off.')));
   }
   c.appendChild(el('div', 'lib-how', e.howTo));
 
   if ((e.pros || []).length) {
-    c.appendChild(el('div', 'lib-sub', 'Good for'));
+    c.appendChild(el('div', 'lib-sub', T('Good for')));
     for (const p of e.pros) c.appendChild(el('div', 'lib-li', '• ' + p));
   }
   if ((e.cons || []).length) {
-    c.appendChild(el('div', 'lib-sub', 'Downsides'));
+    c.appendChild(el('div', 'lib-sub', T('Downsides')));
     for (const p of e.cons) c.appendChild(el('div', 'lib-li', '• ' + p));
   }
 
   // The limits are the point of the entry, so they render loudest — and their
   // ABSENCE renders just as loudly (§1B). A blank here is a gap, not a green light.
   if (e.wontWorkWhen) {
-    c.appendChild(el('div', 'lib-limits', 'When this does NOT work: ' + e.wontWorkWhen));
+    c.appendChild(el('div', 'lib-limits', tf('When this does NOT work: {limits}', { limits: e.wontWorkWhen })));
   } else if (e.limitsWarning) {
-    c.appendChild(el('div', 'lib-limits', '⚠ ' + e.limitsWarning));
+    // The library's own warning (src/reference/library.ts) — its Spanish twin under e.es when served.
+    c.appendChild(esSayTwin(el('div', 'lib-limits'), e, 'limitsWarning', '⚠ '));
   }
 
   if ((e.standardRefs || []).length) {
-    c.appendChild(el('div', 'lib-clause', 'Per ' + e.standardRefs.join(' · ') + ' — verify on site.'));
+    c.appendChild(el('div', 'lib-clause', tf('Per {refs} — verify on site.', { refs: e.standardRefs.join(' · ') })));
   }
   // Only ever an http(s) link. textContent makes the rest of this page
   // XSS-safe by construction, but an href is the one place a stored
   // 'javascript:' string would still run — so it is filtered, not trusted.
   if (e.sourceLink && /^https?:\/\//i.test(e.sourceLink)) {
-    const a = el('a', 'lib-src', 'Open the source →');
+    const a = el('a', 'lib-src', T('Open the source →'));
     a.href = e.sourceLink;
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
     c.appendChild(a);
   } else if (e.sourceLink) {
     // Not silently dropped: a source Arbo will not open is still a source.
-    c.appendChild(el('div', 'lib-note', 'A source is on file but not a link Arbo will open — ask the office for it.'));
+    c.appendChild(el('div', 'lib-note', T('A source is on file but not a link Arbo will open — ask the office for it.')));
   }
   return c;
 }
@@ -1272,21 +1366,20 @@ const NM = { sending: false };
 function renderNearMiss() {
   const box = $('nearmiss');
   box.replaceChildren();
-  box.appendChild(el('div', 'panel-title', 'Report a near miss'));
+  box.appendChild(el('div', 'panel-title', T('Report a near miss')));
   const card = el('div');
   card.id = 'nm-card';
   // Promise only what is true: the report IS filed under the crew code (the
   // safety record needs a reporter) and becomes a DRAFT lesson a person vets
   // (D61). Whether near misses should be anonymous is Mike's call.
+  // R27 (D111): one key, so it is translated as the one short paragraph it is.
   card.appendChild(el('div', 'why',
-    'Something almost went wrong? Say it here — nobody gets blamed or written up. '
-    + 'It’s filed under your crew code, and the office turns it into a lesson for the next crew. '
-    + 'Leave other people’s names out.'));
+    T('Something almost went wrong? Say it here — nobody gets blamed or written up. It’s filed under your crew code, and the office turns it into a lesson for the next crew. Leave other people’s names out.')));
   const ta = el('textarea');
   ta.id = 'nm-desc';
-  ta.placeholder = 'What almost happened?';
+  ta.placeholder = T('What almost happened?');
   card.appendChild(ta);
-  const btn = el('button', '', 'File it');
+  const btn = el('button', '', T('File it'));
   btn.id = 'nm-go';
   card.appendChild(btn);
   const out = el('div');
@@ -1301,8 +1394,8 @@ function renderNearMiss() {
   // the reason said once, directly over the box (it was said twice).
   LINKS_READY.then(() => {
     const off = LINKS === 'cut'
-      ? 'Filing is off while the office data link is cut on purpose — tell the office directly.'
-      : LINKS === 'readonly' ? 'Filing is off while Arbo is read-only — tell the office directly.' : '';
+      ? T('Filing is off while the office data link is cut on purpose — tell the office directly.')
+      : LINKS === 'readonly' ? T('Filing is off while Arbo is read-only — tell the office directly.') : '';
     if (!off) return;
     card.insertBefore(el('div', 'lib-warn', off), ta);
     ta.disabled = true;
@@ -1313,14 +1406,15 @@ function renderNearMiss() {
     const description = ta.value.trim();
     out.className = '';
     out.textContent = '';
+    NM.last = null;
     if (!description) {
-      out.className = 'err';
-      out.textContent = 'Type what almost happened — even a few words.';
+      NM.last = { said: 'empty' };
+      nmSay(out, NM.last);
       return;
     }
     if (!CREW_ID) {
-      out.className = 'err';
-      out.textContent = 'Tell the app who is on this phone first, up at the top.';
+      NM.last = { said: 'nocrew' };
+      nmSay(out, NM.last);
       return;
     }
     btn.disabled = true;
@@ -1331,23 +1425,15 @@ function renderNearMiss() {
         body: { reportedBy: CREW_ID, description },
       });
       ta.value = '';
-      out.className = 'ok';
-      out.textContent = 'Filed. Thank you — that is how nobody gets hurt next time.'
-        + (res.hazardCategory && res.hazardCategory !== 'uncategorised'
-          ? ' Logged under: ' + res.hazardCategory.replace(/_/g, ' ') + '.'
-          : '')
-        // C3 (D109, Q7): never refused over the roster — filed, and where the code stands is said.
-        + (res.roster === 'off' ? ' This crew code is off the roster — the office will see that.'
-          : res.roster === 'unchecked' ? ' Arbo couldn’t check the roster just now.' : '');
+      NM.last = { res };
+      nmSay(out, NM.last);
     } catch (e) {
       // Never swallow it: a report the crew THINKS they filed is worse than
       // one they know failed.
       // Words, never the server's code: e.message is a slug for Mike's logs.
       await LINKS_READY;
-      out.className = 'err';
-      out.textContent = (e.code === 400
-        ? 'Did not save — the office did not recognise your crew code.'
-        : 'Did not save — ' + crewWhy(e) + '.') + ' Tell the office directly.';
+      NM.last = { err: e };
+      nmSay(out, NM.last);
       if (e.code === 401) doorKeyChanged(e); // review round (D109): somewhere to put the new key
     } finally {
       NM.sending = false;
@@ -1356,10 +1442,48 @@ function renderNearMiss() {
   });
 }
 
+// What the near-miss card last said — its answer, its failure or why nothing was sent — drawn by one
+// function after File it and again after a language change (crewRedraw, R27 D111): a report the crew
+// THINKS they filed is worse than one they know failed, so the answer never vanishes in a redraw.
+function nmSay(out, last) {
+  if (last.said === 'empty') { out.className = 'err'; out.textContent = T('Type what almost happened — even a few words.'); return; }
+  if (last.said === 'nocrew') { out.className = 'err'; out.textContent = T('Tell the app who is on this phone first, up at the top.'); return; }
+  if (last.err) {
+    const e = last.err;
+    out.className = 'err';
+    out.textContent = (e.code === 400
+      ? T('Did not save — the office did not recognise your crew code.')
+      : tf('Did not save — {why}.', { why: crewWhy(e) })) + ' ' + T('Tell the office directly.');
+    return;
+  }
+  const res = last.res;
+  out.className = 'ok';
+  out.textContent = T('Filed. Thank you — that is how nobody gets hurt next time.')
+    + (res.hazardCategory && res.hazardCategory !== 'uncategorised'
+      ? ' ' + tf('Logged under: {category}.', { category: nmCategory(res.hazardCategory) })
+      : '')
+    // C3 (D109, Q7): never refused over the roster — filed, and where the code stands is said.
+    + (res.roster === 'off' ? ' ' + T('This crew code is off the roster — the office will see that.')
+      : res.roster === 'unchecked' ? ' ' + T('Arbo couldn’t check the roster just now.') : '');
+}
+
+// The server files a near miss under one of its hazard codes (src/safety/nearMiss.ts) — said in the
+// page's language. A code this page does not know is shown as the server wrote it, never dropped.
+function nmCategory(code) {
+  if (code === 'struck_by') return T('struck by');
+  if (code === 'electrical') return T('electrical');
+  if (code === 'fall') return T('fall');
+  if (code === 'cutting') return T('cutting');
+  if (code === 'vehicle') return T('vehicle');
+  if (code === 'rigging') return T('rigging');
+  if (code === 'environmental') return T('environmental');
+  return String(code).replace(/_/g, ' ');
+}
+
 // ---- Identity. The acknowledgment IS the OSHA record, so it must name a
 // real person: without an identity this page asks rather than filing an
 // anonymous sign-off. (Replaced by the §8C Supabase login when that lands.)
-function renderWhoAmI() {
+function renderWhoAmI(redraw) {
   const box = $('whoami');
   box.replaceChildren();
   // R26: the preview runs on the office key — no crew code is asked or used.
@@ -1371,8 +1495,8 @@ function renderWhoAmI() {
     // Nothing has checked this code yet, so the line claims nothing more than
     // what is stored. "Signed in" waits for the §8C login. C3: the roster then
     // names the person — "On this phone: Rudy — Not you?" (checkWho).
-    const who = row.appendChild(el('span', '', 'Crew code on this phone \u00b7 ' + CREW_ID.slice(0, 8)));
-    const out = el('button', '', 'Not you?');
+    const who = row.appendChild(el('span', '', tf('Crew code on this phone \u00b7 {code}', { code: CREW_ID.slice(0, 8) })));
+    const out = el('button', '', T('Not you?'));
     const err = el('div', 'errline', '');
     out.addEventListener('click', () => {
       try { localStorage.removeItem('arboCrewId'); } catch (e) { err.textContent = STORAGE_BLOCKED; return; }
@@ -1387,26 +1511,28 @@ function renderWhoAmI() {
     box.appendChild(err);
     // C3: a link opened in a browser tab — the installed app is the one the
     // crew opens each morning, and on iOS it keeps its own storage.
-    if (SIGN_IN && SIGN_IN.code && !SIGN_IN.app) box.appendChild(el('div', 'okline', 'Add to Home Screen now, then open Arbo from there.'));
+    if (SIGN_IN && SIGN_IN.code && !SIGN_IN.app) box.appendChild(el('div', 'okline', T('Add to Home Screen now, then open Arbo from there.')));
     if (SIGN_IN && SIGN_IN.code && !SIGN_IN.kept) err.textContent = STORAGE_BLOCKED;
-    checkWho(who, note);
+    // R27 (D111): a redraw after a language change says the name line again from the roster's last
+    // answer — never a second read.
+    checkWho(who, note, redraw);
     return true;
   }
-  const h = el('h2', '', 'Who is on this phone?');
-  const p = el('p', '', 'Your briefing sign-off is a safety record — it has to have your name on it. Paste the sign-in link the office sent you.');
+  const h = el('h2', '', T('Who is on this phone?'));
+  const p = el('p', '', T('Your briefing sign-off is a safety record — it has to have your name on it. Paste the sign-in link the office sent you.'));
   // C3 (D109): the fallback in the installed app (and in a tab with no link):
   // paste the sign-in link — or the bare crew code the roster shows.
   const input = document.createElement('input');
   input.id = 'crewcode';
-  input.placeholder = 'Paste your sign-in link';
+  input.placeholder = T('Paste your sign-in link');
   input.autocomplete = 'off';
   input.autocapitalize = 'off';
   input.spellcheck = false;
-  const go = el('button', '', 'Start my day');
+  const go = el('button', '', T('Start my day'));
   const err = el('div', 'errline', '');
   go.addEventListener('click', () => {
     const v = input.value.trim();
-    if (!v) { err.textContent = 'Paste the link from the office.'; return; }
+    if (!v) { err.textContent = T('Paste the link from the office.'); return; }
     const code = crewCodeFrom(v);
     if (!code) { err.textContent = BAD_LINK; return; }
     try { localStorage.setItem('arboCrewId', code); } catch (e) { err.textContent = STORAGE_BLOCKED; return; }
@@ -1427,21 +1553,35 @@ function renderWhoAmI() {
 // unread are each said in crewWhy's words and the stored-code line stays —
 // none of them is a pass. A locked door (401) or the throttle (429) is the
 // door-key card's to say, so this line stays quiet for those.
-async function checkWho(who, note) {
-  let me;
-  try {
-    me = await api('/api/crew/me?crewMemberId=' + encodeURIComponent(CREW_ID));
-  } catch (e) {
-    if (e.code === 401 || e.code === 429) return;
-    await LINKS_READY; // 'cut on purpose' vs 'not set up' needs /health's answer
-    const why = crewWhy(e);
-    note.className = 'whonote err';
-    note.textContent = e.code === 400 || e.code === 403
+// R27 (D111): the answer is kept (checkWho.last), so a redraw after a language change says it again
+// with no second read; a read still out paints into the newest card (checkWho.at) when it lands.
+async function checkWho(who, note, redraw) {
+  checkWho.at = { who, note };
+  let r = redraw ? checkWho.last : null;
+  if (!r) {
+    if (redraw) return;
+    try {
+      r = { me: await api('/api/crew/me?crewMemberId=' + encodeURIComponent(CREW_ID)) };
+    } catch (e) {
+      if (e.code === 401 || e.code === 429) return;
+      await LINKS_READY; // 'cut on purpose' vs 'not set up' needs /health's answer
+      r = { err: e };
+    }
+    checkWho.last = r;
+  }
+  const at = checkWho.at;
+  if (r.err) {
+    const why = crewWhy(r.err);
+    at.note.className = 'whonote err';
+    at.note.textContent = r.err.code === 400 || r.err.code === 403
       ? why.charAt(0).toUpperCase() + why.slice(1) + '.'
-      : 'Name not checked — ' + why + '.';
+      : tf('Name not checked — {why}.', { why });
     return;
   }
-  who.textContent = 'On this phone: ' + (me.firstName || 'crew code ' + CREW_ID.slice(0, 8)) + ' —';
+  // The first name is data, passed through as the roster has it.
+  at.who.textContent = r.me.firstName
+    ? tf('On this phone: {name} —', { name: r.me.firstName })
+    : tf('On this phone: crew code {code} —', { code: CREW_ID.slice(0, 8) });
 }
 
 // R25: the crew door has its own key (CREW_ACCESS_KEY). It opens the crew
@@ -1451,57 +1591,60 @@ function renderDoorKey(notSet, why) {
   // Hide (not just empty) the other panels: their own 401s land later and
   // must not paint an "unavailable" line under a locked door.
   document.querySelector('main').classList.add('door-locked');
+  // R27 (D111): what this card was drawn for, so a language change after sign-off draws it again
+  // (crewRedraw) instead of the name line a changed key replaced.
+  renderDoorKey.args = [notSet, why];
   const box = $('whoami');
   box.replaceChildren();
   // Audit 2026-10-20: two states the server names that no key on this phone
   // fixes right now — no app key set on the server at all (M1), and too many
   // wrong keys from this connection (M2, one key check a minute for now).
-  const SLOWED = 'Too many wrong keys from this connection. Wait a minute, then try the key again — or switch between Wi-Fi and cellular.';
+  const SLOWED = T('Too many wrong keys from this connection. Wait a minute, then try the key again — or switch between Wi-Fi and cellular.');
   if (PREVIEW) {
     // R26: the preview never asks for the crew door key. It opens with the
     // office app's key, and the server would not take the one on this phone.
     box.hidden = false;
     if (why === 'no_app_key' || why === 'too_many_attempts') {
-      box.appendChild(el('h2', '', why === 'no_app_key' ? 'Arbo is locked' : 'Too many wrong keys'));
-      box.appendChild(el('p', '', why === 'no_app_key' ? 'Arbo’s server has no app key set (APP_ACCESS_KEY), so nothing opens yet. Set it on Railway and deploy again.' : SLOWED));
+      box.appendChild(el('h2', '', why === 'no_app_key' ? T('Arbo is locked') : T('Too many wrong keys')));
+      box.appendChild(el('p', '', why === 'no_app_key' ? T('Arbo’s server has no app key set (APP_ACCESS_KEY), so nothing opens yet. Set it on Railway and deploy again.') : SLOWED));
       return;
     }
-    box.appendChild(el('h2', '', 'Office key needed'));
-    box.appendChild(el('p', '', 'The preview opens with the office app’s key, and this phone has none that works. Open it from the office app — Office, then Crew — on a phone signed in to it.'));
+    box.appendChild(el('h2', '', T('Office key needed')));
+    box.appendChild(el('p', '', T('The preview opens with the office app’s key, and this phone has none that works. Open it from the office app — Office, then Crew — on a phone signed in to it.')));
     return;
   }
-  box.appendChild(el('h2', '', 'Crew door key'));
+  box.appendChild(el('h2', '', T('Crew door key')));
   if (notSet) {
     // D89: the server says no CREW_ACCESS_KEY exists, so there is nothing for
     // the office to hand out. Asking for one anyway sends them to the only key
     // that works (Mike's own), and that key must never live on a crew phone.
     // No field on purpose.
-    box.appendChild(el('p', '', 'No crew door key has been set up yet. Ask Mike to set one. Don\u2019t put the office app key on a crew phone.'));
+    box.appendChild(el('p', '', T('No crew door key has been set up yet. Ask Mike to set one. Don\u2019t put the office app key on a crew phone.')));
     return;
   }
   if (why === 'no_app_key') {
     // M1: nothing opens until the office sets Arbo's own key. No field on purpose.
-    box.appendChild(el('p', '', 'The crew door is locked on the server right now \u2014 no key opens it until the office sets Arbo\u2019s key. Tell the office.'));
+    box.appendChild(el('p', '', T('The crew door is locked on the server right now \u2014 no key opens it until the office sets Arbo\u2019s key. Tell the office.')));
     return;
   }
-  box.appendChild(el('p', '', 'One more step: the crew door key from the office. It is not your crew code \u2014 it is one phrase the whole crew shares. You only enter it once on this phone.'));
+  box.appendChild(el('p', '', T('One more step: the crew door key from the office. It is not your crew code \u2014 it is one phrase the whole crew shares. You only enter it once on this phone.')));
   const input = document.createElement('input');
-  input.id = 'doorkey'; input.type = 'password'; input.placeholder = 'Crew door key'; input.autocomplete = 'off';
+  input.id = 'doorkey'; input.type = 'password'; input.placeholder = T('Crew door key'); input.autocomplete = 'off';
   input.autocapitalize = 'off'; input.setAttribute('autocorrect', 'off'); input.spellcheck = false; input.enterKeyHint = 'go';
   // A long phrase typed blind with gloves on fails on one letter, and the
   // crew only learns that after a reload, so they can look before they send.
-  const show = el('button', 'keyshow', 'Show key');
+  const show = el('button', 'keyshow', T('Show key'));
   show.type = 'button';
   show.addEventListener('click', () => {
     const hidden = input.type === 'password';
     input.type = hidden ? 'text' : 'password';
-    show.textContent = hidden ? 'Hide key' : 'Show key';
+    show.textContent = hidden ? T('Hide key') : T('Show key');
   });
-  const go = el('button', '', 'Open the crew door');
-  const err = el('div', 'errline', why === 'too_many_attempts' ? SLOWED : KEY ? 'That key did not open the door \u2014 check it with the office.' : '');
+  const go = el('button', '', T('Open the crew door'));
+  const err = el('div', 'errline', why === 'too_many_attempts' ? SLOWED : KEY ? T('That key did not open the door \u2014 check it with the office.') : '');
   go.addEventListener('click', () => {
     const v = input.value.trim();
-    if (!v) { err.textContent = 'Enter the key from the office.'; return; }
+    if (!v) { err.textContent = T('Enter the key from the office.'); return; }
     try { localStorage.setItem('arboCrewKey', v); } catch (e) { err.textContent = STORAGE_BLOCKED; return; }
     location.reload();
   });
@@ -1533,9 +1676,8 @@ function previewLock() {
   q.replaceChildren();
   q.appendChild(el('div', 'panel-title', QUIZ_TITLE[isFridayEt() ? 'friday_questionnaire' : 'clock_in_gate']));
   // §1B: no question here is the preview's gap, never "no questions".
-  q.appendChild(el('div', 'state', 'After the briefing each crew member is asked here, from the topics they are weakest on. '
-    + 'The preview has no crew member, so nothing is drawn — that is not “no questions”.'));
-  const go = el('button', 'gate-go', 'Submit');
+  q.appendChild(el('div', 'state', T('After the briefing each crew member is asked here, from the topics they are weakest on. The preview has no crew member, so nothing is drawn — that is not “no questions”.')));
+  const go = el('button', 'gate-go', T('Submit'));
   go.disabled = true;
   q.appendChild(go);
   q.appendChild(el('div', 'preview-why', PREVIEW_WHY));
@@ -1544,22 +1686,30 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => { /* works online without it */ }); });
 }
 
-$('dateline').textContent = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+// R27 (D111): the date in the page's language — es-US in Spanish (esLocale), the phone's own in
+// English as before — and said again by paintDateline after a language change.
+$('dateline').textContent = new Date().toLocaleDateString(esLocale(), { weekday: 'long', month: 'long', day: 'numeric' });
 // As the office app's header: every screen says SIMULATION while the data is
 // practice data, so nobody files a real near miss into it unawares. A /health
 // that did not answer leaves LINKS null, and the plain date stands.
-LINKS_READY.then(() => { if (LINKS === 'simulation') $('dateline').textContent = 'SIMULATION · ' + $('dateline').textContent; });
+LINKS_READY.then(() => { if (LINKS === 'simulation') $('dateline').textContent = tf('SIMULATION · {date}', { date: $('dateline').textContent }); });
 // R32: while Arbo is read-only the page says so on every screen — the
 // owner's preview included — so nobody taps expecting a save.
-LINKS_READY.then(() => { if (LINKS === 'readonly') $('dateline').textContent = 'READ-ONLY · ' + $('dateline').textContent; });
+LINKS_READY.then(() => { if (LINKS === 'readonly') $('dateline').textContent = tf('READ-ONLY · {date}', { date: $('dateline').textContent }); });
+// The same line, said again after a language change (crewRedraw) — /health has answered by then.
+function paintDateline() {
+  const date = new Date().toLocaleDateString(esLocale(), { weekday: 'long', month: 'long', day: 'numeric' });
+  $('dateline').textContent = LINKS === 'simulation' ? tf('SIMULATION · {date}', { date })
+    : LINKS === 'readonly' ? tf('READ-ONLY · {date}', { date }) : date;
+}
 // R26: the preview says what it is on every screen, with the way back.
 if (PREVIEW) {
   document.body.classList.add('preview');
   const bar = el('div', 'preview-bar');
   const bannerLine = bar.appendChild(el('div', '', PREVIEW_BANNER));
   // R32: the preview names the mode in its own banner too.
-  LINKS_READY.then(() => { if (LINKS === 'readonly') bannerLine.textContent = PREVIEW_BANNER + ' Arbo is read-only: it reads real records and saves nothing.'; });
-  const back = el('a', '', '← Back to the office app');
+  LINKS_READY.then(() => { if (LINKS === 'readonly') bannerLine.textContent = PREVIEW_BANNER + ' ' + T('Arbo is read-only: it reads real records and saves nothing.'); });
+  const back = el('a', '', T('← Back to the office app'));
   back.href = '/app#more';
   // Step back to the office app as it was left; a fresh visit replaces this
   // page instead of stacking one, so Back never loops app → preview → app.
@@ -1578,6 +1728,8 @@ if (PREVIEW) {
 // screen has it, the door-key card included (the header is outside <main>).
 // Each panel belongs to a unit (src/app/i18n/crew-<unit>.es.json). Until its unit is translated
 // (Phase A), Spanish mode shows it in English, marked lang="en" and "en inglés".
+// R27 Phase A unit 1 (D111): every unit is translated, so no panel carries the page mark; English is
+// left only where it is data or a server line with no served twin, each marked where it stands.
 const ES_PLACES = {
   header: 'crew-header', '#whoami': 'crew-who', '#gate-slot': 'crew-gate', '#quiz': 'crew-quiz',
   '#work': 'crew-work', '#library': 'crew-library', '#nearmiss': 'crew-nearmiss', '.preview-bar': 'crew-preview',
@@ -1639,10 +1791,22 @@ function crewEsMark() {
 // redraw from what this phone already read, typed text and picked answers kept; a list still being
 // read draws in the new language when it lands. The one read: questions that never loaded are asked
 // for again (the newest draw owns the panel).
+// R27 Phase A unit 1 (D111): every panel now — the header's date, the name line (from the roster's
+// last answer) or the door-key card a changed key put up, the near-miss card (typed words and what it
+// last said kept), and a work-order read that failed (said again, never read again).
 function crewRedraw() {
+  crewWords();
+  paintDateline();
   paintSigned();
+  if (DOOR_KEY_ASKED && renderDoorKey.args) {
+    const k = $('doorkey');
+    const key = k ? k.value : '';
+    renderDoorKey(renderDoorKey.args[0], renderDoorKey.args[1]);
+    const k2 = $('doorkey');
+    if (k2) k2.value = key;
+  } else renderWhoAmI(true);
   if (QUIZ.done) { if (QUIZ.result) quizLogged($('quiz'), QUIZ.result); } else renderQuiz(QUIZ.pool ? QUIZ.context : undefined, true);
-  if (renderWork.lastDay) renderWork(renderWork.lastDay);
+  if (renderWork.lastDay || renderWork.lastErr) renderWork(renderWork.lastDay, renderWork.lastErr);
   const box = $('lib-q');
   const typed = box ? box.value : '';
   const last = libSearch.last;
@@ -1650,6 +1814,12 @@ function crewRedraw() {
   const again = $('lib-q');
   if (again) again.value = typed;
   if (last) libSearch(last.q, $('lib-out'), $('lib-go'), last.res, last.err);
+  const nm = $('nm-desc');
+  const nmTyped = nm ? nm.value : '';
+  renderNearMiss();
+  const nmAgain = $('nm-desc');
+  if (nmAgain) nmAgain.value = nmTyped;
+  if (NM.last) nmSay($('nm-out'), NM.last);
 }
 ES.onChange = crewLangChange;
 document.querySelector('header').appendChild(esToggleButton('es-toggle'));
@@ -1669,7 +1839,7 @@ function etDayNow() {
 }
 const BRIEF_DAY = etDayNow();
 function briefRetryBtn() {
-  const b = el('button', 'retry', 'Try again');
+  const b = el('button', 'retry', T('Try again'));
   b.addEventListener('click', () => loadBriefing());
   return b;
 }
@@ -1686,7 +1856,7 @@ function loadBriefing() {
     document.querySelector('main').classList.remove('door-locked'); // the door answered: show the panels
     $('gate-slot').replaceChildren(); // a second try replaces the first answer, never stacks under it
     if (e.code === 404) {
-      $('gate-slot').appendChild(el('div', 'state', 'No briefing published for today yet — check with the office.'));
+      $('gate-slot').appendChild(el('div', 'state', T('No briefing published for today yet — check with the office.')));
       $('gate-slot').appendChild(briefRetryBtn());
       return;
     }
@@ -1695,10 +1865,11 @@ function loadBriefing() {
     await LINKS_READY; // 'cut on purpose' vs 'not set up' needs /health's answer
     const why = crewWhy(e);
     const s = el('div', 'state err');
-    s.appendChild(el('b', '', 'Briefing didn\u2019t come through'));
+    s.appendChild(el('b', '', T('Briefing didn\u2019t come through')));
     s.appendChild(document.createTextNode(why.charAt(0).toUpperCase() + why.slice(1) + '.'));
     // The order is its own line, so "Do not start work" never splits after "Do".
-    s.appendChild(el('b', 'order', 'Do not start work \u2014 call the office.'));
+    // R27 (D111): a safety line — in Spanish, the Spanish over its full English (esSay).
+    s.appendChild(esSay(el('b', 'order'), 'Do not start work \u2014 call the office.'));
     s.appendChild(briefRetryBtn());
     $('gate-slot').appendChild(s);
   }).finally(() => { BRIEF_LOADING = false; });
