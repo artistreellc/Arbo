@@ -47,6 +47,10 @@ const FALSE_FRIEND_GATES: Array<{ en: RegExp; es: RegExp; name: string }> = [
   { en: /\bapplied\b/i, es: /\baplicad[oa]s?\b/, name: 'applied (a permit) is "SOLICITADO", never "APLICADO"' },
 ];
 
+// Review round (D110, UI 5): utility lines and 811 markings are every buried line, not the power company's.
+const EN_UTILITY_LINES = /\butility (?:lines?|markings?|marks?|locates?)\b|\b811\b|\bMiss Utility\b/i;
+const ES_POWER_ONLY = /\b(?:compania|companias|lineas?|cables?) de (?:la )?luz\b/;
+
 const tokens = (s: string, re: RegExp) => [...s.matchAll(re)].map((m) => m[0]);
 
 /** What is wrong with this Spanish for this English — [] when it passes every gate. */
@@ -83,5 +87,8 @@ export function esGateProblems(en: string, es: string): string[] {
   if (tu) problems.push(`register: "${tu[0]}" is a tú form — address the crew as usted`);
   for (const q of QUALIFIERS) if (q.en.test(en) && !q.es.test(n)) problems.push(`qualifier lost: "${q.name}"`);
   for (const f of FALSE_FRIEND_GATES) if (f.en.test(en) && f.es.test(n)) problems.push(`false friend: ${f.name}`);
+  if (EN_UTILITY_LINES.test(en) && ES_POWER_ONLY.test(n) && !/\bservicios publicos\b/.test(n)) {
+    problems.push('utility lines narrowed to the power company: 811 marks gas, water, power and phone — "servicios públicos"');
+  }
   return problems;
 }

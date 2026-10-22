@@ -304,6 +304,28 @@ function esToggleButton(cls) {
   return b;
 }
 
+/**
+ * English | Español as two chips under a label (the office app's Appearance — in Office and, review
+ * round D110 UI 7, in Settings): each language named in its own language, the one on this phone lit.
+ * A tap stores the choice (esChange). Built with the page's own element maker (el), so the chips are
+ * the page's own; the label's words come from the page (T('Language')). In Spanish the label says it
+ * is Spanish (lang="es", review round UI 8): it sits in a screen still marked English.
+ */
+function esLanguageChips(host, el, label) {
+  const lab = el('div', 'es-lang-label', label);
+  if (ES.lang === 'es') lab.setAttribute('lang', 'es');
+  host.appendChild(lab);
+  const row = el('div', 'chips');
+  for (const lang of ['en', 'es']) {
+    const b = el('button', 'loc-toggle' + (ES.wanted === lang ? ' on' : ''), ES_LANG_NAME[lang]);
+    b.setAttribute('lang', lang);
+    b.setAttribute('aria-pressed', ES.wanted === lang ? 'true' : 'false');
+    b.addEventListener('click', () => esChange(lang, row));
+    row.appendChild(b);
+  }
+  host.appendChild(row);
+}
+
 // Spanish mode (or a Spanish reader whose dictionary failed) is set up before the page's own script runs.
 if (ES.lang === 'es') document.documentElement.lang = 'es';
 esBrokenNotice();

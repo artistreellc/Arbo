@@ -291,9 +291,11 @@ main[data-es-en]::before{content:attr(data-es-en);display:inline-block;margin:0 
   padding:10px 12px;margin-bottom:14px;font-size:15px;font-weight:700;line-height:1.4}
 .es-broken div+div,.es-storage div+div,.es-hold div+div{margin-top:4px;font-weight:600}
 .es-en-mark{display:inline-block;margin-left:6px;padding:1px 6px;border:1px solid var(--border);border-radius:999px;font-size:12px;font-weight:700;color:var(--muted);vertical-align:middle}
+/* Review round (D110, UI 1, UI 6): the English beneath is always the smaller, sized from its label, and
+   its "inglés" tag is boxed and muted so it never reads as part of the label. */
 .es-pair-es{display:block}
-.es-pair-en{display:block;margin-top:2px;font-size:13px;font-weight:600;opacity:.85}
-.es-pair-tag{font-weight:800;letter-spacing:.06em;text-transform:uppercase;margin-right:4px}
+.es-pair-en{display:block;margin-top:2px;font-size:.85em;font-weight:600;opacity:.85}
+.es-pair-tag{display:inline-block;margin-right:5px;padding:0 4px;border:1px solid currentColor;border-radius:4px;opacity:.75;font-size:.9em;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
 </style>
 </head>
 <body>
