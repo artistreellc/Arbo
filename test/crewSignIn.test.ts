@@ -45,6 +45,29 @@ describe('C3 — the crew code is read from the link, the fragment, or the bare 
       expect(crewCodeFrom(bad), String(bad)).toBe('');
     }
   });
+
+  // UI review (D109): copying a whole message bubble on an iPhone brings the
+  // punctuation after the link with it. The code ends at the first character
+  // that cannot be part of one — never a longer run cut down to fit.
+  it('a link with punctuation after it (copied out of a text) still reads the code', () => {
+    const link = `https://arbor-server-production.up.railway.app/crew#crew=${CODE}`;
+    for (const pasted of [`${link}.`, `(${link})`, `${link}, see you at 7`, `${link}!`, `"${link}"`, `Your link: ${link}.`, `${CODE}.`]) {
+      expect(crewCodeFrom(pasted), pasted).toBe(CODE);
+    }
+  });
+
+  // Review round (D109, UI 8): in the monospace of the old code field the hint
+  // needed 235px of a 224px box at 320 ("Paste your sign-in lin"). The box
+  // now takes a link, so it reads in the page's own type, as the door key does.
+  it('the paste box reads in the page’s own type, so its whole hint fits a 320px phone', () => {
+    expect(crew).toContain('#whoami #crewcode{font-family:inherit}');
+  });
+
+  it('a code run on into more code characters is no code — never a 36-character slice of something longer', () => {
+    for (const bad of [`#crew=${CODE}0`, `#crew=${CODE}-1`, `#crew=a${CODE}`, `${CODE}abc`]) {
+      expect(crewCodeFrom(bad), bad).toBe('');
+    }
+  });
 });
 
 // ── The boot: the link opened on this phone ───────────────────────────────
@@ -299,7 +322,7 @@ describe('C3 — the bad-link line and the paste box', () => {
   // carries the code there); the installed app keeps no fragment at all.
   it('a paste in a browser tab puts the pasted code’s link in the address — the broken one is gone', async () => {
     const w = who({ signIn: { broken: true, app: false }, hash: '#crew=not-a-code' });
-    w.box.all().find((n) => n.id === 'crewcode')!.value = `https://arbo.example/crew#crew=${CODE}`;
+    w.box.all().find((n) => n.id === 'crewcode')!.value = `https://arbo.example/crew#crew=${CODE}.`;
     await w.box.all().find((n) => n.tag === 'button')!.handlers.click!();
     expect(w.stored).toEqual({ arboCrewId: CODE });
     expect(w.replaced).toEqual([`/crew#crew=${CODE}`]);
