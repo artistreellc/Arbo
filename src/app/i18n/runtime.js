@@ -192,10 +192,24 @@ function esPairOf(text, es) {
 // stays byte-identical (node.textContent is the English as written) and nothing in English comes from
 // another document — a page harness's own fake nodes keep working. In Spanish a pair goes in ONE
 // span.es-pair holder, so a flex row (a hazard line's ⚠ beside its words) keeps it as one item.
+//
+// Review round (D111, UI 1 + 3): a safety line held back (its review not recorded) is never English
+// alone under Spanish words — a Spanish reader would take the Spanish reason before it for the whole
+// message and never read the order. It wears a Spanish POINTER first, on its own line: it says a safety
+// notice follows in English and to have someone read it — it does not translate the order (that waits
+// for its review). Then the English starts on its own line, so nobody has to find where the Spanish ends.
 function esPairInto(node, prefix, text, es) {
   node.textContent = prefix;
   const box = document.createElement('span');
   box.className = 'es-pair';
+  if (typeof es !== 'string' || !es) {
+    box.className = 'es-pair es-held';
+    const why = document.createElement('span');
+    why.className = 'es-held-why';
+    why.setAttribute('lang', 'es');
+    why.textContent = T('Safety notice — only in English for now; ask someone to read it to you:');
+    box.appendChild(why);
+  }
   box.appendChild(esPairOf(text, es));
   node.appendChild(box);
   return node;

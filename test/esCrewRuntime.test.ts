@@ -9,8 +9,9 @@
 import { describe, it, expect } from 'vitest';
 import { loadI18n, FakeNode } from './support/i18nRuntime.js';
 
+const POINTER = 'Aviso de seguridad — por ahora solo en inglés; pídale a alguien que se lo lea:';
 const DICT = {
-  'crew-switch': { English: 'inglés', 'in English': 'en inglés' },
+  'crew-switch': { English: 'inglés', 'in English': 'en inglés', 'Safety notice — only in English for now; ask someone to read it to you:': POINTER },
   'crew-test': { 'Do not start work — call the office.': 'No empiece a trabajar — llame a la oficina.' },
 };
 const es = () => loadI18n({ door: 'crew', units: DICT, stored: { arboCrewLang: 'es' } });
@@ -38,11 +39,24 @@ describe('esSay — a safety line from the dictionary, into the page’s own nod
     expect(pair.children[1]!.getAttribute('lang')).toBe('en');
     expect(pair.children[1]!.textContent).toBe('inglés Do not start work — call the office.');
   });
-  it('Spanish with no reviewed Spanish (held back): the English, marked "en inglés" — never a blank', () => {
+  // Review round (D111, UI 1 + 3): a held line is never English alone under Spanish — a Spanish pointer
+  // (not the order itself) says a safety notice follows in English, on its own line, then the English.
+  it('Spanish with no reviewed Spanish (held back): a Spanish pointer on its own line, then the English, marked "en inglés" — never a blank', () => {
     const b = new FakeNode('b');
     es().esSay(b, 'Your work orders stay locked — do not start work; call the office to log your briefing.');
-    expect(b.textContent).toBe('Your work orders stay locked — do not start work; call the office to log your briefing.en inglés');
-    expect(b.all().some((n) => n.getAttribute('lang') === 'en')).toBe(true);
+    expect(b.textContent).toBe(POINTER + 'Your work orders stay locked — do not start work; call the office to log your briefing.en inglés');
+    const box = b.children[0]!;
+    expect(box.className).toBe('es-pair es-held');
+    expect(box.children[0]!.className).toBe('es-held-why');
+    expect(box.children[0]!.getAttribute('lang')).toBe('es');
+    expect(box.children[0]!.textContent).toBe(POINTER);
+    expect(box.children[1]!.getAttribute('lang')).toBe('en');
+    expect(box.children[1]!.textContent).toBe('Your work orders stay locked — do not start work; call the office to log your briefing.');
+  });
+  it('a reviewed line carries no pointer — the Spanish over its full English', () => {
+    const b = new FakeNode('b');
+    es().esSay(b, 'Do not start work — call the office.');
+    expect(b.all().some((n) => n.className === 'es-held-why')).toBe(false);
   });
   it('replaces what the node held before (a redraw never stacks)', () => {
     const b = new FakeNode('b');
@@ -67,7 +81,8 @@ describe('esSay — a safety line from the dictionary, into the page’s own nod
   it('a held line keeps its lead-in too, and the English it shows is marked', () => {
     const s = new FakeNode('div');
     es().esSay(s, 'Your work orders stay locked — do not start work; call the office to log your briefing.', 'Lead. ');
-    expect(s.textContent).toBe('Lead. Your work orders stay locked — do not start work; call the office to log your briefing.en inglés');
+    expect(s.textContent).toBe('Lead. ' + POINTER + 'Your work orders stay locked — do not start work; call the office to log your briefing.en inglés');
+    expect(s.children.map((c) => (c.tagName === '#text' ? '#text' : c.className))).toEqual(['#text', 'es-pair es-held']);
   });
 });
 
@@ -91,7 +106,7 @@ describe('esSayPick — a server-written safety line and its twin, as a pair', (
   it('Spanish with no twin served: the English, marked "en inglés"', () => {
     const n = new FakeNode('div');
     es().esSayPick(n, wo, 'permitNote', '');
-    expect(n.textContent).toBe(wo.permitNote + 'en inglés');
+    expect(n.textContent).toBe(POINTER + wo.permitNote + 'en inglés');
   });
 });
 
