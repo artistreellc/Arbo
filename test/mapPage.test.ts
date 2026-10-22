@@ -160,11 +160,18 @@ describe('the map page fits its frame (UI review)', () => {
 
 // Review round (D106): the correctness review's test gaps — what these scans missed, now pinned.
 describe('the scans hold against the gaps the review found', () => {
-  it('Leaflet content is always a node: bindPopup takes the popup built from groupNode, setContent a node builder; no tooltips', () => {
+  // Maps wave B (D108): the Leads and Trucks layers add their own lists, each a DOM node from its own builder
+  // (leadsNode, truckNode — both built with el and textContent). Wave A's pin listed groupNode alone and one bindPopup.
+  it('Leaflet content is always a node: bindPopup takes an L.popup, setContent a node builder; no tooltips', () => {
     const binds = [...script.matchAll(/bindPopup\(([^)]*)\)/g)].map((m) => m[1]);
-    expect(binds).toEqual(['pop']);
-    expect(script).toMatch(/const pop = L\.popup\(/);
-    for (const m of script.matchAll(/setContent\(([^\n]*)/g)) expect(m[1], m[0]).toMatch(/^(?:groupNode|el)\(/);
+    expect(binds.length).toBeGreaterThan(0);
+    for (const b of binds) expect(b).toBe('pop');
+    expect(script.match(/const pop = L\.popup\(/g)!.length).toBe(binds.length);
+    for (const m of script.matchAll(/setContent\(([^\n]*)/g)) expect(m[1], m[0]).toMatch(/^(?:groupNode|leadsNode|truckNode|el)\(/);
+    for (const b of ['groupNode', 'leadsNode', 'truckNode'].filter((n) => script.includes(`function ${n}(`))) {
+      const src = new RegExp(`^function ${b}\\([\\s\\S]*?^\\}$`, 'm').exec(script)![0];
+      expect(src, b).toContain("el('div', 'pop')");
+    }
     expect(script).not.toContain('bindTooltip');
   });
   it('storage holds two things only: the layer choice and the shell\'s theme — never a point', () => {
