@@ -45,7 +45,8 @@ const raw = (unit: string): Record<string, string> => JSON.parse(readFileSync(ne
 // D112: the committed ledger records the three stop-work orders' blind review, so the dictionary as
 // served (SERVED) holds nothing back. HELD_UNITS is the same dictionary with those three held back, as
 // it is served for any safety line whose review is NOT recorded — so the page's held-line drawing (the
-// pointer, the English marked) is still proven; HELD and four permit lines are held in the ledger today.
+// pointer, the English marked) is still proven; since D112's protected-work round no line is held in
+// the ledger.
 const SAFETY_ORDERS = [
   'Do not start work — call the office.',
   'Your work orders stay locked — do not start work; call the office to log your briefing.',
@@ -163,8 +164,10 @@ describe('work orders in Spanish — the page’s words in Spanish, the job’s 
   });
 
   // D112: what the committed ledger serves — the two hazards and REVIEW NEEDED recorded (Spanish over the
-  // FULL English, no pointer); PERMIT LIKELY, NO OVERLAY, the unreadable and the pending lines held.
-  it('the committed ledger (D112): both hazards read Spanish over their full English; a held permit note keeps the pointer; REVIEW NEEDED reads Spanish', async () => {
+  // FULL English, no pointer). D112's protected-work round (pin moved, meaning kept): PERMIT LIKELY, NO
+  // OVERLAY, the unreadable and the pending lines are recorded too, so every permit note reads the same
+  // way. The held drawing (the pointer, the English marked) is proven above with the twins stripped.
+  it('the committed ledger (D112): both hazards and every permit note read Spanish over their full English — no pointer', async () => {
     const table = readTwinTable('crew-workorder')!;
     const { work } = await draw(runtime('es'), { workOrders: [buildCrewPayload(SRC())], notWorkOrders: 0, contractLookupFailed: false });
     const hz = work.querySelectorAll('.hz');
@@ -173,20 +176,21 @@ describe('work orders in Spanish — the page’s words in Spanish, the job’s 
     expect(hz.map((h) => h.querySelector('.es-pair-es')!.textContent)).toEqual([table.hazardPowerLines!.es, table.hazardStructures!.es]);
     expect(hz.map((h) => h.querySelector('.es-pair-en')!.textContent)).toEqual([`inglés ${CREW_LINES.hazardPowerLines}`, `inglés ${CREW_LINES.hazardStructures}`]);
     for (const h of hz) expect(h.textContent).not.toContain(POINTER);
-    expect(work.querySelector('.permit')!.textContent).toBe(`${POINTER}${CREW_LINES.permitLikely}en inglés`);
-    const held = [
-      [SRC({ permitStatus: 'NO_OVERLAY_VERIFY' }), CREW_LINES.noOverlayVerify],
-      [SRC({ permitStatus: null, permitUnreadable: true }), CREW_LINES.permitUnreadable],
-      [SRC({ permitStatus: null, permitScreenPending: true }), CREW_LINES.permitScreenPending],
+    const notes = [
+      [SRC(), 'permitLikely'],
+      [SRC({ permitStatus: 'REVIEW_NEEDED' }), 'reviewNeeded'],
+      [SRC({ permitStatus: 'NO_OVERLAY_VERIFY' }), 'noOverlayVerify'],
+      [SRC({ permitStatus: null, permitUnreadable: true }), 'permitUnreadable'],
+      [SRC({ permitStatus: null, permitScreenPending: true }), 'permitScreenPending'],
     ] as const;
-    for (const [s, en] of held) {
-      const w = (await draw(runtime('es'), { workOrders: [buildCrewPayload(s)], notWorkOrders: 0, contractLookupFailed: false })).work;
-      expect(w.querySelector('.permit')!.textContent, en).toBe(`${POINTER}${en}en inglés`);
+    for (const [s, id] of notes) {
+      const permit = (await draw(runtime('es'), { workOrders: [buildCrewPayload(s)], notWorkOrders: 0, contractLookupFailed: false })).work.querySelector('.permit')!;
+      expect(permit.querySelector('.es-pair-es')!.textContent, id).toBe(table[id]!.es);
+      expect(permit.querySelector('.es-pair-en')!.textContent, id).toBe(`inglés ${CREW_LINES[id]}`);
+      expect(permit.querySelector('.es-pair-en')!.getAttribute('lang'), id).toBe('en');
+      expect(permit.textContent, id).not.toContain(POINTER);
+      expect(permit.textContent.endsWith('en inglés'), id).toBe(false);
     }
-    const rn = (await draw(runtime('es'), { workOrders: [buildCrewPayload(SRC({ permitStatus: 'REVIEW_NEEDED' }))], notWorkOrders: 0, contractLookupFailed: false })).work.querySelector('.permit')!;
-    expect(rn.querySelector('.es-pair-es')!.textContent).toBe(table.reviewNeeded!.es);
-    expect(rn.querySelector('.es-pair-en')!.textContent).toBe(`inglés ${CREW_LINES.reviewNeeded}`);
-    expect(rn.textContent).not.toContain(POINTER);
   });
 
   it('once a line’s review is recorded, the server sends its twin and the page shows the Spanish over the FULL English', async () => {

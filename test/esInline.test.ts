@@ -86,13 +86,19 @@ describe('what may be inlined — a broken unit is named; a banned, unservable o
   // draft pair, and a recorded pair edited by one character, have no review — both held back.
   // D112 held-five round: HELD's new pair is recorded (served); the draft is PERMIT LIKELY's
   // work-order line, still held; HELD's replaced Spanish has no entry at all (held).
+  // D112's protected-work round (fixture moved, meaning kept): PERMIT LIKELY's work-order line is
+  // recorded now (served); the committed ledger holds no draft, so the unreviewed one is that line in
+  // a wording no blind pass agreed with (D111's "en zona protegida") — no entry at all (held).
   writeFileSync(join(dir, 'crew-safety.es.json'), JSON.stringify({
     'PERMIT LIKELY': 'PROBABLEMENTE SE NECESITA PERMISO',
     HELD: 'NO LO MANEJE NI LO USE — FUERA DE SERVICIO (FRENOS O DIRECCIÓN)',
     'PERMIT LIKELY — do not start protected work until the permit is confirmed.': 'PROBABLEMENTE SE NECESITA PERMISO — no empiece el trabajo que requiere permiso (protected work) hasta que se confirme el permiso.',
     'NO AERIAL WORK': 'NO PUEDE TRABAJAR EN ALTURa',
   }));
-  writeFileSync(join(dir, 'crew-replaced.es.json'), JSON.stringify({ HELD: 'NO SE MANEJA — FRENOS/DIRECCIÓN' }));
+  writeFileSync(join(dir, 'crew-replaced.es.json'), JSON.stringify({
+    HELD: 'NO SE MANEJA — FRENOS/DIRECCIÓN',
+    'PERMIT LIKELY — do not start protected work until the permit is confirmed.': 'PROBABLEMENTE SE NECESITA PERMISO — no empiece el trabajo en zona protegida (protected work) hasta que se confirme el permiso.',
+  }));
   writeFileSync(join(dir, 'crew-slots.es.json'), JSON.stringify({ '{n} calls today': '{count} llamadas hoy' }));
   writeFileSync(join(dir, 'crew-broken.es.json'), '{"Language": ');
   writeFileSync(join(dir, 'crew-notflat.es.json'), JSON.stringify({ Language: { es: 'Idioma' } }));
@@ -110,10 +116,14 @@ describe('what may be inlined — a broken unit is named; a banned, unservable o
   it('a banned Spanish word, a renamed slot, or a safety line the ledger has not cleared is held back — the rest of the unit stays', () => {
     expect(d.units['crew-good']).toEqual({ Language: 'Idioma', 'Wait {n} minutes': 'Espere {n} minutos' });
     expect(d.units['crew-banned']).toEqual({ 'Look it up': 'Búsquelo' });
-    expect(d.units['crew-safety']).toEqual({ 'PERMIT LIKELY': 'PROBABLEMENTE SE NECESITA PERMISO', HELD: 'NO LO MANEJE NI LO USE — FUERA DE SERVICIO (FRENOS O DIRECCIÓN)' });
+    expect(d.units['crew-safety']).toEqual({
+      'PERMIT LIKELY': 'PROBABLEMENTE SE NECESITA PERMISO',
+      HELD: 'NO LO MANEJE NI LO USE — FUERA DE SERVICIO (FRENOS O DIRECCIÓN)',
+      'PERMIT LIKELY — do not start protected work until the permit is confirmed.': 'PROBABLEMENTE SE NECESITA PERMISO — no empiece el trabajo que requiere permiso (protected work) hasta que se confirme el permiso.',
+    });
     expect(d.units['crew-replaced']).toEqual({});
     expect(d.units['crew-slots']).toEqual({});
-    expect(d.held.map((h) => `${h.unit}:${h.key}`).sort()).toEqual(['crew-banned:No overlay found', 'crew-replaced:HELD', 'crew-safety:NO AERIAL WORK', 'crew-safety:PERMIT LIKELY — do not start protected work until the permit is confirmed.', 'crew-slots:{n} calls today']);
+    expect(d.held.map((h) => `${h.unit}:${h.key}`).sort()).toEqual(['crew-banned:No overlay found', 'crew-replaced:HELD', 'crew-replaced:PERMIT LIKELY — do not start protected work until the permit is confirmed.', 'crew-safety:NO AERIAL WORK', 'crew-slots:{n} calls today']);
   });
 });
 
