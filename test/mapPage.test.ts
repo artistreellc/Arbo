@@ -171,6 +171,15 @@ describe('the scans hold against the gaps the review found', () => {
     expect(gets).toEqual(['arboMapLayers', 'arboTheme']);
     expect(script).not.toMatch(/localStorage\[|localStorage\.(?!getItem|setItem)/);
   });
+  // Verification round (D106): the scan above reads one level of brackets, so a point stored as
+  // setItem('x', JSON.stringify(stops.map((s) => [s.lat, s.lon]))) slipped past it. Every use, however it is written.
+  it('every use of storage is one of three exact calls — a point is never kept, however it is written', () => {
+    const uses = [...script.matchAll(/localStorage[\s\S]{0,60}/g)].map((m) => m[0]);
+    const allowed = ["localStorage.getItem('arboMapLayers')", "localStorage.getItem('arboTheme')", "localStorage.setItem('arboMapLayers', JSON.stringify(ON));"];
+    for (const u of uses) expect(allowed.some((a) => u.startsWith(a)), u).toBe(true);
+    expect(uses).toHaveLength(3);
+    expect(page).not.toMatch(/sessionStorage|indexedDB|document\.cookie|caches\./);
+  });
   it('no referrer setting of any kind on the page (OSM\'s tile policy needs the Referer)', () => {
     expect(page).not.toMatch(/referrer/i);
   });
