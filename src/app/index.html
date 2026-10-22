@@ -866,6 +866,19 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 .badge:has(> .es-pair-es){display:inline-block;border-radius:var(--r-md);white-space:normal;text-align:left;max-width:100%}
 /* R27 Phase A (es-owner-a): a held safety line's Spanish pointer — its own line, above the English (as the crew door). */
 .es-held-why{display:block;margin-bottom:2px;font-size:.85em;font-weight:700}
+/* R27 Phase A (es-owner-a): Spanish words run longer. At 320px "Prospectos" and "Calendario" are wider than a fifth
+   of the dock, so in Spanish each button takes the room its word needs (never under a 44px tap target, the 12px label
+   floor kept); English keeps its equal fifths. A long Spanish sheet title never squeezes Close under 44px. */
+@media (max-width:359px){html[lang="es"] nav button{flex:1 1 auto;min-width:44px}}
+.sheet-head > button{flex:none}
+.badge .es-en-mark{color:inherit;border-color:currentColor;opacity:.85}
+/* A Spanish hero label holds longer words ("PENDIENTES"): a little less letter-spacing keeps three stats whole from
+   390px up; narrower phones (375, 320) lay them out two across, the last across both, and a word that still cannot
+   fit hyphenates (or breaks) inside its own tile — never pushing a tile off the screen. A long Spanish systems chip
+   wraps inside the screen. */
+html[lang="es"] .hstat span,html[lang="es"] .hstat small{letter-spacing:.08em;-webkit-hyphens:auto;hyphens:auto}
+html[lang="es"] .sys{white-space:normal;max-width:100%;line-height:1.25}
+@media (max-width:389px){html[lang="es"] .hero-stats{grid-template-columns:repeat(2,minmax(0,1fr))}html[lang="es"] .hero-stats > :last-child{grid-column:1 / -1}html[lang="es"] .hstat span,html[lang="es"] .hstat small{overflow-wrap:anywhere}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -2996,16 +3009,25 @@ function beforeYouRoll(emgP, stormP, note) {
           row(k, tf('{who} can’t go aerial', { who }), () => openPanel(DESK_VIEW.safety, () => [...document.querySelectorAll('#view-' + DESK_VIEW.safety + ' [data-crew]')].find((x) => x.dataset.crew === id)));
           n++;
         }
-        for (const b of r.v.blindSpots) { row(k, tf('⚠ CANNOT SEE · {what}', { what: b }), () => openPanel(DESK_VIEW.safety, 'queue-safety')); blind++; }
+        // R27 Phase A (es-owner-a): the blind spot is the server's own words (Phase B twins them) — in Spanish the
+        // line keeps them, marked "en inglés", inside one span so the row stays one line of text beside its chevron.
+        for (const b of r.v.blindSpots) {
+          const line = tf('⚠ CANNOT SEE · {what}', { what: b });
+          row(k, ES.lang === 'es' ? (n) => { n.appendChild(el('span', '', line)).appendChild(esEnMark()); } : line, () => openPanel(DESK_VIEW.safety, 'queue-safety'));
+          blind++;
+        }
       } else if (k === 'fleet') {
         for (const u of r.v.units.filter((x) => x.status === 'held' || x.status === 'down')) {
           // R27 #4: DOWN and HELD are safety labels (UNIT_STATUS's words) — said through esSay; English as before.
+          // In Spanish the pair is drawn inside one span, so the row stays one block of text (a flex row would
+          // split the name, the pair and the reason into columns); in English the button holds the line itself.
           const said = (b) => {
+            const t = ES.lang === 'es' ? b.appendChild(el('span')) : b;
             const lead = tf('{unit} is', { unit: u.name }) + ' ';
             if (u.status === 'held') {
-              esSay(b, 'HELD', lead);
-              b.appendChild(document.createTextNode(' · ' + (u.holdReason || T('brake/steering defect'))));
-            } else esSay(b, 'DOWN', lead);
+              esSay(t, 'HELD', lead);
+              t.appendChild(document.createTextNode(' · ' + (u.holdReason || T('brake/steering defect'))));
+            } else esSay(t, 'DOWN', lead);
           };
           row(k, said,
             () => openPanel(DESK_VIEW.fleet, () => [...document.querySelectorAll('#view-' + DESK_VIEW.fleet + ' [data-unit]')].find((x) => x.dataset.unit === u.id)));
@@ -7292,7 +7314,7 @@ function buildSystems() {
     // Cut and simulation are switches Mike set on purpose: grey, like every other
     // cut on the screen. Anything else Arbo does not know stays amber.
     // Read-only is a switch Mike set on purpose too: grey, and worded, never 'live'.
-    SYS('links', d === 'live' ? 'ok' : d === 'cut' || d === 'simulation' || d === 'readonly' ? 'cut' : 'warn', d === 'live' ? T('live') : d === 'cut' ? T('cut on purpose') : d === 'readonly' ? T('read-only') : d);
+    SYS('links', d === 'live' ? 'ok' : d === 'cut' || d === 'simulation' || d === 'readonly' ? 'cut' : 'warn', d === 'live' ? T('live') : d === 'cut' ? T('cut on purpose') : d === 'readonly' ? T('read-only') : d === 'simulation' ? T('simulation') : d === 'unknown' ? T('unknown') : d);
   }).catch(() => SYS('links', 'warn', T('unreadable'))); // unknown is amber, never red
   return row;
 }

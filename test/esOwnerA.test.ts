@@ -530,3 +530,44 @@ describe('the shared lines in Spanish — every failure still named (§1B), now 
     expect(s).not.toMatch(/Not in the route|Unnamed/);
   });
 });
+
+// ── What the browser check (390x844 and 320x640, sim / cut / read-only) found in Spanish, kept fixed. ──
+describe('Spanish on a small phone — the browser check’s findings stay fixed (English untouched)', () => {
+  const css = INDEX.slice(0, INDEX.indexOf('</style>'));
+  it('at 320px the Spanish dock words fit: each button takes its word’s room, never under 44px; English keeps equal fifths', () => {
+    expect(css).toContain('@media (max-width:359px){html[lang="es"] nav button{flex:1 1 auto;min-width:44px}}');
+    expect(css).toContain('nav button{flex:1 1 0;min-width:0;min-height:56px;');
+  });
+  it('a long Spanish sheet title never squeezes Close under 44px', () => {
+    expect(css).toContain('.sheet-head > button{flex:none}');
+  });
+  it('the hero never pushes a Spanish stat off the screen, and a long systems chip wraps inside it', () => {
+    expect(css).toContain('html[lang="es"] .hstat span,html[lang="es"] .hstat small{letter-spacing:.08em;-webkit-hyphens:auto;hyphens:auto}');
+    expect(css).toContain('@media (max-width:389px){html[lang="es"] .hero-stats{grid-template-columns:repeat(2,minmax(0,1fr))}html[lang="es"] .hero-stats > :last-child{grid-column:1 / -1}html[lang="es"] .hstat span,html[lang="es"] .hstat small{overflow-wrap:anywhere}}');
+    expect(css).toContain('html[lang="es"] .sys{white-space:normal;max-width:100%;line-height:1.25}');
+    expect(css).toContain('.hero-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px}'); // English as before
+  });
+  it('an "en inglés" mark inside a chip reads in the chip’s own colour', () => {
+    expect(css).toContain('.badge .es-en-mark{color:inherit;border-color:currentColor;opacity:.85}');
+  });
+  it('a fleet row in Spanish is one block of text (the pair inside one span); in English the button holds the line itself', () => {
+    expect(INDEX).toContain("const t = ES.lang === 'es' ? b.appendChild(el('span')) : b;");
+    expect(INDEX).toContain("esSay(t, 'HELD', lead);");
+    expect(INDEX).toContain("} else esSay(t, 'DOWN', lead);");
+  });
+  it('the systems chip says simulation and unknown in the page’s language (English unchanged)', () => {
+    expect(INDEX).toContain(": d === 'simulation' ? T('simulation') : d === 'unknown' ? T('unknown') : d);");
+  });
+  it('a server line is never passed off as Spanish: the blind spot, the Quo wiring detail and the map’s own server lines are marked "en inglés"', () => {
+    expect(INDEX).toContain("row(k, ES.lang === 'es' ? (n) => { n.appendChild(el('span', '', line)).appendChild(esEnMark()); } : line,");
+    expect(INDEX).toContain("reg.replaceChildren(esSayTwin(el('span'), st.registration, 'detail'));");
+    expect(MAP).toContain("if (g.en && ES.lang === 'es') { said.setAttribute('lang', 'en'); said.appendChild(esEnMark()); }");
+    expect(MAP).toContain('en: g.text === d.line || g.text === d.tomtomLine }));');
+  });
+  it('a count Spanish cannot agree with stays number-invariant ("1 con alerta", never "1 marcadas")', () => {
+    const today = readUnit('app-today.es.json')!;
+    expect(today['{n} flagged']).toBe('{n} con alerta');
+    expect(today['{n} read — sorting continues for a few minutes']).toBe('leídos: {n} — el orden sigue unos minutos');
+    expect(readUnit('app-leads.es.json')!['{label}: {n} counted, {state} — not the whole count']).toBe('{label}: {n} en la cuenta, {state} — no es la cuenta completa');
+  });
+});

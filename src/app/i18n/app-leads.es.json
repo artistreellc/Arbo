@@ -207,7 +207,7 @@
   "No call Arbo read needs you": "Ninguna llamada que Arbo leyó lo necesita",
   "Her rule flags can’t show here — not the same as none.": "Sus alertas de reglas no pueden mostrarse aquí — no es lo mismo que ninguna.",
   "Leads and Calls & texts": "Prospectos y Llamadas y mensajes",
-  "{label}: {n} counted, {state} — not the whole count": "{label}: {n} contados, {state} — no es la cuenta completa",
+  "{label}: {n} counted, {state} — not the whole count": "{label}: {n} en la cuenta, {state} — no es la cuenta completa",
   "{label}: {state} — not a zero": "{label}: {state} — no es un cero",
   "{label}: {n}": "{label}: {n}",
   "{label}: none to count": "{label}: nada que contar",

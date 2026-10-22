@@ -533,7 +533,9 @@ function drawStatus() {
   for (const slot of order) {
     for (const g of GAPS[slot]) {
       const row = el('div', 'line ' + g.cls);
-      row.appendChild(el('span', '', g.text));
+      const said = row.appendChild(el('span', '', g.text));
+      // R27 Phase A (es-owner-a): a line the server wrote (Phase B twins it) stays English in Spanish, marked so.
+      if (g.en && ES.lang === 'es') { said.setAttribute('lang', 'en'); said.appendChild(esEnMark()); }
       if (g.link) {
         const a = el('a', '', MAP_SAYS.openArbo);
         a.href = '/app#map';
@@ -1087,7 +1089,7 @@ function drawPins() {
 }
 function drawToday(d) {
   TODAY.d = d;
-  GAPS.today = todayLines(d).map((g) => ({ cls: g.cls, text: g.text, retry: g.retry ? readToday : null }));
+  GAPS.today = todayLines(d).map((g) => ({ cls: g.cls, text: g.text, retry: g.retry ? readToday : null, en: g.text === d.line || g.text === d.tomtomLine }));
   drawMarkers();
   drawStatus();
   drawFacts();
@@ -1144,7 +1146,11 @@ KEYS.today = () => {
   if (!d) return [];
   const out = [];
   const plan = planNote(d);
-  if (plan) out.push(el('div', 'muted', plan));
+  if (plan) {
+    const p = el('div', 'muted', plan); // the server's plan line: English, marked so in Spanish (Phase B twins it)
+    if (ES.lang === 'es') { p.setAttribute('lang', 'en'); p.appendChild(esEnMark()); }
+    out.push(p);
+  }
   // What the pins and the line mean — only what is drawn.
   if (!d.stops.length) return out;
   for (const k of legendPins(d.stops)) {
