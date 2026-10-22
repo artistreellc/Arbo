@@ -42,8 +42,17 @@ const ORDER = 'Do not start work — call the office.';
 // Review round (D111, UI 1 + 3): the Spanish pointer a held safety line wears, on its own line.
 const POINTER = 'Aviso de seguridad — por ahora solo en inglés; pídale a alguien que se lo lea:';
 const raw = (unit: string): Record<string, string> => JSON.parse(readFileSync(new URL(`../src/app/i18n/${unit}.es.json`, import.meta.url), 'utf8'));
-/** The dictionary as it will be served once the stop-work orders' reviews are recorded (nothing else changes). */
-const REVIEWED_UNITS = { ...SERVED.units, 'crew-gate': raw('crew-gate'), 'crew-work': raw('crew-work') };
+// D112: the committed ledger records the three stop-work orders' blind review, so the dictionary as
+// served (SERVED) holds nothing back. HELD_UNITS is the same dictionary with those three held back, as
+// it is served for any safety line whose review is NOT recorded — so the page's held-line drawing (the
+// pointer, the English marked) is still proven; HELD and four permit lines are held in the ledger today.
+const SAFETY_ORDERS = [
+  'Do not start work — call the office.',
+  'Your work orders stay locked — do not start work; call the office to log your briefing.',
+  'This is not an empty day — do not start work; call the office.',
+];
+const withoutOrders = (u: Record<string, string>): Record<string, string> => Object.fromEntries(Object.entries(u).filter(([k]) => !SAFETY_ORDERS.includes(k)));
+const HELD_UNITS = { ...SERVED.units, 'crew-gate': withoutOrders(raw('crew-gate')), 'crew-work': withoutOrders(raw('crew-work')) };
 
 const PANELS = ['dateline', 'whoami', 'gate-slot', 'quiz', 'work', 'library', 'nearmiss'];
 const CODE = 'c0de0000-0000-4000-8000-00000000000a';
@@ -129,9 +138,15 @@ describe('work orders in Spanish — the page’s words in Spanish, the job’s 
     return { p, work: node(rt, 'work') };
   };
 
-  it('no review recorded (today): every hazard and the permit note show the English, marked "en inglés"', async () => {
-    const wo = buildCrewPayload(SRC());
-    expect('es' in wo).toBe(false); // the committed ledger holds drafts only
+  it('the dictionary as served holds nothing back: the stop-work orders are recorded (D112), the units as written', () => {
+    expect(SERVED.held).toEqual([]);
+    expect(SERVED.units['crew-gate']).toEqual(raw('crew-gate'));
+    expect(SERVED.units['crew-work']).toEqual(raw('crew-work'));
+  });
+
+  it('no review recorded (a held line): every hazard and the permit note show the pointer, then the English, marked "en inglés"', async () => {
+    const wo = { ...buildCrewPayload(SRC()) };
+    delete wo.es; // as the server sends it while no line's review is recorded
     const rt = runtime('es');
     const { work } = await draw(rt, { workOrders: [wo], notWorkOrders: 0, contractLookupFailed: false });
     const t = work.textContent;
@@ -145,6 +160,33 @@ describe('work orders in Spanish — the page’s words in Spanish, the job’s 
     for (const h of hz) expect(h.all().some((k) => k.getAttribute('lang') === 'en' && k.textContent === h.textContent.slice(2 + POINTER.length, -'en inglés'.length))).toBe(true);
     expect(hz[0]!.className).toBe('hz power');
     expect(work.querySelector('.permit')!.textContent).toBe(`${POINTER}${CREW_LINES.permitLikely}en inglés`);
+  });
+
+  // D112: what the committed ledger serves — the two hazards and REVIEW NEEDED recorded (Spanish over the
+  // FULL English, no pointer); PERMIT LIKELY, NO OVERLAY, the unreadable and the pending lines held.
+  it('the committed ledger (D112): both hazards read Spanish over their full English; a held permit note keeps the pointer; REVIEW NEEDED reads Spanish', async () => {
+    const table = readTwinTable('crew-workorder')!;
+    const { work } = await draw(runtime('es'), { workOrders: [buildCrewPayload(SRC())], notWorkOrders: 0, contractLookupFailed: false });
+    const hz = work.querySelectorAll('.hz');
+    expect(hz).toHaveLength(2);
+    expect(hz[0]!.className).toBe('hz power');
+    expect(hz.map((h) => h.querySelector('.es-pair-es')!.textContent)).toEqual([table.hazardPowerLines!.es, table.hazardStructures!.es]);
+    expect(hz.map((h) => h.querySelector('.es-pair-en')!.textContent)).toEqual([`inglés ${CREW_LINES.hazardPowerLines}`, `inglés ${CREW_LINES.hazardStructures}`]);
+    for (const h of hz) expect(h.textContent).not.toContain(POINTER);
+    expect(work.querySelector('.permit')!.textContent).toBe(`${POINTER}${CREW_LINES.permitLikely}en inglés`);
+    const held = [
+      [SRC({ permitStatus: 'NO_OVERLAY_VERIFY' }), CREW_LINES.noOverlayVerify],
+      [SRC({ permitStatus: null, permitUnreadable: true }), CREW_LINES.permitUnreadable],
+      [SRC({ permitStatus: null, permitScreenPending: true }), CREW_LINES.permitScreenPending],
+    ] as const;
+    for (const [s, en] of held) {
+      const w = (await draw(runtime('es'), { workOrders: [buildCrewPayload(s)], notWorkOrders: 0, contractLookupFailed: false })).work;
+      expect(w.querySelector('.permit')!.textContent, en).toBe(`${POINTER}${en}en inglés`);
+    }
+    const rn = (await draw(runtime('es'), { workOrders: [buildCrewPayload(SRC({ permitStatus: 'REVIEW_NEEDED' }))], notWorkOrders: 0, contractLookupFailed: false })).work.querySelector('.permit')!;
+    expect(rn.querySelector('.es-pair-es')!.textContent).toBe(table.reviewNeeded!.es);
+    expect(rn.querySelector('.es-pair-en')!.textContent).toBe(`inglés ${CREW_LINES.reviewNeeded}`);
+    expect(rn.textContent).not.toContain(POINTER);
   });
 
   it('once a line’s review is recorded, the server sends its twin and the page shows the Spanish over the FULL English', async () => {
@@ -202,8 +244,16 @@ describe('work orders in Spanish — the page’s words in Spanish, the job’s 
     const { work } = await draw(runtime('es'), { workOrders: [], notWorkOrders: 0, contractLookupFailed: true });
     expect(work.textContent).toContain('No se pueden confirmar los trabajos de hoy');
     expect(work.textContent).toContain('Arbo no pudo leer la lista de contratos, así que ningún trabajo está confirmado. ');
-    // The stop-work order is a safety line with no recorded review: the English, marked.
-    expect(work.textContent).toContain(`${POINTER}This is not an empty day — do not start work; call the office.en inglés`);
+    // D112 (pin moved): the stop-work order's review is recorded — Spanish first, the FULL English beneath, no pointer.
+    const EMPTY_DAY = 'This is not an empty day — do not start work; call the office.';
+    expect(work.querySelectorAll('.es-pair')).toHaveLength(1);
+    const pair = work.querySelector('.es-pair')!;
+    expect(pair.querySelector('.es-pair-es')!.textContent).toBe('Esto no es un día vacío — no empiece a trabajar; llame a la oficina.');
+    expect(pair.querySelector('.es-pair-en')!.textContent).toBe(`inglés ${EMPTY_DAY}`);
+    expect(work.textContent).not.toContain(POINTER);
+    // Held (no review recorded), the same line is the pointer and the English, marked.
+    const heldWork = (await draw(runtime('es', HELD_UNITS), { workOrders: [], notWorkOrders: 0, contractLookupFailed: true })).work;
+    expect(heldWork.textContent).toContain(`${POINTER}${EMPTY_DAY}en inglés`);
   });
 });
 
@@ -263,8 +313,10 @@ describe('the gate in Spanish — its words in Spanish, the briefing the office�
     expect(body.textContent).not.toContain('Charla');
   });
 
-  it('a refused sign-off names the reason in Spanish, then the stop-work order: the English, marked, until its review is recorded — GO never green', async () => {
-    const rt = runtime('es');
+  // D112 (pin moved, meaning kept): the committed ledger records this order, so a HELD order is shown
+  // with HELD_UNITS — the dictionary as served for a line whose review is not recorded.
+  it('a refused sign-off names the reason in Spanish, then a held stop-work order: the English, marked — GO never green', async () => {
+    const rt = runtime('es', HELD_UNITS);
     const p = page(rt, refused(503, 'link_cut'));
     p.renderGate({ ...BRIEF });
     p.GATE.scrolled = true; p.GATE.checked = true; p.GATE.openedMs = Date.now() - 60_000;
@@ -281,8 +333,8 @@ describe('the gate in Spanish — its words in Spanish, the briefing the office�
     expect(status.querySelectorAll('.es-pair')).toHaveLength(1);
   });
 
-  it('once the order’s review is recorded it reads Spanish first, the FULL English beneath (R27 #4)', async () => {
-    const rt = runtime('es', REVIEWED_UNITS);
+  it('the order’s review is recorded (D112), so as served it reads Spanish first, the FULL English beneath (R27 #4) — no pointer, GO never green', async () => {
+    const rt = runtime('es');
     const p = page(rt, refused(503, 'link_cut'));
     p.renderGate({ ...BRIEF });
     p.GATE.scrolled = true; p.GATE.checked = true; p.GATE.openedMs = Date.now() - 60_000;
@@ -290,15 +342,30 @@ describe('the gate in Spanish — its words in Spanish, the briefing the office�
     const status = node(rt, 'gate-slot').querySelector('#gate-status')!;
     expect(status.querySelector('.es-pair-es')!.textContent).toBe(raw('crew-gate')[ORDER_LOCKED]);
     expect(status.querySelector('.es-pair-en')!.textContent).toBe(`inglés ${ORDER_LOCKED}`);
+    expect(status.textContent).not.toContain(POINTER);
+    expect(status.querySelector('.es-held-why')).toBeNull();
+    expect(node(rt, 'gate-slot').querySelector('#gobtn')!.className).toBe('');
   });
 
-  it('the read-only note: Spanish, with its stop-work order its own bold line (the English, marked, today)', async () => {
+  it('the read-only note: Spanish, with its stop-work order its own bold line — recorded (D112): Spanish over the FULL English', async () => {
     const rt = runtime('es');
     const p = page(rt, () => ({}), { links: 'readonly' });
     p.renderGate({ ...BRIEF });
     await settle();
     const ro = node(rt, 'gate-slot').querySelector('.ro-note')!;
     expect(ro.children[0]!.textContent).toBe('Arbo está en solo lectura hoy — su firma no se puede guardar en este teléfono.');
+    expect(ro.children[1]!.tagName).toBe('b');
+    expect(ro.children[1]!.querySelector('.es-pair-es')!.textContent).toBe(raw('crew-gate')[ORDER]);
+    expect(ro.children[1]!.querySelector('.es-pair-en')!.textContent).toBe(`inglés ${ORDER}`);
+    expect(ro.children[1]!.querySelector('.es-held-why')).toBeNull();
+  });
+
+  it('the read-only note with the order held (no review recorded): the pointer, then the English, marked', async () => {
+    const rt = runtime('es', HELD_UNITS);
+    const p = page(rt, () => ({}), { links: 'readonly' });
+    p.renderGate({ ...BRIEF });
+    await settle();
+    const ro = node(rt, 'gate-slot').querySelector('.ro-note')!;
     expect(ro.children[1]!.tagName).toBe('b');
     expect(ro.children[1]!.textContent).toBe(`${POINTER}${ORDER}en inglés`);
     // UI 1: the pointer is Spanish and its own line; the order is English, its own line under it.
