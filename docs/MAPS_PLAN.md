@@ -1,6 +1,6 @@
 # Arbo maps: build plan
 
-**Status (2026-10-21):** M0 and M1 built (D106, branch `maps-a`, commits 6938c2c and 6f4a5ce; draft ruling R37), then reviewed and fixed on the same branch (D106's review round: 45a3fa4, adead5d, df4f3b2; its verification round: f081d18, 5c1029a) — not deployed (Railway unreachable from the build). The ZIP table ships empty (the Census host was refused from the build machine), so ZIP-area pins wait on it; layer 33's limits are not read yet (M2 waits on them). M2, M3 and M4 are not built. Where the review moved the plan, the lines below say so ("review, D106").
+**Status (2026-10-22):** M0–M4 built: M0 and M1 in D106 (maps wave A, merged to main as f4c0487; draft ruling R37), M2, M3 and M4 in D108 (maps wave B, branch `maps-b`: the ZIP table 600ab2b, M2 4f8ace1, M3 6398b13, M4 91eb461, self-review fixes d2d98b5). Not deployed (Railway unreachable from the build). The ZIP-area table is filled from the Census 2020 ZCTA points (TIGERweb layer 11, checked 2026-10-22): 39 accepted ZIPs placed, 30 named "no map area". Layer 33's limits are recorded in `layers.ts` (read 2026-10-21: 1:50,000 and closer, 4096 px images). Still waiting on Mike: the questions below (Q6, Q7, Q8, Q11, Q14, Q15 are built as their defaults), and the phone checks after a deploy (live tiles, live DEQ shading, real trucks once Bouncie is connected). Where a review or wave B moved the plan, the lines below say so ("review, D106"; "wave B, D108").
 
 **Status when drafted:** plan only, not built yet. Drafted read-only on 2026-10-21 against main e4a6415, then revised once against a 25-point critique. All 25 points were taken. At e4a6415:
 - Direction B was complete.
@@ -126,7 +126,7 @@ These are `SLOW::ARBO` files. Read every line of one before editing it.
 | File | Change |
 |---|---|
 | `src/server.ts` | `/map` routes and CSP; `/api/map/today` |
-| `src/app/index.html` | Map view, `openMap`, message listener, ↻ hand-off, key getter |
+| `src/app/index.html` | Map view, `openMap`, message listener, ↻ hand-off, key getter; wave B (D108): the links' getter (`arboMapLinks`), the entry buttons on Permit rules, the prep's permit result, the Leads header and Fleet's header (`deskView` takes an optional head extra) |
 | `src/server/appPage.ts` | `loadMapHtml`, `loadLeafletFile` |
 | `src/ops/todayStops.ts` | one method that returns the rows before `strip()` |
 | `src/integrations/tomtom.ts` | a read-only `peek(query)` |
@@ -218,7 +218,7 @@ New files: `src/app/map.html`, `src/ops/mapToday.ts`, `src/lib/zipCentroids.ts`,
 **`package.json` and the lockfile:** `leaflet` 1.9.4 in `dependencies`, exact. Its BSD notice stays in the served file.
 
 **`src/server/appPage.ts`:**
-- `loadMapHtml()` inlines the sprite, the ZIP table and the DEQ values.
+- `loadMapHtml()` inlines the ZIP table and the DEQ values. (Wave B, D108: it no longer inlines the sprite — the map page draws no sprite icon, and the sprite was about 12 KB of every map load.)
 - `loadLeafletFile(name)` serves exactly `leaflet.js` and `leaflet.css`.
 
 **`src/server.ts`:**
@@ -231,7 +231,7 @@ New files: `src/app/map.html`, `src/ops/mapToday.ts`, `src/lib/zipCentroids.ts`,
   default-src 'self'; img-src 'self' data: blob: https://tile.openstreetmap.org https://gisdata.deq.virginia.gov; connect-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-ancestors 'self'
   ```
 
-**`src/app/map.html`** (under 30 KB including the ZIP table — review, D106: 40 KB as source after the review's fixes; the inlined sprite, about 12 KB, is unused by the page):
+**`src/app/map.html`** (under 30 KB including the ZIP table — review, D106: 40 KB as source after the review's fixes; the inlined sprite, about 12 KB, is unused by the page — wave B, D108: the sprite is no longer inlined; with all four layers the page is 83,769 bytes as source and 85,878 served (about 15 KB of it comments and 8 KB the one `MAP_SAYS` table) — well over the 30 KB budget, still under Leaflet's own 147 KB; for Mike):
 - **View and zoom:**
   - It opens on the four-city view, at zoom 10–18. (Review, D106: zoom 10 cut Virginia Beach off a phone; the floor is now whatever fits the four cities into the map's clear part on that phone, 8 at the least, never above 10.)
   - Panning is limited to the four cities plus every placed pin, padded, so no placed pin is ever out of reach.
@@ -401,7 +401,7 @@ New files: `src/app/map.html`, `src/ops/mapToday.ts`, `src/lib/zipCentroids.ts`,
 
 ### M2 Permit areas (S; second PR)
 
-**Before building:** read layer 33's `minScale`/`maxScale` (`…/MapServer/33?f=json`) and the service's `maxImageWidth`/`maxImageHeight` (`…/MapServer?f=json`). Do it from Railway or a phone, because the sandbox can't reach DEQ (D37). Record the values and the date in `layers.ts` beside `DEQ_CBPA`. M2 does not merge until this is done.
+**Before building:** read layer 33's `minScale`/`maxScale` (`…/MapServer/33?f=json`) and the service's `maxImageWidth`/`maxImageHeight` (`…/MapServer?f=json`). Do it from Railway or a phone, because the sandbox can't reach DEQ (D37). Record the values and the date in `layers.ts` beside `DEQ_CBPA`. M2 does not merge until this is done. (Wave B, D108: read 2026-10-21 from DEQ's public services and again 2026-10-22 — minScale 50,000, maxScale 0, defaultVisibility false, 4096 × 4096 images, PNG32 — and recorded. The export also sends `dpi = 96 × devicePixelRatio`, so the scale DEQ works out is the zoom Mike sees; the map asks from z13.75, where the projected scale is 1:42,945 — z13.5 is 1:51,070 — and says "Zoom in" below that.)
 
 **What it shows:** DEQ's public RPA layer, as translucent shading.
 - The phone asks DEQ's MapServer `export` for the box in view. Parameters: `layers=show:33`, `format=png32`, `transparent=true`, `bboxSR=4326`, `imageSR=3857`, `f=image`.
@@ -417,7 +417,7 @@ New files: `src/app/map.html`, `src/ops/mapToday.ts`, `src/lib/zipCentroids.ts`,
 - **Outside the layer's scale:** "Zoom in to see RPA areas — DEQ doesn't draw them at this zoom; not drawn is not 'no RPA'."
 - **Image failed:** "Couldn't load the DEQ RPA layer just now — this is not 'no RPA here'. ↻"
 - **Always listed:** "Not on this map: the Virginia Beach, Norfolk and Chesapeake city RPA layers (found, not verified); Portsmouth (no city layer found); floodplain, Norfolk CRO and reservoir areas (no layer). Missing shading is never a 'no'."
-- **Permit records:** "Permit records are cut on purpose (R32) — none are drawn."
+- **Permit records:** "Permit records are cut on purpose (R32) — none are drawn." (Wave B, D108: those words in read-only; with every link cut, "Permit records are cut on purpose — none are drawn."; in practice or live, "Permit records aren't drawn on this map." — the frame learns the links' word from the shell. The legend rides in the map's **Key**, beside DEQ's own orange swatch.)
 
 **Entry:**
 - In Estimate, on the Permit rules header and on the prep's permit result: **RPA areas on the map**. It opens the four-city view (Q11).
@@ -447,7 +447,7 @@ New files: `src/app/map.html`, `src/ops/mapToday.ts`, `src/lib/zipCentroids.ts`,
 - **No new transfers:** no lead address goes anywhere new, and no geocoder is asked.
 - **Where the ZIP comes from:** each lead's ZIP and city come from its property record, embedded in the same answer the Leads tab already shows. The property rows are FLAGGED in `DATA_LINKS.md`, and Mike is told (Q15).
 
-**Jobs:** Mike's jobs live on Google Calendar (R2). Today's are on the Today layer.
+**Jobs:** Mike's jobs live on Google Calendar (R2). Today's are on the Today layer. (Wave B, D108: the job-records line takes the same three forms as the permit records line, by mode.)
 - The layer says: "Jobs are on your Google Calendar — today's are on the Today layer. Other days aren't on the map yet."
 - The map does not read `/api/brief`.
 - Arbo's own job and estimate tables are not drawn. In production both are cut (R32): the job table holds the 11 held rows until the R29 delete, and the estimates fall with the cut job query. Named: "Arbo's job and estimate records are cut on purpose (R32) — none drawn; this is not 'no jobs'."

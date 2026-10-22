@@ -15,9 +15,9 @@ says where things stand.
 ## What it does, and what it never does
 
 - Shows **you** where each truck is: one line per unit on the Fleet card
-  (Fleet screen), e.g. *Last seen 12 min ago · parked*. The map screen will
-  read the same feed later, and a truck's trips for a day
-  (`/api/fleet/trips`).
+  (Fleet screen), e.g. *Last seen 12 min ago · parked*. The Map screen's
+  **Trucks** layer reads the same feed (built, Maps wave B, D108 — see *On
+  the map* below), and a truck's trips for a day (`/api/fleet/trips`).
 - **Owner only.** The crew door never shows it, and the crew key cannot open it.
 - **Working hours only: 8am–8pm, Monday to Saturday** — the same hours as
   the office phone's location (`src/ops/locationIntel.ts`). Outside them
@@ -193,6 +193,35 @@ nothing identifying lands in a request log). Arbo asks Bouncie only for that
 day's working hours, keeps only trips that start and end inside them, and
 reads nothing at all after hours or on a Sunday — each of those is a named
 answer, never "no trips". At most one read a minute per truck and day.
+
+## On the map (Maps wave B, D108)
+
+Office → Fleet → **Trucks on the map** (or `/app#map-trucks`; Back returns to
+Fleet). The Trucks layer reads `/api/fleet/positions` once a minute while it
+is on and the Map is on screen — nothing new on the server, the same owner
+key and the same hours.
+
+- **Until you connect Bouncie** it shows the server's own line, word for
+  word — today *"Bouncie is not set up on the server — … This is not "no
+  trucks"."* — and draws nothing.
+- **Once connected:** each truck by its name (or *VIN …1234*) and its Fleet
+  unit (or *Not matched to a Fleet unit*), with *seen N min ago* from its
+  last fix — the dot sits at the fix, never at a later report. Driving:
+  solid, with an arrow for its heading; parked or just seen: solid; an old
+  fix: grey, *"Last fix 3 h ago — may have moved"*; unplugged: grey,
+  *"Bouncie unplugged — last known spot"*; no fix yet or after hours: listed,
+  not drawn. If Bouncie doesn't answer, the trucks Arbo held show grey under
+  *"Arbo could not read Bouncie just now."*
+- **Dots come down** when a read fails or the phone has no signal, when you
+  leave the Map or the app (until a fresh answer), and at 8 pm by the phone's
+  own clock — before the server's next answer.
+- **Today's trips** on a truck's card draws that truck's trips for today
+  (inside working hours, each path at most 2,000 points); every answer that
+  isn't trips is said in the server's words. If Arbo restarted since, it
+  says *"The truck list changed — pick the truck again."*
+- **Crew aren't on the map** — Arbo has no crew location (Q8: not built
+  without your ruling). The crew door gets no map and no truck read.
+- Nothing is stored on the phone and nothing is logged.
 
 ## How to disconnect
 
