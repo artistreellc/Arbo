@@ -33,8 +33,37 @@ which is STILL OWED before crews rely on any of it (`docs/GO_LIVE.md` §2;
 recorded as pass "person", which no line has yet). A briefing or quiz question
 whose English holds a safety line (911, 811, Dominion, stop work, a badge) is
 never served in Spanish from its row until Mike rules how those get reviewed
-(questions below). Phase A's other units (the owner app's screens) come after.
-Not deployed.
+(questions below).
+
+**Phase A unit 2, the owner app, built (D113, branch `es-owner`, from main
+7b2a835):** three builders wrapped every Direction B screen in parallel —
+the key screen, the shell (header, dock, Back, sheets, toasts, the shared
+§1B feed and save-failure words), Today, Leads and Calls & texts, Calendar,
+the in-app map and the Map page (`map.html`, its own `map` door following
+`arboLang`) (es-owner-a); Estimate, Permit rules, Properties on file,
+Follow-ups, Money, Fleet, Crew & safety (es-owner-b); Office, Numbers,
+Settings, Agents, Measure, Teach Arbo and the assistant (es-owner-c) — and
+were merged as one app: 23 new units (`src/app/i18n/app-*.es.json`,
+`map-*.es.json`, first translation pass, about 1,850 entries), one Spanish
+per English key across every unit, the shared §1B words said in Spanish on
+every screen (never glued to English, never marked English), "en inglés"
+only on the server's own words (Phase B), every safety label through
+`esSay` (a held one wears the pointer), desk names kept as names, and a
+whole-app test (`test/esOwnerWhole.test.ts`) that every statement of the
+page script is in one unit's scan or holds only codes and that the page's
+own markup is said through `T`. **17 new safety-class lines are ledger
+drafts** (EMERGENCY, POWER LINES, DOWN, STOP honored, CALL FIRST, TICKET
+REQUIRED, UNCONFIRMED, STRUCTURES, EXPIRED, NO RECORD, the Estimate lede with
+811, the UNCONFIRMED rule line, "Unit is now DOWN/HELD", the two consent/STOP
+gate lines, the assistant's text rule) — each shown in English under the
+Spanish pointer until a blind second translation and a blind
+back-translation are recorded; the six recorded permit and safety labels are
+served word for word. Server prose (Learn scenarios, Permit Desk facts, the
+Agents desk, ops lines, LiDAR) stays English for Phase B. English is
+byte-identical to main on every screen and deep link the browser pass
+covered. Next: merge main's D112 rounds (HELD and the four protected-work
+lines recorded — the owner app's HELD entries then take the recorded
+wording), the blind passes for the 17 drafts, then Phase B. Not deployed.
 
 Mike, 2026-10-20: *"The whole app needs to be able to have a Spanish version
 as well for our Spanish speaking, employees"* (ruling R27). This is the plan
