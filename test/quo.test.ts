@@ -413,9 +413,9 @@ describe('learning from Quo — no call dropped in silence (Mike, 2026-09-24: "N
     expect(src).toContain('intake.reconcile(line.api, line.phoneNumberId, QUO_LEARN_BACKFILL_MS)');
     expect(src).toContain('const QUO_LEARN_EVERY_MS = 10 * 60 * 1000;');
     const html = readFileSync(new URL('../src/app/index.html', import.meta.url), 'utf8');
-    expect(html).toContain("'event') + ' Arbo could not use (");
-    expect(html).toContain('That doesn\\u2019t mean no calls came in.');
-    expect(html).toContain('checked against Quo\\u2019s own record');
+    expect(html).toContain("'Quo sent {n} event Arbo could not use ({list})"); // R27 Phase A (es-owner-a): one sentence per count
+    expect(html).toContain('That doesn\u2019t mean no calls came in.');
+    expect(html).toContain('checked against Quo\u2019s own record');
     expect(html).not.toContain('no Sona calls since deploy');
   });
 });

@@ -141,6 +141,13 @@ html.night .swatch.rpa{background:linear-gradient(rgba(230,152,0,.5),rgba(230,15
 .pop small{display:block;font-weight:500;color:var(--ink-3)}
 .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--card);color:var(--ink-1)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+/* R27 Phase A (es-owner-a): the Spanish marks, as the doors draw them — nothing here draws in English. */
+.es-pair-es{display:block}
+.es-pair-en{display:block;margin-top:2px;font-size:.85em;font-weight:600;opacity:.85}
+.es-pair-tag{display:inline-block;margin-right:5px;padding:0 4px;border:1px solid currentColor;border-radius:4px;opacity:.75;font-size:.9em;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.es-en-mark{display:inline-block;margin-left:6px;padding:1px 6px;border:1px solid var(--border);border-radius:999px;font-size:12px;font-weight:700;color:var(--ink-3);vertical-align:middle}
+.es-broken{border-left:3px solid var(--warning);background:var(--card);color:var(--ink-1);border-radius:10px;padding:8px 10px;margin:0 0 6px;font-size:13px;font-weight:600;line-height:1.35}
+.es-broken div+div{margin-top:3px;font-weight:500;color:var(--ink-2)}
 </style>
 </head>
 <body>
@@ -163,6 +170,7 @@ html.night .swatch.rpa{background:linear-gradient(rgba(230,152,0,.5),rgba(230,15
 <script type="application/json" id="map-zips"><!--ARBO:ZIPS--></script>
 <script type="application/json" id="map-deq"><!--ARBO:DEQ--></script>
 <script src="/map/leaflet.js"></script>
+<!--ARBO:I18N-->
 <script>
 'use strict';
 const $ = (id) => document.getElementById(id);
@@ -173,146 +181,147 @@ const el = (tag, cls, text) => {
   return n;
 };
 
-// Every sentence the map says, in one place (Spanish later, R27). None of them says "clear".
+// Every sentence the map says, in one place. None of them says "clear". R27 Phase A (es-owner-a): each through the
+// runtime's T (the map's own door dictionary, map-*.es.json; the map follows the office app's arboLang) — read once
+// at load, since a language change reloads the office app and its frame. A {slot} is filled by .replace, once each.
 const MAP_SAYS = {
-  nameToday: 'Today',
-  namePermits: 'Permit areas',
-  nameLeads: 'Leads & jobs',
-  nameTrucks: 'Trucks',
-  practice: 'PRACTICE DATA — pins sit in their ZIP area; these are not real places.',
-  todayFailed: 'Today’s stops: couldn’t read them just now. This is not an empty day.',
-  emptyDay: 'Nothing on your Google Calendar today.',
-  countsOne: '{on} of {n} event on the map',
-  countsMany: '{on} of {n} events on the map',
-  countsMissing: ' · {k} not on the map',
-  orderOnly: 'Order only — straight lines, not roads. Google Maps draws the road.',
-  ends: 'Where the day starts and ends isn’t drawn — Calendar’s plan says where the route starts and ends.',
-  exact: 'Exact spot — TomTom placed it for today’s route',
-  exactShort: 'Exact spot',
-  key: 'Key',
-  keyName: 'What the pins and lines mean',
-  offOne: '1 stop is off this view — show all',
-  offMany: '{k} stops are off this view — show all',
-  offTruckOne: '1 truck is off this view — show all',
-  offTruckMany: '{k} trucks are off this view — show all',
-  offBoth: '{s} and {t} are off this view — show all',
-  stopOne: '1 stop',
-  stopMany: '{k} stops',
-  truckOne: '1 truck',
-  truckMany: '{k} trucks',
-  asideKey: 'Dotted line: a marker moved aside so it covers nothing — the line runs to its own spot.',
-  zipArea: 'ZIP area — not the exact spot',
-  practicePin: 'Practice pin — not a real place',
-  outside: 'placed outside the four cities',
-  stopN: 'stop {n} in the plan',
-  stopsHere: '{k} stops here — tap one to open it',
-  routeDay: 'Route the whole day in Google Maps',
-  tooLong: 'This address is too long to open from the map — open it from Calendar.',
-  noTitle: 'No title',
-  outsideShell: 'Open Map from Arbo.',
-  openArbo: 'Open Arbo',
-  noKey: 'Open Arbo and enter the key first.',
-  refused: 'Arbo didn’t take this phone’s key — open Arbo and enter it again. Nothing is drawn; this is not an empty map.',
-  throttled: 'Too many wrong keys from this connection — wait a minute, then tap ↻, or switch between Wi-Fi and cellular. Nothing is drawn; this is not an empty map.',
-  readingToday: 'Reading today’s stops…',
-  noAppKey: 'Arbo’s server has no app key set yet, so nothing can be read. Nothing is drawn; this is not an empty map.',
-  codeFailed: 'The map’s own code didn’t load — check your signal, then tap ↻. Nothing is drawn; this is not an empty map.',
-  tilesFailed: 'Street map didn’t load (OpenStreetMap) — pins are still placed; this is not an empty map.',
-  tilesFailedBare: 'Street map didn’t load (OpenStreetMap) — this is not an empty map.',
-  offline: 'No signal — the street map needs one.',
-  retry: 'Try again',
-  keyRow: 'What the map shows',
+  nameToday: T('Today'),
+  namePermits: T('Permit areas'),
+  nameLeads: T('Leads & jobs'),
+  nameTrucks: T('Trucks'),
+  practice: T('PRACTICE DATA — pins sit in their ZIP area; these are not real places.'),
+  todayFailed: T('Today’s stops: couldn’t read them just now. This is not an empty day.'),
+  emptyDay: T('Nothing on your Google Calendar today.'),
+  countsOne: T('{on} of {n} event on the map'),
+  countsMany: T('{on} of {n} events on the map'),
+  countsMissing: T(' · {k} not on the map'),
+  orderOnly: T('Order only — straight lines, not roads. Google Maps draws the road.'),
+  ends: T('Where the day starts and ends isn’t drawn — Calendar’s plan says where the route starts and ends.'),
+  exact: T('Exact spot — TomTom placed it for today’s route'),
+  exactShort: T('Exact spot'),
+  key: T('Key'),
+  keyName: T('What the pins and lines mean'),
+  offOne: T('1 stop is off this view — show all'),
+  offMany: T('{k} stops are off this view — show all'),
+  offTruckOne: T('1 truck is off this view — show all'),
+  offTruckMany: T('{k} trucks are off this view — show all'),
+  offBoth: T('{s} and {t} are off this view — show all'),
+  stopOne: T('1 stop'),
+  stopMany: T('{k} stops'),
+  truckOne: T('1 truck'),
+  truckMany: T('{k} trucks'),
+  asideKey: T('Dotted line: a marker moved aside so it covers nothing — the line runs to its own spot.'),
+  zipArea: T('ZIP area — not the exact spot'),
+  practicePin: T('Practice pin — not a real place'),
+  outside: T('placed outside the four cities'),
+  stopN: T('stop {n} in the plan'),
+  stopsHere: T('{k} stops here — tap one to open it'),
+  routeDay: T('Route the whole day in Google Maps'),
+  tooLong: T('This address is too long to open from the map — open it from Calendar.'),
+  noTitle: T('No title'),
+  outsideShell: T('Open Map from Arbo.'),
+  openArbo: T('Open Arbo'),
+  noKey: T('Open Arbo and enter the key first.'),
+  refused: T('Arbo didn’t take this phone’s key — open Arbo and enter it again. Nothing is drawn; this is not an empty map.'),
+  throttled: T('Too many wrong keys from this connection — wait a minute, then tap ↻, or switch between Wi-Fi and cellular. Nothing is drawn; this is not an empty map.'),
+  readingToday: T('Reading today’s stops…'),
+  noAppKey: T('Arbo’s server has no app key set yet, so nothing can be read. Nothing is drawn; this is not an empty map.'),
+  codeFailed: T('The map’s own code didn’t load — check your signal, then tap ↻. Nothing is drawn; this is not an empty map.'),
+  tilesFailed: T('Street map didn’t load (OpenStreetMap) — pins are still placed; this is not an empty map.'),
+  tilesFailedBare: T('Street map didn’t load (OpenStreetMap) — this is not an empty map.'),
+  offline: T('No signal — the street map needs one.'),
+  retry: T('Try again'),
+  keyRow: T('What the map shows'),
   // Permit areas (M2): DEQ's RPA shading. An area never gets a permit word — those belong to one address's screen.
-  rpaZoom: 'Zoom in to see RPA areas — DEQ doesn’t draw them at this zoom; not drawn is not “no RPA”.',
-  rpaReading: 'Reading DEQ’s RPA layer…',
-  rpaFailed: 'Couldn’t load the DEQ RPA layer just now — this is not “no RPA here”.',
-  rpaUnset: 'DEQ’s RPA layer couldn’t be set up on this page — nothing is drawn; this is not “no RPA”.',
-  rpaMissing: 'Not on this map: the Virginia Beach, Norfolk and Chesapeake city RPA layers (found, not verified); Portsmouth (no city layer found); floodplain, Norfolk CRO and reservoir areas (no layer). Missing shading is never a “no”.',
-  rpaLegend: 'Shaded: Resource Protection Area — Virginia DEQ statewide layer 33 (checked 2026-08-01). Not shaded does not mean no permit — VERIFY W/ CITY. Arbo’s permit screen checks 300 m around an address, because an address point can sit 150–300 m from a rear-lot buffer. For one address’s permit word, use Estimate → prep.',
-  permitsCutR32: 'Permit records are cut on purpose (R32) — none are drawn.',
-  permitsCut: 'Permit records are cut on purpose — none are drawn.',
-  permitsNotDrawn: 'Permit records aren’t drawn on this map.',
+  rpaZoom: T('Zoom in to see RPA areas — DEQ doesn’t draw them at this zoom; not drawn is not “no RPA”.'),
+  rpaReading: T('Reading DEQ’s RPA layer…'),
+  rpaFailed: T('Couldn’t load the DEQ RPA layer just now — this is not “no RPA here”.'),
+  rpaUnset: T('DEQ’s RPA layer couldn’t be set up on this page — nothing is drawn; this is not “no RPA”.'),
+  rpaMissing: T('Not on this map: the Virginia Beach, Norfolk and Chesapeake city RPA layers (found, not verified); Portsmouth (no city layer found); floodplain, Norfolk CRO and reservoir areas (no layer). Missing shading is never a “no”.'),
+  rpaLegend: T('Shaded: Resource Protection Area — Virginia DEQ statewide layer 33 (checked 2026-08-01). Not shaded does not mean no permit — VERIFY W/ CITY. Arbo’s permit screen checks 300 m around an address, because an address point can sit 150–300 m from a rear-lot buffer. For one address’s permit word, use Estimate → prep.'),
+  permitsCutR32: T('Permit records are cut on purpose (R32) — none are drawn.'),
+  permitsCut: T('Permit records are cut on purpose — none are drawn.'),
+  permitsNotDrawn: T('Permit records aren’t drawn on this map.'),
   // Leads & jobs (M3): open leads by ZIP area. notFed is the Leads tab's own line, word for word (R4).
-  notFed: 'Arbo doesn’t receive new leads yet — Sona’s are in Quo, and website and ad leads are in Gmail. This is not an empty inbox.',
-  readingLeads: 'Reading open leads…',
-  leadsFeed: 'Leads: {word}. This is not an empty inbox.',
-  feed_cut: 'cut on purpose',
-  feed_sim: 'not in the practice data',
-  feed_unset: 'not set up yet',
-  feed_unread: 'couldn’t read it',
-  olderHidden: '{k} older leads hidden — Show older',
-  olderHiddenOne: '1 older lead hidden — Show older',
-  olderShown: '{k} older leads shown — Hide older',
-  olderShownOne: '1 older lead shown — Hide older',
-  newest50: 'Showing the newest 50 open leads — the map reads no more than that.',
-  leadsCounts: '{on} of {n} open leads on the map',
-  leadsCountsOne: '{on} of 1 open lead on the map',
-  noZip: '{k} leads with no ZIP — not on the map',
-  noZipOne: '1 lead with no ZIP — not on the map',
-  outsideLeads: '{k} leads outside the four cities — not on the map',
-  outsideLeadsOne: '1 lead outside the four cities — not on the map',
-  noAreaLeads: '{k} leads’ ZIPs have no map area',
-  noAreaLeadsOne: '1 lead’s ZIP has no map area',
-  notLoadedLeads: '{k} leads: ZIP areas are not loaded on the map yet — not placed',
-  notLoadedLeadsOne: '1 lead: ZIP areas are not loaded on the map yet — not placed',
-  leadsEmpty: 'No open leads in Arbo to place.',
-  leadsEmptyOlder: 'No new open leads — only older ones, hidden above.',
-  leadsEmptyPractice: 'No open leads in the practice data.',
-  leadGroup: '{where} · {k} open leads, {n} new',
-  leadGroupOne: '{where} · 1 open lead, {n} new',
-  leadZipNote: 'ZIP from the lead’s record — the ZIP area, not the exact spot.',
-  leadKey: 'Open leads in one ZIP area — the number is how many. ZIP from the lead’s record, not the exact spot.',
-  leadKeyAlarm: 'Red: an emergency lead among them, as on Leads.',
-  leadWord: 'lead',
-  leadsWord: 'leads',
-  ageToday: 'came in today',
-  ageOne: '1 day ago',
-  ageMany: '{k} days ago',
-  tagEmergency: 'EMERGENCY',
-  tagOlder: 'Older lead',
-  tagQualified: 'Qualified',
-  noName: 'Unknown caller',
-  jobs: 'Jobs are on your Google Calendar — today’s are on the Today layer. Other days aren’t on the map yet.',
-  jobsCutR32: 'Arbo’s job and estimate records are cut on purpose (R32) — none drawn; this is not “no jobs”.',
-  jobsCut: 'Arbo’s job and estimate records are cut on purpose — none drawn; this is not “no jobs”.',
-  jobsNotDrawn: 'Arbo’s own job and estimate records aren’t drawn on the map — this is not “no jobs”.',
+  notFed: T('Arbo doesn’t receive new leads yet — Sona’s are in Quo, and website and ad leads are in Gmail. This is not an empty inbox.'),
+  readingLeads: T('Reading open leads…'),
+  leadsFeed: T('Leads: {word}. This is not an empty inbox.'),
+  feed_cut: T('cut on purpose'),
+  feed_sim: T('not in the practice data'),
+  feed_unset: T('not set up yet'),
+  feed_unread: T('couldn’t read it'),
+  olderHidden: T('{k} older leads hidden — Show older'),
+  olderHiddenOne: T('1 older lead hidden — Show older'),
+  olderShown: T('{k} older leads shown — Hide older'),
+  olderShownOne: T('1 older lead shown — Hide older'),
+  newest50: T('Showing the newest 50 open leads — the map reads no more than that.'),
+  leadsCounts: T('{on} of {n} open leads on the map'),
+  leadsCountsOne: T('{on} of 1 open lead on the map'),
+  noZip: T('{k} leads with no ZIP — not on the map'),
+  noZipOne: T('1 lead with no ZIP — not on the map'),
+  outsideLeads: T('{k} leads outside the four cities — not on the map'),
+  outsideLeadsOne: T('1 lead outside the four cities — not on the map'),
+  noAreaLeads: T('{k} leads’ ZIPs have no map area'),
+  noAreaLeadsOne: T('1 lead’s ZIP has no map area'),
+  notLoadedLeads: T('{k} leads: ZIP areas are not loaded on the map yet — not placed'),
+  notLoadedLeadsOne: T('1 lead: ZIP areas are not loaded on the map yet — not placed'),
+  leadsEmpty: T('No open leads in Arbo to place.'),
+  leadsEmptyOlder: T('No new open leads — only older ones, hidden above.'),
+  leadsEmptyPractice: T('No open leads in the practice data.'),
+  leadGroup: T('{where} · {k} open leads, {n} new'),
+  leadGroupOne: T('{where} · 1 open lead, {n} new'),
+  leadZipNote: T('ZIP from the lead’s record — the ZIP area, not the exact spot.'),
+  leadKey: T('Open leads in one ZIP area — the number is how many. ZIP from the lead’s record, not the exact spot.'),
+  leadKeyAlarm: T('Red: an emergency lead among them, as on Leads.'),
+  leadWord: T('lead'),
+  leadsWord: T('leads'),
+  ageToday: T('came in today'),
+  ageOne: T('1 day ago'),
+  ageMany: T('{k} days ago'),
+  tagOlder: T('Older lead'),
+  tagQualified: T('Qualified'),
+  noName: T('Unknown caller'),
+  jobs: T('Jobs are on your Google Calendar — today’s are on the Today layer. Other days aren’t on the map yet.'),
+  jobsCutR32: T('Arbo’s job and estimate records are cut on purpose (R32) — none drawn; this is not “no jobs”.'),
+  jobsCut: T('Arbo’s job and estimate records are cut on purpose — none drawn; this is not “no jobs”.'),
+  jobsNotDrawn: T('Arbo’s own job and estimate records aren’t drawn on the map — this is not “no jobs”.'),
   // Trucks (M4): the server's own words name every Bouncie state; these name the rest.
-  readingTrucks: 'Reading the trucks…',
-  trucksFailed: 'Couldn’t read the trucks just now — no dots are shown; this is not “no trucks”.',
-  trucksAfterHours: 'After hours — trucks show 8am–8pm, Monday to Saturday, so no dots are shown now. This is not “no trucks”.',
-  crew: 'Crew aren’t on the map — Arbo has no crew location. Trucks show where crews drive.',
-  fleetList: 'Couldn’t read the Fleet list ({why}) — trucks show by VIN.',
-  fleetUnread: 'couldn’t be read',
-  truckUnmatched: 'Not matched to a Fleet unit',
-  truckUnit: 'Fleet unit: {unit}',
-  truckDriving: 'Driving · seen {ago}',
-  truckParked: 'Parked · seen {ago}',
-  truckSeen: 'Seen {ago}',
-  truckStale: 'Last fix {ago} — may have moved',
-  truckUnplugged: 'Bouncie unplugged — last known spot',
-  truckNoFix: 'No position yet — not on the map',
-  truckAfterHours: 'After hours — where it is now isn’t shown',
-  truckLastKnown: 'Last known spot — Bouncie didn’t answer just now',
-  truckUnknown: 'Not on the map — Bouncie gave no state Arbo knows',
-  agoMin: '{k} min ago',
-  agoHour: '{k} h ago',
-  agoNone: 'at a time Bouncie didn’t give',
-  trucksCount: '{on} of {n} trucks on the map',
-  trucksCountOne: '{on} of 1 truck on the map',
-  todaysTrips: 'Today’s trips',
-  tripsFor: 'Today’s trips — {truck}',
-  trucksHere: '{k} trucks here',
-  readingTrips: 'Reading today’s trips for {truck}…',
-  tripsFailed: 'Couldn’t read today’s trips just now — this is not “no trips”.',
-  truckListChanged: 'The truck list changed — pick the truck again.',
-  tripsNoDay: 'This phone can’t tell today’s date in Virginia — no trips were asked for.',
-  tripsCount: '{k} trips drawn for {truck}',
-  tripsCountOne: '1 trip drawn for {truck}',
-  tripsLost: 'Bouncie sent {k} trips for {truck} whose routes couldn’t be read — not drawn. This is not “no trips”.',
-  tripsLostOne: 'Bouncie sent 1 trip for {truck} whose route couldn’t be read — not drawn. This is not “no trips”.',
-  truckKeySolid: 'A truck at Bouncie’s fresh fix — an arrow when driving shows its heading.',
-  truckKeyGrey: 'Grey: last known spot — the fix is old, Bouncie is unplugged, or Bouncie didn’t answer.',
-  tripKey: 'Line: today’s trips inside working hours — Bouncie’s path.',
+  readingTrucks: T('Reading the trucks…'),
+  trucksFailed: T('Couldn’t read the trucks just now — no dots are shown; this is not “no trucks”.'),
+  trucksAfterHours: T('After hours — trucks show 8am–8pm, Monday to Saturday, so no dots are shown now. This is not “no trucks”.'),
+  crew: T('Crew aren’t on the map — Arbo has no crew location. Trucks show where crews drive.'),
+  fleetList: T('Couldn’t read the Fleet list ({why}) — trucks show by VIN.'),
+  fleetUnread: T('couldn’t be read'),
+  truckUnmatched: T('Not matched to a Fleet unit'),
+  truckUnit: T('Fleet unit: {unit}'),
+  truckDriving: T('Driving · seen {ago}'),
+  truckParked: T('Parked · seen {ago}'),
+  truckSeen: T('Seen {ago}'),
+  truckStale: T('Last fix {ago} — may have moved'),
+  truckUnplugged: T('Bouncie unplugged — last known spot'),
+  truckNoFix: T('No position yet — not on the map'),
+  truckAfterHours: T('After hours — where it is now isn’t shown'),
+  truckLastKnown: T('Last known spot — Bouncie didn’t answer just now'),
+  truckUnknown: T('Not on the map — Bouncie gave no state Arbo knows'),
+  agoMin: T('{k} min ago'),
+  agoHour: T('{k} h ago'),
+  agoNone: T('at a time Bouncie didn’t give'),
+  trucksCount: T('{on} of {n} trucks on the map'),
+  trucksCountOne: T('{on} of 1 truck on the map'),
+  todaysTrips: T('Today’s trips'),
+  tripsFor: T('Today’s trips — {truck}'),
+  trucksHere: T('{k} trucks here'),
+  readingTrips: T('Reading today’s trips for {truck}…'),
+  tripsFailed: T('Couldn’t read today’s trips just now — this is not “no trips”.'),
+  truckListChanged: T('The truck list changed — pick the truck again.'),
+  tripsNoDay: T('This phone can’t tell today’s date in Virginia — no trips were asked for.'),
+  tripsCount: T('{k} trips drawn for {truck}'),
+  tripsCountOne: T('1 trip drawn for {truck}'),
+  tripsLost: T('Bouncie sent {k} trips for {truck} whose routes couldn’t be read — not drawn. This is not “no trips”.'),
+  tripsLostOne: T('Bouncie sent 1 trip for {truck} whose route couldn’t be read — not drawn. This is not “no trips”.'),
+  truckKeySolid: T('A truck at Bouncie’s fresh fix — an arrow when driving shows its heading.'),
+  truckKeyGrey: T('Grey: last known spot — the fix is old, Bouncie is unplugged, or Bouncie didn’t answer.'),
+  tripKey: T('Line: today’s trips inside working hours — Bouncie’s path.'),
 };
 
 const LAYERS = ['today', 'permits', 'leads', 'trucks'];
@@ -524,7 +533,9 @@ function drawStatus() {
   for (const slot of order) {
     for (const g of GAPS[slot]) {
       const row = el('div', 'line ' + g.cls);
-      row.appendChild(el('span', '', g.text));
+      const said = row.appendChild(el('span', '', g.text));
+      // R27 Phase A (es-owner-a): a line the server wrote (Phase B twins it) stays English in Spanish, marked so.
+      if (g.en && ES.lang === 'es') { said.setAttribute('lang', 'en'); said.appendChild(esEnMark()); }
       if (g.link) {
         const a = el('a', '', MAP_SAYS.openArbo);
         a.href = '/app#map';
@@ -1078,7 +1089,7 @@ function drawPins() {
 }
 function drawToday(d) {
   TODAY.d = d;
-  GAPS.today = todayLines(d).map((g) => ({ cls: g.cls, text: g.text, retry: g.retry ? readToday : null }));
+  GAPS.today = todayLines(d).map((g) => ({ cls: g.cls, text: g.text, retry: g.retry ? readToday : null, en: g.text === d.line || g.text === d.tomtomLine }));
   drawMarkers();
   drawStatus();
   drawFacts();
@@ -1135,7 +1146,11 @@ KEYS.today = () => {
   if (!d) return [];
   const out = [];
   const plan = planNote(d);
-  if (plan) out.push(el('div', 'muted', plan));
+  if (plan) {
+    const p = el('div', 'muted', plan); // the server's plan line: English, marked so in Spanish (Phase B twins it)
+    if (ES.lang === 'es') { p.setAttribute('lang', 'en'); p.appendChild(esEnMark()); }
+    out.push(p);
+  }
   // What the pins and the line mean — only what is drawn.
   if (!d.stops.length) return out;
   for (const k of legendPins(d.stops)) {
@@ -1427,8 +1442,14 @@ function leadsNode(parts) {
     for (const l of g.leads) {
       const b = el('button', '', [l.name || MAP_SAYS.noName, leadAge(l.ageDays)].filter(Boolean).join(' · '));
       b.type = 'button';
-      const tags = [l.emergency ? MAP_SAYS.tagEmergency : null, l.older ? MAP_SAYS.tagOlder : null, l.status === 'qualified' ? MAP_SAYS.tagQualified : null].filter(Boolean).join(' · ');
-      if (tags) b.appendChild(el('small', l.emergency ? 'alarm' : '', tags));
+      // R27 #4: EMERGENCY is a safety label — esPair, first as before (in English the same line, word for word).
+      const tags = [l.older ? MAP_SAYS.tagOlder : null, l.status === 'qualified' ? MAP_SAYS.tagQualified : null].filter(Boolean).join(' · ');
+      if (l.emergency || tags) {
+        const tg = el('small', l.emergency ? 'alarm' : '');
+        if (l.emergency) tg.appendChild(esPair('EMERGENCY'));
+        if (tags) tg.appendChild(document.createTextNode((l.emergency ? ' · ' : '') + tags));
+        b.appendChild(tg);
+      }
       // Leads takes the screen: the list closes first, so Map comes back with its notes card (hidden while a list is open).
       if (/^[A-Za-z0-9_-]{1,64}$/.test(l.id)) b.addEventListener('click', () => { if (MAP) MAP.closePopup(); toShell({ type: 'lead', id: l.id }); });
       else b.disabled = true;
@@ -1977,7 +1998,19 @@ function watchShown() {
   }).observe(view, { attributes: true, attributeFilter: ['class'] });
 }
 
+// R27 Phase A (es-owner-a): the markup's own words in Spanish (English never runs it — the markup IS the English),
+// and a dictionary that failed said in both languages here, at the top (the runtime's notice looks for the doors'
+// own <main>, which the map has not).
+function mapWords() {
+  if (ES.broken) $('top').prepend(esNotice(ES_BROKEN_LINE, 'es-broken'));
+  if (ES.lang !== 'es') return;
+  document.title = T('Arbo — Map');
+  $('chips').setAttribute('aria-label', T('Map layers'));
+  $('map').setAttribute('aria-label', T('Map'));
+  $('more').firstElementChild.textContent = T('More ↓');
+}
 function boot() {
+  mapWords();
   applyNight();
   drawChips();
   $('chips').addEventListener('scroll', chipFade, { passive: true });

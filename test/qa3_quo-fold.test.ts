@@ -70,7 +70,7 @@ describe('items 1–3: the folded Quo card keeps its title on one line and names
   it('the title is one short word, like Inbox and Website forms — the explanation stays in the body', () => {
     const fold = src('fillQuoSlots');
     // Direction B P16: the body's one builder; wave 3b review: on Calls & texts the head says it, so the card points there.
-    expect(fold).toContain("q.appendChild(saidAbove ? el('div', 'storm-muted', 'Shown in its own place on this screen.') : quoOffLine(links));");
+    expect(fold).toContain("q.appendChild(saidAbove ? el('div', 'storm-muted', T('Shown in its own place on this screen.')) : quoOffLine(links));");
     expect(fold).toContain("q.appendChild(el('div', 'panel-title', 'Quo'));");
     // The long title that wrapped at 390px and squeezed the gold rule to a stub is gone everywhere.
     expect(html).not.toContain('Quo — customers, texts and Sona’s calls');
@@ -79,7 +79,7 @@ describe('items 1–3: the folded Quo card keeps its title on one line and names
 
   it('the last sentence says exactly what is not zero, once — never a bare "there are none"', () => {
     const fold = src('quoOffLine'); // Direction B P16: the fold's words, one builder (the Leads head says them too)
-    expect(fold).toContain(`el('div', 'feed-state unset', '${FOLD_BODY}')`);
+    expect(fold).toContain(`el('div', 'feed-state unset', T('${FOLD_BODY}'))`); // R27 Phase A (es-owner-a): through T
     expect(fold.match(/That doesn’t mean/g)).toHaveLength(1);
     expect(fold).not.toContain('there are none');
     expect(fold).not.toContain('This is not zero');

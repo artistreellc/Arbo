@@ -706,12 +706,12 @@ describe('the page: a thumbnail per photo, a named line for everything else', ()
 
   it('every place a customer’s texts show draws the photos: Calls › Texts, and the study cards on Today and Calls', () => {
     const calls = fnSrc('renderCalls');
-    expect(calls).toContain("if (m.media && m.media.length) c.appendChild(photoStrip(m.media, m.line, m.from || 'Unknown number', m.at));");
-    expect(calls).toContain("if (m.practice) lb.appendChild(chip('PRACTICE', 'info'));");
+    expect(calls).toContain("if (m.media && m.media.length) c.appendChild(photoStrip(m.media, m.line, m.from || T('Unknown number'), m.at));");
+    expect(calls).toContain("if (m.practice) lb.appendChild(chip(T('PRACTICE'), 'info'));");
     expect(calls).not.toMatch(/\.url\b|target = '_blank'/); // no address, no outside link
     const study = fnSrc('studyPanel');
     expect(study).toContain("const strip = photoStrip(n.media, 'quo', n.customerName || n.number, n.lastActivityAt);");
-    expect(study).toContain("plural(n.mediaNotShown, 'more attachment') + ' on record — open Quo to see them.'");
+    expect(study).toContain("tn(n.mediaNotShown, '{n} more attachment on record — open Quo to see them.', '{n} more attachments on record — open Quo to see them.')"); // R27 Phase A (es-owner-a)
     // Today and Calls both render the study panel.
     expect(html).toContain('fillQuoSlots([studyPanel(5), outreachPanel(false), sonaPanel(3, false)]');
     expect(html).toContain('fillQuoSlots([sonaPanel(20, true), studyPanel(60), outreachPanel(true)]'); // Direction B P16: Sona's calls first (the mockup)

@@ -91,8 +91,10 @@ describe('M10 — the R24 study names its cap: "the 60 most recent of N"', () =>
   it('the app says it on the study card — and never "N customers in the last 7 days" over a capped read', () => {
     const p = html.slice(html.indexOf('async function studyPanel('), html.indexOf('// ---------- The Quo fold'));
     expect(p).toContain("const capped = st.threadsInWindow != null && st.threadsStudied != null && st.threadsInWindow > st.threadsStudied;");
-    expect(p).toContain("'Arbo studied the ' + st.threadsStudied + ' most recent customer threads of ' + st.threadsInWindow + ' in the last 7 days — '");
-    expect(p).toContain("(capped ? ' (first ' + st.threadsStudied + ' customer threads of ' + st.threadsInWindow + ')' : ' in the last 7 days')");
+    // R27 Phase A (es-owner-a; pins moved, meaning kept): one sentence per count, the cap named in both.
+    expect(p).toContain("tn(all - studied, 'Arbo studied the {studied} most recent customer threads of {all} in the last 7 days — {n} older thread was not read.");
+    expect(p).toContain("capped ? tn(notes.length, '{n} customer (first {studied} customer threads of {all})', '{n} customers (first {studied} customer threads of {all})', { studied, all })");
+    expect(p).toContain(": tn(notes.length, '{n} customer in the last 7 days', '{n} customers in the last 7 days')");
   });
 });
 
@@ -132,7 +134,7 @@ describe('M10 — learning Sona’s calls names its cap too', () => {
   it('the Sona card says the week was cut short, and never "No Sona calls in the last 7 days" over it', () => {
     const p = html.slice(html.indexOf('async function sonaPanel('), html.indexOf('// ---------- Text outreach via Quo'));
     expect(p).toContain("if (rec.weekThreadsNotRead > 0) {");
-    expect(p).toContain("'Arbo read the first ' + rec.callCap + ' calls of the past week from Quo’s record — '");
+    expect(p).toContain("'Arbo read the first {cap} calls of the past week from Quo’s record — {n} older customer thread was not read"); // R27 Phase A (es-owner-a)
     // R33 merge: a webhook Arbo won't create ('read_only') still reads the week from Quo's record, so the same rule holds for it.
     expect(p).toContain("if ((st.registration.state === 'ok' || st.registration.state === 'read_only') && !rec.error && !(rec.weekThreadsNotRead > 0)) {");
   });

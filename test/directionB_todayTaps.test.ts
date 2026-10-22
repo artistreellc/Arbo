@@ -303,7 +303,7 @@ describe('every tap target on Today is a DESK_VIEW desk or a real screen (source
   // guard — pointed at More, every test stayed green. It goes where the hero's loops stat
   // goes, through the same table, and lands on the loops panel (flashed), not the screen top.
   it('"All N open loops →" opens the open loops on Follow-ups, through DESK_VIEW like the hero\'s loops stat', () => {
-    const at = today.indexOf("const more = el('button', 'hudbtn', 'All ' + q.open.length + ' open loops →');");
+    const at = today.indexOf("const more = el('button', 'hudbtn', tf('All {n} open loops →', { n: q.open.length }));"); // R27 Phase A (es-owner-a)
     expect(at).toBeGreaterThan(-1);
     const wire = today.slice(at, today.indexOf('loopsPanel.appendChild(more);', at));
     expect(wire).toContain("more.addEventListener('click', () => openPanel(DESK_VIEW.loops, 'queue-loops'));");
@@ -315,7 +315,7 @@ describe('every tap target on Today is a DESK_VIEW desk or a real screen (source
     const caught = today.slice(brief, today.indexOf('const s = brief.summary;'));
     expect(caught).not.toMatch(/goTile\(|HERO\.go\(/);
     expect(today.indexOf("goTile(dueTile")).toBeGreaterThan(today.indexOf('setTile(dueTile, p.comingDue.length'));
-    expect(today.indexOf("goTile(dueTile")).toBeLessThan(today.indexOf("else tileWhy(dueTile, 'forecast unreadable')"));
+    expect(today.indexOf("goTile(dueTile")).toBeLessThan(today.indexOf("else tileWhy(dueTile, T('forecast unreadable'))"));
     const loops = fnSrc('heroLoops');
     expect(loops.indexOf("HERO.go('loops'")).toBeLessThan(loops.indexOf('.catch('));
   });
@@ -325,7 +325,7 @@ describe('every tap target on Today is a DESK_VIEW desk or a real screen (source
   });
 
   it('the pinned tile shapes are kept', () => {
-    expect(today).toContain("const jobsTile = tile('–', 'jobs today');");
-    expect(today).toContain("hud.prepend(tile(s.redFlagCount, s.redFlagCount === 1 ? 'flagged stop' : 'flagged stops', 'hot wide'))");
+    expect(today).toContain("const jobsTile = tile('–', T('jobs today'));");
+    expect(today).toContain("hud.prepend(tile(s.redFlagCount, s.redFlagCount === 1 ? T('flagged stop') : T('flagged stops'), 'hot wide'))");
   });
 });

@@ -205,7 +205,7 @@ describe('app surfaces (source pins — §1B named states, links-cut placement)'
     expect(panel).toBeLessThan(brief);
     expect(html).toContain('Website forms aren’t connected to Arbo yet. They still arrive in your Gmail inbox.');
     // QA round: the card is titled in Mike's words — "direct wire" was build jargon.
-    expect(html).toContain("'panel-title', 'Website forms')");
+    expect(html).toContain("'panel-title', T('Website forms'))");
   });
 
   it('settings shows the links (read-only) and webhook wires with honest states', () => {
@@ -219,7 +219,7 @@ describe('app surfaces (source pins — §1B named states, links-cut placement)'
 
   it('the calls tab names a call log it could not read — never as zero calls', () => {
     // QA round 2: the card's one honesty tag rides the call-log line; the transcript line no longer repeats it.
-    expect(html).toContain("feedLine(e, 'Call log', 'This is not zero calls.')");
+    expect(html).toContain("feedLine(e, T('Call log'), T('This is not zero calls.'))");
   });
 });
 

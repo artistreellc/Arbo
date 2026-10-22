@@ -126,8 +126,15 @@ describe('R26 qa-x6 — one label per permit state, the badge wording everywhere
       SCREEN_PENDING: ['PERMIT SCREEN PENDING', 'watch'],
     });
     // Each label is written once in the page script — every surface reads it from the map.
+    // R27 Phase A (es-owner-a; pin moved, meaning kept): the one other place a label is written is permitChip's Spanish
+    // pick — the === that matches the map's word and that word's esPair key (parity needs keys written out): twice
+    // there, never a third surface.
+    const chipSrc = fnSrc('permitChip');
+    const rest = html.replace(chipSrc, '');
     for (const label of ['PERMIT: REVIEW NEEDED', 'NO OVERLAY — VERIFY W/ CITY', 'PERMIT SCREEN PENDING']) {
-      expect(html.split("'" + label + "'").length - 1, label).toBe(1);
+      expect(rest.split("'" + label + "'").length - 1, label).toBe(1);
+      expect(chipSrc.split("w === '" + label + "' ? esPair('" + label + "')").length - 1, label).toBe(1);
+      expect(chipSrc.split("'" + label + "'").length - 1, label).toBe(2);
     }
     expect(html.split("['PERMIT LIKELY', ").length - 1).toBe(1);
     // The pinned words are still on the page (appUi).
@@ -484,13 +491,13 @@ describe('R26 qa-x10 — Today: the place on screen and the emergencies count', 
   it('an unread leads feed is named on Today in the shared feed words', () => {
     // Direction B P12: the line goes through Today's feeds card (folded when cut, kept in emgSlot when it failed).
     expect(today).toContain('feeds.place(emgSlot, emgP.then((r) => {');
-    expect(today).toContain("const n = feedLine(r.gap, 'Emergency leads', 'That doesn’t mean there are none.');");
+    expect(today).toContain("const n = feedLine(r.gap, T('Emergency leads'), T('That doesn’t mean there are none.'));");
     const line = feedLine(fail(503, 'link_cut'), 'Emergency leads', 'That doesn’t mean there are none.');
     expect(line.className).toBe('feed-state cut');
     expect(line.textContent).toBe('Emergency leads: cut on purpose. That doesn’t mean there are none.');
     // More than three: one button to all of them, never a wall of red cards.
     expect(today).toContain('for (const l of r.list.slice(0, 3)) emgSlot.appendChild(emergencyLeadCard(l));');
-    expect(today).toContain("'All ' + r.list.length + ' emergency leads →'");
+    expect(today).toContain("tf('All {n} emergency leads →', { n: r.list.length })"); // R27 Phase A (es-owner-a)
   });
 
   it('"All N emergency leads →" keeps a spam Undo still on offer, as the minute timer does', () => {

@@ -89,18 +89,20 @@ const MINE = ['stormBanner', 'locationStrip', 'inboxIntentPanel', 'studyPanel', 
 describe('T0: Today speaks the shared vocabulary', () => {
   it('every chip is chip(text, tone) — no legacy badge() call left in Today’s functions', () => {
     for (const f of MINE) expect(src(f), `${f} still calls badge()`).not.toContain('badge(');
-    expect(today).toContain("chip(stop.kind === 'job' ? 'JOB' : 'ESTIMATE', 'info')");
-    expect(today).toContain("stop.redFlags.forEach(f => b.appendChild(chip(f, 'alarm')))");
-    expect(today).toContain("stop.tags.forEach(t => b.appendChild(chip(t, 'info')))");
+    expect(today).toContain("chip(stop.kind === 'job' ? T('JOB') : T('ESTIMATE'), 'info')");
+    // R27 Phase A (es-owner-a; pins moved): a red flag is still chip(f, 'alarm') — its Spanish pair swapped in beside
+    // it (esPair); the two server tags Today knows are said through T, any other as it came.
+    expect(today).toContain("stop.redFlags.forEach((f) => {\n      const c = b.appendChild(chip(f, 'alarm'));");
+    expect(today).toContain("stop.tags.forEach(t => b.appendChild(chip(t === 'FIRST-TIMER' ? T('FIRST-TIMER') : t === 'REPEAT' ? T('REPEAT') : t, 'info')))");
     const sona = src('sonaPanel');
     expect(sona).toContain("chip('EMERGENCY', 'alarm')");
-    expect(sona).toContain("chip('SONA BROKE A RULE', 'stop')");
+    expect(sona).toContain("chip(T('SONA BROKE A RULE'), 'stop')");
     expect(sona).toContain("chip(String(f.jobType).toUpperCase(), 'info')");
   });
 
   it('a customer waiting on Mike is a watch chip on the clay call-back edge, every other stage is context', () => {
     const stages = between('const STUDY_STAGE = {', '};');
-    expect(stages).toContain("waiting_on_us: ['WAITING ON YOU', 'watch']");
+    expect(stages).toContain("waiting_on_us: [T('WAITING ON YOU'), 'watch']");
     expect(stages).not.toContain("'b-");
     expect(stages.match(/'info'\]/g)).toHaveLength(8);
     const study = src('studyPanel');
@@ -119,8 +121,8 @@ describe('T0: Today speaks the shared vocabulary', () => {
       expect(s, `${f} still says "since deploy"`).not.toContain('since deploy');
       expect(s, `${f} still carries the old honesty tag`).not.toContain('This is not zero');
     }
-    expect(src('stormBanner')).toContain("plural(nr, 'booked stop')");
-    expect(src('outreachPanel')).toContain("'OFF — not turned on yet'");
+    expect(src('stormBanner')).toContain("tn(nr, '{n} booked stop falls inside the alert window"); // R27 Phase A (es-owner-a): a real plural, through tn
+    expect(src('outreachPanel')).toContain("T('follow-ups OFF — not turned on yet')");
     expect(src('outreachPanel')).not.toContain('ARBO_OUTREACH');
     expect(src('receptionStrip')).toContain('since Arbo last restarted');
     expect(src('websiteFormsPanel')).toContain('Connected — no submissions since Arbo last restarted.');
@@ -131,8 +133,9 @@ describe('T0: Today speaks the shared vocabulary', () => {
   });
 
   it('a read that failed is the feed-state row, never the help-tip style', () => {
-    expect(src('studyPanel')).toContain("el('div', 'feed-state unread', 'Your assistant");
-    expect(src('sonaPanel')).toContain("el('div', 'feed-state unread', 'Last read of Quo: '");
+    // R27 Phase A (es-owner-a; pins moved): the same rows, one sentence each with the reason as a value.
+    expect(src('studyPanel')).toContain("el('div', 'feed-state unread', tf('Your assistant");
+    expect(src('sonaPanel')).toContain("el('div', 'feed-state unread', tf('Last read of Quo: {why}");
   });
 });
 
@@ -171,17 +174,18 @@ describe('T1: the hero says each fact once', () => {
   it('an unread ring’s legend is a dash — the subline already names it', () => {
     expect(today).toContain("HERO.legend('stops', '–')");
     expect(src('heroLoops')).toContain("HERO.legend('loops', '–')");
-    expect(today).toContain("'schedule ' + why");
-    expect(src('heroLoops')).toContain("'loops ' + why");
+    expect(today).toContain("tf('schedule {why}', { why })"); // R27 Phase A (es-owner-a): one template, the shared tag as a value
+    expect(src('heroLoops')).toContain("tf('loops {why}', { why })");
   });
 
   it('the stops legend names the next stop by the clock (route order is not clock order)', () => {
     expect(today).toContain(".sort((a, b) => Date.parse(a.timeIso) - Date.parse(b.timeIso))[0]");
-    expect(today).toContain("next ? 'next ' + fmtWhen(next.timeIso) : !s.totalStops ? (onlyArbo ? 'none in Arbo' : 'none today') : timed.length ? 'all times passed' : 'no times set'");
+    expect(today).toContain("next ? tf('next {when}', { when: fmtWhen(next.timeIso) }) : !s.totalStops ? (onlyArbo ? T('none in Arbo') : T('none today')) : timed.length ? T('all times passed') : T('no times set')");
     expect(today).toContain('nothing records a stop as done (D85)');
     expect(today).toContain("(s.emergencies || s.redFlagCount) ? 'hot' : ''");
     // H4: "today" only when the day is really read; Arbo's own bookings say "in Arbo today".
-    expect(today).toContain("plural(s.totalStops, 'stop') + (onlyArbo ? ' in Arbo today' : ' today')");
+    // R27 Phase A (es-owner-a; pin moved): one sentence per count and source, through tn.
+    expect(today).toContain("onlyArbo ? tn(s.totalStops, '{n} stop in Arbo today', '{n} stops in Arbo today') : tn(s.totalStops, '{n} stop today', '{n} stops today')");
   });
 });
 
@@ -237,8 +241,8 @@ describe('T3: the tile grid stands on its own feeds', () => {
   });
 
   it('jobs and estimates keep the "today" scope, and a dead schedule names why on them', () => {
-    expect(today).toContain("const jobsTile = tile('–', 'jobs today');");
-    expect(today).toContain("const estTile = tile('–', 'estimates today');");
+    expect(today).toContain("const jobsTile = tile('–', T('jobs today'));");
+    expect(today).toContain("const estTile = tile('–', T('estimates today'));");
     const caught = today.slice(briefFetch, today.indexOf('const s = brief.summary;'));
     expect(caught).toContain('tileWhy(jobsTile, why); tileWhy(estTile, why);');
     expect(today).toContain('setTile(jobsTile, s.jobs || 0); setTile(estTile, s.estimates || 0);');
@@ -247,9 +251,9 @@ describe('T3: the tile grid stands on its own feeds', () => {
   });
 
   it('a safety flag takes the first slot, in a real plural that counts stops', () => {
-    expect(today).toContain("hud.prepend(tile(s.redFlagCount, s.redFlagCount === 1 ? 'flagged stop' : 'flagged stops', 'hot wide'))");
+    expect(today).toContain("hud.prepend(tile(s.redFlagCount, s.redFlagCount === 1 ? T('flagged stop') : T('flagged stops'), 'hot wide'))");
     // R26: the emergencies tile counts emergency stops AND emergency leads (setEmergencies), in a real plural.
-    expect(today).toContain("emgTile.querySelector('span').textContent = n === 1 ? 'emergency' : 'emergencies';");
+    expect(today).toContain("emgTile.querySelector('span').textContent = n === 1 ? T('emergency') : T('emergencies');");
     expect(today).not.toContain("'red flags'");
     // Emergencies are prepended last, so they lead.
     expect(today.indexOf('hud.prepend(tile(s.redFlagCount')).toBeLessThan(today.indexOf("setEmergencies('stops', s.emergencies || 0)"));
@@ -262,13 +266,13 @@ describe('T3: the tile grid stands on its own feeds', () => {
     // Direction B P14: counted through moneyCounts (shared with Office's Money tile) — the same three rules.
     expect(html).toContain('noFigure: (m.blocked || []).length');
     expect(today).toContain("setTile(billTile, mc.bill, (mc.bill || mc.noFigure) ? 'warn' : 'ok-t');");
-    expect(today).toContain("if (mc.noFigure) billTile.appendChild(el('small', '', '+' + mc.noFigure + ' no agreed figure'));");
+    expect(today).toContain("if (mc.noFigure) billTile.appendChild(el('small', '', tf('+{n} no agreed figure', { n: mc.noFigure })));"); // R27 Phase A (es-owner-a)
   });
 });
 
 describe('T4: every Today note sits in a titled card', () => {
   it('a failed location read is a titled card; the live ON/OFF strip stays plain', async () => {
-    expect(src('locationStrip')).toContain("'panel-title', 'Location tracking'");
+    expect(src('locationStrip')).toContain("'panel-title', T('Location tracking')");
     expect(today).toContain("const locSlot = el('div', 'slot plain');");
     expect(today).toContain("if (b.dataset.feed) locSlot.className = 'slot';");
     const loc = pageFn<() => Promise<FakeEl>>('locationStrip', {
@@ -282,8 +286,8 @@ describe('T4: every Today note sits in a titled card', () => {
 
   it('the phone-line card always opens with its title; a cut line is a feed-state, with no vendor names', async () => {
     const rec = src('receptionStrip');
-    expect(rec.match(/'panel-title', 'Arbo’s phone line'/g)).toHaveLength(2);
-    expect(rec).toContain("el('div', 'feed-state cut', 'Off on purpose — disconnected while Sona handles calls. Nothing was deleted.')");
+    expect(rec.match(/'panel-title', T\('Arbo’s phone line'\)/g)).toHaveLength(2); // R27 Phase A (es-owner-a): through T
+    expect(rec).toContain("el('div', 'feed-state cut', T('Off on purpose — disconnected while Sona handles calls. Nothing was deleted.'))");
     expect(rec).not.toContain("'storm-muted', 'Arbo’s own phone line");
     expect(rec).not.toContain("'storm-muted', 'Arbo\\u2019s own phone line");
     expect(rec).not.toContain('ElevenLabs + Twilio');
@@ -329,9 +333,9 @@ describe('T5: one cause, one card, plain words', () => {
     expect(fold).toContain("el('div', 'panel-title', 'Quo')");
     // Direction B P16: the body is one builder, quoOffLine (the Leads head says the same words in the flag's place).
     // Wave 3b review: Calls & texts passes saidAbove (the Leads head says the words); Today does not, so it says them here.
-    expect(fold).toContain("q.appendChild(saidAbove ? el('div', 'storm-muted', 'Shown in its own place on this screen.') : quoOffLine(links));");
+    expect(fold).toContain("q.appendChild(saidAbove ? el('div', 'storm-muted', T('Shown in its own place on this screen.')) : quoOffLine(links));");
     const words = src('quoOffLine');
-    expect(words).toContain("el('div', 'feed-state unset', 'Quo isn’t connected to Arbo yet — Arbo can’t read your customer threads, can’t text anyone, and Sona’s calls aren’t reaching Arbo. That doesn’t mean there are no customer threads or Sona calls.')");
+    expect(words).toContain("el('div', 'feed-state unset', T('Quo isn’t connected to Arbo yet — Arbo can’t read your customer threads, can’t text anyone, and Sona’s calls aren’t reaching Arbo. That doesn’t mean there are no customer threads or Sona calls.'))");
     expect(words.match(/That doesn’t mean/g)).toHaveLength(1);
     // Direction B P12: Today hands the fold its feeds card's place (the one Quo card folds into it when off).
     expect(today).toContain('fillQuoSlots([studyPanel(5), outreachPanel(false), sonaPanel(3, false)], [studySlot, outreachSlot, sonaSlot], feeds.place);');
@@ -348,7 +352,7 @@ describe('T5: one cause, one card, plain words', () => {
     expect(src('inboxIntentPanel')).toContain('That doesn’t mean no mail came in.');
     expect(src('inboxIntentPanel')).toContain('Nothing needs you in the inbox right now.');
     expect(src('inboxIntentPanel')).toContain('⚠ Arbo’s mail reader is down — sorting mail by simple rules for now.');
-    expect(src('sonaPanel')).toContain('That doesn\\u2019t mean no calls came in.');
+    expect(src('sonaPanel')).toContain('That doesn\u2019t mean no calls came in.');
     expect(src('websiteFormsPanel')).toContain('Website forms aren’t connected to Arbo yet. They still arrive in your Gmail inbox.');
     const intake = readFileSync(new URL('../src/ops/quoIntake.ts', import.meta.url), 'utf8');
     expect(intake).toContain('Quo isn’t connected to Arbo yet — Sona’s calls are not reaching Arbo. That doesn’t mean no calls came in.');
@@ -370,7 +374,7 @@ describe('T6: the Yard check says what it is for; the calendar way out sits in t
 
   it('a dead schedule card carries its own Open the Calendar button', () => {
     const caught = today.slice(briefFetch, today.indexOf('const s = brief.summary;'));
-    expect(caught).toContain("const sc = feedState(e, 'Schedule', 'an empty day');");
+    expect(caught).toContain("const sc = feedState(e, T('Schedule'), T('an empty day'));");
     expect(caught).toContain("calBtn.prepend(icon('i-calendar'));");
     expect(caught).toContain("calBtn.style.margin = '14px 0 0';");
     // Direction B P12: the card reaches the day through the feeds card's place (kept in the day, counted on the card).

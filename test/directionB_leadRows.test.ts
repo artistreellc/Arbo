@@ -242,8 +242,8 @@ describe('Leads: compact rows with a round call button (P8)', () => {
   });
 
   it('Today\'s emergency card and the Sona cards keep their big worded Call back', () => {
-    expect(fnSrc('emergencyLeadCard')).toContain("const call = el('a', 'callbtn', 'Call back');");
-    expect(fnSrc('sonaPanel')).toContain("el('a', 'callbtn', 'Call back')");
+    expect(fnSrc('emergencyLeadCard')).toContain("const call = el('a', 'callbtn', T('Call back'));");
+    expect(fnSrc('sonaPanel')).toContain("el('a', 'callbtn', T('Call back'))");
     expect(html.match(/callbtn round/g)).toHaveLength(1);
   });
 });

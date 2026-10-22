@@ -1,0 +1,11 @@
+{
+  "Arbo’s server has no app key set (APP_ACCESS_KEY), so no key can open it yet. Set it on Railway and deploy again.": "El servidor de Arbo no tiene clave de la app (APP_ACCESS_KEY), así que todavía ninguna clave lo puede abrir. Configúrela en Railway y vuelva a desplegar.",
+  "Too many wrong keys from this connection. Wait a minute, then enter the right key — or switch between Wi-Fi and cellular.": "Demasiadas claves equivocadas desde esta conexión. Espere un minuto y luego escriba la clave correcta — o cambie entre Wi-Fi y datos celulares.",
+  "Enter your access key.": "Escriba su clave de acceso.",
+  "Checking…": "Revisando…",
+  "That key didn’t work — check it and try again.": "Esa clave no funcionó — revísela e inténtelo de nuevo.",
+  "Couldn’t reach Arbo to check the key — check your signal and try again.": "No se pudo comunicar con Arbo para revisar la clave — revise su señal e inténtelo de nuevo.",
+  "Open": "Abrir",
+  "Art-is-Tree ops. Enter your access key to open Arbo on this device.": "Operaciones de Art-is-Tree. Escriba su clave de acceso para abrir Arbo en este dispositivo.",
+  "Access key": "Clave de acceso"
+}

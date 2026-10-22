@@ -262,14 +262,16 @@ describe('the red Sona flags say which call and open it', () => {
     // Direction B P16: the banner is one builder now, sonaSlipBox — Today's Sona panel and the Leads head share it (same text).
     const p = html.slice(html.indexOf('function sonaSlipBox('), html.indexOf('async function sonaPanel('));
     expect(html.slice(html.indexOf('async function sonaPanel('), html.indexOf('const holdText = {', html.indexOf('async function sonaPanel(')))).toContain('flagBox = sonaSlipBox(d, done);'); // P17: with the calls Mike called back (kept, so a Call back redraws it in place)
-    expect(p).toContain("const row = el('button', 'sliplink', (f.name || c.from || 'Caller') + ' · ' + fmtTime(c.at) + ' · ' + rules);");
+    expect(p).toContain("const row = el('button', 'sliplink', (f.name || c.from || T('Caller')) + ' · ' + fmtTime(c.at) + ' · ' + rules);");
     expect(p).toContain("row.addEventListener('click', () => openSonaCall(c.callId));");
-    expect(p).toContain("' only in Quo now.'"); // a counted call Arbo no longer holds is said, not hidden
+    // a counted call Arbo no longer holds is said, not hidden (R27 Phase A, es-owner-a: one sentence per count)
+    expect(p).toContain("tn(older, '{n} older call is only in Quo now.', '{n} older calls are only in Quo now.')");
     expect(p).not.toContain('see the red cards');
   });
 
   it('every red card says which rule beside what Sona said, and can be found by its call', () => {
-    expect(html).toContain("card.appendChild(el('div', 'storm', slipRuleLabel(sl.rule) + ' — Sona said: \\u201c' + sl.said + '\\u201d'));");
+    // R27 Phase A (es-owner-a; pin moved): one sentence, the rule and what Sona said as values.
+    expect(html).toContain("card.appendChild(el('div', 'storm', tf('{rule} — Sona said: “{said}”', { rule: slipRuleLabel(sl.rule), said: sl.said })));");
     expect(html).toContain('card.dataset.sonaCall = c.callId;');
     // Today puts the red and emergency calls first; Calls keeps every red call past its limit.
     expect(html).toContain('const order = withTranscripts ? sona : [...sona.filter(urgent), ...sona.filter((c) => !urgent(c))];');

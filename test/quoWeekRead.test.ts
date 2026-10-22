@@ -108,8 +108,8 @@ describe('M10 follow-up — a week read that never finished is never shown as th
     const p = html.slice(html.indexOf('async function sonaPanel('), html.indexOf('// ---------- Text outreach via Quo'));
     expect(p).toContain("if (rec.lastAt && !rec.weekReadOkAt && !(rec.weekThreadsNotRead > 0)) {");
     expect(p).toContain("'Arbo has not finished reading the past week of Quo’s record — the Sona calls here are not the whole week yet.'");
-    expect(p).toContain("if (!rec.lastAt) wrap.appendChild(el('div', 'storm-muted', 'Wired — reading Sona’s calls from Quo…'));");
-    expect(p).toContain("else if (rec.weekReadOkAt) wrap.appendChild(el('div', 'storm-muted', 'No Sona calls in the last 7 days — checked against Quo’s own record.'));");
+    expect(p).toContain("if (!rec.lastAt) wrap.appendChild(el('div', 'storm-muted', T('Wired — reading Sona’s calls from Quo…')));"); // R27 Phase A (es-owner-a)
+    expect(p).toContain("else if (rec.weekReadOkAt) wrap.appendChild(el('div', 'storm-muted', T('No Sona calls in the last 7 days — checked against Quo’s own record.')));"); // R27 Phase A (es-owner-a)
     // The empty-week line appears exactly once, and only behind weekReadOkAt.
     expect(p.split('No Sona calls in the last 7 days').length).toBe(2);
   });

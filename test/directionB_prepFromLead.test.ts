@@ -273,7 +273,7 @@ describe('Prep estimate from a lead: handed over in memory, by id (P18)', () => 
 describe('the lead row’s "Prep estimate ›" (P18)', () => {
   const leads = fnSrc('renderLeads');
   it('every lead that is new work gets the button; an older lead does not (R32: not new work)', () => {
-    expect(leads).toContain("el('button', 'minibtn prep-lead', 'Prep estimate ›')");
+    expect(leads).toContain("el('button', 'minibtn prep-lead', T('Prep estimate ›'))");
     expect(leads).toContain('prepFromLead(lead)');
     expect(leads).toMatch(/if \(!lead\.older\) \{\n\s+const prep = el\('button', 'minibtn prep-lead'/);
   });

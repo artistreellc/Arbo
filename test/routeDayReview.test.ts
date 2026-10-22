@@ -380,7 +380,7 @@ describe('security #1 — TomTom lookups are capped', () => {
       const body = (await res.json()) as { error: string; max: number; line: string };
       expect(body).toMatchObject({ error: 'too_many_stops', max: ROUTE_MAX_STOPS });
       expect(body.line).toContain(`up to ${ROUTE_MAX_STOPS} stops`); // the planner box shows the server's words
-      expect(readFileSync(new URL('../src/app/index.html', import.meta.url), 'utf8')).toContain("pout.appendChild(el('div', 'storm', (e && e.line) || 'Could not plan the route");
+      expect(readFileSync(new URL('../src/app/index.html', import.meta.url), 'utf8')).toContain("pout.appendChild(el('div', 'storm', (e && e.line) || T('Could not plan the route"); // R27 Phase A (es-owner-a)
       expect((await post(1000)).status).toBe(400);
       expect((await post(ROUTE_MAX_STOPS)).status).toBe(200);
     });

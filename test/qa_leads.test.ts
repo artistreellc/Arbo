@@ -86,17 +86,17 @@ describe('Leads screen (source pins)', () => {
   const leads = region('async function renderLeads()', '// ---------- Route planner');
 
   it('a failed read is worded by the feed-state vocabulary, never "No leads yet"', () => {
-    expect(leads).toContain("feedState(e, 'Leads', 'an empty inbox')");
+    expect(leads).toContain("feedState(e, T('Leads'), T('an empty inbox'))");
     for (const gone of ['No leads yet', 'Inbox zero', 'Pull refresh', 'Database not connected']) {
       expect(leads, gone).not.toContain(gone);
     }
     // A real empty inbox promises no ingestion while R4 holds.
-    expect(leads).toContain("state('No new leads', 'Nothing waiting right now.')");
+    expect(leads).toContain("state(T('No new leads'), T('Nothing waiting right now.'))");
   });
 
   it('the two lead buttons say what they do, in words, with an icon', () => {
-    expect(leads).toContain("mark('i-check', 'Good lead', 'Mark as a good lead', 'ok', 'qualified')");
-    expect(leads).toContain("mark('i-close', 'Spam', 'File as spam or wrong number', 'bad', 'spam')");
+    expect(leads).toContain("mark('i-check', T('Good lead'), T('Mark as a good lead'), 'ok', 'qualified')");
+    expect(leads).toContain("mark('i-close', T('Spam'), T('File as spam or wrong number'), 'bad', 'spam')");
     expect(leads).toContain("setAttribute('aria-label', aria)");
     expect(leads).not.toMatch(/mark\('[✓✗]'/);
   });
@@ -106,7 +106,7 @@ describe('Leads screen (source pins)', () => {
     // QA round 3: the minute timer holds a filed card for about 2 minutes, and the copy says so.
     expect(leads).toContain('Filed as spam — Undo stays about 2 minutes, or until you tap\\u00a0↻.');
     expect(leads).toContain("'Undo'");
-    expect(leads).toContain("chip('QUALIFIED', 'good')");
+    expect(leads).toContain("chip(T('QUALIFIED'), 'good')");
     expect(leads.match(/classList\.add\('dismissed'\)/g)).toHaveLength(1);
     // The filed line, its Undo, and any save error stay readable on a dimmed card.
     expect(leads).toContain("el('div', 'lead-filed')");
@@ -115,8 +115,10 @@ describe('Leads screen (source pins)', () => {
 
   it('triage leads line 1 (EMERGENCY, else HOT/WARM/COOL), and the permit chip has a line of its own', () => {
     // QA round 2: EMERGENCY already outranks HOT, so the two never sit side by side.
-    const emg = leads.indexOf("if (lead.isEmergency) b.appendChild(chip('EMERGENCY', 'alarm'));");
-    const pri = leads.indexOf("else b.appendChild(chip(lead.quality.priority.toUpperCase(), { hot: 'stop', warm: 'watch', cool: 'info' }[lead.quality.priority]));");
+    // R27 Phase A (es-owner-a; pin moved): the same chip, its Spanish pair swapped in beside it (R27 #4).
+    const emg = leads.indexOf("if (lead.isEmergency) { const em = b.appendChild(chip('EMERGENCY', 'alarm')); if (ES.lang === 'es') em.replaceChildren(esPair('EMERGENCY')); }");
+    // R27 Phase A (es-owner-a; pin moved): HOT/WARM/COOL through T — the same tones; a priority it does not know, as it came.
+    const pri = leads.indexOf("b.appendChild(chip(p === 'hot' ? T('HOT') : p === 'warm' ? T('WARM') : p === 'cool' ? T('COOL') : p.toUpperCase(), { hot: 'stop', warm: 'watch', cool: 'info' }[p]));");
     const permit = leads.indexOf('const pb = permitBadge(lead);');
     expect(emg).toBeGreaterThan(-1);
     expect(pri).toBeGreaterThan(emg);
@@ -129,12 +131,12 @@ describe('Leads screen (source pins)', () => {
     expect(leads).toContain('lead.permitUnreadable');
     // R32: a link kept cut on purpose is said as cut — a failed read keeps the null (unread) form.
     // Direction B P16: the cut one is said once, in New leads' feeds card (cut words), never on every lead.
-    expect(leads).toContain("if (lead.permitUnreadable && !lead.permitCut) c.appendChild(feedLine(null, 'Permit screen'));");
+    expect(leads).toContain("if (lead.permitUnreadable && !lead.permitCut) c.appendChild(feedLine(null, T('Permit screen')));");
     expect(leads).toContain('lead.historyUnreadable');
-    expect(leads).toContain("else if (lead.historyUnreadable && !lead.historyCut) c.appendChild(feedLine(null, 'Past work'));");
-    expect(leads).toContain("const n = feedLine({ code: 503, message: 'link_cut' }, what, 'It shows on no lead below.');");
-    expect(leads).toContain("cutPast && feeds.place(v, cutLine('Past work'))");
-    expect(leads).toContain("cutPermit && feeds.place(v, cutLine('Permit screen'))");
+    expect(leads).toContain("else if (lead.historyUnreadable && !lead.historyCut) c.appendChild(feedLine(null, T('Past work')));");
+    expect(leads).toContain("const n = feedLine({ code: 503, message: 'link_cut' }, what, T('It shows on no lead below.'));");
+    expect(leads).toContain("cutPast && feeds.place(v, cutLine(T('Past work')))");
+    expect(leads).toContain("cutPermit && feeds.place(v, cutLine(T('Permit screen')))");
     // Permit wording is Mike's (X6) — the read failure is a feed state, not a badge.
     expect(html).not.toContain('PERMIT CHECK UNREADABLE');
   });
@@ -190,7 +192,7 @@ describe('Calendar + route planner (source pins)', () => {
   it('planner controls use the shared form and button styles at 16px+', () => {
     expect(planner).toContain("ta.className = 'input'");
     expect(planner).toContain("daySel.className = 'input'");
-    expect(planner).toContain("el('button', 'actbtn', 'Plan route')");
+    expect(planner).toContain("el('button', 'actbtn', T('Plan route'))");
     expect(planner).not.toContain('font-size:15px');
     expect(planner).not.toContain('Synthetic');
     expect(planner).toContain("'123 Example St, Virginia Beach, 23451\\n45 Example Rd, Norfolk, 23503'");
@@ -200,7 +202,7 @@ describe('Calendar + route planner (source pins)', () => {
     const empty = planner.indexOf('Add at least one stop — one per line.');
     expect(empty).toBeGreaterThan(-1);
     expect(empty).toBeLessThan(planner.indexOf("api('/api/route/plan'"));
-    expect(planner).toContain("for (const w of plan.warnings) pout.appendChild(el('div', 'late',");
+    expect(planner).toContain("for (const w of plan.warnings) pout.appendChild(esSayTwin(el('div', 'late'),"); // R27 Phase A (es-owner-a): the server's line
   });
 
   it('visit times print as 12-hour clock times', () => {

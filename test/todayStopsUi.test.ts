@@ -301,7 +301,7 @@ describe('the Calendar tab keeps its frame (R2) and gains a box above it', () =>
   it('the route planner names TomTom: its own line when TomTom planned, and why when it did not', () => {
     const planner = fnSrc('routePlannerPanel');
     expect(planner).toContain("plan.mode === 'tomtom_traffic'");
-    expect(planner).toContain("'TomTom live traffic \\u00b7 ' + plan.note");
+    expect(planner).toContain("tf('TomTom live traffic · {note}', { note: plan.note })"); // R27 Phase A (es-owner-a)
     expect(planner).toContain('plan.tomtom && plan.tomtom.line');
   });
 

@@ -198,6 +198,46 @@
       "backTranslation": "PERMIT CHECK NOT DONE — status UNKNOWN, there is no check recorded. Consult with the office before starting the work that requires a permit (protected work).",
       "on": "2026-10-22",
       "note": "Not recorded (D112). The blind back-translation (2026-10-22) found no drift, and \"el trabajo que requiere permiso (protected work)\" came back as \"the work that requires a permit (protected work)\" without the English. Held because no blind second translation has agreed with these words: the only one (D111’s review round) wrote \"el trabajo en zona protegida (protected work)\" — work in a protected zone, a different meaning (src/permitting/permitRecord.ts requiresClearance also counts a permit flag outside any zone) — and D111 chose these words after it. Also for that pass: the headline says the check was not done, the body that none is on file — the English PENDING / \"no screen on file\" differ the same way. Owed: a blind second translation of L12, L14, L15 and L16 from the English alone, with the glossary (TRADE_TERMS: protected work → \"el trabajo que requiere permiso (protected work)\"); then this entry can be recorded as is — its back-translation stands while the Spanish is unchanged."
+    },
+    {
+      "en": "EMERGENCY",
+      "es": "EMERGENCIA",
+      "sha": "8428b18d5622727ab600c085cf37fe70cb94fe567220971e5e16165dd87e6703",
+      "where": "dict:app-leads, dict:map-page — the EMERGENCY chip (Today, Leads, Calls & texts, the map)",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A es-owner-a first pass (2026-10-22), from the glossary and the D112 labels",
+      "on": "2026-10-22",
+      "note": "Not recorded (R27 Phase A, es-owner-a) — first translation pass only; no blind second translation and no blind back-translation yet, so the owner app (and the map, for EMERGENCY) shows the English, marked, until both are recorded."
+    },
+    {
+      "en": "POWER LINES",
+      "es": "LÍNEAS ELÉCTRICAS",
+      "sha": "800705c608d3ffc1426b44f9448187e8098bb6d9d2df1fc75e7cefac32f05536",
+      "where": "dict:app-today — a stop’s red flag on Today’s run (the reviewed hazard line L10 opens with the same words)",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A es-owner-a first pass (2026-10-22), from the glossary and the D112 labels",
+      "on": "2026-10-22",
+      "note": "Not recorded (R27 Phase A, es-owner-a) — first translation pass only; no blind second translation and no blind back-translation yet, so the owner app (and the map, for EMERGENCY) shows the English, marked, until both are recorded."
+    },
+    {
+      "en": "DOWN",
+      "es": "FUERA DE SERVICIO",
+      "sha": "c7a55c37a765d0651e4e1f5c5e8b7f8486a10d3c3f61914bd6a4317e4f011736",
+      "where": "dict:app-today — a unit DOWN in Before you roll (Fleet’s UNIT_STATUS label)",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A es-owner-a first pass (2026-10-22), from the glossary and the D112 labels",
+      "on": "2026-10-22",
+      "note": "Not recorded (R27 Phase A, es-owner-a) — first translation pass only; no blind second translation and no blind back-translation yet, so the owner app (and the map, for EMERGENCY) shows the English, marked, until both are recorded."
+    },
+    {
+      "en": "STOP honored",
+      "es": "se respeta STOP",
+      "sha": "3bfb31bed4b87331c2981603bc4c7062d071263e4ad54c29bf5946ff59a28410",
+      "where": "dict:app-leads — Text outreach’s status line (STOP, the carrier keyword, never translated)",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A es-owner-a first pass (2026-10-22), from the glossary and the D112 labels",
+      "on": "2026-10-22",
+      "note": "Not recorded (R27 Phase A, es-owner-a) — first translation pass only; no blind second translation and no blind back-translation yet, so the owner app (and the map, for EMERGENCY) shows the English, marked, until both are recorded."
     }
   ]
 }

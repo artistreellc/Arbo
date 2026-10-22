@@ -115,7 +115,7 @@ export function fakeDoc(extra: FakeNode[] = []): FakeDoc {
 }
 
 export interface I18nOptions {
-  door?: 'app' | 'crew';
+  door?: 'app' | 'crew' | 'map';
   /** The inlined config's text; null = no #arbo-i18n tag at all. Default: a valid config with `units`. */
   json?: string | null;
   units?: Record<string, Record<string, string>>;

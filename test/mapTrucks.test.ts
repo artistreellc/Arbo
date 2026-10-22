@@ -17,7 +17,8 @@ import { inspectMessage } from '../src/binder/policyEngine.js';
 import { loadAllConfig } from '../src/config/loadConfig.js';
 
 const page = loadMapHtml();
-const script = [...page.matchAll(/<script(?![^>]*\bsrc=)(?![^>]*type="application\/json")[^>]*>([\s\S]*?)<\/script>/g)][0]![1]!;
+// R27 Phase A (es-owner-a): the Spanish runtime is inlined just before the page's own script — the page's is the last.
+const script = [...page.matchAll(/<script(?![^>]*\bsrc=)(?![^>]*type="application\/json")[^>]*>([\s\S]*?)<\/script>/g)].at(-1)![1]!;
 const shell = loadAppHtml();
 function srcOf(text: string, name: string): string {
   const m = new RegExp(`^(?:async )?function ${name}\\([\\s\\S]*?^\\}$`, 'm').exec(text);
