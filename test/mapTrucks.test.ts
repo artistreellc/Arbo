@@ -148,7 +148,7 @@ describe('dots come down: a failed refresh, a return from hidden, 8 pm ET (M4)',
       TRUCKS, GAPS, ON: { trucks: true }, MAP_SAYS, keepTrucks,
       mapGet: async () => { did.push('ask'); return o.answer(); }, keyGap: () => false, truckHoursOk: () => o.hoursOk ?? true,
       shownNow: typeof shown === 'function' ? shown : () => shown,
-      setTruckLines: () => did.push('lines'), drawTrucks: () => did.push('draw'), drawStatus: () => {},
+      setTruckLines: () => did.push('lines'), drawTrucks: () => did.push('draw'), drawLeadPins: () => {}, drawStatus: () => {},
     };
     const dropTrucks = frameFn<() => void>('dropTrucks', deps);
     const readTrucks = frameFn<() => Promise<void>>('readTrucks', { ...deps, dropTrucks });
@@ -226,6 +226,7 @@ describe('Today\'s trips on a truck\'s card (M4)', () => {
       TRUCKS, ON: { trucks: true }, MAP_SAYS, etToday: () => '2026-10-21', keyGap: () => false, capPath: frameFn('capPath'), forestColor: () => '#1B4D3E',
       L: { polyline: (pts: unknown[]) => ({ pts }) }, mapGet: async (p: string) => { asked.push(p); return answer(); },
       setTruckLines: () => lines.push(TRUCKS.tripLine), readTrucks: () => did.push('read-positions'), dropTrips: () => did.push('drop-trips'), drawLegend: () => {},
+      tripColor: () => '#2B6CB0', setPanLimit: () => {}, fitTrips: () => did.push('fit'),
     });
     return { readTrips, did, asked, TRUCKS, lines };
   }
@@ -354,7 +355,7 @@ describe('review round: trucks (wave B review)', () => {
     const deps = {
       TRUCKS, GAPS: { key: [], trucks: [] }, ON: { trucks: true }, MAP_SAYS, keepTrucks,
       mapGet: async () => { did.push('ask'); return o.answer(); }, keyGap: () => false, truckHoursOk: () => o.hoursOk ?? true, shownNow: o.shown ?? (() => true),
-      setTruckLines: () => did.push('lines'), drawTrucks: () => did.push('draw'), drawStatus: () => {},
+      setTruckLines: () => did.push('lines'), drawTrucks: () => did.push('draw'), drawLeadPins: () => {}, drawStatus: () => {},
     };
     const dropTrucks = frameFn<() => void>('dropTrucks', deps);
     const dropTrips = frameFn<() => void>('dropTrips', deps);
