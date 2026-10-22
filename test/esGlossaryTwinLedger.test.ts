@@ -17,7 +17,7 @@ import { pathToFileURL } from 'node:url';
 import { findBannedEs } from '../src/i18n/banList.js';
 import { esGateProblems } from '../src/i18n/gates.js';
 import { currentSafetyPairs } from '../src/i18n/dictionaries.js';
-import { RECORDED_EN, HELD_EN, oneCharEdit } from './support/esRecorded.js';
+import { RECORDED_EN, RECORDED_SHA, HELD_EN, oneCharEdit } from './support/esRecorded.js';
 
 describe('the glossary — usted, neutral Latin-American Spanish, trade terms with the English beside', () => {
   it('names the register and the variety Mike chose (R29 #3)', () => {
@@ -144,6 +144,8 @@ describe('the review ledger (src/i18n/reviewed.json) — a safety string edited 
   it('records exactly the blind-reviewed set — 12 reviewed, 5 held as drafts, none read by a person yet', () => {
     const at = (pass: string) => loadLedger().filter((e) => e.pass === pass).map((e) => e.en);
     expect(at('reviewed')).toEqual([...RECORDED_EN]);
+    // …and by fingerprint, so a recorded line's Spanish can't change and be re-marked unnoticed.
+    expect(loadLedger().filter((e) => e.pass === 'reviewed').map((e) => e.sha)).toEqual([...RECORDED_SHA]);
     expect(at('draft')).toEqual([...HELD_EN]);
     expect(at('person')).toEqual([]);
     expect(loadLedger().length).toBe(RECORDED_EN.length + HELD_EN.length);
