@@ -33,6 +33,8 @@ export interface LedgerEntry {
   backTranslation?: string;
   readBy?: string;
   on: string;
+  /** Where the review stands, in words (review round, D111) — never a substitute for `pass`. */
+  note?: string;
 }
 
 export interface CurrentPair { en: string; es: string; where: string }

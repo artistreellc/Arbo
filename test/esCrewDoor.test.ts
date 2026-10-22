@@ -216,5 +216,35 @@ describe('the crew door’s Spanish speaks with one voice — the glossary’s w
     expect(dict['Report a near miss']).toContain('(near miss)');
     expect(normalizeEs(dict['Morning safety briefing — required']!)).toContain('charla de seguridad');
     expect(dict["Today's work orders"]).toContain('(work orders)');
+    // Review round (D111, blind second pass): the gate's heading is where the crew meets the trade
+    // term, so it carries the glossary's English beside it.
+    expect(dict['Morning safety briefing — required']).toContain('(tailgate briefing)');
+  });
+  // Review round (D111): the meanings the blind second pass and the back-translation caught.
+  it('off the roster is "no longer on the staff list" — never the bare "lista", which reads as the library’s list or as an unknown code', () => {
+    for (const [en, es] of Object.entries(dict)) {
+      if (/\boff the roster\b/i.test(en)) expect(normalizeEs(es), en).toContain('ya no esta en la lista del personal');
+      if (/\broster\b/i.test(en)) expect(normalizeEs(es), en).toContain('lista del personal');
+    }
+  });
+  it('the office data link is never "conexión de datos" (a phone’s mobile-data setting) nor "enlace" (the sign-in link)', () => {
+    for (const [en, es] of Object.entries(dict)) {
+      if (!/\bdata link\b/i.test(en)) continue;
+      expect(normalizeEs(es), en).toContain('conexion con los registros de la oficina');
+      expect(normalizeEs(es), en).not.toMatch(/conexion de datos|enlace/);
+    }
+  });
+  it('"on site" is the work site — never "el sitio", which on a phone reads as a website', () => {
+    for (const [en, es] of Object.entries(dict)) if (/\bon site\b/i.test(en)) expect(normalizeEs(es), en).toContain('en el lugar de trabajo');
+  });
+  it('drift fixed: the library’s above-level warning waits for the office to sign off the PERSON at that level, not the technique', () => {
+    const es = normalizeEs(dict['⚠ Above your signed-off level — read it, but do not run it until the office signs you off.']!);
+    expect(es).toContain('hasta que la oficina le apruebe ese nivel');
+    expect(es).not.toContain('se la apruebe');
+  });
+  it('drift fixed: the near-miss promise is "not blamed or written up" — never "sancionado" (no penalty of any kind is a wider promise)', () => {
+    const es = normalizeEs(dict['Something almost went wrong? Say it here — nobody gets blamed or written up. It’s filed under your crew code, and the office turns it into a lesson for the next crew. Leave other people’s names out.']!);
+    expect(es).toContain('amonesta por escrito');
+    expect(es).not.toMatch(/sancion/);
   });
 });

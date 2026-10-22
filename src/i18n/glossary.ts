@@ -54,6 +54,10 @@ export const TRADE_TERMS: readonly GlossaryPair[] = [
   { en: 'permit', es: 'permiso (permit)' },
   { en: 'overlay', es: 'zona protegida del mapa (overlay)', note: 'Never "zona marcada": an overlay is a map layer the city verifies.' },
   { en: 'city inspector', es: 'inspector de la ciudad (city inspector)' },
+  // Review round (D111, UI 5 + the blind second pass): work that needs permit clearance before a crew
+  // starts (src/permitting/permitRecord.ts requiresClearance). Never "trabajo protegido" — it reads as
+  // work done with protection, and a back-translation returns "protected work" without flagging it.
+  { en: 'protected work', es: 'trabajo que requiere permiso (protected work)', note: 'Work that needs permit clearance before a crew starts.' },
 ];
 
 /**
@@ -68,11 +72,15 @@ export const APP_TERMS: readonly GlossaryPair[] = [
   { en: 'sign-in link', es: 'enlace de acceso' },
   { en: 'briefing', es: 'charla de seguridad', note: 'The day’s tailgate briefing (see TRADE_TERMS).' },
   { en: 'sign-off', es: 'firma', note: 'Signing the day’s briefing; the office’s approval of a level is "aprobado por la oficina".' },
-  { en: 'roster', es: 'lista', note: 'The office’s list of who is on the crew.' },
+  // Review round (D111, blind second pass): "lista" alone reads as any list (the library's, the contract
+  // list), and "off the roster" is someone taken OFF it — "ya no está en la lista del personal".
+  { en: 'roster', es: 'lista del personal', note: 'The office’s list of who is on the crew.' },
   { en: 'office', es: 'oficina' },
   { en: 'paid time', es: 'tiempo pagado' },
   { en: 'read-only', es: 'solo lectura' },
-  { en: 'data link', es: 'conexión de datos' },
+  // Review round (D111, blind second pass): on a phone "conexión de datos" is the mobile-data setting (the
+  // crew door also says "switch between Wi-Fi and cellular"), and "enlace" is the sign-in link.
+  { en: 'data link', es: 'conexión con los registros', note: 'The app’s link to the office’s records: "la conexión con los registros de la oficina".' },
   { en: 'practice data', es: 'datos de práctica' },
   { en: 'library', es: 'biblioteca' },
 ];

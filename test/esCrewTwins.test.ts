@@ -12,7 +12,8 @@
 import { describe, it, expect } from 'vitest';
 import { twinTableNames, readTwinTable, twinOf, currentTwinPairs } from '../src/i18n/serverTwins.js';
 import { enSha, twinFor } from '../src/i18n/twin.js';
-import { findBannedEs } from '../src/i18n/banList.js';
+import { findBannedEs, normalizeEs } from '../src/i18n/banList.js';
+import { TRADE_TERMS } from '../src/i18n/glossary.js';
 import { esGateProblems } from '../src/i18n/gates.js';
 import { isSafetyClass, loadLedger, pairSha, type LedgerEntry } from '../src/i18n/ledger.js';
 import { currentSafetyPairs } from '../src/i18n/dictionaries.js';
@@ -49,6 +50,23 @@ describe('the twin tables — every row is the Spanish of a line the module writ
     const table = readTwinTable('crew-workorder')!;
     expect(Object.keys(table).sort()).toEqual(Object.keys(CREW_LINES).sort());
     for (const [id, en] of Object.entries(CREW_LINES)) expect(table[id]!.en, id).toBe(en);
+  });
+  // Review round (D111, UI 5 + blind second pass): "protected work" is work that needs permit clearance
+  // before a crew starts (src/permitting/permitRecord.ts requiresClearance). "Trabajo protegido" reads as
+  // work done with protection, and a back-translation would never flag it — so the glossary pins it.
+  it('"protected work" is "trabajo que requiere permiso (protected work)" in every twin — never "trabajo protegido"', () => {
+    for (const t of twinTableNames()) {
+      for (const [id, r] of Object.entries(readTwinTable(t)!)) {
+        expect(normalizeEs(r.es), `${t}.${id}`).not.toContain('trabajo protegido');
+        if (/\bprotected work\b/i.test(r.en)) expect(r.es, `${t}.${id}`).toContain('trabajo que requiere permiso (protected work)');
+      }
+    }
+    expect(TRADE_TERMS.find((x) => x.en === 'protected work')?.es).toBe('trabajo que requiere permiso (protected work)');
+  });
+  it('NO OVERLAY: the plan’s label, then a whole sentence that ties the time limit to VERIFY — no clause left dangling after it', () => {
+    const es = readTwinTable('crew-workorder')!.noOverlayVerify!.es;
+    expect(es.startsWith('VERIFIQUE CON LA CIUDAD — EL MAPA NO MOSTRÓ ZONA PROTEGIDA. ')).toBe(true);
+    expect(es).not.toMatch(/PROTEGIDA — antes/);
   });
   it('crew-library: the no-limits warning, exactly as the library writes it', () => {
     expect(readTwinTable('crew-library')!.noLimits!.en).toBe(NO_LIMITS_WARNING);

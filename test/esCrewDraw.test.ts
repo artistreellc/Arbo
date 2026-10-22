@@ -191,7 +191,7 @@ describe('work orders in Spanish — the page’s words in Spanish, the job’s 
     const p = page(rt, refused(503, 'link_cut'));
     p.GATE.unlocked = true;
     await p.renderWork();
-    expect(node(rt, 'work').textContent).toBe('Órdenes de trabajo de hoy (work orders)No se pudieron cargar sus órdenes de trabajoLa conexión de datos de la oficina está cortada a propósito.Eso no es un día vacío — llame a la oficina.');
+    expect(node(rt, 'work').textContent).toBe('Órdenes de trabajo de hoy (work orders)No se pudieron cargar sus órdenes de trabajoLa conexión con los registros de la oficina está cortada a propósito.Eso no es un día vacío — llame a la oficina.');
     for (const [held, line] of [[1, '1 trabajo de la hoja de hoy está en espera'], [2, '2 trabajos de la hoja de hoy están en espera']] as const) {
       const { work } = await draw(runtime('es'), { workOrders: [], notWorkOrders: held, contractLookupFailed: false });
       expect(work.textContent).toContain('Nada confirmado para empezar');
@@ -214,12 +214,12 @@ describe('the gate in Spanish — its words in Spanish, the briefing the office�
     const p = page(rt, () => ({}));
     p.renderGate({ ...BRIEF });
     const gate = node(rt, 'gate-slot');
-    expect(gate.querySelector('.gate-head')!.textContent).toBe('Charla de seguridad de la mañana — obligatoria');
+    expect(gate.querySelector('.gate-head')!.textContent).toBe('Charla de seguridad de la mañana (tailgate briefing) — obligatoria');
     const body = gate.querySelector('#brief-body')!;
     expect(body.getAttribute('lang')).toBe('en');
     expect(body.querySelector('.es-en-mark')!.textContent).toBe('en inglés');
     expect(body.querySelectorAll('p').map((n) => n.textContent)).toEqual(['SIMULATED tailgate briefing.', 'Stay out of the drop zone — 2 tree lengths.']);
-    expect(body.querySelector('.clause')!.textContent).toBe('Según Z133 §5.1 — verifique en el sitio.');
+    expect(body.querySelector('.clause')!.textContent).toBe('Según Z133 §5.1 — verifique en el lugar de trabajo.');
     expect(gate.querySelector('label')!.textContent).toBe('Leí esta charla de seguridad y la entiendo.');
     expect(gate.querySelector('#gobtn')!.textContent).toBe('EMPEZAR');
     expect(gate.querySelector('#gate-status')!.textContent).toMatch(/^Todavía falta: baje hasta el final · marque la casilla · lea \d+ s más$/);
@@ -254,10 +254,10 @@ describe('the gate in Spanish — its words in Spanish, the briefing the office�
     p.renderGate({ ...BRIEF });
     p.GATE.scrolled = true; p.GATE.checked = true; p.GATE.openedMs = Date.now() - 60_000;
     await p.submitGate();
-    expect(p.GATE.serverMsg).toBe('No se pudo registrar su firma (la conexión de datos de la oficina está cortada a propósito).');
+    expect(p.GATE.serverMsg).toBe('No se pudo registrar su firma (la conexión con los registros de la oficina está cortada a propósito).');
     expect(p.GATE.serverOrder).toBe(true);
     const status = node(rt, 'gate-slot').querySelector('#gate-status')!;
-    expect(status.textContent).toBe(`No se pudo registrar su firma (la conexión de datos de la oficina está cortada a propósito). ${ORDER_LOCKED}en inglés`);
+    expect(status.textContent).toBe(`No se pudo registrar su firma (la conexión con los registros de la oficina está cortada a propósito). ${ORDER_LOCKED}en inglés`);
     expect(status.querySelector('.es-pair')!.querySelector('span')!.getAttribute('lang')).toBe('en');
     expect(node(rt, 'gate-slot').querySelector('#gobtn')!.className).toBe('');
     p.refreshGate(); // the 1-second tick says it the same way, and never stacks it
@@ -312,7 +312,7 @@ describe('the quiz in Spanish — a twin only with the same options in the same 
   it('no twin: the office’s English question, lang="en" and marked; the frame around it Spanish', async () => {
     const { quiz } = await draw(runtime('es'), [item]);
     expect(quiz.querySelector('.panel-title')!.textContent).toBe('Pregunta antes de salir');
-    expect(quiz.querySelector('.paynote')!.textContent).toBe('Este es tiempo pagado — cuenta como horas de trabajo.');
+    expect(quiz.querySelector('.paynote')!.textContent).toBe('Esto es tiempo pagado — cuenta como horas de trabajo.');
     expect(quiz.querySelector('.card')!.getAttribute('lang')).toBe('en');
     expect(quiz.querySelector('.qprompt')!.textContent).toBe(`${item.prompt}en inglés`);
     expect(quiz.querySelectorAll('.qopt').map((b) => b.textContent)).toEqual(item.options);
@@ -360,7 +360,7 @@ describe('the quiz in Spanish — a twin only with the same options in the same 
     expect(node(rt, 'quiz').querySelector('.errline')!.textContent).toBe('Your answers were not saved (Arbo is read-only right now — it can look but not save, so nothing was written). Tell the office so your paid time is logged.');
     rt.esSwitchInPlace('es');
     await p.renderQuiz(p.QUIZ.context, true);
-    expect(node(rt, 'quiz').querySelector('.errline')!.textContent).toBe('Sus respuestas no se guardaron (Arbo está en solo lectura ahora mismo — puede mirar pero no guardar, así que no se escribió nada). Avise a la oficina para que registren su tiempo pagado.');
+    expect(node(rt, 'quiz').querySelector('.errline')!.textContent).toBe('Sus respuestas no se guardaron (Arbo está en solo lectura ahora mismo — puede mirar pero no guardar, así que no se guardó nada). Avise a la oficina para que registren su tiempo pagado.');
     expect(node(rt, 'quiz').querySelectorAll('.qopt').filter((b) => b.classList.contains('picked'))).toHaveLength(1);
   });
 });
@@ -383,9 +383,9 @@ describe('the library and the near miss in Spanish — the frame Spanish, the of
     const out = lib.querySelector('#lib-out')!;
     expect(out.querySelector('.lib-name')!.textContent).toBe('SIM Rigging a heavy limb');
     expect(out.querySelector('.lib-how')!.textContent).toBe('SIM how-to');
-    expect(out.querySelector('.lib-above')!.textContent).toBe('⚠ Por encima de su nivel aprobado por la oficina — léala, pero no la haga hasta que la oficina se la apruebe.');
+    expect(out.querySelector('.lib-above')!.textContent).toBe('⚠ Por encima de su nivel aprobado por la oficina — léala, pero no la haga hasta que la oficina le apruebe ese nivel.');
     expect(out.querySelector('.lib-limits')!.textContent).toBe(`⚠ ${readTwinTable('crew-library')!.noLimits!.es}`);
-    expect(out.querySelector('.lib-clause')!.textContent).toBe('Según Z133 §8.1 — verifique en el sitio.');
+    expect(out.querySelector('.lib-clause')!.textContent).toBe('Según Z133 §8.1 — verifique en el lugar de trabajo.');
   });
 
   it('a library it could not read is named in Spanish — never "nothing on file"', async () => {
@@ -393,7 +393,7 @@ describe('the library and the near miss in Spanish — the frame Spanish, the of
     const p = page(rt, refused(503, 'read_only'));
     p.renderLibrary();
     await p.libSearch('rigging', node(rt, 'library').querySelector('#lib-out'), node(rt, 'library').querySelector('#lib-go'));
-    expect(node(rt, 'library').querySelector('#lib-out')!.textContent).toBe('Biblioteca: Arbo está en solo lectura ahora mismo — puede mirar pero no guardar, así que no se escribió nada. Eso NO es "no hay nada registrado" — pregunte a la oficina.');
+    expect(node(rt, 'library').querySelector('#lib-out')!.textContent).toBe('Biblioteca: Arbo está en solo lectura ahora mismo — puede mirar pero no guardar, así que no se guardó nada. Eso NO es "no hay nada registrado" — pregunte a la oficina.');
   });
 
   it('a near miss filed: "Enviado", its category in Spanish; one that failed names why', async () => {
@@ -405,14 +405,14 @@ describe('the library and the near miss in Spanish — the frame Spanish, the of
     nm.querySelector('#nm-desc')!.value = 'SIM: a limb swung toward the truck';
     nm.querySelector('#nm-go')!.click();
     await settle();
-    expect(nm.querySelector('#nm-out')!.textContent).toBe('Enviado. Gracias — así es como nadie se lastima la próxima vez. Registrado como: golpe por objeto. Arbo no pudo revisar la lista en este momento.');
+    expect(nm.querySelector('#nm-out')!.textContent).toBe('Enviado. Gracias — así es como nadie se lastima la próxima vez. Registrado como: golpe por objeto. Arbo no pudo revisar la lista del personal en este momento.');
     const rt2 = runtime('es');
     const q = page(rt2, refused(503, 'link_cut'));
     q.renderNearMiss();
     node(rt2, 'nearmiss').querySelector('#nm-desc')!.value = 'SIM: a limb swung toward the truck';
     node(rt2, 'nearmiss').querySelector('#nm-go')!.click();
     await settle(); await settle();
-    expect(node(rt2, 'nearmiss').querySelector('#nm-out')!.textContent).toBe('No se guardó — la conexión de datos de la oficina está cortada a propósito. Avise directamente a la oficina.');
+    expect(node(rt2, 'nearmiss').querySelector('#nm-out')!.textContent).toBe('No se guardó — la conexión con los registros de la oficina está cortada a propósito. Avise directamente a la oficina.');
     expect(node(rt2, 'nearmiss').querySelector('#nm-desc')!.value).toBe('SIM: a limb swung toward the truck'); // the words stay to send again
   });
 });
@@ -505,6 +505,6 @@ describe('after sign-off a language change redraws every panel in place — no r
     await settle(); await settle();
     expect(p.calls.filter((c) => c.path.startsWith('/api/crew/workorders'))).toHaveLength(reads);
     expect(node(rt, 'work').textContent).toContain('No se pudieron cargar sus órdenes de trabajo');
-    expect(node(rt, 'work').textContent).toContain('La conexión de datos de la oficina está cortada a propósito.');
+    expect(node(rt, 'work').textContent).toContain('La conexión con los registros de la oficina está cortada a propósito.');
   });
 });
