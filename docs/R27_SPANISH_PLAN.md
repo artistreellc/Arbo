@@ -31,12 +31,19 @@ blind pass of those five — HELD recorded with D112's proposed words ("NO LO
 MANEJE NI LO USE — FUERA DE SERVICIO (FRENOS O DIRECCIÓN)"), now in the
 glossary and the table below, so **13 recorded**; the four permit lines held
 again (the blind second translation wrote "el trabajo protegido", which the
-glossary rules out), so **4 held**. Next for this unit: Mike's ruling that
-the glossary settles "protected work" (the four are then recorded as they
-stand) or a blind second translation given that term, then the phone
-read-through by a Spanish-reading crew member — Mike named "rudy or marco or
-temo" (R29 #3) — which is STILL OWED before crews rely on any of it (`docs/GO_LIVE.md` §2;
-recorded as pass "person", which no line has yet). A briefing or quiz question
+glossary rules out), so **4 held**. **Protected-work round (D112,
+2026-10-22):** a blind second translation of those four, made from the
+English and the glossary (its "protected work" term given), agreed with the
+ledger Spanish, and the held-five back-translations found no drift; NO
+OVERLAY's line was judged strictly on the back-translator's reassurance flag
+and is no more reassuring than the English (whether the English should say
+the map is not a clearance stays open for Mike) — so the four are recorded
+as they stand, no Spanish changed: **17 recorded, none held**, and every
+permit note on the crew door reads Spanish first with the full English
+beneath. Next for this unit: the phone read-through by a Spanish-reading
+crew member — Mike named "rudy or marco or temo" (R29 #3) — which is STILL
+OWED before crews rely on any of it (`docs/GO_LIVE.md` §2; recorded as pass
+"person", which no line has yet). A briefing or quiz question
 whose English holds a safety line (911, 811, Dominion, stop work, a badge) is
 never served in Spanish from its row until Mike rules how those get reviewed
 (questions below). Phase A's other units (the owner app's screens) come after.
