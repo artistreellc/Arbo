@@ -284,3 +284,40 @@ describe('the stubs every harness needs — the runtime’s names, in English, o
     for (const n of RUNTIME_NAMES) expect((globalThis as Record<string, unknown>)[n], n).toBeDefined();
   });
 });
+
+// Review round (D110, correctness #5): a MISSING dictionary was taken as an
+// empty one — the page turned Spanish on with nothing to say it in, the marks
+// read "in English" in English, and no notice showed. "Couldn't load it" is
+// never "nothing to translate" (§1B): no units, units that are not an object,
+// or a door whose own switch unit (the runtime's own words) is absent is a
+// missing dictionary — English, and the notice in both languages.
+describe('review round — a missing dictionary is named, never taken as an empty one', () => {
+  const sw = { Language: 'Idioma', English: 'inglés', 'in English': 'en inglés' };
+  const cases: Array<[string, string]> = [
+    ['no units at all', JSON.stringify({ door: 'crew', units: {}, broken: [] })],
+    ['units as an array', JSON.stringify({ door: 'crew', units: [], broken: [] })],
+    ['units as a string', JSON.stringify({ door: 'crew', units: 'crew-switch', broken: [] })],
+    ['the door’s switch unit missing', JSON.stringify({ door: 'crew', units: { 'crew-test': { 'No new leads': 'No hay prospectos nuevos' } }, broken: [] })],
+    ['the switch unit without “in English”', JSON.stringify({ door: 'crew', units: { 'crew-switch': { English: 'inglés' } }, broken: [] })],
+    ['the other door’s switch unit only', JSON.stringify({ door: 'crew', units: { 'app-switch': sw }, broken: [] })],
+  ];
+  for (const [name, json] of cases) {
+    it(`${name}: a Spanish reader gets English and the two-language notice`, () => {
+      const r = loadI18n({ door: 'crew', json, stored: { arboCrewLang: 'es' } });
+      expect(r.ES.lang).toBe('en');
+      expect(r.ES.broken).toBe(true);
+      expect(r.doc.querySelectorAll('.es-broken')).toHaveLength(1);
+      expect(r.doc.documentElement.getAttribute('lang')).toBe('en');
+    });
+    it(`${name}: an English reader sees nothing new`, () => {
+      const r = loadI18n({ door: 'crew', json });
+      expect(r.ES.broken).toBe(false);
+      expect(r.doc.querySelectorAll('.es-broken')).toHaveLength(0);
+    });
+  }
+  it('a dictionary with its switch unit is not missing', () => {
+    const r = loadI18n({ door: 'crew', json: JSON.stringify({ door: 'crew', units: { 'crew-switch': sw }, broken: [] }), stored: { arboCrewLang: 'es' } });
+    expect(r.ES.lang).toBe('es');
+    expect(r.ES.broken).toBe(false);
+  });
+});

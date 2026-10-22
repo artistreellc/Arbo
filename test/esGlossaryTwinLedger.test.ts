@@ -9,7 +9,11 @@ import {
   CREDENTIAL_GLOSS, glossaryPairs,
 } from '../src/i18n/glossary.js';
 import { enSha, twinFor, withEs } from '../src/i18n/twin.js';
-import { pairSha, isSafetyClass, loadLedger, safetyCleared, ledgerProblems, type LedgerEntry } from '../src/i18n/ledger.js';
+import { pairSha, isSafetyClass, loadLedger, readLedger, safetyCleared, ledgerProblems, type LedgerEntry } from '../src/i18n/ledger.js';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { findBannedEs } from '../src/i18n/banList.js';
 import { esGateProblems } from '../src/i18n/gates.js';
 import { currentSafetyPairs } from '../src/i18n/dictionaries.js';
@@ -145,5 +149,40 @@ describe('the review ledger (src/i18n/reviewed.json) — a safety string edited 
       expect(isSafetyClass(s), s).toBe(true);
     }
     for (const s of ['Language', 'in English', 'Español', 'Look it up']) expect(isSafetyClass(s), s).toBe(false);
+  });
+});
+
+// Review round (D110, correctness #6): an unparsable reviewed.json threw out of
+// loadLedger, and with any safety-class dictionary entry present the door page
+// itself threw — after the 200 header, so the crew got a blank page instead of
+// English. Now a ledger that cannot be read is an EMPTY ledger for serving
+// (fail closed: every safety-class Spanish line is held back and the English
+// shows) and a named problem for the build.
+describe('review round — a ledger that cannot be read fails closed, and never takes a page down', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'arbo-ledger-'));
+  writeFileSync(join(dir, 'cut.json'), '{"entries": [');
+  writeFileSync(join(dir, 'shape.json'), JSON.stringify({ entries: 'none' }));
+  writeFileSync(join(dir, 'ok.json'), JSON.stringify({ entries: [] }));
+  const at = (f: string) => pathToFileURL(join(dir, f));
+  it('an unparsable or missing ledger does not throw; it reads as no entries and says why', () => {
+    for (const f of ['cut.json', 'missing.json', 'shape.json']) {
+      let r: ReturnType<typeof readLedger> | undefined;
+      expect(() => { r = readLedger(at(f)); }, f).not.toThrow();
+      expect(r!.entries, f).toEqual([]);
+      expect(r!.error, f).toMatch(/could not be read/);
+    }
+    expect(readLedger(at('ok.json'))).toEqual({ entries: [], error: null });
+  });
+  it('with no readable ledger, no safety-class Spanish is served', () => {
+    expect(safetyCleared('PERMIT LIKELY', 'PROBABLEMENTE SE NECESITA PERMISO', readLedger(at('cut.json')).entries)).toBe(false);
+    expect(twinFor('Look it up', { es: 'Búsquelo', enSha: enSha('Look it up') })).toBe('Búsquelo');
+  });
+  it('the build check names an unreadable ledger first', () => {
+    const problems = ledgerProblems(currentSafetyPairs(), [], 'the review ledger could not be read: Unexpected end of JSON input');
+    expect(problems[0]).toMatch(/could not be read/);
+  });
+  it('the committed ledger reads cleanly', () => {
+    expect(readLedger().error).toBeNull();
+    expect(readLedger().entries).toEqual(loadLedger());
   });
 });

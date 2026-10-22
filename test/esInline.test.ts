@@ -155,3 +155,21 @@ describe('every dictionary entry in the repo passes the ban list and every gate,
     });
   }
 });
+
+// Review round (D110, correctness #5): a dictionary directory the server could
+// not read was taken as an empty one — "couldn't read it" rendered the same as
+// "nothing there". Now unitFiles says it could not read, and the door's
+// dictionary is BROKEN by name, so a Spanish reader gets English and the notice.
+describe('review round — an unreadable dictionary directory is named, never an empty dictionary', () => {
+  const gone = pathToFileURL(join(tmpdir(), `arbo-i18n-gone-${process.pid}-${Date.now()}`) + '/');
+  it('unitFiles throws rather than answering "no units"', () => {
+    expect(() => unitFiles(gone)).toThrow();
+  });
+  it('the door’s dictionary is broken by name, and the inlined block carries it', () => {
+    const d = loadDoorDictionary('crew', gone);
+    expect(d.units).toEqual({});
+    expect(d.broken).toEqual(['crew-*']);
+    const html = withI18n(`<main></main>\n${MARK}\n<script>\n'use strict';\n</script>`, 'crew', d);
+    expect(inlined(html).cfg.broken).toEqual(['crew-*']);
+  });
+});

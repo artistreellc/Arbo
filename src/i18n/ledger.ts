@@ -52,14 +52,35 @@ export function isSafetyClass(en: string): boolean {
   return SAFETY_BADGES.test(en) || SAFETY_LINES.test(en);
 }
 
-let cached: LedgerEntry[] | null = null;
-/** The ledger as committed (read once). */
-export function loadLedger(): LedgerEntry[] {
-  if (!cached) {
-    const raw = JSON.parse(readFileSync(new URL('./reviewed.json', import.meta.url), 'utf8')) as { entries?: LedgerEntry[] };
-    cached = Array.isArray(raw.entries) ? raw.entries : [];
+const LEDGER = new URL('./reviewed.json', import.meta.url);
+
+/**
+ * The ledger at `url`, never a throw (review round, D110). A file that cannot
+ * be read or parsed, or has no entries list, is NO entries plus the reason:
+ * for serving that fails closed (every safety-class Spanish line is held back
+ * and the English shows — a door page never goes blank over it), and the
+ * build check names the reason first.
+ */
+export function readLedger(url: URL = LEDGER): { entries: LedgerEntry[]; error: string | null } {
+  try {
+    const raw = JSON.parse(readFileSync(url, 'utf8')) as { entries?: unknown };
+    if (!raw || !Array.isArray(raw.entries)) return { entries: [], error: 'the review ledger could not be read: it has no entries list' };
+    return { entries: raw.entries as LedgerEntry[], error: null };
+  } catch (e) {
+    return { entries: [], error: `the review ledger could not be read: ${(e as Error).message}` };
   }
-  return cached;
+}
+
+let cached: { entries: LedgerEntry[]; error: string | null } | null = null;
+/** The ledger as committed (read once). Unreadable = no entries — see readLedger. */
+export function loadLedger(): LedgerEntry[] {
+  if (!cached) cached = readLedger();
+  return cached.entries;
+}
+/** Why the committed ledger could not be read, or null. */
+export function ledgerReadError(): string | null {
+  loadLedger();
+  return cached ? cached.error : null;
 }
 
 /**
@@ -77,8 +98,9 @@ export function safetyCleared(en: string, es: string, ledger: LedgerEntry[] = lo
  * exactly that English and that Spanish; every ledger entry still names a pair
  * that exists; every fingerprint is the pair's own. [] means it passes.
  */
-export function ledgerProblems(current: CurrentPair[], ledger: LedgerEntry[] = loadLedger()): string[] {
+export function ledgerProblems(current: CurrentPair[], ledger: LedgerEntry[] = loadLedger(), readError: string | null = ledgerReadError()): string[] {
   const problems: string[] = [];
+  if (readError) problems.push(readError);
   for (const e of ledger) {
     if (e.sha !== pairSha(e.en, e.es)) problems.push(`ledger fingerprint does not match its own pair: ${e.en}`);
     if (!['draft', 'reviewed', 'person'].includes(e.pass)) problems.push(`ledger pass "${e.pass}" is not draft, reviewed or person: ${e.en}`);
