@@ -73,7 +73,7 @@ describe('esSay — a safety line from the dictionary, into the page’s own nod
 
 describe('esSayPick — a server-written safety line and its twin, as a pair', () => {
   const wo = { permitNote: 'PERMIT LIKELY — do not start protected work until the permit is confirmed.' };
-  const twinned = { ...wo, es: { permitNote: 'PROBABLEMENTE SE NECESITA PERMISO — no empiece trabajo protegido hasta que se confirme el permiso.' } };
+  const twinned = { ...wo, es: { permitNote: 'PROBABLEMENTE SE NECESITA PERMISO — no empiece el trabajo que requiere permiso (protected work) hasta que se confirme el permiso.' } };
   it('English: prefix + the English field, byte-identical, on the node itself', () => {
     const n = new FakeNode('div');
     en().esSayPick(n, twinned, 'permitNote', '⚠ ');

@@ -71,7 +71,8 @@
       "where": "dict:crew-gate",
       "pass": "draft",
       "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); the blind second pass and the back-translation are not done yet, so nothing here is reviewed",
-      "on": "2026-10-22"
+      "on": "2026-10-22",
+      "note": "Review round 2026-10-22 (D111): the blind second translation agreed with this Spanish (no meaning drift); the back-translation found no drift but was NOT blind — its translator had seen the English — so no review is recorded. Owed: a back-translation made without the English."
     },
     {
       "en": "Your work orders stay locked — do not start work; call the office to log your briefing.",
@@ -80,7 +81,8 @@
       "where": "dict:crew-gate",
       "pass": "draft",
       "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); the blind second pass and the back-translation are not done yet, so nothing here is reviewed",
-      "on": "2026-10-22"
+      "on": "2026-10-22",
+      "note": "Review round 2026-10-22 (D111): the blind second translation agreed with this Spanish (no meaning drift); the back-translation found no drift but was NOT blind — its translator had seen the English — so no review is recorded. Owed: a back-translation made without the English."
     },
     {
       "en": "This is not an empty day — do not start work; call the office.",
@@ -89,7 +91,8 @@
       "where": "dict:crew-work",
       "pass": "draft",
       "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); the blind second pass and the back-translation are not done yet, so nothing here is reviewed",
-      "on": "2026-10-22"
+      "on": "2026-10-22",
+      "note": "Review round 2026-10-22 (D111): the blind second translation agreed with this Spanish (no meaning drift); the back-translation found no drift but was NOT blind — its translator had seen the English — so no review is recorded. Owed: a back-translation made without the English."
     },
     {
       "en": "POWER LINES — utility coordination required before work near conductors",
@@ -98,7 +101,8 @@
       "where": "twin:crew-workorder",
       "pass": "draft",
       "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); the blind second pass and the back-translation are not done yet, so nothing here is reviewed",
-      "on": "2026-10-22"
+      "on": "2026-10-22",
+      "note": "Review round 2026-10-22 (D111): the blind second translation agreed with this Spanish (no meaning drift); the back-translation found no drift but was NOT blind — its translator had seen the English — so no review is recorded. Owed: a back-translation made without the English."
     },
     {
       "en": "STRUCTURES nearby — plan drop zone accordingly",
@@ -107,16 +111,18 @@
       "where": "twin:crew-workorder",
       "pass": "draft",
       "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); the blind second pass and the back-translation are not done yet, so nothing here is reviewed",
-      "on": "2026-10-22"
+      "on": "2026-10-22",
+      "note": "Review round 2026-10-22 (D111): the blind second translation agreed with this Spanish (no meaning drift); the back-translation found no drift but was NOT blind — its translator had seen the English — so no review is recorded. Owed: a back-translation made without the English."
     },
     {
       "en": "PERMIT LIKELY — do not start protected work until the permit is confirmed.",
-      "es": "PROBABLEMENTE SE NECESITA PERMISO — no empiece el trabajo protegido (protected work) hasta que se confirme el permiso.",
-      "sha": "0c2d0980c0c8b47a6dca8e87e09aa7701ea20cb9849b7550afb0d73739020e7f",
+      "es": "PROBABLEMENTE SE NECESITA PERMISO — no empiece el trabajo que requiere permiso (protected work) hasta que se confirme el permiso.",
+      "sha": "e6d1da2f58ad48d9aa007ad1ebb50e0ceb04c06a94026949c291f27398e79e29",
       "where": "twin:crew-workorder",
       "pass": "draft",
       "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); the blind second pass and the back-translation are not done yet, so nothing here is reviewed",
-      "on": "2026-10-22"
+      "on": "2026-10-22",
+      "note": "Review round 2026-10-22 (D111): Spanish revised after the back-translation (\"trabajo protegido\" read as work done with protection; protected work is work that needs permit clearance, src/permitting/permitRecord.ts). Owed: a fresh blind second translation check and a back-translation made without the English; no review is recorded."
     },
     {
       "en": "PERMIT: REVIEW NEEDED — check with the office before cutting.",
@@ -125,34 +131,38 @@
       "where": "twin:crew-workorder",
       "pass": "draft",
       "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); the blind second pass and the back-translation are not done yet, so nothing here is reviewed",
-      "on": "2026-10-22"
+      "on": "2026-10-22",
+      "note": "Review round 2026-10-22 (D111): the blind second translation agreed with this Spanish (no meaning drift); the back-translation found no drift but was NOT blind — its translator had seen the English — so no review is recorded. Owed: a back-translation made without the English."
     },
     {
       "en": "NO OVERLAY — VERIFY W/ CITY before protected work.",
-      "es": "VERIFIQUE CON LA CIUDAD — EL MAPA NO MOSTRÓ ZONA PROTEGIDA — antes del trabajo protegido (protected work).",
-      "sha": "f6e0405b4d0c54ae104064f9d74e76c0dfc9dac514ce499c598fb51c58f53df6",
+      "es": "VERIFIQUE CON LA CIUDAD — EL MAPA NO MOSTRÓ ZONA PROTEGIDA. Hágalo antes de empezar el trabajo que requiere permiso (protected work).",
+      "sha": "ee88f3090d525ad66636d9119803bcbf658dc57f8e3a446793b764c701bbb332",
       "where": "twin:crew-workorder",
       "pass": "draft",
       "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); the blind second pass and the back-translation are not done yet, so nothing here is reviewed",
-      "on": "2026-10-22"
+      "on": "2026-10-22",
+      "note": "Review round 2026-10-22 (D111): Spanish revised after the back-translation (\"trabajo protegido\" read as work done with protection; protected work is work that needs permit clearance, src/permitting/permitRecord.ts). Owed: a fresh blind second translation check and a back-translation made without the English; no review is recorded."
     },
     {
       "en": "PERMIT STATUS UNKNOWN — Arbo could not read the permit screen. Check with the office before protected work.",
-      "es": "ESTADO DEL PERMISO DESCONOCIDO — Arbo no pudo leer el chequeo de permiso. Consulte con la oficina antes del trabajo protegido (protected work).",
-      "sha": "8b1f140d29487316007959d1df3f3a2c90b46e12b8ac116ec55cf8a27a4e7ac6",
+      "es": "ESTADO DEL PERMISO DESCONOCIDO — Arbo no pudo leer el chequeo de permiso. Consulte con la oficina antes de empezar el trabajo que requiere permiso (protected work).",
+      "sha": "cbe406dfa33f79b31563346fe201fbd40fc1b23e7d22ffb63bc968c14b04f4d7",
       "where": "twin:crew-workorder",
       "pass": "draft",
       "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); the blind second pass and the back-translation are not done yet, so nothing here is reviewed",
-      "on": "2026-10-22"
+      "on": "2026-10-22",
+      "note": "Review round 2026-10-22 (D111): Spanish revised after the back-translation (\"trabajo protegido\" read as work done with protection; protected work is work that needs permit clearance, src/permitting/permitRecord.ts). Owed: a fresh blind second translation check and a back-translation made without the English; no review is recorded."
     },
     {
       "en": "PERMIT SCREEN PENDING — status UNKNOWN, no screen on file. Check with the office before protected work.",
-      "es": "CHEQUEO DE PERMISO SIN HACER — estado DESCONOCIDO, no hay chequeo registrado. Consulte con la oficina antes del trabajo protegido (protected work).",
-      "sha": "78aa2c786854dcaab6f3582d0b74ccb70b01aa941ede9162f837d8752ad12456",
+      "es": "CHEQUEO DE PERMISO SIN HACER — estado DESCONOCIDO, no hay chequeo registrado. Consulte con la oficina antes de empezar el trabajo que requiere permiso (protected work).",
+      "sha": "d0f2fd745d884f377ee02b9c01f6a456f4ab7dc94d0fbb585d4159f101a91820",
       "where": "twin:crew-workorder",
       "pass": "draft",
       "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); the blind second pass and the back-translation are not done yet, so nothing here is reviewed",
-      "on": "2026-10-22"
+      "on": "2026-10-22",
+      "note": "Review round 2026-10-22 (D111): Spanish revised after the back-translation (\"trabajo protegido\" read as work done with protection; protected work is work that needs permit clearance, src/permitting/permitRecord.ts). Owed: a fresh blind second translation check and a back-translation made without the English; no review is recorded."
     }
   ]
 }
