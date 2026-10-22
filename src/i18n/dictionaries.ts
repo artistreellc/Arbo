@@ -31,11 +31,12 @@ export interface DoorDictionary {
   held: Array<{ unit: string; key: string; why: string }>;
 }
 
-/** Every unit file on disk, as { door, unit, file }. */
+/**
+ * Every unit file on disk, as { door, unit, file }. THROWS when the directory
+ * cannot be read: "couldn't read it" is never "no units" (§1B, review round D110).
+ */
 export function unitFiles(dir: URL = DIR): Array<{ door: Door; unit: string; file: string }> {
-  let names: string[];
-  try { names = readdirSync(dir); } catch { return []; }
-  return names
+  return readdirSync(dir)
     .map((file) => ({ file, m: UNIT_FILE.exec(file) }))
     .filter((x): x is { file: string; m: RegExpExecArray } => x.m !== null)
     .map(({ file, m }) => ({ door: m[1] as Door, unit: `${m[1]}-${m[2]}`, file }))
@@ -58,7 +59,10 @@ export function readUnit(file: string, dir: URL = DIR): Record<string, string> |
 /** The door's dictionary as it may be inlined: units, the broken ones named, held entries counted. */
 export function loadDoorDictionary(door: Door, dir: URL = DIR): DoorDictionary {
   const dict: DoorDictionary = { door, units: {}, broken: [], held: [] };
-  for (const u of unitFiles(dir).filter((f) => f.door === door)) {
+  let files: ReturnType<typeof unitFiles>;
+  // A directory that cannot be read breaks the whole door, by name — the page then stays English and says so.
+  try { files = unitFiles(dir).filter((f) => f.door === door); } catch { dict.broken.push(`${door}-*`); return dict; }
+  for (const u of files) {
     const entries = readUnit(u.file, dir);
     if (!entries) { dict.broken.push(u.unit); continue; }
     const kept: Record<string, string> = {};

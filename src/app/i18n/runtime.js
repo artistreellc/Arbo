@@ -34,6 +34,9 @@ const ES_STORAGE_LINE = {
   es: 'Este teléfono bloquea los ajustes guardados, así que no se pudo guardar el idioma.',
   en: 'This phone is blocking saved settings, so the language could not be kept.',
 };
+// The runtime's own words, from the door's switch unit (<door>-switch.es.json). Without them the
+// dictionary is missing, whatever else it holds.
+const ES_OWN_KEYS = ['English', 'in English'];
 // The switch names each language in that language — the same words in English and in Spanish mode.
 const ES_LANG_NAME = { en: 'English', es: 'Español' };
 const ES_SWITCH_LABEL = {
@@ -52,8 +55,12 @@ const ES = (() => {
   let dictBroken = false;
   try {
     const cfg = JSON.parse(tag ? tag.textContent : '');
-    if (!cfg || typeof cfg !== 'object' || cfg.door !== door || !cfg.units || typeof cfg.units !== 'object') throw new Error('shape');
+    if (!cfg || typeof cfg !== 'object' || cfg.door !== door || !cfg.units || typeof cfg.units !== 'object' || Array.isArray(cfg.units)) throw new Error('shape');
     if (Array.isArray(cfg.broken) && cfg.broken.length) throw new Error('unit');
+    // Review round (D110): a dictionary without this door's switch unit — the runtime's own words — is
+    // MISSING, not empty (§1B). Spanish with nothing to say it in would mark English as "in English".
+    const own = cfg.units[door + '-switch'];
+    if (!own || typeof own !== 'object' || ES_OWN_KEYS.some((k) => typeof own[k] !== 'string' || !own[k])) throw new Error('missing');
     for (const unit of Object.keys(cfg.units)) {
       const entries = cfg.units[unit];
       if (!entries || typeof entries !== 'object' || Array.isArray(entries)) throw new Error('unit');
