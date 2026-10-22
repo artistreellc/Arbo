@@ -157,16 +157,18 @@ function scriptJson(v: unknown): string {
  * Leaflet's source uses innerHTML and names its own site, which the cockpit
  * shell's laws forbid (test/appUi.test.ts), so the map runs in a same-origin
  * frame the shell makes once — the calendar frame's pattern (R2). At serve
- * time three markers are filled, each from its one source: the sprite, the ZIP
- * table (src/lib/zipCentroids.ts) and the DEQ values (layers.ts). The page
- * itself carries no customer data; it reads /api with the shell's key.
+ * time two markers are filled, each from its one source: the ZIP table
+ * (src/lib/zipCentroids.ts) and the DEQ values (layers.ts). The sprite is NOT
+ * inlined here (Maps wave B, D108): the map draws no sprite icon, and it was
+ * about 12 KB of every map load. The page itself carries no customer data; it
+ * reads /api with the shell's key.
  */
 export function loadMapHtml(): string {
   let html = cache.get('__map__');
   if (html === undefined) {
     const zips = scriptJson({ zips: ZIP_CENTROIDS, noArea: ZIP_NO_AREA, checked: ZCTA_SOURCE.checked, box: FOUR_CITY_BOX });
     const deq = scriptJson({ base: DEQ_MAPSERVER_BASE, layer: DEQ_RPA_LAYER, limits: DEQ_RPA_LIMITS });
-    html = withSprite(load('map.html')).replace('<!--ARBO:ZIPS-->', () => zips).replace('<!--ARBO:DEQ-->', () => deq);
+    html = load('map.html').replace('<!--ARBO:ZIPS-->', () => zips).replace('<!--ARBO:DEQ-->', () => deq);
     cache.set('__map__', html);
   }
   return html;

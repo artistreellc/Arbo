@@ -25,7 +25,8 @@
   color-scheme:light;
   --paper:#F7F5F0;--paper-2:#EFEBE1;--card:#FFFFFF;
   --ink-1:#13201A;--ink-2:#3B4A43;--ink-3:#5A675F;--ink-4:#8B958F;
-  --forest:#1B4D3E;--on-forest:#FFFFFF;--warning:#A87A0A;--gold:#C9971C;
+  --forest:#1B4D3E;--on-forest:#FFFFFF;--warning:#A87A0A;--gold:#C9971C;--emergency:#C2413B;
+  --trip:#2B6CB0;
   --border:rgba(19,32,26,.12);--hairline:rgba(19,32,26,.075);
   --sans:'Instrument Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
   --shadow:0 1px 2px rgba(8,26,20,.18),0 6px 16px -8px rgba(8,26,20,.42);
@@ -34,7 +35,8 @@ html.night{
   color-scheme:dark;
   --paper:#0B1512;--paper-2:#101D18;--card:#13221C;
   --ink-1:#EAF1EC;--ink-2:#C5D2CA;--ink-3:#98A99F;--ink-4:#6E8077;
-  --forest:#5FB08F;--on-forest:#0B1512;--warning:#E6B84A;--gold:#DDB24C;
+  --forest:#5FB08F;--on-forest:#0B1512;--warning:#E6B84A;--gold:#DDB24C;--emergency:#F07D72;
+  --trip:#8DB8E8;
   --border:rgba(234,241,236,.13);--hairline:rgba(234,241,236,.075);
   --shadow:0 8px 22px -8px rgba(0,0,0,.7);
 }
@@ -47,6 +49,10 @@ body{font-family:var(--sans);font-size:16px;line-height:1.45;color:var(--ink-1);
 #top{flex:0 0 auto;padding:8px 8px 0}
 #chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:6px}
 #chips::-webkit-scrollbar{display:none}
+/* The row scrolls at 320 and 390: an edge with more chips beyond it fades, so a fourth layer is never a secret. */
+#chips.fade-r{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent)}
+#chips.fade-l{-webkit-mask-image:linear-gradient(90deg,transparent,#000 36px);mask-image:linear-gradient(90deg,transparent,#000 36px)}
+#chips.fade-l.fade-r{-webkit-mask-image:linear-gradient(90deg,transparent,#000 36px,#000 calc(100% - 36px),transparent);mask-image:linear-gradient(90deg,transparent,#000 36px,#000 calc(100% - 36px),transparent)}
 .chip{flex:0 0 auto;min-height:44px;padding:0 14px;border-radius:999px;border:1px solid var(--border);background:var(--card);color:var(--ink-2);font:600 14px/1 var(--sans);cursor:pointer}
 .chip[aria-pressed="true"]{background:var(--forest);border-color:var(--forest);color:var(--on-forest)}
 .line{display:flex;align-items:center;gap:8px;min-height:28px;padding:3px 0 3px 16px;position:relative;font-size:13px;font-weight:600;line-height:1.35;color:var(--ink-2);text-wrap:pretty}
@@ -69,8 +75,17 @@ body{font-family:var(--sans);font-size:16px;line-height:1.45;color:var(--ink-1);
 #mapbox{position:relative;flex:1 1 auto;min-height:0;margin:0 8px 8px;border-radius:16px;overflow:hidden;border:1px solid var(--hairline)}
 #map{position:absolute;inset:0;background:var(--paper-2)}
 /* The notes card: every gap, the counts and the key, over the top of the map (it scrolls inside, never the page). */
-#card{position:absolute;z-index:1000;top:8px;left:8px;right:8px;max-height:calc(100% - 150px);overflow-y:auto;overscroll-behavior:contain;padding:4px 10px;border-radius:14px;border:1px solid var(--border);background:var(--card);box-shadow:var(--shadow)}
+#card{position:absolute;z-index:1000;top:8px;left:8px;right:8px;max-height:min(calc(100% - 150px),50%);overflow-y:auto;overscroll-behavior:contain;padding:4px 10px;border-radius:14px;border:1px solid var(--border);background:var(--card);box-shadow:var(--shadow)}
+/* The Key opens under its own button and the card grows to hold it — over the map while Mike reads it (at 320 the
+   permit legend alone is taller than half the map), stopping above the OSM credit; Route the day steps aside. */
+#card.keyopen{max-height:calc(100% - 44px)}
+#card.keyopen ~ #hud{visibility:hidden}
 #card[hidden],#offview[hidden]{display:none}
+/* "More ↓" over the card's bottom edge while more of it is below — the card scrolls inside itself. Zero height: the
+   cue never changes what it measures. */
+#more{position:sticky;bottom:-4px;height:0;pointer-events:none}
+#more span{position:absolute;left:-10px;right:-10px;bottom:0;height:34px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:5px;background:linear-gradient(rgba(255,255,255,0),var(--card) 65%);font:700 12px/1 var(--sans);color:var(--forest)}
+html.night #more span{background:linear-gradient(rgba(19,34,28,0),var(--card) 65%)}
 #offview{position:absolute;z-index:1000;right:8px;top:8px;max-width:calc(100% - 16px);min-height:44px;padding:0 14px;border-radius:22px;border:1px solid var(--border);background:var(--card);color:var(--forest);font:700 13.5px/1.2 var(--sans);box-shadow:var(--shadow);cursor:pointer}
 #hud{position:absolute;z-index:1000;left:62px;right:8px;bottom:28px}
 #hud:empty{display:none}
@@ -81,11 +96,18 @@ html.night #osm{background:rgba(11,21,18,.85);color:#C5D2CA}
 #legend{padding:0 0 4px}
 .key{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink-2);padding:2px 0}
 .key .pin{flex:0 0 auto;transform:scale(.7);margin:-6px}
+/* DEQ's own symbol for layer 33: an orange fill (230,152,0), 50% transparent, a thin grey outline — shown over the
+   map's own ground, as the shading is: OSM's land by Day, that land under the Night filter at night (over the dark
+   card the bare fill read as a brown the map never shows). */
+.swatch{flex:0 0 auto;align-self:flex-start;width:30px;height:20px;margin-top:2px;border-radius:5px}
+.swatch.rpa{background:linear-gradient(rgba(230,152,0,.5),rgba(230,152,0,.5)),#F2EFE9;border:1px solid rgba(110,110,110,.9)}
+html.night .swatch.rpa{background:linear-gradient(rgba(230,152,0,.5),rgba(230,152,0,.5)),#999794}
 .hud{display:block;width:100%;min-height:48px;padding:6px 12px;border:0;border-radius:14px;background:var(--forest);color:var(--on-forest);font:700 14px/1.25 var(--sans);box-shadow:var(--shadow);cursor:pointer}
 /* Leaflet's zoom buttons and a stop list's ×: 44 px, in the app's colours by Day and Night. */
 #mapbox .leaflet-bar{border:1px solid var(--border);box-shadow:var(--shadow)}
 #mapbox .leaflet-bar a{width:44px;height:44px;line-height:44px;font:700 22px/44px var(--sans);background:var(--card);color:var(--ink-1);border-bottom-color:var(--border)}
 #mapbox .leaflet-bar a.leaflet-disabled{background:var(--paper-2);color:var(--ink-4)}
+#mapbox.popopen #card,#mapbox.popopen #hud,#mapbox.popopen .leaflet-control-zoom{visibility:hidden}
 #mapbox a.leaflet-popup-close-button{width:44px;height:44px;font:400 26px/44px var(--sans);color:var(--ink-3)}
 #mapbox .leaflet-popup-content{margin:10px 12px}
 .pinwrap{background:none;border:0}
@@ -94,6 +116,25 @@ html.night #osm{background:rgba(11,21,18,.85);color:#C5D2CA}
 .pin.exact{background:var(--forest);color:var(--on-forest);border:2px solid var(--card)}
 .pin.area{background:var(--card);color:var(--ink-1);border:3px dashed var(--forest)}
 .pin.practice{background:var(--card);color:var(--ink-1);border:3px dashed var(--ink-4)}
+/* A ZIP area's open leads: hollow (never an exact spot), gold, square-cornered, the count over the word "lead(s)" —
+   never a bare number that reads as a stop; red when an emergency lead is among them (as on Leads). */
+.pin.leadpin{flex-direction:column;gap:2px;padding:0 6px;border-radius:12px;background:var(--card);color:var(--ink-1);border:3px dashed var(--gold)}
+.pin.leadpin small{font:700 10px/1 var(--sans);color:var(--ink-3)}
+.pin.leadpin.alarm{border:3px solid var(--emergency);color:var(--emergency)}
+.pop small.alarm{color:var(--emergency);font-weight:700}
+/* A truck: square-cornered, named (trucks that would touch share one, "3 trucks"); solid ink at a fresh fix — never
+   the exact stop's forest — with an arrow turned to its heading when driving; grey and dashed at a last-known spot. */
+.pin.truck{gap:4px;max-width:120px;border-radius:12px;font:700 13px/1 var(--sans)}
+.pin.truck .tl{overflow:hidden;text-overflow:ellipsis}
+.pin.truck.solid{background:var(--ink-1);color:var(--card);border:2px solid var(--card)}
+.pin.truck.grey{background:var(--paper-2);color:var(--ink-3);border:3px dashed var(--ink-4)}
+.pin.truck .hd{display:inline-block;font-size:16px;line-height:1}
+.pop .muted{padding:2px 0}
+.pop .tname{font-weight:700;margin-top:8px}
+/* Today's trips in the key: a short line in the trip colour (never Today's route green). */
+.tripkey{flex:0 0 auto;width:30px;height:0;border-top:4px solid var(--trip);border-radius:2px}
+/* Pins are measured here, off the map and out of sight, before they are placed. */
+#measure{position:absolute;left:0;top:0;visibility:hidden;pointer-events:none}
 .pop{overflow-wrap:anywhere}
 .pop b{display:block;font-size:13px;color:var(--ink-3);margin-bottom:4px;padding-right:30px}
 .pop button{display:block;width:100%;min-height:44px;margin-top:6px;padding:6px 10px;text-align:left;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--ink-1);font:600 14px/1.35 var(--sans);cursor:pointer}
@@ -103,7 +144,6 @@ html.night #osm{background:rgba(11,21,18,.85);color:#C5D2CA}
 </style>
 </head>
 <body>
-<!--ARBO:SPRITE-->
 <div id="top">
   <div id="chips" role="group" aria-label="Map layers"></div>
 </div>
@@ -113,9 +153,11 @@ html.night #osm{background:rgba(11,21,18,.85);color:#C5D2CA}
     <div id="status" role="status" aria-live="polite"></div>
     <div id="facts"></div>
     <div id="legend"></div>
+    <div id="more" aria-hidden="true"><span>More ↓</span></div>
   </div>
   <button id="offview" type="button" hidden></button>
   <div id="hud"></div>
+  <div id="measure" class="pinwrap" aria-hidden="true"></div>
   <a id="osm" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a>
 </div>
 <script type="application/json" id="map-zips"><!--ARBO:ZIPS--></script>
@@ -137,9 +179,6 @@ const MAP_SAYS = {
   namePermits: 'Permit areas',
   nameLeads: 'Leads & jobs',
   nameTrucks: 'Trucks',
-  permitsSoon: 'Permit areas aren’t drawn yet — the next map build adds Virginia DEQ’s RPA layer. No shading here is not a “no”.',
-  leadsSoon: 'Leads & jobs aren’t on the map yet — the next map build adds them. Your leads are on the Leads tab.',
-  trucksSoon: 'Trucks aren’t on the map yet — that layer is still to be built. Office → Fleet lists each truck.',
   practice: 'PRACTICE DATA — pins sit in their ZIP area; these are not real places.',
   todayFailed: 'Today’s stops: couldn’t read them just now. This is not an empty day.',
   emptyDay: 'Nothing on your Google Calendar today.',
@@ -154,6 +193,14 @@ const MAP_SAYS = {
   keyName: 'What the pins and lines mean',
   offOne: '1 stop is off this view — show all',
   offMany: '{k} stops are off this view — show all',
+  offTruckOne: '1 truck is off this view — show all',
+  offTruckMany: '{k} trucks are off this view — show all',
+  offBoth: '{s} and {t} are off this view — show all',
+  stopOne: '1 stop',
+  stopMany: '{k} stops',
+  truckOne: '1 truck',
+  truckMany: '{k} trucks',
+  asideKey: 'Dotted line: a marker moved aside so it covers nothing — the line runs to its own spot.',
   zipArea: 'ZIP area — not the exact spot',
   practicePin: 'Practice pin — not a real place',
   outside: 'placed outside the four cities',
@@ -174,13 +221,103 @@ const MAP_SAYS = {
   tilesFailedBare: 'Street map didn’t load (OpenStreetMap) — this is not an empty map.',
   offline: 'No signal — the street map needs one.',
   retry: 'Try again',
+  keyRow: 'What the map shows',
+  // Permit areas (M2): DEQ's RPA shading. An area never gets a permit word — those belong to one address's screen.
+  rpaZoom: 'Zoom in to see RPA areas — DEQ doesn’t draw them at this zoom; not drawn is not “no RPA”.',
+  rpaReading: 'Reading DEQ’s RPA layer…',
+  rpaFailed: 'Couldn’t load the DEQ RPA layer just now — this is not “no RPA here”.',
+  rpaUnset: 'DEQ’s RPA layer couldn’t be set up on this page — nothing is drawn; this is not “no RPA”.',
+  rpaMissing: 'Not on this map: the Virginia Beach, Norfolk and Chesapeake city RPA layers (found, not verified); Portsmouth (no city layer found); floodplain, Norfolk CRO and reservoir areas (no layer). Missing shading is never a “no”.',
+  rpaLegend: 'Shaded: Resource Protection Area — Virginia DEQ statewide layer 33 (checked 2026-08-01). Not shaded does not mean no permit — VERIFY W/ CITY. Arbo’s permit screen checks 300 m around an address, because an address point can sit 150–300 m from a rear-lot buffer. For one address’s permit word, use Estimate → prep.',
+  permitsCutR32: 'Permit records are cut on purpose (R32) — none are drawn.',
+  permitsCut: 'Permit records are cut on purpose — none are drawn.',
+  permitsNotDrawn: 'Permit records aren’t drawn on this map.',
+  // Leads & jobs (M3): open leads by ZIP area. notFed is the Leads tab's own line, word for word (R4).
+  notFed: 'Arbo doesn’t receive new leads yet — Sona’s are in Quo, and website and ad leads are in Gmail. This is not an empty inbox.',
+  readingLeads: 'Reading open leads…',
+  leadsFeed: 'Leads: {word}. This is not an empty inbox.',
+  feed_cut: 'cut on purpose',
+  feed_sim: 'not in the practice data',
+  feed_unset: 'not set up yet',
+  feed_unread: 'couldn’t read it',
+  olderHidden: '{k} older leads hidden — Show older',
+  olderHiddenOne: '1 older lead hidden — Show older',
+  olderShown: '{k} older leads shown — Hide older',
+  olderShownOne: '1 older lead shown — Hide older',
+  newest50: 'Showing the newest 50 open leads — the map reads no more than that.',
+  leadsCounts: '{on} of {n} open leads on the map',
+  leadsCountsOne: '{on} of 1 open lead on the map',
+  noZip: '{k} leads with no ZIP — not on the map',
+  noZipOne: '1 lead with no ZIP — not on the map',
+  outsideLeads: '{k} leads outside the four cities — not on the map',
+  outsideLeadsOne: '1 lead outside the four cities — not on the map',
+  noAreaLeads: '{k} leads’ ZIPs have no map area',
+  noAreaLeadsOne: '1 lead’s ZIP has no map area',
+  notLoadedLeads: '{k} leads: ZIP areas are not loaded on the map yet — not placed',
+  notLoadedLeadsOne: '1 lead: ZIP areas are not loaded on the map yet — not placed',
+  leadsEmpty: 'No open leads in Arbo to place.',
+  leadsEmptyOlder: 'No new open leads — only older ones, hidden above.',
+  leadsEmptyPractice: 'No open leads in the practice data.',
+  leadGroup: '{where} · {k} open leads, {n} new',
+  leadGroupOne: '{where} · 1 open lead, {n} new',
+  leadZipNote: 'ZIP from the lead’s record — the ZIP area, not the exact spot.',
+  leadKey: 'Open leads in one ZIP area — the number is how many. ZIP from the lead’s record, not the exact spot.',
+  leadKeyAlarm: 'Red: an emergency lead among them, as on Leads.',
+  leadWord: 'lead',
+  leadsWord: 'leads',
+  ageToday: 'came in today',
+  ageOne: '1 day ago',
+  ageMany: '{k} days ago',
+  tagEmergency: 'EMERGENCY',
+  tagOlder: 'Older lead',
+  tagQualified: 'Qualified',
+  noName: 'Unknown caller',
+  jobs: 'Jobs are on your Google Calendar — today’s are on the Today layer. Other days aren’t on the map yet.',
+  jobsCutR32: 'Arbo’s job and estimate records are cut on purpose (R32) — none drawn; this is not “no jobs”.',
+  jobsCut: 'Arbo’s job and estimate records are cut on purpose — none drawn; this is not “no jobs”.',
+  jobsNotDrawn: 'Arbo’s own job and estimate records aren’t drawn on the map — this is not “no jobs”.',
+  // Trucks (M4): the server's own words name every Bouncie state; these name the rest.
+  readingTrucks: 'Reading the trucks…',
+  trucksFailed: 'Couldn’t read the trucks just now — no dots are shown; this is not “no trucks”.',
+  trucksAfterHours: 'After hours — trucks show 8am–8pm, Monday to Saturday, so no dots are shown now. This is not “no trucks”.',
+  crew: 'Crew aren’t on the map — Arbo has no crew location. Trucks show where crews drive.',
+  fleetList: 'Couldn’t read the Fleet list ({why}) — trucks show by VIN.',
+  fleetUnread: 'couldn’t be read',
+  truckUnmatched: 'Not matched to a Fleet unit',
+  truckUnit: 'Fleet unit: {unit}',
+  truckDriving: 'Driving · seen {ago}',
+  truckParked: 'Parked · seen {ago}',
+  truckSeen: 'Seen {ago}',
+  truckStale: 'Last fix {ago} — may have moved',
+  truckUnplugged: 'Bouncie unplugged — last known spot',
+  truckNoFix: 'No position yet — not on the map',
+  truckAfterHours: 'After hours — where it is now isn’t shown',
+  truckLastKnown: 'Last known spot — Bouncie didn’t answer just now',
+  truckUnknown: 'Not on the map — Bouncie gave no state Arbo knows',
+  agoMin: '{k} min ago',
+  agoHour: '{k} h ago',
+  agoNone: 'at a time Bouncie didn’t give',
+  trucksCount: '{on} of {n} trucks on the map',
+  trucksCountOne: '{on} of 1 truck on the map',
+  todaysTrips: 'Today’s trips',
+  tripsFor: 'Today’s trips — {truck}',
+  trucksHere: '{k} trucks here',
+  readingTrips: 'Reading today’s trips for {truck}…',
+  tripsFailed: 'Couldn’t read today’s trips just now — this is not “no trips”.',
+  truckListChanged: 'The truck list changed — pick the truck again.',
+  tripsNoDay: 'This phone can’t tell today’s date in Virginia — no trips were asked for.',
+  tripsCount: '{k} trips drawn for {truck}',
+  tripsCountOne: '1 trip drawn for {truck}',
+  tripsLost: 'Bouncie sent {k} trips for {truck} whose routes couldn’t be read — not drawn. This is not “no trips”.',
+  tripsLostOne: 'Bouncie sent 1 trip for {truck} whose route couldn’t be read — not drawn. This is not “no trips”.',
+  truckKeySolid: 'A truck at Bouncie’s fresh fix — an arrow when driving shows its heading.',
+  truckKeyGrey: 'Grey: last known spot — the fix is old, Bouncie is unplugged, or Bouncie didn’t answer.',
+  tripKey: 'Line: today’s trips inside working hours — Bouncie’s path.',
 };
 
 const LAYERS = ['today', 'permits', 'leads', 'trucks'];
 const LAYER_NAME = { today: MAP_SAYS.nameToday, permits: MAP_SAYS.namePermits, leads: MAP_SAYS.nameLeads, trucks: MAP_SAYS.nameTrucks };
-// A layer not built yet says so when it is switched on — never an empty map.
-const LAYER_SOON = { permits: MAP_SAYS.permitsSoon, leads: MAP_SAYS.leadsSoon, trucks: MAP_SAYS.trucksSoon };
-// The layers this build draws: each reads its own feed and names its own gaps.
+// Every layer is built (Maps wave B): each reads its own feed and names its own gaps — never an empty map.
 const LAYER_READ = {};
 const LAYER_CLEAR = {};
 
@@ -192,8 +329,27 @@ function inlined(id) {
 }
 const ZIPS = inlined('map-zips') || { zips: {}, noArea: [], checked: null, box: { south: 36.53, west: -76.58, north: 36.99, east: -75.84 } };
 const BOX = ZIPS.box;
+const DEQ = inlined('map-deq'); // DEQ's MapServer base, layer 33 and its recorded limits (layers.ts); null = not set up
+
+// The links' word, from the shell's own /health read ('live', 'readonly', 'cut', 'simulation'): what "cut" can
+// truthfully mean on this map, and whether this is practice. null until the shell knows; the frame never reads
+// /health itself.
+let LINKS = null;
+function shellLinks() {
+  try {
+    if (window.parent === window || typeof window.parent.arboMapLinks !== 'function') return Promise.resolve(null);
+    return Promise.resolve(window.parent.arboMapLinks()).then((v) => (typeof v === 'string' ? v : null), () => null);
+  } catch (e) {
+    return Promise.resolve(null);
+  }
+}
+const LINKS_READY = shellLinks().then((v) => { LINKS = v; return v; });
 
 let ON = readLayers();
+// Mike's own choice, from the chips (what is on when he taps one). A way in adds its layer for that arrival only.
+const SAVED = Object.assign({}, ON);
+// The layer the last way in (or chip turned on) named: its lines lead the notes card.
+const VIEW = { focus: null };
 let MAP = null;
 let TILES = null;
 const TILE = { errors: 0, loaded: 0 };
@@ -225,7 +381,10 @@ function nightOn() {
 }
 function applyNight() {
   document.documentElement.classList.toggle('night', nightOn());
-  if (TODAY.d) drawToday(TODAY.d); // the route line takes the theme's own colour
+  // The route line, the dotted lines and the trip lines take the theme's own colours.
+  if (TODAY.d) drawToday(TODAY.d);
+  else drawMarkers();
+  if (TRUCKS.trips) TRUCKS.trips.eachLayer((l) => l.setStyle({ color: tripColor() }));
 }
 
 // The key, from the shell that framed this page — it works even when the shell holds it for the visit only.
@@ -255,7 +414,9 @@ async function mapGet(path) {
   // The door's 429 (too many wrong keys from this connection) is a wait, not a refused key; any other 429 is a read that failed.
   if (res.status === 429 && body && body.error === 'too_many_attempts') throw Object.assign(new Error('throttled'), { why: 'throttled' });
   if (res.status === 401) throw Object.assign(new Error('refused'), { why: body && body.error === 'no_app_key' ? 'noAppKey' : 'refused' });
-  if (!res.ok || !body || typeof body !== 'object') throw Object.assign(new Error('unread'), { why: 'unread', code: res.status });
+  // The server's own reason rides as `message` (db_not_configured, link_cut …), so a layer can say the Leads tab's word.
+  // A refusal's own sentence rides as `said` (a trips 400's message), so it can be shown as the server wrote it.
+  if (!res.ok || !body || typeof body !== 'object') throw Object.assign(new Error('unread'), { why: 'unread', code: res.status, message: body && typeof body.error === 'string' ? body.error : 'error', said: body && typeof body.message === 'string' ? body.message : null });
   return body;
 }
 
@@ -284,11 +445,35 @@ function drawChips() {
     b.addEventListener('click', () => setLayer(l, !ON[l]));
     box.appendChild(b);
   }
+  chipFade();
+}
+// A chip in the middle of the row's view (the row scrolls on a phone).
+function chipIntoView(l) {
+  const box = $('chips');
+  const c = box.children[LAYERS.indexOf(l)];
+  if (!c) return;
+  const d = c.getBoundingClientRect().left - box.getBoundingClientRect().left;
+  box.scrollLeft += d - (box.clientWidth - c.offsetWidth) / 2;
+  chipFade();
+}
+function chipFade() {
+  const box = $('chips');
+  box.classList.toggle('fade-r', box.scrollLeft + box.clientWidth < box.scrollWidth - 2);
+  box.classList.toggle('fade-l', box.scrollLeft > 2);
 }
 
+// A chip tap: Mike's own choice — what is on when he taps is what he keeps; the layer he turns on leads the card.
 function setLayer(l, on) {
   ON[l] = on;
+  for (const k of LAYERS) SAVED[k] = ON[k];
   saveLayers();
+  if (on) VIEW.focus = l;
+  else if (VIEW.focus === l) VIEW.focus = null;
+  showLayer(l, on);
+}
+// A layer on or off on the map (nothing saved here).
+function showLayer(l, on) {
+  ON[l] = on;
   drawChips();
   if (on) readLayer(l);
   else {
@@ -299,12 +484,32 @@ function setLayer(l, on) {
     drawLegend();
   }
 }
+// A way in (Calendar, Estimate, Leads, Fleet): Mike's own layers plus the one it names, whose lines lead the notes
+// card and whose chip is scrolled into view. A layer on only from an earlier way in goes off — they never pile up —
+// and nothing is saved: the chips alone are remembered.
+function arrive(l) {
+  const was = ON[l];
+  VIEW.focus = l;
+  for (const k of LAYERS) {
+    const want = SAVED[k] || k === l;
+    if (want !== ON[k]) showLayer(k, want);
+  }
+  if (was) readLayer(l);
+  drawChips();
+  chipIntoView(l);
+  $('card').scrollTop = 0;
+  drawStatus();
+  drawFacts();
+  drawLegend();
+}
+// The layers in the card's order: the one Mike came in for first, then the rest in theirs.
+function layerOrder() {
+  const f = VIEW.focus;
+  return f && ON[f] ? [f, ...LAYERS.filter((l) => l !== f)] : LAYERS;
+}
 
 function readLayer(l) {
-  if (!ON[l]) return;
-  if (LAYER_READ[l]) { LAYER_READ[l](); return; }
-  GAPS[l] = [{ cls: 'unset', text: LAYER_SOON[l] }];
-  drawStatus();
+  if (ON[l] && LAYER_READ[l]) LAYER_READ[l]();
 }
 function readAll() {
   for (const l of LAYERS) readLayer(l);
@@ -315,7 +520,7 @@ function drawStatus() {
   GAPS.net = navigator.onLine === false ? [{ cls: 'unread', text: MAP_SAYS.offline }] : [];
   const box = $('status');
   box.replaceChildren();
-  const order = ['code', 'key', 'net', 'tiles', ...LAYERS.filter((l) => ON[l])];
+  const order = ['code', 'key', 'net', 'tiles', ...layerOrder().filter((l) => ON[l])];
   for (const slot of order) {
     for (const g of GAPS[slot]) {
       const row = el('div', 'line ' + g.cls);
@@ -344,15 +549,28 @@ const FACTS = {};
 const KEYS = {};
 function drawFacts() {
   const box = $('facts');
+  const legend = $('legend');
+  $('card').insertBefore(legend, $('more')); // out of the facts before they are redrawn
   box.replaceChildren();
-  for (const l of LAYERS) if (ON[l] && FACTS[l]) for (const n of FACTS[l]()) box.appendChild(n);
+  for (const l of layerOrder()) if (ON[l] && FACTS[l]) for (const n of FACTS[l]()) box.appendChild(n);
+  // The key's button rides beside Today's counts; with no counts on the map it has a row of its own.
+  if (keyRows().length && !box.querySelector('.keybtn')) {
+    const row = el('div', 'counts');
+    row.appendChild(el('div', 'muted', MAP_SAYS.keyRow));
+    row.appendChild(keyButton());
+    box.appendChild(row);
+  }
+  // The key opens right under its own button (never at the card's far end); the card grows while it is open.
+  const kb = box.querySelector('.keybtn');
+  if (kb) kb.parentElement.after(legend);
+  $('card').classList.toggle('keyopen', KEY_OPEN && !!kb);
   syncCard();
 }
 // The key opens from its button beside the counts (keyButton); Route the day rides on the map (HUDS).
 const HUDS = {};
 function keyRows() {
   const out = [];
-  for (const l of LAYERS) if (ON[l] && KEYS[l]) out.push(...KEYS[l]());
+  for (const l of layerOrder()) if (ON[l] && KEYS[l]) out.push(...KEYS[l]());
   return out;
 }
 function drawLegend() {
@@ -368,12 +586,26 @@ function keyButton() {
   b.type = 'button';
   b.setAttribute('aria-label', MAP_SAYS.keyName);
   b.setAttribute('aria-expanded', KEY_OPEN ? 'true' : 'false');
-  b.addEventListener('click', () => { KEY_OPEN = !KEY_OPEN; drawFacts(); drawLegend(); });
+  b.addEventListener('click', () => {
+    KEY_OPEN = !KEY_OPEN;
+    drawFacts();
+    drawLegend();
+    // The notes card scrolls inside itself: an opened key sits under its own button, which stays at the card's top.
+    const kb = $('facts').querySelector('.keybtn');
+    if (KEY_OPEN && kb) $('card').scrollTop = Math.max(0, kb.parentElement.offsetTop - 4);
+  });
   return b;
 }
-// The card shows only when it has something to say.
+// The card shows only when it has something to say (the legend, parked in the facts under its button, is not a fact).
 function syncCard() {
-  $('card').hidden = !($('status').childElementCount || $('facts').childElementCount || $('legend').childElementCount);
+  const facts = [...$('facts').children].some((n) => n.id !== 'legend');
+  $('card').hidden = !($('status').childElementCount || facts || $('legend').childElementCount);
+  moreCue();
+}
+// "More ↓" while part of the card is below its bottom edge.
+function moreCue() {
+  const c = $('card');
+  $('more').hidden = c.hidden || c.scrollHeight - c.scrollTop - c.clientHeight <= 2;
 }
 
 // The street map. §1B: three failures and none loaded is named; so is no signal. "Pins are still placed" only when they are.
@@ -393,7 +625,7 @@ function retryTiles() {
   tilesState();
 }
 function placedCount() {
-  return ON.today && TODAY.d ? TODAY.d.stops.length : 0;
+  return TODAY.boxes.length + TRUCKS.boxes.length + LEADS.boxes.length;
 }
 
 // What the notes card and Route the day cover on the map, in the map's own pixels.
@@ -428,31 +660,56 @@ function offViewCount(stops, toPt, w, top, bottom) {
   }
   return k;
 }
+// What the off-view button counts and shows: Today's stops and the trucks drawn (a truck in Richmond is counted).
+function offItems() {
+  const d = TRUCKS.d;
+  return { stops: ON.today && TODAY.d ? TODAY.d.stops : [], trucks: ON.trucks && d ? d.trucks.filter((t) => truckStyle(t, d.state)) : [] };
+}
+function offWords(s, t) {
+  const n = (k, one, many) => (k === 1 ? one : many.replace('{k}', String(k)));
+  if (!t) return n(s, MAP_SAYS.offOne, MAP_SAYS.offMany);
+  if (!s) return n(t, MAP_SAYS.offTruckOne, MAP_SAYS.offTruckMany);
+  return MAP_SAYS.offBoth.replace('{s}', n(s, MAP_SAYS.stopOne, MAP_SAYS.stopMany)).replace('{t}', n(t, MAP_SAYS.truckOne, MAP_SAYS.truckMany));
+}
 function offView() {
   const b = $('offview');
-  if (!MAP || !ON.today || !TODAY.d || POP_OPEN) { b.hidden = true; return; }
+  if (!MAP || POP_OPEN) { b.hidden = true; return; }
+  const it = offItems();
   const size = MAP.getSize();
-  const k = offViewCount(TODAY.d.stops, (s) => MAP.latLngToContainerPoint([s.lat, s.lon]), size.x, cardPad(), size.y - hudPad());
-  b.hidden = k === 0;
-  if (!k) return;
-  b.textContent = k === 1 ? MAP_SAYS.offOne : MAP_SAYS.offMany.replace('{k}', String(k));
+  const pt = (s) => MAP.latLngToContainerPoint([s.lat, s.lon]);
+  const ks = offViewCount(it.stops, pt, size.x, cardPad(), size.y - hudPad());
+  const kt = offViewCount(it.trucks, pt, size.x, cardPad(), size.y - hudPad());
+  b.hidden = ks + kt === 0;
+  if (b.hidden) return;
+  b.textContent = offWords(ks, kt);
   b.style.top = (cardPad() + 8) + 'px';
 }
-// Mike's tap: every placed stop in the clear part of the map (the floor drops only as far as that takes).
+// Mike's tap: every placed stop and truck in the clear part of the map (the floor drops only as far as that takes).
 function showAll() {
-  if (!MAP || !TODAY.d || !TODAY.d.stops.length) return;
-  const b = L.latLngBounds(TODAY.d.stops.map((s) => [s.lat, s.lon]));
+  if (!MAP) return;
+  const it = offItems();
+  const pts = it.stops.concat(it.trucks);
+  if (pts.length) fitClear(L.latLngBounds(pts.map((s) => [s.lat, s.lon])), 14);
+}
+// Below the fitted box: Route the day, or the zoom buttons (bottom-left) when they reach higher.
+function bottomPad() {
+  const z = document.querySelector('#mapbox .leaflet-control-zoom');
+  return Math.max(hudPad(), z ? $('mapbox').getBoundingClientRect().bottom - z.getBoundingClientRect().top : 0);
+}
+// A box fitted into the clear part of the map — under the notes card, above Route the day and the zoom buttons — on
+// Mike's own tap.
+function fitClear(b, maxZoom) {
   const tl = L.point(30, cardPad() + 30);
-  const br = L.point(30, hudPad() + 30);
+  const br = L.point(30, bottomPad() + 10);
   const floor = MAP.getMinZoom();
   KEEP_VIEW = false;
   MAP.setMinZoom(5); // fitBounds never fits below the floor
-  MAP.fitBounds(b, { paddingTopLeft: tl, paddingBottomRight: br, maxZoom: 14, animate: false });
+  MAP.fitBounds(b, { paddingTopLeft: tl, paddingBottomRight: br, maxZoom: maxZoom, animate: false });
   MAP.setMinZoom(Math.min(floor, MAP.getZoom()));
   offView();
 }
 
-// The pan limit: the four cities and every placed pin, padded — no placed pin is ever out of reach.
+// The pan limit: the four cities and every placed point, padded — no placed pin is ever out of reach.
 function panBox(box, stops) {
   let s = box.south, w = box.west, n = box.north, e = box.east;
   for (const p of stops) {
@@ -465,8 +722,100 @@ function panBox(box, stops) {
   const pad = 1;
   return [[s - pad, w - pad], [n + pad, e + pad]];
 }
-function setPanLimit(stops) {
-  if (MAP) MAP.setMaxBounds(panBox(BOX, stops));
+// Every point the map has placed: Today's stops, the trucks drawn, today's trips (their box), the leads' ZIP areas.
+function placedPoints() {
+  const pts = [];
+  if (ON.today && TODAY.d) pts.push(...TODAY.d.stops);
+  if (ON.trucks && TRUCKS.d) for (const t of TRUCKS.d.trucks) if (truckStyle(t, TRUCKS.d.state)) pts.push(t);
+  if (ON.trucks && TRUCKS.tripBox) pts.push(...TRUCKS.tripBox);
+  if (ON.leads && LEADS.d) for (const g of leadGroups(shownLeads(), ZIPS).groups) pts.push(g);
+  return pts;
+}
+function setPanLimit() {
+  if (MAP) MAP.setMaxBounds(panBox(BOX, placedPoints()));
+}
+
+// ═══ ONE PLACE FOR EVERY MARKER (wave B review, D108): nothing hides under anything ═══
+// Today's stops stay where they are; trucks step aside from them; leads step aside from both. A marker that would
+// touch one already drawn moves to the nearest free spot (above first), joined to its own point by a dotted line —
+// a lead's ZIP area on a stop's own Census point never covers the stop. Drawn markers are kept as their point and
+// half their size (a reset of Leaflet's pixel origin never stales them); pins are measured before they are placed.
+// A moved marker lands in the clear part of the map (`inClear`: not under the notes card or Route the day) when it can.
+function stepAside(p, hw, hh, taken, inClear) {
+  const free = (x, y) => taken.every((b) => Math.abs(b.x - x) >= b.hw + hw + 2 || Math.abs(b.y - y) >= b.hh + hh + 2);
+  if (free(p.x, p.y)) return { x: p.x, y: p.y, moved: false };
+  const dirs = [[0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1]];
+  for (const want of inClear ? [inClear, null] : [null]) {
+    for (let r = 1; r <= 6; r++) {
+      for (const [dx, dy] of dirs) {
+        const x = p.x + dx * r * (hw * 2 + 4);
+        const y = p.y + dy * r * (hh * 2 + 4);
+        if (free(x, y) && (!want || want(x, y, hw, hh))) return { x: x, y: y, moved: true };
+      }
+    }
+  }
+  return { x: p.x, y: p.y - 7 * (hh * 2 + 4), moved: true };
+}
+// Each marker in turn, against everything drawn before it (and the ones placed before it here).
+function asidePlaces(items, toPx, sizeOf, taken, inClear) {
+  return items.map((mk) => {
+    const sz = sizeOf(mk);
+    const q = stepAside(toPx(mk), sz.hw, sz.hh, taken, inClear);
+    taken.push({ x: q.x, y: q.y, hw: sz.hw, hh: sz.hh });
+    return { mk: mk, x: q.x, y: q.y, moved: q.moved };
+  });
+}
+// Is a box (layer pixels) in the clear part of the map: inside it, under the notes card, above Route the day?
+function clearAt(x, y, hw, hh) {
+  const c = MAP.layerPointToContainerPoint(L.point(x, y));
+  const size = MAP.getSize();
+  return c.x - hw >= 0 && c.x + hw <= size.x && c.y - hh >= cardPad() && c.y + hh <= size.y - hudPad();
+}
+// Kept boxes in this view's layer pixels.
+function boxesPx(boxes) {
+  return boxes.map((b) => {
+    const p = MAP.latLngToLayerPoint([b.lat, b.lon]);
+    return { x: p.x, y: p.y, hw: b.hw, hh: b.hh };
+  });
+}
+// A pin measured off the map (the same styles). Map off screen measures 0: sized as a plain pin, measured again on show.
+let SIZES_STALE = false;
+function sizeOfNode(n) {
+  if (!n || !n.offsetWidth) { SIZES_STALE = true; return { hw: 22, hh: 22 }; }
+  return { hw: n.offsetWidth / 2, hh: n.offsetHeight / 2 };
+}
+function pinSize(node) {
+  $('measure').appendChild(node);
+  const sz = sizeOfNode(node);
+  node.remove();
+  return sz;
+}
+// A drawn marker's box: its point and half its pin's size.
+function boxOf(m) {
+  const ll = m.getLatLng();
+  const sz = sizeOfNode(m.getElement() ? m.getElement().firstChild : null);
+  return { lat: ll.lat, lon: ll.lng, hw: sz.hw, hh: sz.hh };
+}
+// The dotted line from a marker moved aside back to its own point.
+function leader(from, to, color) {
+  return L.polyline([from, to], { color: color, weight: 2, opacity: 0.9, dashArray: '2 5', interactive: false });
+}
+function token(name, fallback) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+}
+function tripColor() {
+  return token('--trip', '#2B6CB0');
+}
+// Every layer's markers, in order: Today's stops, then trucks, then leads — each steps aside from what is drawn before.
+function drawMarkers() {
+  drawPins();
+  drawTrucks();
+  drawLeadPins();
+}
+// The notes card or Route the day changed size: the markers that step aside are placed again, clear of them.
+function placeAgain() {
+  drawTrucks();
+  drawLeadPins();
 }
 
 // Messages from the shell: only from the shell that framed this page, on this origin.
@@ -475,8 +824,7 @@ function onShellMessage(e) {
   const m = e.data;
   if (!m || typeof m !== 'object') return;
   if (m.type === 'layer' && LAYERS.includes(m.layer)) {
-    if (ON[m.layer]) readLayer(m.layer);
-    else setLayer(m.layer, true);
+    arrive(m.layer);
     return;
   }
   if (m.type === 'refresh') {
@@ -530,7 +878,7 @@ function onTick() {
 // /api/map/today places each stop from what Arbo already holds: an exact pin only where TomTom's
 // day memory has it (the planner placed it), a hollow ZIP-area pin otherwise, and every stop it
 // can't place is named. The map opens on the four cities and never zooms to a pin by itself.
-const TODAY = { seq: 0, d: null, layer: null, open: false };
+const TODAY = { seq: 0, d: null, layer: null, open: false, boxes: [] };
 
 function clock12(s) {
   if (typeof s !== 'string' || !/^\d{1,2}:\d{2}$/.test(s)) return '';
@@ -566,7 +914,8 @@ function mapGroups(stops) {
 // listing them all, in time order — two stops a street apart never hide one under the other. The marker sits at
 // the middle of its stops, never on one of them (stop 3 drawn on stop 1, 20 km off, at 320 px). A marker holding
 // anything but exact pins is drawn hollow; its list says how each stop was placed. Redone at every zoom.
-function screenGroups(groups, toPx, gap) {
+// Another layer's groups (Leads' ZIP areas) share the rule: `join` says what a shared marker holds.
+function screenGroups(groups, toPx, gap, join) {
   const out = [];
   for (const g of groups) {
     const p = toPx(g);
@@ -577,13 +926,14 @@ function screenGroups(groups, toPx, gap) {
     hit.y += (p.y - hit.y) / hit.parts.length;
   }
   const mid = (parts, k) => parts.reduce((a, g) => a + g[k], 0) / parts.length;
-  return out.map((c) => (c.parts.length === 1 ? c.parts[0] : {
+  return out.map((c) => (c.parts.length === 1 ? c.parts[0] : Object.assign({
     lat: mid(c.parts, 'lat'),
     lon: mid(c.parts, 'lon'),
+  }, join ? join(c.parts) : {
     exact: c.parts.every((g) => g.exact),
     practice: c.parts.every((g) => g.practice),
     stops: c.parts.flatMap((g) => g.stops).sort(byTime),
-  }));
+  })));
 }
 const PIN_GAP = 48; // a 44 px pin and a hair
 // The dashed line: numbered pins only, in the plan's order — order, not roads.
@@ -681,25 +1031,29 @@ function groupMarker(g) {
   }
   // The list opens clear of the notes card and Route the day, and fits the map's width. This click runs before
   // Leaflet's own (registered first), so the sizes are the map's as it is now.
-  const room = () => Object.assign(popupFits(MAP.getSize().x), {
-    autoPanPaddingTopLeft: L.point(10, cardPad() + 10),
-    autoPanPaddingBottomRight: L.point(10, hudPad() + 10),
-    maxHeight: Math.max(120, MAP.getSize().y - cardPad() - hudPad() - 60),
-  });
-  const pop = L.popup(room());
+  const pop = L.popup(popRoom());
   pop.setContent(groupNode(g));
-  m.on('click', () => Object.assign(pop.options, room()));
+  m.on('click', () => Object.assign(pop.options, popRoom()));
   m.bindPopup(pop);
   return m;
+}
+// Where a list may open (every layer's lists): the notes card and Route the day step aside while it is open
+// (#mapbox.popopen), so it has the whole map — at 320 the part under the card was shorter than one list. As wide as
+// the map allows.
+function popRoom() {
+  return Object.assign(popupFits(MAP.getSize().x), {
+    autoPanPaddingTopLeft: L.point(10, 10),
+    autoPanPaddingBottomRight: L.point(10, 10),
+    maxHeight: Math.max(120, MAP.getSize().y - 90),
+  });
 }
 function forestColor() {
   return getComputedStyle(document.documentElement).getPropertyValue('--forest').trim() || '#1B4D3E';
 }
 function clearToday() {
   TODAY.d = null;
-  if (TODAY.layer) TODAY.layer.clearLayers();
   GAPS.today = [];
-  setPanLimit([]);
+  drawMarkers(); // Today's pins come down; trucks and leads step back to their own points
   drawFacts();
   drawLegend();
   offView();
@@ -708,18 +1062,24 @@ function clearToday() {
 function drawPins() {
   if (!MAP || !TODAY.layer) return;
   TODAY.layer.clearLayers();
+  TODAY.boxes = [];
   const d = TODAY.d;
-  if (!d) return;
-  const line = routeLine(d.stops);
-  if (line.length) TODAY.layer.addLayer(L.polyline(line, { color: forestColor(), weight: 3, opacity: 0.85, dashArray: '6 8', interactive: false }));
-  const toPx = (g) => MAP.latLngToLayerPoint([g.lat, g.lon]);
-  for (const g of screenGroups(mapGroups(d.stops), toPx, PIN_GAP)) TODAY.layer.addLayer(groupMarker(g));
+  if (d) {
+    const line = routeLine(d.stops);
+    if (line.length) TODAY.layer.addLayer(L.polyline(line, { color: forestColor(), weight: 3, opacity: 0.85, dashArray: '6 8', interactive: false }));
+    const toPx = (g) => MAP.latLngToLayerPoint([g.lat, g.lon]);
+    for (const g of screenGroups(mapGroups(d.stops), toPx, PIN_GAP)) {
+      const m = groupMarker(g);
+      TODAY.layer.addLayer(m);
+      TODAY.boxes.push(boxOf(m));
+    }
+  }
+  setPanLimit();
 }
 function drawToday(d) {
   TODAY.d = d;
   GAPS.today = todayLines(d).map((g) => ({ cls: g.cls, text: g.text, retry: g.retry ? readToday : null }));
-  drawPins();
-  setPanLimit(d.stops);
+  drawMarkers();
   drawStatus();
   drawFacts();
   drawLegend();
@@ -800,6 +1160,806 @@ HUDS.today = () => {
 LAYER_READ.today = readToday;
 LAYER_CLEAR.today = clearToday;
 
+// ═══ PERMIT AREAS (M2): Virginia DEQ's statewide RPA layer (EDMA layer 33), as translucent shading ═══
+// The phone asks DEQ's MapServer export for the box in view — only the box, the image size and the dpi, never a
+// ZIP, a pin or an address — and only at zooms where DEQ draws the layer (layer 33's minScale, recorded with its
+// date in layers.ts). A new box replaces the old image; a failed image takes the old one down too and says so.
+// Missing shading is never a "no" (§1B), and an area never gets a permit word — those belong to one address.
+const RPA = { seq: 0, url: null, state: null, live: [] };
+
+// The scale DEQ's server works out for a view at this zoom: Web Mercator at 96 dpi in projected metres (ArcGIS's
+// own: z13 ≈ 1:72,224, z14 ≈ 1:36,112). It holds because the request sends size = the map's CSS pixels × dpr and
+// dpi = 96 × dpr. The ground scale at 36.8°N is about 0.80 of this; DEQ counts the projected one — the larger —
+// so the map asks from z13.75 (its zoom steps are quarters) and never where DEQ would draw nothing.
+function rpaScale(zoom) {
+  return 591657527.591555 / Math.pow(2, zoom);
+}
+function rpaDraws(zoom, limits) {
+  if (!limits || typeof limits.minScale !== 'number' || typeof limits.maxScale !== 'number') return false;
+  const s = rpaScale(zoom);
+  return (limits.minScale === 0 || s <= limits.minScale) && (limits.maxScale === 0 || s >= limits.maxScale);
+}
+// One export request for the box in view. Its size is the map's CSS size × dpr; past DEQ's maximum both sides
+// shrink together (the image keeps the box's shape, so the shading lands on the right streets) and the dpi with
+// them (the scale DEQ sees holds). Null when DEQ's limits are not recorded — never a guessed request.
+function rpaExport(deq, box, w, h, dpr) {
+  const lim = deq && deq.limits;
+  if (!lim || typeof lim.maxImageWidth !== 'number' || typeof lim.maxImageHeight !== 'number' || !(w > 0) || !(h > 0)) return null;
+  const r = Math.min(dpr > 0 ? dpr : 1, lim.maxImageWidth / w, lim.maxImageHeight / h);
+  const iw = Math.min(lim.maxImageWidth, Math.round(w * r));
+  const ih = Math.min(lim.maxImageHeight, Math.round(h * r));
+  const dpi = Math.round(96 * r);
+  const deg = (x) => x.toFixed(6);
+  const q = [
+    'bbox=' + [box.west, box.south, box.east, box.north].map(deg).join(','),
+    'bboxSR=4326',
+    'imageSR=3857',
+    'size=' + iw + ',' + ih,
+    'dpi=' + dpi,
+    'format=png32',
+    'transparent=true',
+    'layers=show:' + deq.layer,
+    'f=image',
+  ];
+  return { url: deq.base + '/export?' + q.join('&'), size: [iw, ih], dpi: dpi, bounds: [[box.south, box.west], [box.north, box.east]] };
+}
+// What a records line can truthfully say: cut by R32 in read-only, cut with every link (§3), or simply not drawn
+// here (practice, live, or the links' word not known yet).
+function cutLine(kind, links) {
+  if (links === 'readonly') return MAP_SAYS[kind + 'CutR32'];
+  if (links === 'cut') return MAP_SAYS[kind + 'Cut'];
+  return MAP_SAYS[kind + 'NotDrawn'];
+}
+// The layer's lines: why there is no shading now (zoom, reading, failed), then what is never on this map.
+function permitLines(state, links) {
+  const out = [];
+  if (state === 'zoom') out.push({ cls: 'unset', text: MAP_SAYS.rpaZoom, retry: false });
+  if (state === 'reading') out.push({ cls: 'unset', text: MAP_SAYS.rpaReading, retry: false });
+  if (state === 'failed') out.push({ cls: 'unread', text: MAP_SAYS.rpaFailed, retry: true });
+  if (state === 'unset') out.push({ cls: 'unread', text: MAP_SAYS.rpaUnset, retry: false });
+  out.push({ cls: 'unset', text: MAP_SAYS.rpaMissing, retry: false });
+  out.push({ cls: links === 'readonly' || links === 'cut' ? 'cut' : 'unset', text: cutLine('permits', links), retry: false });
+  return out;
+}
+function dropRpa() {
+  for (const ov of RPA.live) ov.remove();
+  RPA.live = [];
+  RPA.url = null;
+}
+function setRpa(state) {
+  RPA.state = state;
+  GAPS.permits = permitLines(state, LINKS).map((g) => ({ cls: g.cls, text: g.text, retry: g.retry ? () => readPermits(true) : null }));
+  drawStatus();
+  drawFacts();
+  drawLegend();
+}
+// Ask DEQ for the box in view, or say why not. `force` (↻, refresh, the layer switched on) asks again for the same box.
+function readPermits(force) {
+  if (!ON.permits || !MAP) return;
+  const lim = DEQ && DEQ.limits;
+  const known = !!lim && typeof lim.minScale === 'number' && typeof lim.maxScale === 'number';
+  if (!known || !rpaDraws(MAP.getZoom(), lim)) {
+    RPA.seq++;
+    dropRpa();
+    setRpa(known ? 'zoom' : 'unset');
+    return;
+  }
+  const size = MAP.getSize();
+  const b = MAP.getBounds();
+  const want = rpaExport(DEQ, { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() }, size.x, size.y, window.devicePixelRatio || 1);
+  if (!want) {
+    RPA.seq++;
+    dropRpa();
+    setRpa('unset');
+    return;
+  }
+  // The same box as the image already asked for (a refit that moved nothing): nothing new to ask.
+  if (!force && want.url === RPA.url && RPA.state !== 'failed') return;
+  const seq = ++RPA.seq;
+  RPA.url = want.url;
+  const ov = L.imageOverlay(want.url, want.bounds, { opacity: 1, interactive: false, className: 'rpa', alt: '' });
+  RPA.live.push(ov);
+  ov.on('load', () => {
+    // An older box landing late never sits over a newer one.
+    if (seq !== RPA.seq) { ov.remove(); RPA.live = RPA.live.filter((x) => x !== ov); return; }
+    for (const old of RPA.live) if (old !== ov) old.remove();
+    RPA.live = [ov];
+    setRpa('ok');
+  });
+  ov.on('error', () => {
+    ov.remove();
+    RPA.live = RPA.live.filter((x) => x !== ov);
+    if (seq !== RPA.seq) return;
+    dropRpa(); // the old image too: no shading from another box is left standing unexplained
+    setRpa('failed');
+  });
+  ov.addTo(MAP);
+  if (RPA.state !== 'ok' && RPA.state !== 'reading') setRpa('reading');
+}
+// Every move asks again for the new box (only while the layer is on).
+function rpaMove() {
+  if (ON.permits) readPermits(false);
+}
+// Switched off: every image comes down, and an answer still on its way is dropped when it lands.
+function rpaOff() {
+  RPA.seq++;
+  dropRpa();
+  RPA.state = null;
+}
+// The key: what the shading is, in the plan's words.
+KEYS.permits = () => {
+  const row = el('div', 'key');
+  row.appendChild(el('span', 'swatch rpa'));
+  row.appendChild(el('span', '', MAP_SAYS.rpaLegend));
+  return [row];
+};
+LAYER_CLEAR.permits = rpaOff;
+LAYER_READ.permits = () => readPermits(true);
+// (Permit areas ends here.)
+
+// ═══ LEADS & JOBS (M3): open leads, grouped by ZIP area — never by address ═══
+// The Leads tab's own read (/api/leads?limit=50), cut down as it lands to what the map draws — id, name, ZIP, city,
+// age, older, emergency, status; a phone, the details and a street are never kept. A lead is placed only at its ZIP
+// area (the Census table; the ZIP from the lead's property record, Q15): no geocoder is asked, and no lead's address
+// or ZIP goes anywhere. Outside practice the layer opens with the Leads tab's own "not fed" line (R4), so a quiet map
+// never reads as an empty inbox; older leads are hidden and counted first (Q6). Jobs live on Google Calendar (R2, Q14).
+const LEADS = { seq: 0, d: null, failed: null, layer: null, showOlder: false, sig: null, boxes: [], moved: 0 };
+
+// What the map keeps of a lead — nothing more.
+function keepLead(l) {
+  return {
+    id: typeof l.id === 'string' || typeof l.id === 'number' ? String(l.id) : '',
+    name: typeof l.name === 'string' && l.name.trim() ? l.name.trim() : null,
+    zip: typeof l.zip === 'string' ? l.zip : null,
+    city: typeof l.city === 'string' && l.city.trim() ? l.city.trim() : null,
+    ageDays: typeof l.ageDays === 'number' && l.ageDays >= 0 ? Math.floor(l.ageDays) : null,
+    older: l.older === true,
+    emergency: l.isEmergency === true,
+    status: typeof l.status === 'string' ? l.status : null,
+  };
+}
+// The Leads tab's own feed word for a read that failed — the shell's feedKind, on the same links' word (§1B).
+function leadFeedKind(e, links) {
+  if (!e || !e.code) return 'unread';
+  if (e.code === 503) {
+    if (e.message === 'not_simulated') return 'sim';
+    if (e.message === 'db_not_configured') return links === 'live' || links === 'readonly' ? 'unset' : 'cut';
+    if (e.message === 'link_cut') return 'cut';
+    if (e.message === 'not_built' || /_(not_configured|not_wired|not_started|missing)$/.test(e.message)) return 'unset';
+  }
+  return 'unread';
+}
+// A lead's ZIP area, or why it has none. The table holds every accepted ZIP that has an area and lists the accepted
+// ones that have none, so (once it is checked) any other ZIP is outside the four cities.
+function leadPlace(zip, zips) {
+  const m = typeof zip === 'string' ? /^(\d{5})(?:-\d{4})?$/.exec(zip.trim()) : null;
+  if (!m) return { why: 'noZip' };
+  const p = zips.zips[m[1]];
+  if (p) return { zip: m[1], lat: p.lat, lon: p.lon };
+  if (zips.noArea.includes(m[1])) return { why: 'noArea' };
+  return { why: zips.checked ? 'outside' : 'notLoaded' };
+}
+// An emergency first (as Leads sorts them), then the newest.
+function byLead(a, b) {
+  if (a.emergency !== b.emergency) return a.emergency ? -1 : 1;
+  if (a.ageDays !== b.ageDays) return a.ageDays === null ? 1 : b.ageDays === null ? -1 : a.ageDays - b.ageDays;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+// One group per ZIP area; every lead not placed is counted by why.
+function leadGroups(leads, zips) {
+  const groups = [];
+  const at = new Map();
+  const miss = { noZip: 0, outside: 0, noArea: 0, notLoaded: 0 };
+  for (const l of leads) {
+    const p = leadPlace(l.zip, zips);
+    if (p.why) { miss[p.why]++; continue; }
+    let g = at.get(p.zip);
+    if (!g) {
+      g = { zip: p.zip, lat: p.lat, lon: p.lon, leads: [] };
+      at.set(p.zip, g);
+      groups.push(g);
+    }
+    g.leads.push(l);
+  }
+  for (const g of groups) g.leads.sort(byLead);
+  groups.sort((a, b) => (a.zip < b.zip ? -1 : a.zip > b.zip ? 1 : 0));
+  return { groups, miss };
+}
+// A shared marker holds every ZIP area under it.
+function joinZips(parts) {
+  return { parts: parts };
+}
+// "23508 · Norfolk · 3 open leads, 1 new" — an older lead is never counted as new.
+function leadGroupLine(g) {
+  const city = g.leads.map((l) => l.city).find(Boolean);
+  const fresh = g.leads.filter((l) => !l.older).length;
+  const t = g.leads.length === 1 ? MAP_SAYS.leadGroupOne : MAP_SAYS.leadGroup.replace('{k}', String(g.leads.length));
+  return t.replace('{where}', g.zip + (city ? ' · ' + city : '')).replace('{n}', String(fresh));
+}
+function leadAge(d) {
+  if (typeof d !== 'number') return '';
+  return d === 0 ? MAP_SAYS.ageToday : d === 1 ? MAP_SAYS.ageOne : MAP_SAYS.ageMany.replace('{k}', String(d));
+}
+// The layer's gap lines, in order: the Leads tab's "not fed" line first outside practice, a read that failed in the
+// Leads tab's own word, then Arbo's own job records (never drawn).
+function leadGaps(kind, links) {
+  const out = [];
+  if (links !== 'simulation') out.push({ cls: 'unset', text: MAP_SAYS.notFed, retry: false });
+  if (kind) out.push({ cls: kind, text: MAP_SAYS.leadsFeed.replace('{word}', MAP_SAYS['feed_' + kind]), retry: kind === 'unread' });
+  out.push({ cls: links === 'readonly' || links === 'cut' ? 'cut' : 'unset', text: cutLine('jobs', links), retry: false });
+  return out;
+}
+// After a good read, in the plan's order: older leads hidden (before any count or empty line), the newest-50 note,
+// the count, each reason a lead is not on the map, the empty line; the jobs line last.
+function leadFacts(d, showOlder, zips, practice) {
+  const out = [];
+  const one = (n, single, many) => (n === 1 ? single : many.replace('{k}', String(n)));
+  const older = d.leads.filter((l) => l.older).length;
+  if (older) out.push({ kind: 'older', text: showOlder ? one(older, MAP_SAYS.olderShownOne, MAP_SAYS.olderShown) : one(older, MAP_SAYS.olderHiddenOne, MAP_SAYS.olderHidden) });
+  if (d.full) out.push({ kind: 'note', text: MAP_SAYS.newest50 });
+  const shown = showOlder ? d.leads : d.leads.filter((l) => !l.older);
+  const v = leadGroups(shown, zips);
+  if (shown.length) {
+    const on = v.groups.reduce((a, g) => a + g.leads.length, 0);
+    out.push({ kind: 'count', text: (shown.length === 1 ? MAP_SAYS.leadsCountsOne : MAP_SAYS.leadsCounts.replace('{n}', String(shown.length))).replace('{on}', String(on)) });
+  }
+  const whys = [['noZip', MAP_SAYS.noZipOne, MAP_SAYS.noZip], ['outside', MAP_SAYS.outsideLeadsOne, MAP_SAYS.outsideLeads], ['noArea', MAP_SAYS.noAreaLeadsOne, MAP_SAYS.noAreaLeads], ['notLoaded', MAP_SAYS.notLoadedLeadsOne, MAP_SAYS.notLoadedLeads]];
+  for (const [why, single, many] of whys) if (v.miss[why]) out.push({ kind: 'miss', text: one(v.miss[why], single, many) });
+  if (!shown.length) out.push({ kind: 'empty', text: older && !showOlder ? MAP_SAYS.leadsEmptyOlder : practice ? MAP_SAYS.leadsEmptyPractice : MAP_SAYS.leadsEmpty });
+  out.push({ kind: 'jobs', text: MAP_SAYS.jobs });
+  return out;
+}
+// The marker: how many leads over the word "lead(s)" — never a bare number that reads as a stop; red when an
+// emergency is among them (as Leads marks one). The key's sample says "leads" alone.
+function leadPinNode(parts, sample) {
+  const n = parts.reduce((a, g) => a + g.leads.length, 0);
+  const alarm = parts.some((g) => g.leads.some((l) => l.emergency));
+  const pin = el('span', 'pin leadpin' + (alarm ? ' alarm' : ''));
+  if (!sample) pin.appendChild(el('span', '', String(n)));
+  pin.appendChild(el('small', '', !sample && n === 1 ? MAP_SAYS.leadWord : MAP_SAYS.leadsWord));
+  return pin;
+}
+// A tap lists each ZIP area's leads by name and age — DOM text only; a name opens that lead in Leads, by id.
+function leadsNode(parts) {
+  const box = el('div', 'pop');
+  for (const g of parts) {
+    box.appendChild(el('b', '', leadGroupLine(g)));
+    for (const l of g.leads) {
+      const b = el('button', '', [l.name || MAP_SAYS.noName, leadAge(l.ageDays)].filter(Boolean).join(' · '));
+      b.type = 'button';
+      const tags = [l.emergency ? MAP_SAYS.tagEmergency : null, l.older ? MAP_SAYS.tagOlder : null, l.status === 'qualified' ? MAP_SAYS.tagQualified : null].filter(Boolean).join(' · ');
+      if (tags) b.appendChild(el('small', l.emergency ? 'alarm' : '', tags));
+      // Leads takes the screen: the list closes first, so Map comes back with its notes card (hidden while a list is open).
+      if (/^[A-Za-z0-9_-]{1,64}$/.test(l.id)) b.addEventListener('click', () => { if (MAP) MAP.closePopup(); toShell({ type: 'lead', id: l.id }); });
+      else b.disabled = true;
+      box.appendChild(b);
+    }
+  }
+  box.appendChild(el('small', '', MAP_SAYS.leadZipNote));
+  return box;
+}
+function leadMarker(mk, at) {
+  const parts = mk.parts || [mk];
+  const label = parts.map(leadGroupLine).join('; ');
+  const m = L.marker(at, { icon: L.divIcon({ html: leadPinNode(parts, false), className: 'pinwrap', iconSize: [0, 0] }), title: label, alt: label, keyboard: true, riseOnHover: true });
+  const pop = L.popup(popRoom());
+  pop.setContent(leadsNode(parts));
+  m.on('click', () => Object.assign(pop.options, popRoom()));
+  m.bindPopup(pop);
+  return m;
+}
+function shownLeads() {
+  if (!LEADS.d) return [];
+  return LEADS.showOlder ? LEADS.d.leads : LEADS.d.leads.filter((l) => !l.older);
+}
+// The markers at this zoom (ZIP areas that would touch share one — redrawn on every zoom), each a 44 px square that
+// steps aside from Today's stops and the trucks.
+const LEAD_SIZE = { hw: 22, hh: 22 };
+function drawLeadPins() {
+  if (!MAP || !LEADS.layer) return;
+  const toPx = (g) => MAP.latLngToLayerPoint([g.lat, g.lon]);
+  const marks = ON.leads && LEADS.d ? screenGroups(leadGroups(shownLeads(), ZIPS).groups, toPx, PIN_GAP, joinZips) : [];
+  const placed = asidePlaces(marks, toPx, () => LEAD_SIZE, boxesPx(TODAY.boxes.concat(TRUCKS.boxes)), clearAt);
+  // The same markers in the same places (the minute's truck read, a re-read that changed nothing): nothing is
+  // redrawn, so an open list stays open.
+  const sig = JSON.stringify([MAP.getZoom(), document.documentElement.className, placed.map((p) => {
+    const o = toPx(p.mk);
+    return [p.mk.lat, p.mk.lon, Math.round(p.x - o.x), Math.round(p.y - o.y), p.mk.parts || [p.mk]];
+  })]);
+  if (sig === LEADS.sig) return;
+  LEADS.sig = sig;
+  LEADS.layer.clearLayers();
+  LEADS.boxes = [];
+  LEADS.moved = 0;
+  for (const p of placed) {
+    const at = L.latLng(p.mk.lat, p.mk.lon);
+    const ll = p.moved ? MAP.layerPointToLatLng(L.point(p.x, p.y)) : at;
+    if (p.moved) {
+      LEADS.layer.addLayer(leader(at, ll, token('--gold', '#C9971C')));
+      LEADS.moved++;
+    }
+    LEADS.layer.addLayer(leadMarker(p.mk, ll));
+    LEADS.boxes.push({ lat: ll.lat, lon: ll.lng, hw: LEAD_SIZE.hw, hh: LEAD_SIZE.hh });
+  }
+  setPanLimit();
+}
+function setLeadLines() {
+  GAPS.leads = leadGaps(LEADS.failed && LEADS.failed !== 'key' ? LEADS.failed : null, LINKS).map((g) => ({ cls: g.cls, text: g.text, retry: g.retry ? readLeads : null }));
+  drawStatus();
+  drawFacts();
+  drawLegend();
+}
+async function readLeads() {
+  const seq = ++LEADS.seq;
+  if (!LEADS.d && !LEADS.failed) {
+    GAPS.leads = [{ cls: 'unset', text: MAP_SAYS.readingLeads }];
+    drawStatus();
+  }
+  let body = null;
+  let err = null;
+  try {
+    body = await mapGet('/api/leads?limit=50');
+    if (!Array.isArray(body.leads)) throw Object.assign(new Error('shape'), { why: 'unread' });
+  } catch (e) {
+    err = e;
+  }
+  await LINKS_READY; // whether db_not_configured means "cut", and whether this is practice
+  if (seq !== LEADS.seq || !ON.leads) return;
+  if (err) {
+    // §1B: a read that failed draws no marker and is named — never a 0, never an empty inbox.
+    LEADS.d = null;
+    if (LEADS.layer) LEADS.layer.clearLayers();
+    LEADS.sig = null;
+    LEADS.boxes = [];
+    LEADS.failed = keyGap(err) ? 'key' : leadFeedKind(err, LINKS);
+    setLeadLines();
+    return;
+  }
+  GAPS.key = [];
+  LEADS.failed = null;
+  LEADS.d = { leads: body.leads.map(keepLead), full: body.leads.length === 50, practice: LINKS === 'simulation' };
+  setLeadLines();
+  drawLeadPins();
+}
+// Switched off: the markers come down and an answer on its way is dropped.
+function leadsOff() {
+  LEADS.seq++;
+  LEADS.d = null;
+  LEADS.failed = null;
+  if (LEADS.layer) LEADS.layer.clearLayers();
+  LEADS.sig = null;
+  LEADS.boxes = [];
+  setPanLimit();
+}
+FACTS.leads = () => {
+  const out = [];
+  const items = LEADS.d ? leadFacts(LEADS.d, LEADS.showOlder, ZIPS, LEADS.d.practice) : LEADS.failed ? [{ kind: 'jobs', text: MAP_SAYS.jobs }] : [];
+  for (const f of items) {
+    if (f.kind === 'older') {
+      // Q6: hidden and counted; a tap puts them on the map (and takes them off again). Not kept anywhere.
+      const b = el('button', 'factbtn', f.text);
+      b.type = 'button';
+      b.setAttribute('aria-expanded', LEADS.showOlder ? 'true' : 'false');
+      b.addEventListener('click', () => { LEADS.showOlder = !LEADS.showOlder; drawFacts(); drawLegend(); drawLeadPins(); });
+      out.push(b);
+    } else if (f.kind === 'miss') {
+      const row = el('div', 'line unset');
+      row.appendChild(el('span', '', f.text));
+      out.push(row);
+    } else out.push(el('div', 'muted', f.text));
+  }
+  return out;
+};
+KEYS.leads = () => {
+  if (!LEADS.d) return [];
+  const groups = leadGroups(shownLeads(), ZIPS).groups;
+  if (!groups.length) return [];
+  const key = (alarm, text) => {
+    const row = el('div', 'key');
+    row.appendChild(leadPinNode([{ leads: [{ emergency: alarm }] }], true));
+    row.appendChild(el('span', '', text));
+    return row;
+  };
+  const out = [key(false, MAP_SAYS.leadKey)];
+  if (groups.some((g) => g.leads.some((l) => l.emergency))) out.push(key(true, MAP_SAYS.leadKeyAlarm));
+  if (LEADS.moved) out.push(el('div', 'muted', MAP_SAYS.asideKey));
+  return out;
+};
+LAYER_READ.leads = readLeads;
+LAYER_CLEAR.leads = leadsOff;
+
+// ═══ TRUCKS (M4): Bouncie's positions — owner only, working hours only (R31) ═══
+// The MAP HOOK, GET /api/fleet/positions, read every minute while the layer is on and Map is on screen. Every
+// state the server names is said in its own words; only `ok` and `unreadable` draw, `unreadable` in grey (last
+// known spots). Dots come down after a failed refresh or with no signal, when Map leaves the screen or the app hides
+// (until a fresh answer), and at 8 pm ET by this phone's clock — before the server's next answer. An answer is cut
+// down to what is drawn and replaced whole; nothing is stored or logged. Crew have no location source (Q8).
+const TRUCKS = { seq: 0, d: null, failed: false, afterHours: false, layer: null, trips: null, tripFor: null, tripSeq: 0, tripLine: null, tripRetry: null, tripsOk: null, tripBox: null, boxes: [], moved: 0 };
+
+// Arbo's working hours by the ET clock: 8am–8pm, Monday to Saturday (withinWorkingHours, src/ops/locationIntel.ts).
+function truckHoursOk(now) {
+  try {
+    const p = {};
+    for (const x of new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', hourCycle: 'h23' }).formatToParts(now)) p[x.type] = x.value;
+    const h = Number(p.hour) % 24;
+    return p.weekday !== 'Sun' && h >= 8 && h < 20;
+  } catch (e) {
+    return false; // a clock this page can't read never shows a truck
+  }
+}
+// What the map keeps of the answer: per truck its id, a label (its name, else the last 4 of its VIN), its Fleet
+// unit or none, the fix (5 decimals), heading, motion and the fix's age — nothing else.
+function keepTrucks(body) {
+  const out = [];
+  const num = (x) => (typeof x === 'number' && Number.isFinite(x) ? x : null);
+  const at = (x) => (num(x) === null ? null : Math.round(x * 1e5) / 1e5);
+  const add = (t, unit) => {
+    if (!t || typeof t !== 'object' || typeof t.id !== 'string') return;
+    out.push({
+      id: t.id,
+      label: typeof t.name === 'string' && t.name.trim() ? t.name.trim() : typeof t.vin4 === 'string' ? 'VIN …' + t.vin4 : 'Bouncie …' + String(t.device4 || ''),
+      unit: unit,
+      lat: at(t.lat),
+      lon: at(t.lon),
+      heading: num(t.heading),
+      motion: typeof t.motion === 'string' ? t.motion : 'no_fix',
+      age: num(t.positionAgeMinutes),
+    });
+  };
+  if (Array.isArray(body.units)) for (const u of body.units) if (u && u.truck) add(u.truck, typeof u.unitName === 'string' && u.unitName ? u.unitName : null);
+  if (Array.isArray(body.unmatched)) for (const t of body.unmatched) add(t, null);
+  return out;
+}
+// How a truck is drawn: solid at a fresh fix, grey at an old one or when Bouncie didn't answer; not at all without one.
+function truckStyle(t, state) {
+  if (t.lat === null || t.lon === null || t.motion === 'no_fix' || t.motion === 'after_hours') return null;
+  if (state === 'unreadable') return 'grey';
+  if (state !== 'ok') return null;
+  if (t.motion === 'driving' || t.motion === 'parked' || t.motion === 'seen') return 'solid';
+  if (t.motion === 'stale' || t.motion === 'unplugged') return 'grey';
+  return null;
+}
+function agoWords(m) {
+  if (typeof m !== 'number') return MAP_SAYS.agoNone;
+  return m < 60 ? MAP_SAYS.agoMin.replace('{k}', String(m)) : MAP_SAYS.agoHour.replace('{k}', String(Math.floor(m / 60)));
+}
+// A truck in words, by its motion — the dot sits at its fix, so the age is the fix's (never the last report's).
+function truckWords(t, state) {
+  const ago = agoWords(t.age);
+  if (state === 'unreadable' && truckStyle(t, state)) return MAP_SAYS.truckLastKnown + ' · ' + ago;
+  if (t.motion === 'driving') return MAP_SAYS.truckDriving.replace('{ago}', ago);
+  if (t.motion === 'parked') return MAP_SAYS.truckParked.replace('{ago}', ago);
+  if (t.motion === 'seen') return MAP_SAYS.truckSeen.replace('{ago}', ago);
+  if (t.motion === 'stale') return MAP_SAYS.truckStale.replace('{ago}', ago);
+  if (t.motion === 'unplugged') return MAP_SAYS.truckUnplugged;
+  if (t.motion === 'no_fix') return MAP_SAYS.truckNoFix;
+  if (t.motion === 'after_hours') return MAP_SAYS.truckAfterHours;
+  return MAP_SAYS.truckUnknown;
+}
+// Why the Fleet list couldn't be read, in the feed words.
+function fleetWhy(e, links) {
+  if (e === 'link_cut') return MAP_SAYS.feed_cut;
+  if (e === 'db_not_configured') return links === 'live' || links === 'readonly' ? MAP_SAYS.feed_unset : MAP_SAYS.feed_cut;
+  if (e === 'not_simulated') return MAP_SAYS.feed_sim;
+  if (e === 'not_built' || /_(not_configured|not_wired|not_started|missing)$/.test(e)) return MAP_SAYS.feed_unset;
+  return MAP_SAYS.fleetUnread;
+}
+// The layer's lines: a failed read, this phone's after-hours, or the server's own words for its state; the Fleet
+// list when it failed; today's trips when they say something; and the crew, always.
+function truckGaps(T, links) {
+  const out = [];
+  const cls = { keys_missing: 'unset', link_cut: 'cut', sign_in_cut: 'cut', sign_in_store: 'unread', not_connected: 'unset', token_expired: 'unread', after_hours: 'unset', unreadable: 'unread' };
+  if (T.failed === true) out.push({ cls: 'unread', text: MAP_SAYS.trucksFailed, retry: true });
+  else if (T.d && T.afterHours) out.push({ cls: 'unset', text: MAP_SAYS.trucksAfterHours, retry: false });
+  else if (T.d) {
+    if (cls[T.d.state]) out.push({ cls: cls[T.d.state], text: T.d.message, retry: T.d.state === 'unreadable' });
+    else if (T.d.state !== 'ok' && T.d.state !== 'no_trucks') out.push({ cls: 'unread', text: T.d.message, retry: true });
+    if (T.d.unitsError && (T.d.state === 'ok' || T.d.state === 'unreadable')) {
+      const why = fleetWhy(T.d.unitsError, links);
+      out.push({ cls: why === MAP_SAYS.feed_cut ? 'cut' : 'unread', text: MAP_SAYS.fleetList.replace('{why}', why), retry: false });
+    }
+  } else if (!T.failed) out.push({ cls: 'unset', text: MAP_SAYS.readingTrucks, retry: false });
+  if (T.tripLine) out.push(T.tripLine);
+  out.push({ cls: 'unset', text: MAP_SAYS.crew, retry: false });
+  return out;
+}
+function setTruckLines() {
+  GAPS.trucks = truckGaps(TRUCKS, LINKS).map((g) => ({ cls: g.cls, text: g.text, retry: g.retry === 'trips' ? TRUCKS.tripRetry : g.retry ? readTrucks : null }));
+  drawStatus();
+  drawFacts();
+  drawLegend();
+}
+// Today's trips come down (another truck picked, or the dots dropped).
+function dropTrips() {
+  TRUCKS.tripSeq++;
+  if (TRUCKS.trips) TRUCKS.trips.clearLayers();
+  TRUCKS.tripFor = null;
+  TRUCKS.tripLine = null;
+  TRUCKS.tripsOk = null;
+  TRUCKS.tripBox = null;
+}
+// Every dot and trip comes down, and the answer with it: nothing is held once it is not current.
+function dropTrucks() {
+  TRUCKS.d = null;
+  if (TRUCKS.layer) TRUCKS.layer.clearLayers();
+  TRUCKS.boxes = [];
+  TRUCKS.tripSeq++; // trips still on their way are not drawn over dots that came down
+  if (TRUCKS.trips) TRUCKS.trips.clearLayers();
+  TRUCKS.tripFor = null;
+  TRUCKS.tripLine = null;
+  TRUCKS.tripsOk = null;
+  TRUCKS.tripBox = null;
+}
+// The dots alone come down (8 pm by this phone's clock): the server's last words stay until its next answer.
+function dropDots() {
+  if (TRUCKS.d) TRUCKS.d.trucks = [];
+  if (TRUCKS.layer) TRUCKS.layer.clearLayers();
+  TRUCKS.boxes = [];
+  dropTrips();
+}
+async function readTrucks() {
+  // Only while Map is on screen (an 'online' event or a message can land while another screen shows): a dot drawn
+  // off screen would be read as current when Map comes back, before any fresh answer.
+  if (!shownNow()) return;
+  const seq = ++TRUCKS.seq;
+  if (!TRUCKS.d && !TRUCKS.failed) {
+    GAPS.trucks = [{ cls: 'unset', text: MAP_SAYS.readingTrucks }];
+    drawStatus();
+  }
+  let body;
+  try {
+    body = await mapGet('/api/fleet/positions');
+    if (typeof body.state !== 'string' || typeof body.message !== 'string') throw Object.assign(new Error('shape'), { why: 'unread' });
+  } catch (e) {
+    if (seq !== TRUCKS.seq || !ON.trucks || !shownNow()) return;
+    dropTrucks(); // a refresh that failed never leaves old dots up as current
+    TRUCKS.failed = keyGap(e) ? 'key' : true;
+    setTruckLines();
+    return;
+  }
+  if (seq !== TRUCKS.seq || !ON.trucks || !shownNow()) return;
+  GAPS.key = [];
+  TRUCKS.failed = false;
+  const drawable = body.state === 'ok' || body.state === 'unreadable';
+  // After hours by this phone's clock: the server's answer is said, but no dot is drawn from it.
+  TRUCKS.afterHours = drawable && !truckHoursOk(new Date());
+  TRUCKS.d = { state: body.state, message: body.message, unitsError: typeof body.unitsError === 'string' ? body.unitsError : null, trucks: drawable && !TRUCKS.afterHours ? keepTrucks(body) : [] };
+  if (TRUCKS.tripFor && !TRUCKS.d.trucks.some((t) => t.id === TRUCKS.tripFor)) dropTrips();
+  // "Pick the truck again" lasts through the re-read it asked for; the next answer, or one with no dots, takes it down.
+  const lc = TRUCKS.tripLine;
+  if (lc && typeof lc.until === 'number' && (seq > lc.until || !TRUCKS.d.trucks.length)) TRUCKS.tripLine = null;
+  drawTrucks();
+  drawLeadPins(); // the leads step aside from the trucks just drawn (unchanged places are not redrawn)
+  setTruckLines(); // after the draw: the key says whether a marker was moved aside
+}
+// Map off the screen or the app hidden: the dots come down and stay down until a fresh answer.
+function pauseTrucks() {
+  if (!ON.trucks) return;
+  TRUCKS.seq++; // an answer already on its way is not drawn
+  dropTrucks();
+  TRUCKS.failed = false;
+  setTruckLines();
+}
+// No signal: no dot is current.
+function trucksOffline() {
+  if (!ON.trucks) return;
+  TRUCKS.seq++;
+  dropTrucks();
+  TRUCKS.failed = true;
+  setTruckLines();
+}
+// The layer's own minute: 8 pm by this phone's clock takes the dots down at once; then a fresh read while Map shows.
+function truckTick(now) {
+  if (!ON.trucks) return;
+  if (!truckHoursOk(now) && !TRUCKS.afterHours && TRUCKS.d && TRUCKS.d.trucks.length) {
+    dropDots();
+    TRUCKS.afterHours = true;
+    setTruckLines();
+  }
+  if (shownNow()) readTrucks();
+}
+// A path of at most `max` points, evenly thinned, first and last kept.
+function capPath(pts, max) {
+  if (pts.length <= max) return pts;
+  const out = [];
+  for (let i = 0; i < max; i++) out.push(pts[Math.round((i * (pts.length - 1)) / (max - 1))]);
+  return out;
+}
+async function readTrips(t) {
+  dropTrips();
+  const seq = ++TRUCKS.tripSeq;
+  const day = etToday(new Date());
+  TRUCKS.tripFor = t.id;
+  TRUCKS.tripRetry = () => readTrips(t);
+  if (!day) {
+    TRUCKS.tripLine = { cls: 'unread', text: MAP_SAYS.tripsNoDay, retry: false };
+    setTruckLines();
+    return;
+  }
+  TRUCKS.tripLine = { cls: 'unset', text: MAP_SAYS.readingTrips.replace('{truck}', t.label), retry: false };
+  setTruckLines();
+  let body;
+  try {
+    body = await mapGet('/api/fleet/trips?truck=' + encodeURIComponent(t.id) + '&day=' + day);
+    if (typeof body.state !== 'string' || typeof body.message !== 'string' || !Array.isArray(body.trips)) throw Object.assign(new Error('shape'), { why: 'unread' });
+  } catch (e) {
+    if (seq !== TRUCKS.tripSeq || !ON.trucks) return;
+    if (e.code === 404 && e.message === 'unknown_truck') {
+      // Truck ids change when Arbo restarts: the positions are read again, once, and Mike picks the truck again.
+      TRUCKS.tripFor = null;
+      TRUCKS.tripLine = { cls: 'unread', text: MAP_SAYS.truckListChanged, retry: false, until: TRUCKS.seq + 1 };
+      setTruckLines();
+      readTrucks();
+      return;
+    }
+    TRUCKS.tripLine = e.code === 400 && e.said ? { cls: 'unread', text: e.said, retry: false } : keyGap(e) ? null : { cls: 'unread', text: MAP_SAYS.tripsFailed, retry: 'trips' };
+    setTruckLines();
+    return;
+  }
+  if (seq !== TRUCKS.tripSeq || !ON.trucks) return;
+  if (body.state !== 'ok') {
+    // Every state but ok in the server's own words (TRIPS_SAYS) — never "no trips" for one it couldn't read.
+    const cls = { link_cut: 'cut', sign_in_cut: 'cut', unreadable: 'unread', sign_in_store: 'unread', token_expired: 'unread' }[body.state] || 'unset';
+    TRUCKS.tripLine = { cls: cls, text: body.message, retry: body.state === 'unreadable' ? 'trips' : false };
+  } else {
+    let k = 0;
+    let lost = 0;
+    const box = { s: 90, w: 180, n: -90, e: -180 };
+    for (const trip of body.trips) {
+      const pts = Array.isArray(trip && trip.path) ? trip.path.filter((p) => p && typeof p.lat === 'number' && typeof p.lon === 'number').map((p) => [p.lat, p.lon]) : [];
+      if (pts.length < 2) { lost++; continue; }
+      TRUCKS.trips.addLayer(L.polyline(capPath(pts, 2000), { color: tripColor(), weight: 4, opacity: 0.8, interactive: false }));
+      for (const [la, lo] of pts) { box.s = Math.min(box.s, la); box.n = Math.max(box.n, la); box.w = Math.min(box.w, lo); box.e = Math.max(box.e, lo); }
+      k++;
+    }
+    // The paths widen the pan limit, and Mike's tap brings them into the clear part of the map — never off the edge.
+    TRUCKS.tripBox = k ? [{ lat: box.s, lon: box.w }, { lat: box.n, lon: box.e }] : null;
+    // §1B: a trip whose route can't be read is named — never folded into a smaller count or "0 trips drawn".
+    TRUCKS.tripLine = lost ? { cls: 'unread', text: (lost === 1 ? MAP_SAYS.tripsLostOne : MAP_SAYS.tripsLost.replace('{k}', String(lost))).replace('{truck}', t.label), retry: false } : null;
+    const drawn = (k === 1 ? MAP_SAYS.tripsCountOne : MAP_SAYS.tripsCount.replace('{k}', String(k))).replace('{truck}', t.label) + '.';
+    TRUCKS.tripsOk = lost && !k ? body.message : body.message + ' ' + drawn;
+    setPanLimit();
+    if (k) fitTrips(TRUCKS.tripBox, t);
+  }
+  setTruckLines();
+  drawLegend();
+}
+// Mike's tap on Today's trips: the paths and the truck in the clear part of the map.
+function fitTrips(box, t) {
+  if (!MAP || !box) return;
+  const b = L.latLngBounds(box.map((p) => [p.lat, p.lon]));
+  if (typeof t.lat === 'number' && typeof t.lon === 'number') b.extend([t.lat, t.lon]);
+  fitClear(b, 16);
+}
+// A truck's name on its marker: 13 characters at most (the pill's own width stops the rest).
+function shortLabel(s) {
+  return s.length <= 13 ? s : s.slice(0, 12) + '…';
+}
+// One truck's marker carries its name (an arrow first when driving, turned to its heading); a shared one says how
+// many trucks — never a bare number that reads as a stop.
+function truckPinNode(list, style) {
+  const n = el('span', 'pin truck ' + style);
+  if (list.length > 1) {
+    n.appendChild(el('span', 'tl', MAP_SAYS.truckMany.replace('{k}', String(list.length))));
+    return n;
+  }
+  const t = list[0];
+  if (style === 'solid' && t.motion === 'driving' && t.heading !== null) {
+    const a = el('span', 'hd', '▲');
+    a.style.transform = 'rotate(' + Math.round(t.heading) + 'deg)';
+    n.appendChild(a);
+  }
+  n.appendChild(el('span', 'tl', shortLabel(t.label)));
+  return n;
+}
+// A shared marker is solid only when every truck in it is at a fresh fix.
+function groupStyle(list, state) {
+  return list.every((t) => truckStyle(t, state) === 'solid') ? 'solid' : 'grey';
+}
+function joinTrucks(parts) {
+  return { trucks: parts };
+}
+// A truck's card — or a shared marker's list: each truck's name, how and when it was fixed, its Fleet unit, and
+// its own Today's trips.
+function truckNode(list, state) {
+  const box = el('div', 'pop');
+  const many = list.length > 1;
+  if (many) box.appendChild(el('b', '', MAP_SAYS.trucksHere.replace('{k}', String(list.length))));
+  for (const t of list) {
+    box.appendChild(el(many ? 'div' : 'b', many ? 'tname' : '', t.label));
+    box.appendChild(el('div', 'muted', truckWords(t, state)));
+    box.appendChild(el('div', 'muted', t.unit ? MAP_SAYS.truckUnit.replace('{unit}', t.unit) : MAP_SAYS.truckUnmatched));
+    const b = el('button', '', many ? MAP_SAYS.tripsFor.replace('{truck}', t.label) : MAP_SAYS.todaysTrips);
+    b.type = 'button';
+    b.addEventListener('click', () => { if (MAP) MAP.closePopup(); readTrips(t); });
+    box.appendChild(b);
+  }
+  return box;
+}
+function truckMarker(list, node, state, at) {
+  const label = list.map((t) => t.label + ' — ' + truckWords(t, state)).join('; ');
+  const m = L.marker(at, { icon: L.divIcon({ html: node, className: 'pinwrap', iconSize: [0, 0] }), title: label, alt: label, keyboard: true, riseOnHover: true });
+  const pop = L.popup(popRoom());
+  pop.setContent(truckNode(list, state));
+  m.on('click', () => Object.assign(pop.options, popRoom()));
+  m.bindPopup(pop);
+  return m;
+}
+// Trucks closer than a pill's widest (120 px) would touch: they share one marker listing each.
+const TRUCK_GAP = 124;
+function drawTrucks() {
+  if (!MAP || !TRUCKS.layer) return;
+  TRUCKS.layer.clearLayers();
+  TRUCKS.boxes = [];
+  TRUCKS.moved = 0;
+  const d = TRUCKS.d;
+  if (ON.trucks && d) {
+    const shown = d.trucks.filter((t) => truckStyle(t, d.state));
+    const toPx = (g) => MAP.latLngToLayerPoint([g.lat, g.lon]);
+    const marks = screenGroups(shown, toPx, TRUCK_GAP, joinTrucks);
+    const nodes = new Map();
+    for (const mk of marks) {
+      const list = mk.trucks || [mk];
+      const node = truckPinNode(list, groupStyle(list, d.state));
+      nodes.set(mk, { node: node, size: pinSize(node) });
+    }
+    for (const p of asidePlaces(marks, toPx, (mk) => nodes.get(mk).size, boxesPx(TODAY.boxes), clearAt)) {
+      const at = L.latLng(p.mk.lat, p.mk.lon);
+      const ll = p.moved ? MAP.layerPointToLatLng(L.point(p.x, p.y)) : at;
+      if (p.moved) {
+        TRUCKS.layer.addLayer(leader(at, ll, token('--ink-3', '#5A675F')));
+        TRUCKS.moved++;
+      }
+      TRUCKS.layer.addLayer(truckMarker(p.mk.trucks || [p.mk], nodes.get(p.mk).node, d.state, ll));
+      TRUCKS.boxes.push(Object.assign({ lat: ll.lat, lon: ll.lng }, nodes.get(p.mk).size));
+    }
+  }
+  setPanLimit();
+  offView();
+}
+// The facts under the lines: the server's own "ok" or "no trucks", the count, each truck not drawn and why, the trips.
+FACTS.trucks = () => {
+  const d = TRUCKS.d;
+  if (!d) return [];
+  const out = [];
+  if ((d.state === 'ok' && !TRUCKS.afterHours) || d.state === 'no_trucks') out.push(el('div', 'muted', d.message));
+  if ((d.state === 'ok' || d.state === 'unreadable') && !TRUCKS.afterHours) {
+    const on = d.trucks.filter((t) => truckStyle(t, d.state)).length;
+    out.push(el('div', 'muted', (d.trucks.length === 1 ? MAP_SAYS.trucksCountOne : MAP_SAYS.trucksCount.replace('{n}', String(d.trucks.length))).replace('{on}', String(on))));
+    for (const t of d.trucks) {
+      if (truckStyle(t, d.state)) continue;
+      const row = el('div', 'line unset');
+      row.appendChild(el('span', '', t.label + ' — ' + truckWords(t, d.state)));
+      out.push(row);
+    }
+  }
+  if (TRUCKS.tripsOk) out.push(el('div', 'muted', TRUCKS.tripsOk));
+  return out;
+};
+KEYS.trucks = () => {
+  const d = TRUCKS.d;
+  if (!d) return [];
+  const styles = new Set(d.trucks.map((t) => truckStyle(t, d.state)).filter(Boolean));
+  const out = [];
+  for (const [s, text] of [['solid', MAP_SAYS.truckKeySolid], ['grey', MAP_SAYS.truckKeyGrey]]) {
+    if (!styles.has(s)) continue;
+    const row = el('div', 'key');
+    row.appendChild(truckPinNode([{ label: '', motion: 'parked', heading: null }], s));
+    row.appendChild(el('span', '', text));
+    out.push(row);
+  }
+  if (TRUCKS.tripsOk) {
+    const row = el('div', 'key');
+    row.appendChild(el('span', 'tripkey'));
+    row.appendChild(el('span', '', MAP_SAYS.tripKey));
+    out.push(row);
+  }
+  if (TRUCKS.moved) out.push(el('div', 'muted', MAP_SAYS.asideKey));
+  return out;
+};
+LAYER_READ.trucks = readTrucks;
+LAYER_CLEAR.trucks = () => { TRUCKS.seq++; dropTrucks(); TRUCKS.failed = false; TRUCKS.afterHours = false; drawTrucks(); drawLeadPins(); };
+
 // While another screen shows, the shell's Map view loses its 'active' class (the frame keeps its size and
 // gets no event of its own). Same origin, so the frame watches that class: when Map comes back, its layers read again.
 function watchShown() {
@@ -810,6 +1970,9 @@ function watchShown() {
   new MutationObserver(() => {
     const now = view.classList.contains('active');
     if (now && !shown) { dropStaleDay(); readAll(); }
+    // Pins drawn while Map was off screen measured 0 px: measured and placed again now it shows.
+    if (now && !shown && SIZES_STALE) { SIZES_STALE = false; drawMarkers(); }
+    if (!now && shown) pauseTrucks(); // Map left the screen: no truck dot waits there to be read as current
     shown = now;
   }).observe(view, { attributes: true, attributeFilter: ['class'] });
 }
@@ -817,12 +1980,17 @@ function watchShown() {
 function boot() {
   applyNight();
   drawChips();
+  $('chips').addEventListener('scroll', chipFade, { passive: true });
+  window.addEventListener('resize', chipFade);
   window.addEventListener('message', onShellMessage);
   watchShown();
   window.addEventListener('storage', (e) => { if (e.key === 'arboTheme') applyNight(); });
   if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyNight);
   window.addEventListener('online', () => { retryTiles(); readAll(); });
-  window.addEventListener('offline', tilesState);
+  window.addEventListener('offline', () => { tilesState(); trucksOffline(); });
+  // Trucks: the app hidden takes the dots down; back on screen, a fresh read. Its own minute while Map shows.
+  document.addEventListener('visibilitychange', () => { if (document.hidden) pauseTrucks(); else if (ON.trucks && shownNow()) readTrucks(); });
+  setInterval(() => truckTick(new Date()), 60000);
   if (shellKey() === null) keyGap({ why: 'outsideShell' });
   if (typeof L === 'undefined') {
     GAPS.code = [{ cls: 'unread', text: MAP_SAYS.codeFailed, retry: () => location.reload() }];
@@ -832,29 +2000,38 @@ function boot() {
     MAP = L.map('map', { attributionControl: false, zoomControl: false, zoomSnap: 0.25, minZoom: 8, maxZoom: 18, maxBoundsViscosity: 1 });
     L.control.zoom({ position: 'bottomleft' }).addTo(MAP);
     for (const t of ['pointerdown', 'touchstart', 'wheel']) $('map').addEventListener(t, () => { KEEP_VIEW = false; }, { passive: true, capture: true });
-    MAP.on('zoomend', drawPins);
+    MAP.on('zoomend', drawMarkers);
     MAP.on('moveend', offView);
-    MAP.on('popupopen', () => { POP_OPEN = true; offView(); });
-    MAP.on('popupclose', () => { POP_OPEN = false; offView(); });
-    MAP.on('resize', () => { if (KEEP_VIEW) openView(); offView(); });
+    MAP.on('moveend', rpaMove);
+    // While a list is open the off-view button and the zoom buttons step aside: Leaflet's controls sit above its
+    // popups, and on a small phone a list reaches down over the zoom buttons (pinch still zooms).
+    MAP.on('popupopen', () => { POP_OPEN = true; $('mapbox').classList.add('popopen'); offView(); });
+    MAP.on('popupclose', () => { POP_OPEN = false; $('mapbox').classList.remove('popopen'); offView(); });
+    MAP.on('resize', () => { if (KEEP_VIEW) openView(); offView(); placeAgain(); });
     openView();
-    setPanLimit([]);
+    setPanLimit();
     // The card and Route the day change size as lines come and go: the opening view keeps every city clear of them.
     if (window.ResizeObserver) {
-      const ro = new ResizeObserver(() => { if (KEEP_VIEW) openView(); offView(); });
+      const ro = new ResizeObserver(() => { if (KEEP_VIEW) openView(); offView(); placeAgain(); moreCue(); });
       ro.observe($('card'));
       ro.observe($('hud'));
     }
     $('offview').addEventListener('click', showAll);
+    $('card').addEventListener('scroll', moreCue, { passive: true });
     TILES = L.tileLayer(OSM_TILES, { minZoom: 8, maxZoom: 18 });
     TILES.on('tileerror', () => { TILE.errors++; tilesState(); });
     TILES.on('tileload', () => { TILE.loaded++; tilesState(); });
     TILES.addTo(MAP);
     TODAY.layer = L.layerGroup().addTo(MAP);
+    LEADS.layer = L.layerGroup().addTo(MAP);
+    TRUCKS.trips = L.layerGroup().addTo(MAP);
+    TRUCKS.layer = L.layerGroup().addTo(MAP);
     tilesState();
   }
   toShell({ type: 'ready' });
   readAll();
+  // The records line waits on the links' word; once the shell knows it, the layer says it.
+  LINKS_READY.then(() => { if (ON.permits && RPA.state) setRpa(RPA.state); });
 }
 boot();
 </script>

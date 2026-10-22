@@ -795,6 +795,7 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 .minibtn.prep-lead{flex:1 1 auto;min-height:44px;font-size:13.5px;color:var(--forest);border-color:var(--hairline)}
 .verdict .prep-lab{margin:14px 0 2px}.verdict .prep-lab:first-child{margin-top:0}
 .verdict .prep-jc{margin-top:10px}
+.verdict .prep-jc{margin-right:8px}.viewhead .mapbtn{margin-top:10px}
 .verdict .feed-state .prep-again{display:block;margin-top:8px}
 .viewhead h1 .h1-gap{font-family:var(--sans);font-size:15px;font-weight:600;letter-spacing:0;color:var(--ink-3);font-variation-settings:normal}
 /* Direction B P16: the Leads hub's head, over New leads and Calls & texts alike (outside both views, so an open
@@ -812,6 +813,7 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 .lseg .lcount.hot{background:var(--emergency);color:var(--on-emergency)}
 .lseg .lcount.gap{background:none;border:1px dashed var(--border);color:var(--ink-3)}
 .lseg small{flex:1 1 100%;font-size:12px;font-weight:600;color:var(--ink-3);text-align:center}
+.lseg .lmap{flex:0 0 auto;min-height:44px;min-width:56px;margin-left:4px;padding:0 14px;border-radius:var(--r-pill);border:1px solid var(--border);background:var(--card);color:var(--forest);font-size:14.5px;font-weight:700}
 .lchips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px}
 .lchip{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 14px;border-radius:var(--r-pill);border:1px solid var(--border);background:var(--card);color:var(--ink-1);font-size:14px;font-weight:700}
 .lchip b{font-family:var(--serif);font-size:16px;font-weight:650;color:var(--forest);font-variant-numeric:tabular-nums}
@@ -3559,6 +3561,12 @@ async function renderLeadsHead() {
   };
   segBtn('leads', 'New leads', L ? L.n : 0, lk, false);
   segBtn('calls', 'Calls & texts', S ? S.need : 0, qk || (S && S.gap ? 'unread' : null), !!(S && S.red));
+  // Maps wave B (M3): open leads on the map, by ZIP area — over New leads only (lh-leads); Back returns here.
+  const toMap = el('button', 'lmap lh-leads', 'Map');
+  toMap.type = 'button';
+  toMap.setAttribute('aria-label', 'Open leads on the map');
+  toMap.addEventListener('click', () => openMap('leads'));
+  segs.appendChild(toMap);
   out.push(segs);
   // New leads' filter chips — from a read that landed, with leads to filter. Not Back steps: the list stays the same screen.
   if (L && L.n) {
@@ -4151,6 +4159,8 @@ const MAP_MAX = 300;
 let MAP_READY = false;
 let MAP_HELD = null;
 window.arboMapKey = () => KEY;
+// Maps wave B: the links' word (the boot's /health read) for the frame — what "cut" means, and whether this is practice.
+window.arboMapLinks = () => LINKS_READY;
 function mapPost(msg) {
   const f = $('map-frame');
   if (f && MAP_READY && f.contentWindow) f.contentWindow.postMessage(msg, location.origin);
@@ -4437,6 +4447,11 @@ function estimatePrepPanel() {
       jc.addEventListener('click', () => { PERMIT_CITY = s.city; switchTab('permits'); renderPermits(); });
       sheet.appendChild(jc);
     }
+    // Maps wave B (M2): DEQ's RPA areas on the map — the four-city view; this address is never handed to it (Q11).
+    const rpa = el('button', 'minibtn prep-jc', 'RPA areas on the map');
+    rpa.type = 'button';
+    rpa.addEventListener('click', () => openMap('permits'));
+    sheet.appendChild(rpa);
     lab('Drive');
     if (s.drive.fromZip) sheet.appendChild(el('div', 'drv', '~' + s.drive.minutes + ' min from ' + s.drive.fromZip + ' — ' + s.drive.note));
     else {
@@ -6347,7 +6362,7 @@ $('bd-go').addEventListener('click', async () => {
 // Direction B P14: Office's desk tiles read their small line here too — Teach Arbo's is "Learn" (the plan's table).
 const DESK_LINE = { followups: 'Chief of Staff', money: 'Yard Boss', fleet: 'Yard Boss', safety: 'Crew Chief', perf: 'Analyst', learn: 'Learn' };
 const DESK_GEN = {};
-async function deskView(view, sub, panels) {
+async function deskView(view, sub, panels, headExtra) {
   const gen = DESK_GEN[view] = (DESK_GEN[view] || 0) + 1;
   const v = $('view-' + view);
   // P13 review: the minute redraw must not collapse the screen and throw its scroll to the top (renderCalls' hold).
@@ -6358,6 +6373,7 @@ async function deskView(view, sub, panels) {
   head.appendChild(el('div', 'eyebrow', DESK_LINE[view]));
   head.appendChild(el('h1', '', VIEW_TITLES[view]));
   head.appendChild(el('p', '', sub));
+  if (headExtra) head.appendChild(headExtra()); // Maps wave B: Fleet's "Trucks on the map"
   v.appendChild(head);
   const runs = panels.map(([id, render]) => {
     const slot = el('div');
@@ -6377,7 +6393,14 @@ function renderMoneyView() {
 }
 // §6E fleet: every unit, what is down or held (R26) — a scheduling constraint — and the Bouncie line (R31).
 function renderFleetView() {
-  return deskView('fleet', 'Every unit, what is down or held, and breakdowns. Only you sign a held unit back on.', [['queue-fleet', renderFleet]]);
+  // Maps wave B (M4): the trucks on the map — Bouncie's positions, owner only, working hours only (R31).
+  const toMap = () => {
+    const b = el('button', 'minibtn mapbtn', 'Trucks on the map');
+    b.type = 'button';
+    b.addEventListener('click', () => openMap('trucks'));
+    return b;
+  };
+  return deskView('fleet', 'Every unit, what is down or held, and breakdowns. Only you sign a held unit back on.', [['queue-fleet', renderFleet]], toMap);
 }
 // §6V safety leads: a lapsed rescue card outranks everything else on the desk; its blind spots and
 // aerial stops come first (renderSafety). Then the people and cards on file (§4), training (§6M.5),
@@ -7578,6 +7601,11 @@ async function renderPermits() {
   head.appendChild(el('div', 'eyebrow', 'Permit Desk'));
   head.appendChild(el('h1', '', 'Permits & public works'));
   head.appendChild(el('p', '', 'Every rule shows its source and the date it was checked. Anything a source didn’t state plainly is marked UNCONFIRMED — check it with the city before you tell a customer (the office to call is on the rule where we have one).'));
+  // Maps wave B (M2): DEQ's RPA areas on the map, on the four-city view (Q11).
+  const rpa = el('button', 'minibtn mapbtn', 'RPA areas on the map');
+  rpa.type = 'button';
+  rpa.addEventListener('click', () => openMap('permits'));
+  head.appendChild(rpa);
   v.appendChild(head);
   const cities = el('div', 'chips city-pick');
   for (const c of ['Virginia Beach', 'Norfolk', 'Chesapeake', 'Portsmouth']) {

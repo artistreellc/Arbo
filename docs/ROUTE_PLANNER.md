@@ -98,6 +98,9 @@ on a map (Maps wave A, D106; draft ruling R37).
 - **Stops close together share one pin** (*"1·2"*), drawn between them, only
   when their pins would touch — zoom in and they part; tap it to see each one,
   with how it was placed.
+- **Nothing covers a stop** (review, D108): a lead marker (a gold square,
+  *"3 leads"*) or a truck that would sit on a stop steps aside, a dotted line
+  to its own spot.
 - **Not on the map:** the line *"6 of 8 events on the map · 2 not on the
   map"* — tap it to see which, and why (no address, no ZIP, a PO box ZIP, a
   ZIP outside the four cities).
@@ -117,11 +120,22 @@ on a map (Maps wave A, D106; draft ruling R37).
   screen (it sees which area, never a name or an address). If it doesn't load,
   the map says so — and that the pins are still placed, when there are pins.
 
-**Not working yet:** ZIP-area pins. The build couldn't read the Census ZIP
-file, so until that table is filled (a build step, dated and tested), a stop
-without an exact pin is listed under "not on the map" — *"ZIP areas are not
-loaded on the map yet — not placed"*. With the TomTom key in, the stops
-TomTom places show as exact pins.
+**ZIP areas (filled 2026-10-22, Maps wave B, D108):** a ZIP-area pin sits at
+the Census 2020 ZIP area's own point (the TIGER/Line 2020 internal points,
+read from the Census TIGERweb service and checked twice). 39 of the 69 ZIPs
+Arbo accepts have one; the other 30 — PO box, business and unassigned ZIPs
+such as 23450, 23466, 23541 and 23705 — are listed *"ZIP has no map area (PO
+box or business ZIP)"*, never given a made-up point. The practice day's SIM
+stops now show as practice pins at their ZIP areas. With the TomTom key in,
+the stops TomTom places show as exact pins.
+
+**The other layers (D108):** **Permit areas** — Virginia DEQ's RPA shading
+when you zoom in (Estimate → Permit rules → *RPA areas on the map*);
+**Leads & jobs** — open leads by ZIP area (Leads → *Map*); **Trucks** —
+Bouncie, once connected (Office → Fleet → *Trucks on the map*;
+`docs/BOUNCIE.md`). Each says in words what it can't draw. A way in shows
+the layers you keep on with the chips plus its own, its lines first in the
+notes card; only your chip taps are remembered (review, D108).
 
 **Before the TomTom key goes in:** a privacy-page line is drafted in R37 for
 your OK — it now covers the map too.

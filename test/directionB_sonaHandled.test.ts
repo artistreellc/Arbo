@@ -279,13 +279,18 @@ describe('Call back clears a Sona flag (P17)', () => {
   it('only call ids and tap times are stored — never a number, never a name', async () => {
     const k = kit(quo([call('H1', HAZEL, { slips: [SLIP] }), call('H2', HAZEL, { slips: [SLIP] })]));
     await callBack(await k.sonaPanel(20, true), 'H1').click();
-    const raw = [...k.store.m.values()].join('\n');
+    // The tap times are millisecond numbers, so mask them before the digit checks:
+    // a time like 1793…757… must not read as an area code (it made this test flaky).
+    // That every value IS a number is pinned below.
+    const raw = [...k.store.m.values()].join('\n').replace(/:\d+/g, ':0');
     expect(raw).not.toContain('5550142');
     expect(raw).not.toContain('757');
     expect(raw).not.toContain('Hazel');
     const saved = JSON.parse(k.store.m.get([...k.store.m.keys()][0]!)!) as Record<string, unknown>;
     expect(Object.keys(saved).sort()).toEqual(['H1', 'H2']);
     for (const v of Object.values(saved)) expect(typeof v).toBe('number');
+    // …and a tap time from now, so a number stored in its place (a phone as digits) still fails.
+    for (const v of Object.values(saved)) expect(Math.abs((v as number) - Date.now())).toBeLessThan(60_000);
   });
 
   it('forgotten after 7 days (pruned): an old mark no longer hides a flag, and is dropped on the next write', () => {

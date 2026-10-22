@@ -43,7 +43,7 @@ describe('the served map page follows the shell\'s laws in its own code (M0)', (
     expect(page).not.toMatch(/@import/);
   });
 
-  it('the markers are all filled at serve time: the sprite, the ZIP table, the DEQ values', () => {
+  it('the markers are all filled at serve time: the ZIP table, the DEQ values — and no sprite (the map uses no icon)', () => {
     expect(page).not.toContain('<!--ARBO:');
     const zips = JSON.parse(/<script type="application\/json" id="map-zips">([\s\S]*?)<\/script>/.exec(page)![1]!) as { zips: Record<string, unknown>; box: unknown };
     expect(zips.zips).toEqual(ZIP_CENTROIDS);
@@ -51,7 +51,10 @@ describe('the served map page follows the shell\'s laws in its own code (M0)', (
     const deq = JSON.parse(/<script type="application\/json" id="map-deq">([\s\S]*?)<\/script>/.exec(page)![1]!) as { base: string; layer: number };
     expect(deq.base).toBe(DEQ_MAPSERVER_BASE);
     expect(deq.layer).toBe(DEQ_RPA_LAYER);
-    expect(page).toContain('<svg');
+    // Maps wave B (D108): the page draws no sprite icon, so the sprite (about 12 KB of every map load) is not
+    // inlined here any more — wave A's pin read `toContain('<svg')`. A sprite icon used later must bring it back.
+    expect(page).not.toContain('<svg');
+    expect(page).not.toMatch(/<use\b|href="#i-/);
   });
 
   it('never builds HTML from a string', () => {
@@ -157,11 +160,18 @@ describe('the map page fits its frame (UI review)', () => {
 
 // Review round (D106): the correctness review's test gaps — what these scans missed, now pinned.
 describe('the scans hold against the gaps the review found', () => {
-  it('Leaflet content is always a node: bindPopup takes the popup built from groupNode, setContent a node builder; no tooltips', () => {
+  // Maps wave B (D108): the Leads and Trucks layers add their own lists, each a DOM node from its own builder
+  // (leadsNode, truckNode — both built with el and textContent). Wave A's pin listed groupNode alone and one bindPopup.
+  it('Leaflet content is always a node: bindPopup takes an L.popup, setContent a node builder; no tooltips', () => {
     const binds = [...script.matchAll(/bindPopup\(([^)]*)\)/g)].map((m) => m[1]);
-    expect(binds).toEqual(['pop']);
-    expect(script).toMatch(/const pop = L\.popup\(/);
-    for (const m of script.matchAll(/setContent\(([^\n]*)/g)) expect(m[1], m[0]).toMatch(/^(?:groupNode|el)\(/);
+    expect(binds.length).toBeGreaterThan(0);
+    for (const b of binds) expect(b).toBe('pop');
+    expect(script.match(/const pop = L\.popup\(/g)!.length).toBe(binds.length);
+    for (const m of script.matchAll(/setContent\(([^\n]*)/g)) expect(m[1], m[0]).toMatch(/^(?:groupNode|leadsNode|truckNode|el)\(/);
+    for (const b of ['groupNode', 'leadsNode', 'truckNode'].filter((n) => script.includes(`function ${n}(`))) {
+      const src = new RegExp(`^function ${b}\\([\\s\\S]*?^\\}$`, 'm').exec(script)![0];
+      expect(src, b).toContain("el('div', 'pop')");
+    }
     expect(script).not.toContain('bindTooltip');
   });
   it('storage holds two things only: the layer choice and the shell\'s theme — never a point', () => {
