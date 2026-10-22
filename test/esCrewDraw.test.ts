@@ -159,6 +159,24 @@ describe('work orders in Spanish — the page’s words in Spanish, the job’s 
     expect(permit.querySelector('.es-pair-en')!.textContent).toBe(`inglés ${CREW_LINES.noOverlayVerify}`);
   });
 
+  // Review round (D111, code D2): a twin is drawn by its hazard's position — only the second reviewed,
+  // the first is the English, marked, and the second is the Spanish over ITS OWN English.
+  it('only the second hazard reviewed: POWER LINES stays English (marked), STRUCTURES reads Spanish over its own English', async () => {
+    const only = reviewed('crew-workorder').filter((e) => e.en === CREW_LINES.hazardStructures);
+    const wo = crewPayloadTwins(buildCrewPayload(SRC({ permitStatus: null })), only);
+    const table = readTwinTable('crew-workorder')!;
+    const { work } = await draw(runtime('es'), { workOrders: [wo], notWorkOrders: 0, contractLookupFailed: false });
+    const hz = work.querySelectorAll('.hz');
+    expect(hz).toHaveLength(2);
+    expect(hz[0]!.className).toBe('hz power');
+    expect(hz[0]!.querySelector('.es-pair-es')).toBeNull();
+    expect(hz[0]!.textContent).toContain(CREW_LINES.hazardPowerLines);
+    expect(hz[0]!.textContent).not.toContain(table.hazardStructures!.es);
+    expect(hz[0]!.querySelector('.es-en-mark')).not.toBeNull();
+    expect(hz[1]!.querySelector('.es-pair-es')!.textContent).toBe(table.hazardStructures!.es);
+    expect(hz[1]!.querySelector('.es-pair-en')!.textContent).toBe(`inglés ${CREW_LINES.hazardStructures}`);
+  });
+
   it('the same payload in English is exactly the English card — the twin never shows', async () => {
     const wo = crewPayloadTwins(buildCrewPayload(SRC()), reviewed('crew-workorder'));
     const rt = runtime('en');
@@ -216,6 +234,18 @@ describe('the gate in Spanish — its words in Spanish, the briefing the office�
     const body = node(rt, 'gate-slot').querySelector('#brief-body')!;
     expect(body.getAttribute('lang')).toBeNull();
     expect(body.querySelectorAll('p').map((n) => n.textContent)).toEqual(BRIEF_ES.split('\n'));
+  });
+
+  // Review round (D111, code D3): a served twin is for a Spanish reader only — English mode draws the
+  // office's English exactly as before, with no mark and no lang.
+  it('English mode never shows a served briefing copy — the English body, as before', () => {
+    const rt = runtime('en');
+    const p = page(rt, () => ({}));
+    p.renderGate({ ...BRIEF, es: { body: BRIEF_ES } });
+    const body = node(rt, 'gate-slot').querySelector('#brief-body')!;
+    expect(body.querySelectorAll('p').map((n) => n.textContent)).toEqual(BRIEF.body.split('\n'));
+    expect(body.getAttribute('lang')).toBeNull();
+    expect(body.textContent).not.toContain('Charla');
   });
 
   it('a refused sign-off names the reason in Spanish, then the stop-work order: the English, marked, until its review is recorded — GO never green', async () => {
@@ -304,6 +334,14 @@ describe('the quiz in Spanish — a twin only with the same options in the same 
     expect(sent.body.answers).toEqual({ [item.id]: 1 });
     expect(sent.body.itemIds).toEqual([item.id]);
     expect(quiz.textContent).toBe('Registrado2 min pagados — cuentan como horas de trabajo.1 de 1 correctas.');
+  });
+
+  // Review round (D111, code D3): English mode never draws a served question copy.
+  it('English mode never shows a served question copy — the English prompt and options, as before', async () => {
+    const { quiz } = await draw(runtime('en'), [{ ...item, es: served }]);
+    expect(quiz.querySelector('.qprompt')!.textContent).toBe(item.prompt);
+    expect(quiz.querySelectorAll('.qopt').map((b) => b.textContent)).toEqual(item.options);
+    expect(quiz.querySelector('.card')!.getAttribute('lang')).toBeNull();
   });
 
   it('a twin with a different count of options is never drawn — the English shows, marked', async () => {

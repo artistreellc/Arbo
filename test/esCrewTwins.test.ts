@@ -88,6 +88,15 @@ describe('work orders — the English payload is byte-identical; a twin rides un
     expect(out.permitNote).toBe(p.permitNote);
     expect(out.es).toEqual({ hazards: [table.hazardPowerLines!.es, table.hazardStructures!.es], permitNote: table.noOverlayVerify!.es });
   });
+  // Review round (D111, code D2): hazards are matched to their twins BY POSITION. With only the second
+  // line reviewed, the first slot is null — never dropped, or STRUCTURES' Spanish would sit over POWER LINES.
+  it('only the second hazard reviewed: es.hazards is [null, its Spanish] — the position is kept', () => {
+    const p = buildCrewPayload(src({ permitStatus: null }));
+    const only = reviewedLedger('crew-workorder').filter((e) => e.en === CREW_LINES.hazardStructures);
+    const out = crewPayloadTwins(p, only);
+    expect(out.hazards).toEqual([CREW_LINES.hazardPowerLines, CREW_LINES.hazardStructures]);
+    expect(out.es).toEqual({ hazards: [null, readTwinTable('crew-workorder')!.hazardStructures!.es] });
+  });
   it('a stale twin (English changed since) is never served', () => {
     const p = { ...buildCrewPayload(src()), permitNote: 'PERMIT LIKELY — a changed line.' };
     expect(crewPayloadTwins(p, reviewedLedger('crew-workorder')).es?.permitNote).toBeUndefined();
@@ -131,6 +140,32 @@ describe('the day’s briefing — the office’s text, with a reviewed twin on 
     expect(briefingTwin(en, { ...good, pass: 'person' })).toBeNull(); // "person" names who read it
     expect(briefingTwin(en, { ...good, pass: 'person', readBy: 'Rudy' })).toBe(es);
   });
+  // Review round (D111, code D1): the database copy is checked at serving time only, so it gets EVERY
+  // gate — a dropped negation, a lost hedge or a lost "at least" / "working days" is not served.
+  it('not served: a copy that drops a negation, a hedge, "at least" or "working days" (the full gates, every paragraph)', () => {
+    const rec = { pass: 'reviewed', translatedBy: 'a', reviewedBy: 'b', backTranslation: 'c', on: '2026-10-22' };
+    const en1 = 'Never work within 10 ft of the hedge row. Wait at least 3 working days after the rain before you use the stump grinder.';
+    const es1 = 'Trabaje a 10 ft de la fila de arbustos. Espere 3 días después de la lluvia antes de usar la trituradora de tocones (stump grinder).';
+    expect(briefingTwin(en1, { text: es1, enSha: enSha(en1), ...rec })).toBeNull();
+    const en2 = 'You may need a second climber.';
+    expect(briefingTwin(en2, { text: 'Usted necesita un segundo trepador (climber).', enSha: enSha(en2), ...rec })).toBeNull();
+    expect(briefingTwin(en2, { text: 'Puede que necesite un segundo trepador (climber).', enSha: enSha(en2), ...rec })).toBe('Puede que necesite un segundo trepador (climber).');
+  });
+  it('not served: a copy with a different number of paragraphs, or one whose paragraph moved a number to another paragraph', () => {
+    expect(briefingTwin(en, { ...good, text: es.replace('\n', ' ') })).toBeNull();
+    const two = 'Wear your hard hat.\nKeep 2 tree lengths back.';
+    const moved = 'Use su casco (hard hat) — 2 veces revisado.\nMantenga distancia de largos de árbol.';
+    expect(briefingTwin(two, { ...good, text: moved, enSha: enSha(two) })).toBeNull();
+  });
+  // Review round (D111, design question): a safety line inside the office's own text (911, 811, Dominion,
+  // stop work, a badge) needs its review in the committed ledger and the English beneath it — neither
+  // exists for per-day text yet, so a copy holding one is never served: the English shows, marked.
+  it('not served: a briefing holding any safety-class line, however its review is recorded on the row', () => {
+    const s = 'SIMULATED tailgate briefing.\nIf a line comes down, call 911 if anyone is hurt, then Dominion.';
+    const sEs = 'Charla de seguridad SIMULADA.\nSi se cae una línea, llame al 911 si alguien está herido, y luego a Dominion.';
+    expect(briefingTwin(s, { ...good, text: sEs, enSha: enSha(s) })).toBeNull();
+    expect(briefingTwin(s, { ...good, text: sEs, enSha: enSha(s), pass: 'person', readBy: 'Rudy' })).toBeNull();
+  });
 });
 
 describe('the quiz — a twin only with the same options in the same order, the key re-checked; grading never sees Spanish', () => {
@@ -153,11 +188,28 @@ describe('the quiz — a twin only with the same options in the same order, the 
     expect(quizTwin(lesson, tw, false)).toEqual({ prompt: 'Lección SIM', options: [] });
     expect(quizTwin(lesson, { ...tw, pass: 'draft' }, false)).toBeNull();
   });
-  it('a safety-class question needs a back-translation too', () => {
+  // Review round (D111, design question): this test said a safety-class question is served once its row
+  // names a back-translation. Stricter now (pin moved, D111): the committed ledger cannot hold per-day
+  // text and a quiz option has no room for the English beneath, so a safety-class question is never
+  // served from its row — the English shows, marked — until Mike rules how those get reviewed.
+  it('a safety-class question is never served from its row — not even with a back-translation', () => {
     const s = { prompt: 'SIM: A line is DOWN. Who do you call?', options: ['911 if anyone is hurt, Dominion for the line', 'Nobody'] };
     const tw = { prompt: 'SIM: Una línea está caída (DOWN). ¿A quién llama?', options: ['Al 911 si hay alguien herido, a Dominion por la línea', 'A nadie'], enSha: quizEnSha(s.prompt, s.options), keyCheckedBy: 'b', pass: 'reviewed', translatedBy: 'a', reviewedBy: 'b', on: '2026-10-22' };
     expect(quizTwin(s, tw, true)).toBeNull();
-    expect(quizTwin(s, { ...tw, backTranslation: 'c' }, true)).toEqual({ prompt: tw.prompt, options: tw.options });
+    expect(quizTwin(s, { ...tw, backTranslation: 'c' }, true)).toBeNull();
+    expect(quizTwin(s, { ...tw, backTranslation: 'c', pass: 'person', readBy: 'Rudy' }, true)).toBeNull();
+  });
+  // Review round (D111, code D1): every gate, prompt and every option.
+  it('not served: a question or an option that drops a negation or a hedge', () => {
+    const q = { prompt: 'SIM: Should you ever cut near a limb without a spotter?', options: ['Yes', 'No, never'] };
+    const tw = { prompt: 'SIM: ¿Debe cortar cerca de una rama (limb) sin un observador?', options: ['Sí', 'No, nunca'], enSha: quizEnSha(q.prompt, q.options), keyCheckedBy: 'k', pass: 'reviewed', translatedBy: 'a', reviewedBy: 'b', on: '2026-10-22' };
+    expect(quizTwin(q, tw, true)).toEqual({ prompt: tw.prompt, options: tw.options });
+    expect(quizTwin(q, { ...tw, prompt: 'SIM: ¿Debe cortar cerca de una rama (limb) con un observador?' }, true)).toBeNull();
+    expect(quizTwin(q, { ...tw, options: ['Sí', 'Siempre'] }, true)).toBeNull();
+    const h = { prompt: 'SIM: The limb may be hollow. What do you do?', options: ['Sound it first'] };
+    const htw = { prompt: 'SIM: La rama (limb) está hueca. ¿Qué hace?', options: ['Golpéela primero para oír'], enSha: quizEnSha(h.prompt, h.options), keyCheckedBy: 'k', pass: 'reviewed', translatedBy: 'a', reviewedBy: 'b', on: '2026-10-22' };
+    expect(quizTwin(h, htw, true)).toBeNull();
+    expect(quizTwin(h, { ...htw, prompt: 'SIM: La rama (limb) puede estar hueca. ¿Qué hace?' }, true)).toEqual({ prompt: 'SIM: La rama (limb) puede estar hueca. ¿Qué hace?', options: htw.options });
   });
   it('the crew-facing item carries the twin under es; the English prompt and options are untouched', () => {
     const row = { id: 'q1', topic: 'SIM Drop zone', type: 'quiz_question', body: { ...item, answer: 1, es: good } };
