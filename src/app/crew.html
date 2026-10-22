@@ -296,6 +296,12 @@ main[data-es-en]::before{content:attr(data-es-en);display:inline-block;margin:0 
 .es-pair-es{display:block}
 .es-pair-en{display:block;margin-top:2px;font-size:.85em;font-weight:600;opacity:.85}
 .es-pair-tag{display:inline-block;margin-right:5px;padding:0 4px;border:1px solid currentColor;border-radius:4px;opacity:.75;font-size:.9em;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+/* R27 Phase A unit 1 (D111): Spanish is longer. "Clave de la puerta de la cuadrilla" runs past the key
+   box at 320px in the field's 17px, and a placeholder cannot wrap — so in Spanish it is drawn a little
+   smaller. English never matches this rule. */
+html[lang="es"] #whoami #doorkey::placeholder{font-size:15px}
+/* …and "DÍA DESBLOQUEADO ✓" in GO's wide tracking pushed the ✓ onto a line of its own at 320px. */
+html[lang="es"] #gobtn{letter-spacing:.06em}
 </style>
 </head>
 <body>
