@@ -11,16 +11,26 @@ place. **Language phase, first round (D111 review round, 2026-10-22):** a
 blind second translation of all 187 strings and a back-translation of the
 safety lines ran; two meaning drifts were fixed (the library's above-level
 warning, the near-miss "written up" promise), and "protected work", roster,
-data link and "on site" were re-worded (glossary). **No safety-class review is
-recorded yet:** the back-translation was not blind (its translator had seen the
-English), and four permit lines changed after it — so the three stop-work
-orders and the seven work-order hazard and permit lines stay drafts, and
-Spanish mode shows each in English under a Spanish pointer ("Aviso de seguridad
-— por ahora solo en inglés; pídale a alguien que se lo lea:"). Next for this
-unit: a back-translation of the ten safety lines made WITHOUT the English, then
-their reviews recorded in `src/i18n/reviewed.json`, then the phone read-through
-by a Spanish-reading crew member — Mike named "rudy or marco or temo" (R29 #3)
-— before crews rely on it (`docs/GO_LIVE.md` §2). A briefing or quiz question
+data link and "on site" were re-worded (glossary). **Blind review recorded
+(D112, 2026-10-22):** a back-translation of all 17 ledger lines made from the
+Spanish alone, and a second translation of the seven safety labels from the
+English alone (agents with no tools; neither saw the other side), compared
+line by line — **12 recorded** at pass "reviewed" in `src/i18n/reviewed.json`
+(PERMIT LIKELY, PERMIT: REVIEW NEEDED, NO OVERLAY — VERIFY W/ CITY, PERMIT
+SCREEN PENDING, NO AERIAL WORK, NO EXPIRY DATE; the three stop-work orders;
+the POWER LINES and STRUCTURES hazards and REVIEW NEEDED's work-order line),
+so the crew door shows each in Spanish first with the full English beneath;
+**5 held** as drafts — HELD (a drift: the blind second translation says "do
+not drive — out of service"; a fix is proposed in its ledger note, not
+applied) and the four permit lines that say "protected work" (PERMIT LIKELY,
+NO OVERLAY, UNKNOWN, PENDING — no blind second translation has agreed with
+"el trabajo que requiere permiso" yet), which still show in English under the
+Spanish pointer ("Aviso de seguridad — por ahora solo en inglés; pídale a
+alguien que se lo lea:"). Next for this unit: a blind second translation of
+those four lines (and of a fixed HELD), then the phone read-through by a
+Spanish-reading crew member — Mike named "rudy or marco or temo" (R29 #3) —
+which is STILL OWED before crews rely on any of it (`docs/GO_LIVE.md` §2;
+recorded as pass "person", which no line has yet). A briefing or quiz question
 whose English holds a safety line (911, 811, Dominion, stop work, a badge) is
 never served in Spanish from its row until Mike rules how those get reviewed
 (questions below). Phase A's other units (the owner app's screens) come after.
@@ -240,7 +250,9 @@ These stay byte-identical, and tests prove it by output:
 6. Mike's phone read-through by a Spanish-speaking crew member — Rudy, Marco
    or Temo (Mike, R29 #3: *"rudy or marco or temo"*) — of the briefing, the quiz
    and the work orders, before crews rely on them. Still owed for the crew door
-   (D111); it is separate from, and comes after, the recorded reviews.
+   (D111, D112); it is separate from, and comes after, the recorded reviews
+   (D112 recorded the blind passes, pass "reviewed" — the read-through is pass
+   "person").
 
 ## Questions for Mike (each has a default; none blocks the build)
 
