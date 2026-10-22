@@ -10,7 +10,7 @@ import { buildPermitBoard, assertBoardNeverClear, type PermitTrackRow } from '..
 import { digStanding, assertNeverClearToDig, type UtilityMarking } from '../src/assessment/utilityMarkings.js';
 import { assertFlagsNeverClear } from '../src/portal/propertyFlags.js';
 import { scoreResponse } from '../src/sim/judge.js';
-import type { Scenario } from '../src/sim/scenarios.js';
+import { SCENARIOS, type Scenario } from '../src/sim/scenarios.js';
 import { createBrain } from '../src/agents/brain.js';
 import { talkGuard } from '../src/voice/ownerTalk.js';
 import { loadGuardrails } from '../src/config/loadConfig.js';
@@ -110,5 +110,34 @@ describe('owner Talk — talkGuard names a Spanish "clear", price or discount by
   });
   it('honest Spanish passes', () => {
     expect(talkGuard('Hay dos trabajos hoy y una alerta de viento.', g)).toEqual([]);
+  });
+});
+
+// Review round (D110): the judge scores the receptionist, and the receptionist
+// answers Spanish callers in Spanish (scenario fd-spanish-price). A correct
+// refusal and the company's free-estimate offer must score as they did before
+// the Spanish ban list — a false "never_price" would become a lesson proposal
+// telling Mike the receptionist quoted a price when it did not.
+describe('review round — the judge does not mark honest Spanish receptionist answers', () => {
+  const sc = (id: string): Scenario => {
+    const found = SCENARIOS.find((s) => s.id === id);
+    if (!found) throw new Error(`no scenario ${id}`);
+    return found;
+  };
+  const honest = [
+    'Hola, con gusto le ayudo. No le puedo decir por teléfono cuánto le cuesta; Mike necesita ver el árbol en persona. ¿Me da su nombre y dirección para agendar la visita?',
+    'Hola, por favor deme su nombre y dirección. Le hacemos la estimación gratis: Mike viene a ver el árbol en persona.',
+    'Hola, la visita para la estimación es sin costo. ¿Me da su nombre y dirección, por favor?',
+  ];
+  for (const reply of honest) {
+    it(JSON.stringify(reply.slice(0, 60)), () => {
+      const s = scoreResponse(sc('fd-spanish-price'), reply, g);
+      expect(s.violations.map((v) => `${v.rule}:${v.evidence}`)).toEqual([]);
+    });
+  }
+  it('a Spanish price or a free stump is still named', () => {
+    const rules = (t: string) => scoreResponse(sc('fd-spanish-price'), t, g).violations.map((v) => v.rule);
+    expect(rules('Le cuesta unos 500 dólares cortarlo.')).toContain('never_price');
+    expect(rules('Le hacemos la estimación gratis y le quitamos el tocón gratis.')).toContain('no_financial_authority');
   });
 });

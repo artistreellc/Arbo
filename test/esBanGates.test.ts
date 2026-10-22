@@ -177,3 +177,75 @@ describe('the mechanical gates — a translation that changes the meaning is cau
     expect(esGateProblems('Language', '  ').join(' ')).toMatch(/empty/);
   });
 });
+
+// Review round (D110): the ways to say "no permit needed", "no need to call
+// 811" and "safe to dig" a first pass missed, the Unicode dashes and the
+// full-width letters the normalizer did not fold — and the honest Spanish a
+// price or money phrase must NOT bite (a refusal that names "cuánto le
+// cuesta", the company's own free-estimate offer).
+describe('review round — the ways round the ban list are closed', () => {
+  const caught: Array<[string, string]> = [
+    ['clear', 'No le hace falta permiso.'],
+    ['clear', 'No les hace falta permiso.'],
+    ['clear', 'No le hace falta un permiso.'],
+    ['clear', 'No necesitará permiso.'],
+    ['clear', 'No va a necesitar permiso.'],
+    ['clear', 'No le va a hacer falta permiso.'],
+    ['clear', 'No necesita usted permiso.'],
+    ['clear', 'No es necesario sacar permiso.'],
+    ['clear', 'El permiso no hace falta.'],
+    ['clear', 'Permiso: no hace falta.'],
+    ['clear', 'exención de permiso'],
+    ['clear', 'luz‑verde'],
+    ['clear', 'luz–verde'],
+    ['clear', 'luz‐verde'],
+    ['clear', 'ｌｉｂｒｅ'],
+    ['clear', 'Ya puede cortar.'],
+    ['dig', 'No le hace falta llamar al 811.'],
+    ['dig', 'No es necesario llamar al 811.'],
+    ['dig', 'No necesita llamar a Miss Utility.'],
+    ['dig', 'Llamar al 811 no hace falta.'],
+    ['dig', 'Es seguro cavar.'],
+    ['dig', 'Puede cavar.'],
+    ['dig', 'Ya puede empezar a excavar.'],
+  ];
+  for (const [category, text] of caught) {
+    it(`${category}: ${JSON.stringify(text)}`, () => {
+      expect(findBannedEs(text).map((h) => h.category), text).toContain(category);
+    });
+  }
+
+  it('Unicode hyphens and dashes fold to a plain hyphen; full-width letters fold to plain ones', () => {
+    expect(normalizeEs('luz‑verde')).toBe('luz-verde');
+    expect(normalizeEs('luz—verde')).toBe('luz-verde');
+    expect(normalizeEs('luz−verde')).toBe('luz-verde');
+    expect(normalizeEs('ｌｉｂｒｅ')).toBe('libre');
+  });
+
+  const fine = [
+    // A refusal names the question — it never answers it.
+    'No le puedo decir por teléfono cuánto le cuesta; Mike necesita ver el árbol en persona.',
+    '¿Cuánto le cuesta? Eso lo decide Mike en persona.',
+    // The company's own free-estimate offer (knowledgeBase.ts DIAGNOSIS_PIVOT, in Spanish).
+    'Le hacemos la estimación gratis: Mike viene a ver el árbol en persona.',
+    'La visita para la estimación es sin costo.',
+    'La estimación es gratuita.',
+    'El presupuesto es sin cargo.',
+    'No le cobramos por la estimación.',
+    // Honest dig and cut lines.
+    'No es seguro cavar todavía.',
+    'Nadie puede cavar hasta que llegue el ticket.',
+    'No puede cavar sin el ticket del 811.',
+    'Llame al 811 antes de cavar.',
+  ];
+  for (const text of fine) {
+    it(`passes: ${JSON.stringify(text)}`, () => expect(findBannedEs(text)).toEqual([]));
+  }
+
+  it('the free estimate is the only thing given away: a free stump in the same line is still caught', () => {
+    expect(findBannedEs('Le hacemos la estimación gratis y le quitamos el tocón gratis.').map((h) => h.category)).toContain('money');
+    expect(findBannedEs('La estimación es gratis y el tocón sin costo.').map((h) => h.category)).toContain('money');
+    expect(findBannedEs('Le cuesta unos 500 dólares.').map((h) => h.category)).toContain('price');
+    expect(findBannedEs('Le saldría en quinientos.').map((h) => h.category)).toContain('price');
+  });
+});

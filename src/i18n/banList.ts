@@ -32,12 +32,18 @@ export interface EsBan {
   example: string;
 }
 
-/** Accents folded, lower case, invisible marks dropped, every kind of space collapsed to one. */
+/**
+ * Accents folded, lower case, invisible marks dropped, every kind of space
+ * collapsed to one. NFKD also folds full-width and other look-alike letters
+ * ("ｌｉｂｒｅ" → "libre"); every Unicode hyphen, dash and minus folds to a
+ * plain hyphen, so "luz‑verde" (U+2011) is "luz-verde" (review round, D110).
+ */
 export function normalizeEs(text: string): string {
   return String(text)
-    .normalize('NFD')
+    .normalize('NFKD')
     .replace(/[\u0300-\u036F]/g, '')
     .replace(/[\u00AD\u200B-\u200D\u2060\uFEFF]/g, '')
+    .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, '-')
     .replace(/[\s\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]+/g, ' ')
     .toLowerCase()
     .trim();
@@ -47,24 +53,40 @@ export function normalizeEs(text: string): string {
 const S = '[\\s-]+';
 const phrase = (words: string) => words.trim().split(/\s+/).join(S);
 const re = (src: string) => new RegExp(src, 'i');
+// The verbs of "need" a permit line uses, in the forms a reply would: present, future, "va a".
+const NEED = [
+  'necesita', 'necesitan', 'necesitara', 'necesitaran', 'requiere', 'requieren', 'requerira',
+  `hace${S}falta`, `hacen${S}falta`, `hara${S}falta`, 'ocupa', 'ocupan',
+  `va${S}a${S}necesitar`, `van${S}a${S}necesitar`, `va${S}a${S}hacer${S}falta`, `va${S}a${S}requerir`,
+].join('|');
+// dig, both words.
+const DIG = '(?:excavar|cavar)';
+// The call before digging, by number or by name.
+const CALL_811 = `(?:al${S}811|a${S}miss${S}utility)\\b`;
+// A figure after a price verb: digits, a dollar sign, a number word, "dólares".
+const FIGURE = '(?:\\$|\\d|\\b(?:cien|ciento|doscient|trescient|cuatrocient|quinient|seiscient|setecient|ochocient|novecient|mil\\b|veinte|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|dolares))';
 
 export const ES_BANNED: readonly EsBan[] = [
   // ── "clear", "exempt", "no permit needed" — the permit words' ban (§6B.3, R26 #4, R27 #4)
   { id: 'libre', category: 'clear', re: re('\\blibres?\\b'), example: 'Zona libre.' },
   { id: 'exento', category: 'clear', re: re('\\bexent[oa]s?\\b'), example: 'Exento de permiso.' },
+  { id: 'exencion', category: 'clear', re: re('\\bexencion(?:es)?\\b'), example: 'Exención de permiso.' },
   {
+    // "No (se) (le/les) necesita / hace falta / va a necesitar / necesitará (usted) (sacar) (un) permiso".
     id: 'no_permit_needed', category: 'clear',
-    re: re(`\\bno${S}(?:se${S})?(?:necesita|necesitan|requiere|requieren|hace${S}falta|hacen${S}falta|ocupa|ocupan)(?:${S}(?:sacar|tramitar|pedir))?(?:${S}de)?(?:${S}(?:un|el|los|ningun|ninguno|algun))?${S}permisos?\\b`),
+    re: re(`\\bno${S}(?:se${S})?(?:(?:le|les)${S})?(?:${NEED})(?:${S}(?:usted|ustedes))?(?:${S}(?:sacar|tramitar|pedir))?(?:${S}de)?(?:${S}(?:un|el|los|ningun|ninguno|algun))?${S}permisos?\\b`),
     example: 'No necesita permiso.',
   },
   {
     id: 'permit_not_needed', category: 'clear',
-    re: re(`\\b(?:permisos?${S}no${S}(?:es${S}|son${S})?(?:necesari[oa]s?|requerid[oa]s?)|no${S}(?:es|son)${S}necesari[oa]s?${S}(?:el${S}|un${S}|los${S}|ningun${S})?permisos?|no${S}hay${S}que${S}(?:sacar|tramitar|pedir)${S}(?:el${S}|un${S}|ningun${S})?permisos?|sin${S}necesidad${S}de${S}permisos?)\\b`),
+    re: re(`\\b(?:(?:el${S}|un${S}|los${S})?permisos?:?${S}no${S}(?:(?:le|les)${S})?(?:(?:es|son|sera|seran)${S})?(?:necesari[oa]s?|requerid[oa]s?|hace${S}falta|hacen${S}falta|hara${S}falta|se${S}necesita)|no${S}(?:es|son|sera|seran)${S}necesari[oa]s?${S}(?:(?:sacar|tramitar|pedir)${S})?(?:el${S}|un${S}|los${S}|ningun${S})?permisos?|no${S}hay${S}que${S}(?:sacar|tramitar|pedir)${S}(?:el${S}|un${S}|ningun${S})?permisos?|sin${S}necesidad${S}de${S}permisos?)\\b`),
     example: 'No es necesario un permiso.',
   },
   { id: 'despejado', category: 'clear', re: re('\\bdespejad[oa]s?\\b'), example: 'El área está despejada.' },
   { id: 'luz_verde', category: 'clear', re: re(`\\b${phrase('luz verde')}\\b`), example: 'Tiene luz verde.' },
   { id: 'listo_para_cortar', category: 'clear', re: re(`\\blist[oa]s?${S}para${S}cortar\\b`), example: 'Listo para cortar.' },
+  // "good to cut" (FORBIDDEN_CLEAR): "Ya puede cortar". A plain "puede cortar la rama" is a rigging step and passes.
+  { id: 'ya_puede_cortar', category: 'clear', re: re(`\\bya${S}(?:se${S})?pueden?${S}(?:(?:empezar|comenzar)${S}a${S})?cortar\\b`), example: 'Ya puede cortar.' },
   // It reads as "never expires" — the label is FALTA LA FECHA DE VENCIMIENTO.
   { id: 'sin_fecha_de_vencimiento', category: 'clear', re: re(`\\b${phrase('sin fecha de vencimiento')}\\b`), example: 'Sin fecha de vencimiento.' },
   { id: 'rescate_aereo', category: 'clear', re: re(`\\b${phrase('rescate aereo')}\\b`), example: 'Rescate aéreo.' },
@@ -82,7 +104,8 @@ export const ES_BANNED: readonly EsBan[] = [
   // ── never price (§3, R3/R14): quoting a figure, as phrases
   { id: 'el_precio_es', category: 'price', re: re(`\\b(?:el|su|un)${S}precio${S}(?:es|seria|sera|queda|sale)\\b`), example: 'El precio es de 400.' },
   { id: 'precio_aproximado', category: 'price', re: re(`\\bprecio${S}(?:aproximado|estimado|exacto)\\b`), example: 'Precio aproximado.' },
-  { id: 'le_cuesta', category: 'price', re: re(`\\b(?:le|les)${S}(?:cuesta|costaria|costara|va${S}a${S}costar|sale${S}en|saldria${S}en|sale${S}por|saldria${S}por|cobramos|cobrariamos|vamos${S}a${S}cobrar)\\b`), example: 'Le cuesta unos 500.' },
+  // Only with a figure after it, and never after "cuánto": "¿cuánto le cuesta?" is the question a refusal names, not a price (review round, D110).
+  { id: 'le_cuesta', category: 'price', re: re(`(?<!\\bcuanto${S})\\b(?:le|les)${S}(?:cuesta|costaria|costara|va${S}a${S}costar|sale${S}en|saldria${S}en|sale${S}por|saldria${S}por|cobramos|cobrariamos|vamos${S}a${S}cobrar)\\b[^.!?;]{0,25}?${FIGURE}`), example: 'Le cuesta unos 500.' },
   { id: 'cuesta_unos', category: 'price', re: re(`\\b(?:cuesta|costaria|cobramos|cobra)${S}(?:unos|unas|como|alrededor|aproximadamente|mas${S}o${S}menos|\\$)`), example: 'Cuesta unos quinientos.' },
   { id: 'mas_o_menos_figure', category: 'price', re: re(`\\b(?:mas${S}o${S}menos|alrededor${S}de|aproximadamente|como${S}unos?)${S}\\$?\\s?\\d`), example: 'Más o menos $300.' },
 
@@ -96,16 +119,38 @@ export const ES_BANNED: readonly EsBan[] = [
   { id: 'igualamos_precio', category: 'money', re: re(`\\bigual(?:amos|ar)${S}(?:el|ese|su)${S}precio\\b`), example: 'Igualamos el precio.' },
 
   // ── never permission to dig (utility markings): the Spanish of "safe to dig", "no need to call"
-  { id: 'seguro_excavar', category: 'dig', re: re(`\\bseguro${S}(?:para${S})?excavar\\b`), example: 'Es seguro excavar.' },
-  { id: 'listo_para_excavar', category: 'dig', re: re(`\\blist[oa]s?${S}para${S}excavar\\b`), example: 'Listo para excavar.' },
-  { id: 'puede_excavar', category: 'dig', re: re(`(?<!\\bno${S})(?<!\\bno${S}se${S})\\b(?:se${S})?pueden?${S}excavar\\b`), example: 'Ya puede excavar.' },
-  { id: 'no_hace_falta_llamar', category: 'dig', re: re(`\\bno${S}(?:hace${S}falta|necesita|tiene${S}que|hay${S}que)${S}llamar${S}al${S}811\\b`), example: 'No hace falta llamar al 811.' },
+  // "cavar" is the everyday word for dig, "excavar" the formal one: both. A negated line ("No es
+  // seguro cavar", "No puede cavar", "Nadie puede cavar") is the honest warning and passes.
+  { id: 'seguro_excavar', category: 'dig', re: re(`(?<!\\bno${S}(?:(?:es|esta|sera)${S})?)\\bseguro${S}(?:para${S})?${DIG}\\b`), example: 'Es seguro excavar.' },
+  { id: 'listo_para_excavar', category: 'dig', re: re(`\\blist[oa]s?${S}para${S}${DIG}\\b`), example: 'Listo para excavar.' },
+  { id: 'puede_excavar', category: 'dig', re: re(`(?<!\\b(?:no|nadie)${S}(?:se${S})?)\\b(?:se${S})?pueden?${S}(?:(?:empezar|comenzar)${S}a${S})?${DIG}\\b`), example: 'Ya puede excavar.' },
+  {
+    // "No (le) hace falta / es necesario / necesita llamar al 811 / a Miss Utility", and "Llamar al 811 no hace falta".
+    id: 'no_hace_falta_llamar', category: 'dig',
+    re: re(`\\bno${S}(?:(?:le|les)${S})?(?:hace${S}falta|hara${S}falta|necesita|necesitan|necesitara|tiene${S}que|tienen${S}que|hay${S}que|es${S}necesario|sera${S}necesario|se${S}necesita)${S}llamar${S}${CALL_811}|\\bllamar${S}${CALL_811}${S}no${S}(?:hace${S}falta|es${S}necesario|se${S}necesita)`),
+    example: 'No hace falta llamar al 811.',
+  },
   { id: 'ya_localizado', category: 'dig', re: re(`\\bya${S}(?:esta|estan|fue|fueron)${S}(?:localizad|ubicad)[oa]s?\\b`), example: 'Ya están localizadas.' },
+];
+
+// The company's own offer, said in Spanish: the estimate (the visit to see the tree) is free —
+// knowledgeBase.ts DIAGNOSIS_PIVOT, "I can get you on the schedule for a free estimate". It is
+// taken out of the line before the money phrases are read, so "Le hacemos la estimación gratis"
+// passes and anything else given away in the same line ("…y el tocón gratis") is still caught.
+const ESTIMATE = '(?:estimacion|estimado|presupuesto|cotizacion|evaluacion)';
+const FREE = `(?:(?:totalmente|completamente)${S})?(?:gratis|gratuit[oa]|sin${S}(?:costo|cargo))`;
+const reAll = (src: string) => new RegExp(src, 'gi');
+const FREE_ESTIMATE: readonly RegExp[] = [
+  reAll(`\\b(?:la${S}|una${S})?visita${S}(?:para${S}|de${S})(?:la${S}|el${S}|una${S}|un${S}|su${S})?${ESTIMATE}${S}(?:(?:es|sera)${S})?${FREE}`),
+  reAll(`\\b${ESTIMATE}${S}(?:(?:es|sera)${S})?${FREE}`),
+  reAll(`\\b(?:es${S})?${FREE}${S}(?:la${S}|el${S}|su${S})?(?:visita${S}(?:para${S}|de${S})(?:la${S}|el${S})?)?${ESTIMATE}\\b`),
+  reAll(`\\bno${S}(?:le|les)${S}(?:cobramos|cobraremos|vamos${S}a${S}cobrar)${S}(?:nada${S})?(?:por${S})?(?:la${S}|el${S}|su${S})?(?:visita${S}(?:para${S}|de${S})(?:la${S}|el${S})?)?${ESTIMATE}\\b`),
 ];
 
 /** Every banned word or phrase in a Spanish line ([] when it is fine). */
 export function findBannedEs(text: string): Array<{ id: string; category: EsBanCategory; matched: string }> {
-  const t = normalizeEs(text);
+  let t = normalizeEs(text);
+  for (const ok of FREE_ESTIMATE) t = t.replace(ok, ' ');
   const hits: Array<{ id: string; category: EsBanCategory; matched: string }> = [];
   for (const b of ES_BANNED) {
     const m = t.match(b.re);
