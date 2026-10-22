@@ -43,7 +43,7 @@ describe('the served map page follows the shell\'s laws in its own code (M0)', (
     expect(page).not.toMatch(/@import/);
   });
 
-  it('the markers are all filled at serve time: the sprite, the ZIP table, the DEQ values', () => {
+  it('the markers are all filled at serve time: the ZIP table, the DEQ values — and no sprite (the map uses no icon)', () => {
     expect(page).not.toContain('<!--ARBO:');
     const zips = JSON.parse(/<script type="application\/json" id="map-zips">([\s\S]*?)<\/script>/.exec(page)![1]!) as { zips: Record<string, unknown>; box: unknown };
     expect(zips.zips).toEqual(ZIP_CENTROIDS);
@@ -51,7 +51,10 @@ describe('the served map page follows the shell\'s laws in its own code (M0)', (
     const deq = JSON.parse(/<script type="application\/json" id="map-deq">([\s\S]*?)<\/script>/.exec(page)![1]!) as { base: string; layer: number };
     expect(deq.base).toBe(DEQ_MAPSERVER_BASE);
     expect(deq.layer).toBe(DEQ_RPA_LAYER);
-    expect(page).toContain('<svg');
+    // Maps wave B (D108): the page draws no sprite icon, so the sprite (about 12 KB of every map load) is not
+    // inlined here any more — wave A's pin read `toContain('<svg')`. A sprite icon used later must bring it back.
+    expect(page).not.toContain('<svg');
+    expect(page).not.toMatch(/<use\b|href="#i-/);
   });
 
   it('never builds HTML from a string', () => {

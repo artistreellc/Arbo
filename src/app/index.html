@@ -795,6 +795,7 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 .minibtn.prep-lead{flex:1 1 auto;min-height:44px;font-size:13.5px;color:var(--forest);border-color:var(--hairline)}
 .verdict .prep-lab{margin:14px 0 2px}.verdict .prep-lab:first-child{margin-top:0}
 .verdict .prep-jc{margin-top:10px}
+.verdict .prep-jc + .prep-jc{margin-left:8px}.viewhead .mapbtn{margin-top:10px}
 .verdict .feed-state .prep-again{display:block;margin-top:8px}
 .viewhead h1 .h1-gap{font-family:var(--sans);font-size:15px;font-weight:600;letter-spacing:0;color:var(--ink-3);font-variation-settings:normal}
 /* Direction B P16: the Leads hub's head, over New leads and Calls & texts alike (outside both views, so an open
@@ -4125,6 +4126,8 @@ const MAP_MAX = 300;
 let MAP_READY = false;
 let MAP_HELD = null;
 window.arboMapKey = () => KEY;
+// Maps wave B: the links' word (the boot's /health read) for the frame — what "cut" means, and whether this is practice.
+window.arboMapLinks = () => LINKS_READY;
 function mapPost(msg) {
   const f = $('map-frame');
   if (f && MAP_READY && f.contentWindow) f.contentWindow.postMessage(msg, location.origin);
@@ -4411,6 +4414,11 @@ function estimatePrepPanel() {
       jc.addEventListener('click', () => { PERMIT_CITY = s.city; switchTab('permits'); renderPermits(); });
       sheet.appendChild(jc);
     }
+    // Maps wave B (M2): DEQ's RPA areas on the map — the four-city view; this address is never handed to it (Q11).
+    const rpa = el('button', 'minibtn prep-jc', 'RPA areas on the map');
+    rpa.type = 'button';
+    rpa.addEventListener('click', () => openMap('permits'));
+    sheet.appendChild(rpa);
     lab('Drive');
     if (s.drive.fromZip) sheet.appendChild(el('div', 'drv', '~' + s.drive.minutes + ' min from ' + s.drive.fromZip + ' — ' + s.drive.note));
     else {
@@ -7502,6 +7510,11 @@ async function renderPermits() {
   head.appendChild(el('div', 'eyebrow', 'Permit Desk'));
   head.appendChild(el('h1', '', 'Permits & public works'));
   head.appendChild(el('p', '', 'Every rule shows its source and the date it was checked. Anything a source didn’t state plainly is marked UNCONFIRMED — check it with the city before you tell a customer (the office to call is on the rule where we have one).'));
+  // Maps wave B (M2): DEQ's RPA areas on the map, on the four-city view (Q11).
+  const rpa = el('button', 'minibtn mapbtn', 'RPA areas on the map');
+  rpa.type = 'button';
+  rpa.addEventListener('click', () => openMap('permits'));
+  head.appendChild(rpa);
   v.appendChild(head);
   const cities = el('div', 'chips city-pick');
   for (const c of ['Virginia Beach', 'Norfolk', 'Chesapeake', 'Portsmouth']) {
