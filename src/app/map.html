@@ -49,6 +49,10 @@ body{font-family:var(--sans);font-size:16px;line-height:1.45;color:var(--ink-1);
 #top{flex:0 0 auto;padding:8px 8px 0}
 #chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:6px}
 #chips::-webkit-scrollbar{display:none}
+/* The row scrolls at 320 and 390: an edge with more chips beyond it fades, so a fourth layer is never a secret. */
+#chips.fade-r{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent)}
+#chips.fade-l{-webkit-mask-image:linear-gradient(90deg,transparent,#000 36px);mask-image:linear-gradient(90deg,transparent,#000 36px)}
+#chips.fade-l.fade-r{-webkit-mask-image:linear-gradient(90deg,transparent,#000 36px,#000 calc(100% - 36px),transparent);mask-image:linear-gradient(90deg,transparent,#000 36px,#000 calc(100% - 36px),transparent)}
 .chip{flex:0 0 auto;min-height:44px;padding:0 14px;border-radius:999px;border:1px solid var(--border);background:var(--card);color:var(--ink-2);font:600 14px/1 var(--sans);cursor:pointer}
 .chip[aria-pressed="true"]{background:var(--forest);border-color:var(--forest);color:var(--on-forest)}
 .line{display:flex;align-items:center;gap:8px;min-height:28px;padding:3px 0 3px 16px;position:relative;font-size:13px;font-weight:600;line-height:1.35;color:var(--ink-2);text-wrap:pretty}
@@ -72,7 +76,16 @@ body{font-family:var(--sans);font-size:16px;line-height:1.45;color:var(--ink-1);
 #map{position:absolute;inset:0;background:var(--paper-2)}
 /* The notes card: every gap, the counts and the key, over the top of the map (it scrolls inside, never the page). */
 #card{position:absolute;z-index:1000;top:8px;left:8px;right:8px;max-height:min(calc(100% - 150px),50%);overflow-y:auto;overscroll-behavior:contain;padding:4px 10px;border-radius:14px;border:1px solid var(--border);background:var(--card);box-shadow:var(--shadow)}
+/* The Key opens under its own button and the card grows to hold it — over the map while Mike reads it (at 320 the
+   permit legend alone is taller than half the map), stopping above the OSM credit; Route the day steps aside. */
+#card.keyopen{max-height:calc(100% - 44px)}
+#card.keyopen ~ #hud{visibility:hidden}
 #card[hidden],#offview[hidden]{display:none}
+/* "More ↓" over the card's bottom edge while more of it is below — the card scrolls inside itself. Zero height: the
+   cue never changes what it measures. */
+#more{position:sticky;bottom:-4px;height:0;pointer-events:none}
+#more span{position:absolute;left:-10px;right:-10px;bottom:0;height:34px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:5px;background:linear-gradient(rgba(255,255,255,0),var(--card) 65%);font:700 12px/1 var(--sans);color:var(--forest)}
+html.night #more span{background:linear-gradient(rgba(19,34,28,0),var(--card) 65%)}
 #offview{position:absolute;z-index:1000;right:8px;top:8px;max-width:calc(100% - 16px);min-height:44px;padding:0 14px;border-radius:22px;border:1px solid var(--border);background:var(--card);color:var(--forest);font:700 13.5px/1.2 var(--sans);box-shadow:var(--shadow);cursor:pointer}
 #hud{position:absolute;z-index:1000;left:62px;right:8px;bottom:28px}
 #hud:empty{display:none}
@@ -83,15 +96,18 @@ html.night #osm{background:rgba(11,21,18,.85);color:#C5D2CA}
 #legend{padding:0 0 4px}
 .key{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink-2);padding:2px 0}
 .key .pin{flex:0 0 auto;transform:scale(.7);margin:-6px}
-/* DEQ's own symbol for layer 33: an orange fill (230,152,0), 50% transparent, a thin grey outline. */
+/* DEQ's own symbol for layer 33: an orange fill (230,152,0), 50% transparent, a thin grey outline — shown over the
+   map's own ground, as the shading is: OSM's land by Day, that land under the Night filter at night (over the dark
+   card the bare fill read as a brown the map never shows). */
 .swatch{flex:0 0 auto;align-self:flex-start;width:30px;height:20px;margin-top:2px;border-radius:5px}
-.swatch.rpa{background:rgba(230,152,0,.5);border:1px solid rgba(110,110,110,.9)}
+.swatch.rpa{background:linear-gradient(rgba(230,152,0,.5),rgba(230,152,0,.5)),#F2EFE9;border:1px solid rgba(110,110,110,.9)}
+html.night .swatch.rpa{background:linear-gradient(rgba(230,152,0,.5),rgba(230,152,0,.5)),#999794}
 .hud{display:block;width:100%;min-height:48px;padding:6px 12px;border:0;border-radius:14px;background:var(--forest);color:var(--on-forest);font:700 14px/1.25 var(--sans);box-shadow:var(--shadow);cursor:pointer}
 /* Leaflet's zoom buttons and a stop list's ×: 44 px, in the app's colours by Day and Night. */
 #mapbox .leaflet-bar{border:1px solid var(--border);box-shadow:var(--shadow)}
 #mapbox .leaflet-bar a{width:44px;height:44px;line-height:44px;font:700 22px/44px var(--sans);background:var(--card);color:var(--ink-1);border-bottom-color:var(--border)}
 #mapbox .leaflet-bar a.leaflet-disabled{background:var(--paper-2);color:var(--ink-4)}
-#mapbox.popopen .leaflet-control-zoom{visibility:hidden}
+#mapbox.popopen #card,#mapbox.popopen #hud,#mapbox.popopen .leaflet-control-zoom{visibility:hidden}
 #mapbox a.leaflet-popup-close-button{width:44px;height:44px;font:400 26px/44px var(--sans);color:var(--ink-3)}
 #mapbox .leaflet-popup-content{margin:10px 12px}
 .pinwrap{background:none;border:0}
@@ -137,6 +153,7 @@ html.night #osm{background:rgba(11,21,18,.85);color:#C5D2CA}
     <div id="status" role="status" aria-live="polite"></div>
     <div id="facts"></div>
     <div id="legend"></div>
+    <div id="more" aria-hidden="true"><span>More ↓</span></div>
   </div>
   <button id="offview" type="button" hidden></button>
   <div id="hud"></div>
@@ -329,6 +346,10 @@ function shellLinks() {
 const LINKS_READY = shellLinks().then((v) => { LINKS = v; return v; });
 
 let ON = readLayers();
+// Mike's own choice, from the chips (what is on when he taps one). A way in adds its layer for that arrival only.
+const SAVED = Object.assign({}, ON);
+// The layer the last way in (or chip turned on) named: its lines lead the notes card.
+const VIEW = { focus: null };
 let MAP = null;
 let TILES = null;
 const TILE = { errors: 0, loaded: 0 };
@@ -424,11 +445,35 @@ function drawChips() {
     b.addEventListener('click', () => setLayer(l, !ON[l]));
     box.appendChild(b);
   }
+  chipFade();
+}
+// A chip in the middle of the row's view (the row scrolls on a phone).
+function chipIntoView(l) {
+  const box = $('chips');
+  const c = box.children[LAYERS.indexOf(l)];
+  if (!c) return;
+  const d = c.getBoundingClientRect().left - box.getBoundingClientRect().left;
+  box.scrollLeft += d - (box.clientWidth - c.offsetWidth) / 2;
+  chipFade();
+}
+function chipFade() {
+  const box = $('chips');
+  box.classList.toggle('fade-r', box.scrollLeft + box.clientWidth < box.scrollWidth - 2);
+  box.classList.toggle('fade-l', box.scrollLeft > 2);
 }
 
+// A chip tap: Mike's own choice — what is on when he taps is what he keeps; the layer he turns on leads the card.
 function setLayer(l, on) {
   ON[l] = on;
+  for (const k of LAYERS) SAVED[k] = ON[k];
   saveLayers();
+  if (on) VIEW.focus = l;
+  else if (VIEW.focus === l) VIEW.focus = null;
+  showLayer(l, on);
+}
+// A layer on or off on the map (nothing saved here).
+function showLayer(l, on) {
+  ON[l] = on;
   drawChips();
   if (on) readLayer(l);
   else {
@@ -438,6 +483,29 @@ function setLayer(l, on) {
     drawFacts();
     drawLegend();
   }
+}
+// A way in (Calendar, Estimate, Leads, Fleet): Mike's own layers plus the one it names, whose lines lead the notes
+// card and whose chip is scrolled into view. A layer on only from an earlier way in goes off — they never pile up —
+// and nothing is saved: the chips alone are remembered.
+function arrive(l) {
+  const was = ON[l];
+  VIEW.focus = l;
+  for (const k of LAYERS) {
+    const want = SAVED[k] || k === l;
+    if (want !== ON[k]) showLayer(k, want);
+  }
+  if (was) readLayer(l);
+  drawChips();
+  chipIntoView(l);
+  $('card').scrollTop = 0;
+  drawStatus();
+  drawFacts();
+  drawLegend();
+}
+// The layers in the card's order: the one Mike came in for first, then the rest in theirs.
+function layerOrder() {
+  const f = VIEW.focus;
+  return f && ON[f] ? [f, ...LAYERS.filter((l) => l !== f)] : LAYERS;
 }
 
 function readLayer(l) {
@@ -452,7 +520,7 @@ function drawStatus() {
   GAPS.net = navigator.onLine === false ? [{ cls: 'unread', text: MAP_SAYS.offline }] : [];
   const box = $('status');
   box.replaceChildren();
-  const order = ['code', 'key', 'net', 'tiles', ...LAYERS.filter((l) => ON[l])];
+  const order = ['code', 'key', 'net', 'tiles', ...layerOrder().filter((l) => ON[l])];
   for (const slot of order) {
     for (const g of GAPS[slot]) {
       const row = el('div', 'line ' + g.cls);
@@ -481,8 +549,10 @@ const FACTS = {};
 const KEYS = {};
 function drawFacts() {
   const box = $('facts');
+  const legend = $('legend');
+  $('card').insertBefore(legend, $('more')); // out of the facts before they are redrawn
   box.replaceChildren();
-  for (const l of LAYERS) if (ON[l] && FACTS[l]) for (const n of FACTS[l]()) box.appendChild(n);
+  for (const l of layerOrder()) if (ON[l] && FACTS[l]) for (const n of FACTS[l]()) box.appendChild(n);
   // The key's button rides beside Today's counts; with no counts on the map it has a row of its own.
   if (keyRows().length && !box.querySelector('.keybtn')) {
     const row = el('div', 'counts');
@@ -490,13 +560,17 @@ function drawFacts() {
     row.appendChild(keyButton());
     box.appendChild(row);
   }
+  // The key opens right under its own button (never at the card's far end); the card grows while it is open.
+  const kb = box.querySelector('.keybtn');
+  if (kb) kb.parentElement.after(legend);
+  $('card').classList.toggle('keyopen', KEY_OPEN && !!kb);
   syncCard();
 }
 // The key opens from its button beside the counts (keyButton); Route the day rides on the map (HUDS).
 const HUDS = {};
 function keyRows() {
   const out = [];
-  for (const l of LAYERS) if (ON[l] && KEYS[l]) out.push(...KEYS[l]());
+  for (const l of layerOrder()) if (ON[l] && KEYS[l]) out.push(...KEYS[l]());
   return out;
 }
 function drawLegend() {
@@ -516,14 +590,22 @@ function keyButton() {
     KEY_OPEN = !KEY_OPEN;
     drawFacts();
     drawLegend();
-    // The notes card scrolls inside itself: an opened key is brought into its view, never left below the fold.
-    if (KEY_OPEN) $('card').scrollTop = Math.max(0, $('legend').offsetTop - 8);
+    // The notes card scrolls inside itself: an opened key sits under its own button, which stays at the card's top.
+    const kb = $('facts').querySelector('.keybtn');
+    if (KEY_OPEN && kb) $('card').scrollTop = Math.max(0, kb.parentElement.offsetTop - 4);
   });
   return b;
 }
-// The card shows only when it has something to say.
+// The card shows only when it has something to say (the legend, parked in the facts under its button, is not a fact).
 function syncCard() {
-  $('card').hidden = !($('status').childElementCount || $('facts').childElementCount || $('legend').childElementCount);
+  const facts = [...$('facts').children].some((n) => n.id !== 'legend');
+  $('card').hidden = !($('status').childElementCount || facts || $('legend').childElementCount);
+  moreCue();
+}
+// "More ↓" while part of the card is below its bottom edge.
+function moreCue() {
+  const c = $('card');
+  $('more').hidden = c.hidden || c.scrollHeight - c.scrollTop - c.clientHeight <= 2;
 }
 
 // The street map. §1B: three failures and none loaded is named; so is no signal. "Pins are still placed" only when they are.
@@ -742,8 +824,7 @@ function onShellMessage(e) {
   const m = e.data;
   if (!m || typeof m !== 'object') return;
   if (m.type === 'layer' && LAYERS.includes(m.layer)) {
-    if (ON[m.layer]) readLayer(m.layer);
-    else setLayer(m.layer, true);
+    arrive(m.layer);
     return;
   }
   if (m.type === 'refresh') {
@@ -956,12 +1037,14 @@ function groupMarker(g) {
   m.bindPopup(pop);
   return m;
 }
-// Where a list may open: clear of the notes card and Route the day, as wide as the map allows (every layer's lists).
+// Where a list may open (every layer's lists): the notes card and Route the day step aside while it is open
+// (#mapbox.popopen), so it has the whole map — at 320 the part under the card was shorter than one list. As wide as
+// the map allows.
 function popRoom() {
   return Object.assign(popupFits(MAP.getSize().x), {
-    autoPanPaddingTopLeft: L.point(10, cardPad() + 10),
-    autoPanPaddingBottomRight: L.point(10, hudPad() + 10),
-    maxHeight: Math.max(120, MAP.getSize().y - cardPad() - hudPad() - 60),
+    autoPanPaddingTopLeft: L.point(10, 10),
+    autoPanPaddingBottomRight: L.point(10, 10),
+    maxHeight: Math.max(120, MAP.getSize().y - 90),
   });
 }
 function forestColor() {
@@ -1896,6 +1979,8 @@ function watchShown() {
 function boot() {
   applyNight();
   drawChips();
+  $('chips').addEventListener('scroll', chipFade, { passive: true });
+  window.addEventListener('resize', chipFade);
   window.addEventListener('message', onShellMessage);
   watchShown();
   window.addEventListener('storage', (e) => { if (e.key === 'arboTheme') applyNight(); });
@@ -1926,11 +2011,12 @@ function boot() {
     setPanLimit();
     // The card and Route the day change size as lines come and go: the opening view keeps every city clear of them.
     if (window.ResizeObserver) {
-      const ro = new ResizeObserver(() => { if (KEEP_VIEW) openView(); offView(); placeAgain(); });
+      const ro = new ResizeObserver(() => { if (KEEP_VIEW) openView(); offView(); placeAgain(); moreCue(); });
       ro.observe($('card'));
       ro.observe($('hud'));
     }
     $('offview').addEventListener('click', showAll);
+    $('card').addEventListener('scroll', moreCue, { passive: true });
     TILES = L.tileLayer(OSM_TILES, { minZoom: 8, maxZoom: 18 });
     TILES.on('tileerror', () => { TILE.errors++; tilesState(); });
     TILES.on('tileload', () => { TILE.loaded++; tilesState(); });
