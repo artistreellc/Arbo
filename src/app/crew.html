@@ -845,6 +845,10 @@ async function renderQuiz(context, kept) {
   // C1: a pool with no quiz_question has nothing to ask — the office's gap,
   // named over a read that succeeded, never a silent skip and never a pass.
   if (!q.items.some((i) => i.type === 'quiz_question')) {
+    // R27 (D111): a read that answered is kept, so a language change says this again from memory —
+    // never a second read (only questions that could not be read are asked for again).
+    QUIZ.pool = q;
+    QUIZ.context = ctx;
     v.appendChild(el('div', 'panel-title', QUIZ_TITLE[ctx] || T('Questions')));
     const s = el('div', 'state');
     s.appendChild(el('b', '', T('The office hasn’t published any questions yet — nothing to answer today.')));
