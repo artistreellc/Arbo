@@ -564,7 +564,8 @@ describe('C4 — the page: signed after a reload, GO off in flight, a 409 reads 
     await p.submitGate();
     expect(p.GATE.serverHold).toBe(true);
     // Neutral on purpose: a 409 is also "no briefing on the server today", so it never claims a newer one.
-    expect(p.GATE.serverMsg).toBe('Your sign-off could not be recorded (that was not today’s briefing). Read today’s briefing below and sign again.');
+    // Review round (D109, UI 2): the re-read briefing sits ABOVE this line (the line is under the box, over GO).
+    expect(p.GATE.serverMsg).toBe('Your sign-off could not be recorded (that was not today’s briefing). Read today’s briefing above and sign again.');
     expect(p.GATE.content).toBeNull();
     expect(p.calls.load).toBe(1);
     expect(p.find('gobtn')!.className).not.toBe('ready');
@@ -643,7 +644,9 @@ describe('C4 review — a 400 sign-off is named for what it is', () => {
 describe('C4 — crewWhy names the day’s refusals', () => {
   const why = new Function('LINKS', `${fnSrc('crewWhy')}\nreturn crewWhy;`)('live') as (e: unknown) => string;
   it('briefing_not_signed, not_todays_briefing, signoff_unreadable', () => {
-    expect(why({ code: 403, message: 'briefing_not_signed' })).toBe('today’s briefing isn’t signed on this phone yet');
+    // Review round (D109, UI 6): the lock reads the sign-off by crew code, not by phone — and is
+    // reached only under an opened gate, so it says the record is missing and who logs it.
+    expect(why({ code: 403, message: 'briefing_not_signed' })).toBe('Arbo has no sign-off on file for this crew code today — the office has to log it');
     expect(why({ code: 409, message: 'not_todays_briefing' })).toBe('that was not today’s briefing');
     expect(why({ code: 503, message: 'signoff_unreadable' })).toBe('Arbo couldn’t check your sign-off');
   });
@@ -669,7 +672,8 @@ describe('C4 — the crew phone’s reads carry its code; the preview’s stay b
       () => '', () => new W('div'), () => new W('div'), () => '',
     ) as () => Promise<void>)();
     expect(v.text()).toContain('Could not load your work orders');
-    expect(v.text()).toContain('Today’s briefing isn’t signed on this phone yet.');
+    expect(v.text()).toContain('Arbo has no sign-off on file for this crew code today — the office has to log it.');
+    expect(v.text()).not.toMatch(/on this phone/);
     expect(v.text()).toContain('That is not an empty day — call the office.');
     expect(v.text()).not.toContain('Nothing scheduled');
   });

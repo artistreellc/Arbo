@@ -204,6 +204,8 @@ main.door-locked #gate-slot,main.door-locked #quiz,main.door-locked #work,main.d
   background:var(--go);color:#fff;font-size:16px;font-weight:800;cursor:pointer}
 /* The door key is masked, so the crew-code field's monospace buys nothing here. */
 #whoami #doorkey{font-family:inherit}
+/* Review round (D109, UI 8): the paste box takes a link now; in monospace its hint ran past a 320px box. */
+#whoami #crewcode{font-family:inherit}
 #whoami button.keyshow{width:auto;min-height:44px;background:none;color:var(--canopy);font-weight:700;padding:0;margin:-4px 0 6px 0}
 .signed{display:flex;align-items:center;justify-content:space-between;gap:10px;
   font-size:13px;color:var(--muted);margin-bottom:14px}
@@ -326,7 +328,11 @@ const BAD_LINK = 'That sign-in link is broken — ask the office for a new one.'
 function crewCodeFrom(text) {
   let s = String(text || '').trim();
   const at = s.indexOf('crew=');
-  if (at !== -1) s = s.slice(at + 5).split(/[&#?\s]/)[0];
+  if (at !== -1) s = s.slice(at + 5);
+  // Review round (D109, UI 3): a link copied out of a text brings what follows it
+  // (".", ")", ", see you at 7"). The code ends at the first character that cannot
+  // be part of one; a longer run of code characters is never cut down to fit.
+  s = s.split(/[^0-9a-f%-]/i)[0];
   try { s = decodeURIComponent(s); } catch (e) { return ''; }
   return CREW_CODE_RE.test(s) ? s.toLowerCase() : '';
 }
@@ -385,7 +391,9 @@ function crewWhy(e) {
   if (name === 'crew_key_not_set') return 'no crew door key is set up on the server yet';
   if (name === 'no_app_key') return 'the crew door is locked on the server right now — tell the office';
   // C4 (D109): the server owns the day.
-  if (name === 'briefing_not_signed') return 'today’s briefing isn’t signed on this phone yet';
+  // Review round (D109, UI 6): the lock reads the sign-off by crew code, and is reached
+  // only under an opened gate — so it says the record is missing and who logs it.
+  if (name === 'briefing_not_signed') return 'Arbo has no sign-off on file for this crew code today — the office has to log it';
   if (name === 'not_todays_briefing') return 'that was not today’s briefing';
   if (name === 'signoff_unreadable') return 'Arbo couldn’t check your sign-off';
   // Review round (D109): the sign-off's start and finish the server cannot use (unreadable or reversed).
@@ -680,7 +688,7 @@ async function submitGate() {
         ? 'Could not record that — try once more.'
         : 'Your sign-off could not be recorded (' + crewWhy(e) + ').'
           + (e.code === 409
-            ? ' Read today’s briefing below and sign again.'
+            ? ' Read today’s briefing above and sign again.'
             : ' Your work orders stay locked — do not start work; call the office to log your briefing.');
     // C4 (D109): a 409 means the server has another briefing for today (or
     // none) — read it again. The held line stays over the new gate until its
@@ -688,6 +696,7 @@ async function submitGate() {
     // Review round (D109): and GO stays off until that briefing is drawn (rereading).
     if (e.code === 409) { GATE.content = null; GATE.rereading = true; loadBriefing(); }
     refreshGate();
+    if (e.code === 401) doorKeyChanged(e); // review round (D109): somewhere to put the new key
   }
 }
 
@@ -726,6 +735,7 @@ async function renderQuiz(context) {
     s.appendChild(document.createTextNode(why.charAt(0).toUpperCase() + why.slice(1) + '.'));
     s.appendChild(el('div', '', 'Not your fault — carry on, and tell the office; do not skip it quietly.'));
     v.appendChild(s);
+    if (e.code === 401) doorKeyChanged(e); // review round (D109): somewhere to put the new key
     return;
   }
   // §1B: questions that could not be read wear the warning box, so they never
@@ -821,6 +831,7 @@ async function submitQuiz() {
     $('quiz').querySelector('.errline').textContent = e.code === 400
       ? 'That did not save \u2014 check your crew code with the office.'
       : 'Your answers were not saved (' + crewWhy(e) + ').' + ' Tell the office so your paid time is logged.';
+    if (e.code === 401) doorKeyChanged(e); // review round (D109): somewhere to put the new key
     return;
   }
   QUIZ.done = true;
@@ -866,6 +877,7 @@ async function renderWork() {
     s.appendChild(document.createTextNode(why.charAt(0).toUpperCase() + why.slice(1) + '.'));
     s.appendChild(el('div', '', 'That is not an empty day — call the office.'));
     v.appendChild(s);
+    if (e.code === 401) doorKeyChanged(e); // review round (D109): somewhere to put the new key
     return;
   }
   // R9 + §1B: the server holds back every row without a signed contract, and
@@ -903,7 +915,9 @@ async function renderWork() {
     const url = crewMapsUrl(wo.address, wo.city);
     const place = (wo.address || 'Street not on file') + (wo.city ? ', ' + wo.city : '');
     const addr = el('div', 'addr');
-    if (url) {
+    // Review round (D109, UI 5): in the preview Navigate is off, so the address
+    // is plain text too — two controls for one route never disagree on screen.
+    if (url && !PREVIEW) {
       const a = el('a', '', place);
       a.href = url; a.target = '_blank'; a.rel = 'noopener';
       addr.appendChild(a);
@@ -1093,6 +1107,7 @@ async function libSearch(q, out, btn) {
     await LINKS_READY;
     out.appendChild(el('div', 'lib-warn', 'Library: ' + crewWhy(e) + '. That is NOT "nothing on file" — ask the office.'));
     btn.disabled = false;
+    if (e.code === 401) doorKeyChanged(e); // review round (D109): somewhere to put the new key
     return;
   }
   btn.disabled = false;
@@ -1210,16 +1225,17 @@ function renderNearMiss() {
   // Never let a crew member type a whole safety report the page already knows
   // cannot be filed. Exact 'cut' or 'readonly' only (C1: read-only refuses the
   // save; C5 rekeys this to crewWrites); the click's catch stays the backstop.
-  // C3 (D109, D107 review): File it is switched off too, the same reason
-  // directly under it — a button that can only fail is never offered.
+  // C3 (D109, D107 review): File it is switched off too — a button that can
+  // only fail is never offered. Review round (D109, UI 7): the box with it, and
+  // the reason said once, directly over the box (it was said twice).
   LINKS_READY.then(() => {
     const off = LINKS === 'cut'
       ? 'Filing is off while the office data link is cut on purpose — tell the office directly.'
       : LINKS === 'readonly' ? 'Filing is off while Arbo is read-only — tell the office directly.' : '';
     if (!off) return;
     card.insertBefore(el('div', 'lib-warn', off), ta);
+    ta.disabled = true;
     btn.disabled = true;
-    out.appendChild(el('div', 'jobwhy', off)); // appended: the preview's own line, if drawn, stays
   });
 
   btn.addEventListener('click', async () => {
@@ -1260,6 +1276,7 @@ function renderNearMiss() {
       out.textContent = (e.code === 400
         ? 'Did not save — the office did not recognise your crew code.'
         : 'Did not save — ' + crewWhy(e) + '.') + ' Tell the office directly.';
+      if (e.code === 401) doorKeyChanged(e); // review round (D109): somewhere to put the new key
     } finally {
       btn.disabled = false;
     }
@@ -1417,6 +1434,17 @@ function renderDoorKey(notSet, why) {
   });
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') go.click(); });
   box.appendChild(input); box.appendChild(show); box.appendChild(go); box.appendChild(err);
+}
+
+// Review round (D109, UI 1): a 401 after the door opened — the door key on this
+// phone was changed. The panel that got it has named it; the page then goes to
+// the door-key card, the boot 401's own (loadBriefing), so the new key has
+// somewhere to go: the installed app has no reload button. Drawn once; nothing
+// re-reads on its own (DOOR_KEY_ASKED), and the card's button reloads.
+function doorKeyChanged(e) {
+  if (DOOR_KEY_ASKED) return;
+  DOOR_KEY_ASKED = true;
+  renderDoorKey(e.message === 'crew_key_not_set', e.message);
 }
 
 // R26: the preview's other switched-off controls — the library lookup and

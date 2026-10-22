@@ -669,13 +669,15 @@ describe('C3 — crewWhy names every refusal the crew door can meet, on any stat
 // connection or a 5xx other than 503 keeps the deliberate "try once more"
 // with GO green (qa3_crew-sim item 27 — a retry can pass).
 describe('C3 — submitGate holds GO on every refusal, and keeps the retry only for a drop or a 5xx', () => {
-  const run = async (code: number | undefined, message = 'x') => {
+  // Review round (D109, UI 1): the harness gains doorKeyChanged — a 401 now also hands the page to the door-key card.
+  const run = async (code: number | undefined, message = 'x', handed: unknown[] = []) => {
     const GATE: Record<string, unknown> = { content: {}, startedAt: '', scrolled: true, checked: true, openedMs: 0, unlocked: false, serverMsg: '', serverErr: false, serverHold: false };
     const go = { disabled: false, textContent: 'GO', className: '' };
     const submitGate = lift<() => Promise<void>>('submitGate', {
       $: () => go, GATE, api: async () => { throw Object.assign(new Error(message), { code }); }, CREW_ID: 'x', secondsOnScreen: () => 20,
       GATE_NEED: {}, refreshGate: () => {}, renderQuiz: () => {}, renderWork: () => {}, loadBriefing: () => {},
       document: { querySelector: () => ({}) }, LINKS_READY: Promise.resolve(), crewWhy: crewWhyAt('live'),
+      doorKeyChanged: (e: unknown) => { handed.push(e); },
     });
     await submitGate();
     return GATE;
@@ -720,6 +722,82 @@ describe('C3 — submitGate holds GO on every refusal, and keeps the retry only 
   });
 });
 
+// ═══ Review round (D109, UI 1) — a changed door key gets somewhere to go ═══
+// A 401 after the door opened (the sign-off, the work orders, the questions,
+// the library, the near miss) said "ask the office for the new one" with no
+// field to put it in, and nothing re-read the door on its own: the installed
+// app had to be force-quit. Now the panel names it, and the page goes to the
+// door-key card — the boot 401's own (loadBriefing) — which reloads on a key.
+describe('review — a 401 after the door opened hands the page to the door-key card', () => {
+  const fnSrc = (name: string): string => {
+    const m = new RegExp(`^(?:async )?function ${name}\\([\\s\\S]*?^\\}$`, 'm').exec(html);
+    if (!m) throw new Error(`no function ${name} in the page`);
+    return m[0];
+  };
+  const run401 = async (code: number, message: string, handed: unknown[]) => {
+    const GATE: Record<string, unknown> = { content: {}, startedAt: '', scrolled: true, checked: true, openedMs: 0, unlocked: false, serverMsg: '', serverErr: false, serverHold: false };
+    const go = { disabled: false, textContent: 'GO', className: '' };
+    await lift<() => Promise<void>>('submitGate', {
+      $: () => go, GATE, api: async () => { throw Object.assign(new Error(message), { code }); }, CREW_ID: 'x', secondsOnScreen: () => 20,
+      GATE_NEED: {}, refreshGate: () => {}, renderQuiz: () => {}, renderWork: () => {}, loadBriefing: () => {},
+      document: { querySelector: () => ({}) }, LINKS_READY: Promise.resolve(), crewWhy: crewWhyAt('live'),
+      doorKeyChanged: (e: unknown) => { handed.push(e); },
+    })();
+    return GATE;
+  };
+  const handOff = (asked: boolean) => {
+    const calls: unknown[][] = [];
+    const f = lift<(e: unknown) => void>('doorKeyChanged', { DOOR_KEY_ASKED: asked, renderDoorKey: (...a: unknown[]) => { calls.push(a); } });
+    return { f, calls };
+  };
+
+  it('doorKeyChanged draws the door-key card once, with the server’s reason', () => {
+    const a = handOff(false);
+    a.f({ code: 401, message: 'unauthorized' });
+    a.f({ code: 401, message: 'unauthorized' });
+    expect(a.calls).toEqual([[false, 'unauthorized']]);
+    const b = handOff(false);
+    b.f({ code: 401, message: 'crew_key_not_set' });
+    expect(b.calls).toEqual([[true, 'crew_key_not_set']]);
+    // A door already asked for (the boot 401) is never drawn a second time.
+    const c = handOff(true);
+    c.f({ code: 401, message: 'unauthorized' });
+    expect(c.calls).toEqual([]);
+  });
+
+  it('the sign-off: a 401 is still named and held, and the card is drawn; no other refusal draws it', async () => {
+    const handed: unknown[] = [];
+    const g = await run401(401, 'unauthorized', handed);
+    expect(g.serverHold).toBe(true);
+    expect(String(g.serverMsg)).toContain('the door key on this phone no longer opens the crew door');
+    expect(handed).toHaveLength(1);
+    for (const [code, message] of [[403, 'off_roster'], [409, 'not_todays_briefing'], [429, 'too_many_attempts'], [503, 'read_only'], [500, 'x'], [400, 'bad_times']] as const) {
+      const none: unknown[] = [];
+      await run401(code, message, none);
+      expect(none, String(code)).toEqual([]);
+    }
+  });
+
+  it('the work orders: a 401 is named in the warning box, and the card is drawn', async () => {
+    const v = new Node1('div');
+    const handed: unknown[] = [];
+    await lift<() => Promise<void>>('renderWork', {
+      $: () => v, el: el1, document: doc1, api: refused(401, 'unauthorized'), GATE: { unlocked: true }, PREVIEW: false, PREVIEW_WHY: '', CREW_ID: 'x',
+      fmtTime: () => '9:00 AM', arrivalButton: () => el1('div'), changeOrderButton: () => el1('div'), crewMapsUrl: () => '',
+      LINKS_READY: Promise.resolve(), crewWhy: crewWhyAt('readonly'), doorKeyChanged: (e: unknown) => { handed.push(e); },
+    })();
+    expect(v.text()).toContain('The door key on this phone no longer opens the crew door');
+    expect(handed).toHaveLength(1);
+  });
+
+  it('every crew call that can meet a changed key hands its 401 to the card', () => {
+    for (const name of ['submitGate', 'renderWork', 'renderQuiz', 'submitQuiz', 'libSearch', 'renderNearMiss']) {
+      expect(fnSrc(name), name).toContain('if (e.code === 401) doorKeyChanged(e);');
+    }
+    expect(html).toContain("function doorKeyChanged(e) {");
+  });
+});
+
 // ═══ C3 + D107 open item — under cut or read-only the near miss's "File it" is off, with the reason ═══
 describe('C3 — the near-miss button is off when filing is off, the warning’s reason beside it', () => {
   const card = async (links: string | null) => {
@@ -733,24 +811,39 @@ describe('C3 — the near-miss button is off when filing is off, the warning’s
     return box.kids[1]!;
   };
 
-  it('read-only: File it is off and its reason sits directly under it', async () => {
+  // Deliberately rewritten (review round, D109, UI 7): the reason was said twice
+  // — the warning above the box and again under File it — and the box stayed
+  // typeable. Meaning kept: under cut or read-only nothing that files is
+  // offered, and its reason sits beside it. Now said once, directly over the
+  // box, and the box is off too (no report typed that cannot be filed).
+  it('read-only: the box and File it are off, the reason said once, directly over the box', async () => {
     const c = await card('readonly');
     const btn = c.kids.find((k) => k.id === 'nm-go')!;
     expect(btn.disabled).toBe(true);
-    const out = c.kids.find((k) => k.id === 'nm-out')!;
-    expect(out.text()).toBe('Filing is off while Arbo is read-only — tell the office directly.');
+    const ta = c.kids.find((k) => k.id === 'nm-desc')!;
+    expect(ta.disabled).toBe(true);
+    const line = 'Filing is off while Arbo is read-only — tell the office directly.';
+    expect(c.kids[c.kids.indexOf(ta) - 1]!.textContent).toBe(line);
+    expect(c.all().filter((n) => n.textContent === line)).toHaveLength(1);
+    expect(c.kids.find((k) => k.id === 'nm-out')!.text()).toBe('');
   });
 
-  it('cut: File it is off with the cut reason', async () => {
+  it('cut: the box and File it are off with the cut reason, said once', async () => {
     const c = await card('cut');
     expect(c.kids.find((k) => k.id === 'nm-go')!.disabled).toBe(true);
-    expect(c.kids.find((k) => k.id === 'nm-out')!.text()).toBe('Filing is off while the office data link is cut on purpose — tell the office directly.');
+    const ta = c.kids.find((k) => k.id === 'nm-desc')!;
+    expect(ta.disabled).toBe(true);
+    const line = 'Filing is off while the office data link is cut on purpose — tell the office directly.';
+    expect(c.kids[c.kids.indexOf(ta) - 1]!.textContent).toBe(line);
+    expect(c.all().filter((n) => n.textContent === line)).toHaveLength(1);
+    expect(c.kids.find((k) => k.id === 'nm-out')!.text()).toBe('');
   });
 
-  it('live, simulation and an unanswered /health: File it stays on', async () => {
+  it('live, simulation and an unanswered /health: the box and File it stay on', async () => {
     for (const links of ['live', 'simulation', 'unknown', null]) {
       const c = await card(links);
       expect(c.kids.find((k) => k.id === 'nm-go')!.disabled, String(links)).toBe(false);
+      expect(c.kids.find((k) => k.id === 'nm-desc')!.disabled, String(links)).toBe(false);
       expect(c.kids.find((k) => k.id === 'nm-out')!.text(), String(links)).toBe('');
     }
   });

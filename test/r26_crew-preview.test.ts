@@ -213,6 +213,23 @@ describe('R26 crew preview — work orders render read-only', () => {
     expect(card.all().some((n) => n.className === 'photos')).toBe(true);
   });
 
+  // Review round (D109, UI 5): the address became a live 44px link to Maps
+  // right above a Navigate the preview draws switched off — two controls for
+  // one route disagreeing. In the preview the address is plain text, so Maps
+  // opens from neither; on a crew phone both still come from the one builder.
+  it('in the preview the address is plain text — Maps opens from neither it nor Navigate', async () => {
+    const { work } = await render(true);
+    const card = work.kids.find((k) => k.className === 'wo')!;
+    expect(card.all().filter((n) => n.tag === 'a')).toEqual([]);
+    expect(card.all().filter((n) => n.href)).toEqual([]);
+    const addr = card.kids.find((k) => k.className === 'addr')!;
+    expect(addr.textContent).toBe('1 SIM Way, Norfolk');
+    const crewPhone = (await render(false, true)).work.kids.find((k) => k.className === 'wo')!;
+    const links = crewPhone.all().filter((n) => n.tag === 'a');
+    expect(links.map((n) => n.textContent)).toEqual(['1 SIM Way, Norfolk', 'Navigate']);
+    expect(links[0]!.href).toBe(links[1]!.href);
+  });
+
   it('on a crew phone the day stays locked until the briefing, and nothing is read', async () => {
     const { work, asked } = await render(false);
     expect(asked).toEqual([]);
