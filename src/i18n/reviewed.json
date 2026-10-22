@@ -63,6 +63,69 @@
       "pass": "draft",
       "translatedBy": "Claude — docs/R27_SPANISH_PLAN.md table (2026-10-20), after the plan’s two adversarial critiques",
       "on": "2026-10-22"
+    },
+    {
+      "en": "POWER LINES — utility coordination required before work near conductors",
+      "es": "LÍNEAS ELÉCTRICAS — es obligatorio coordinar con la compañía de luz antes de trabajar cerca de los cables",
+      "sha": "4ec33bb7c504849038dc707f3e40a46a0c66e8cf72d43b0e814676861a198918",
+      "where": "twin:crew-workorder",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); blind second pass and back-translation not yet done",
+      "on": "2026-10-22"
+    },
+    {
+      "en": "STRUCTURES nearby — plan drop zone accordingly",
+      "es": "ESTRUCTURAS cerca — planee la zona de caída (drop zone) teniéndolas en cuenta",
+      "sha": "171fbc2d32348c86b353f4ed56dd164fa14ca965e18af5d75300fdf51a5464ac",
+      "where": "twin:crew-workorder",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); blind second pass and back-translation not yet done",
+      "on": "2026-10-22"
+    },
+    {
+      "en": "PERMIT LIKELY — do not start protected work until the permit is confirmed.",
+      "es": "PROBABLEMENTE SE NECESITA PERMISO — no empiece trabajo protegido hasta que se confirme el permiso.",
+      "sha": "520dd5c5e5099caf7eba34a107200fb8c5f57573cc0a37503dd3a8e4e9c672b5",
+      "where": "twin:crew-workorder",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); blind second pass and back-translation not yet done",
+      "on": "2026-10-22"
+    },
+    {
+      "en": "PERMIT: REVIEW NEEDED — check with the office before cutting.",
+      "es": "PERMISO: HAY QUE REVISAR — consulte con la oficina antes de cortar.",
+      "sha": "c5f1df09bd20355da679161f4d4c1cafdbc822ffa6cff86ea3e8b0bc1df94d0a",
+      "where": "twin:crew-workorder",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); blind second pass and back-translation not yet done",
+      "on": "2026-10-22"
+    },
+    {
+      "en": "NO OVERLAY — VERIFY W/ CITY before protected work.",
+      "es": "VERIFIQUE CON LA CIUDAD — EL MAPA NO MOSTRÓ ZONA PROTEGIDA — antes de cualquier trabajo protegido.",
+      "sha": "e24d6efb5eda4849d2575c897b1789b37dce0cc2bea4a7b0a0d754ee64282f14",
+      "where": "twin:crew-workorder",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); blind second pass and back-translation not yet done",
+      "on": "2026-10-22"
+    },
+    {
+      "en": "PERMIT STATUS UNKNOWN — Arbo could not read the permit screen. Check with the office before protected work.",
+      "es": "ESTADO DEL PERMISO DESCONOCIDO — Arbo no pudo leer el chequeo de permiso. Consulte con la oficina antes de cualquier trabajo protegido.",
+      "sha": "cb24bb62382f58a2507994423511dabbb956206e7e32a7b5a0649d3ee79044eb",
+      "where": "twin:crew-workorder",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); blind second pass and back-translation not yet done",
+      "on": "2026-10-22"
+    },
+    {
+      "en": "PERMIT SCREEN PENDING — status UNKNOWN, no screen on file. Check with the office before protected work.",
+      "es": "CHEQUEO DE PERMISO SIN HACER — estado DESCONOCIDO, no hay chequeo registrado. Consulte con la oficina antes de cualquier trabajo protegido.",
+      "sha": "5e0ad7f11a699a2f544d82106cf17f7762862f4842dc6f37248672e3884c5101",
+      "where": "twin:crew-workorder",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A unit 1, first translation pass (D111); blind second pass and back-translation not yet done",
+      "on": "2026-10-22"
     }
   ]
 }

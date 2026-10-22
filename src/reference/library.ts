@@ -54,6 +54,9 @@
 //          as universally applicable. "When this does not work" is the field
 //          that keeps someone out of a bad cut, so its absence is loud.
 
+import { withEs } from '../i18n/twin.js';
+import { twinOf } from '../i18n/serverTwins.js';
+
 export interface ReferenceEntry {
   id: string;
   techniqueName: string;
@@ -83,6 +86,12 @@ export interface CrewFacingEntry {
   limitsWarning: string | null;
   /** True when this entry is above the reader's recorded skill level. */
   aboveSkillLevel: boolean;
+  /**
+   * R27 (D111): the Spanish twin of the warning above — the library's own fixed
+   * line — when it may be served. What the office wrote (name, how-to, pros,
+   * cons, limits) is data and is never twinned.
+   */
+  es?: { limitsWarning?: string };
 }
 
 export const NO_LIMITS_WARNING =
@@ -112,7 +121,7 @@ export function sanitiseRefs(refs: string[]): { refs: string[]; dropped: number 
 export function toCrewFacing(entry: ReferenceEntry, readerSkillLevel = 99): CrewFacingEntry {
   const { refs } = sanitiseRefs(entry.standardRefs);
   const hasLimits = Boolean(entry.wontWorkWhen?.trim());
-  return {
+  const facing: CrewFacingEntry = {
     id: entry.id,
     techniqueName: entry.techniqueName,
     skillLevel: entry.skillLevel,
@@ -127,6 +136,8 @@ export function toCrewFacing(entry: ReferenceEntry, readerSkillLevel = 99): Crew
     // is a flag so nobody tries something they have not been signed off on.
     aboveSkillLevel: entry.skillLevel > readerSkillLevel,
   };
+  // R27 (D111): the warning's Spanish, under es — the same object when none may be served.
+  return hasLimits ? facing : withEs(facing, { limitsWarning: twinOf('crew-library', 'noLimits') });
 }
 
 export interface LibraryQuery {

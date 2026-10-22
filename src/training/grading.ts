@@ -50,6 +50,8 @@
 // the thing he is weakest at. The training loop is only worth running if the
 // scores are real.
 
+import { quizTwin } from '../i18n/dataTwins.js';
+
 export interface GradableItem {
   id: string;
   topic: string;
@@ -67,6 +69,12 @@ export interface CrewFacingItem {
   options: string[];
   /** True when this item has no gradable answer (a lesson, not a question). */
   readOnly: boolean;
+  /**
+   * R27 (D111): the office's reviewed Spanish of this item — the same options in
+   * the same order — present only when src/i18n/dataTwins.ts quizTwin serves it.
+   * Answers stay keyed by position; grading never reads it.
+   */
+  es?: { prompt: string; options: string[] };
 }
 
 function str(v: unknown): string | null {
@@ -97,16 +105,13 @@ export function toCrewFacing(items: GradableItem[]): CrewFacingItem[] {
   return items.map((i) => {
     const options = optionsOf(i.body);
     const prompt = str(i.body.prompt) ?? str(i.body.question) ?? str(i.body.headline) ?? i.topic;
-    return {
-      id: i.id,
-      topic: i.topic,
-      type: i.type,
-      prompt,
-      options,
-      // A lesson, or a question with no usable key, cannot be graded — so it
-      // is served as read-only rather than silently scored as wrong.
-      readOnly: options.length === 0 || answerIndex(i) === null,
-    };
+    // A lesson, or a question with no usable key, cannot be graded — so it
+    // is served as read-only rather than silently scored as wrong.
+    const readOnly = options.length === 0 || answerIndex(i) === null;
+    const facing: CrewFacingItem = { id: i.id, topic: i.topic, type: i.type, prompt, options, readOnly };
+    // R27 (D111): the Spanish twin rides beside it only under the plan's rules.
+    const es = quizTwin({ prompt, options }, i.body.es, !readOnly);
+    return es ? { ...facing, es } : facing;
   });
 }
 

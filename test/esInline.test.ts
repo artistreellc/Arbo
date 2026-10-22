@@ -114,7 +114,8 @@ function usedKeys(src: string, file: string): { keys: string[]; computed: string
   const visit = (n: ts.Node) => {
     if (ts.isCallExpression(n) && ts.isIdentifier(n.expression)) {
       const name = n.expression.text;
-      const args = name === 'tn' ? [n.arguments[1], n.arguments[2]] : name === 'T' || name === 'tf' || name === 'esPair' ? [n.arguments[0]] : [];
+      // R27 Phase A (D111): esSay(node, 'line') says a dictionary line into a node — its key is the second argument.
+      const args = name === 'tn' ? [n.arguments[1], n.arguments[2]] : name === 'T' || name === 'tf' || name === 'esPair' ? [n.arguments[0]] : name === 'esSay' ? [n.arguments[1]] : [];
       for (const a of args) {
         const k = lit(a);
         if (k !== null) keys.push(k); else computed.push(`${name}(${a ? a.getText(sf) : ''})`);
@@ -133,7 +134,7 @@ describe('parity — no missing key, no stale key, per door', () => {
       const page = usedKeys(pageScripts(raw(file)), file);
       const runtime = usedKeys(RUNTIME_SRC, 'runtime.js');
       // The runtime's own tn passes its chosen form on to tf — that is the implementation, not a key.
-      expect(page.computed, 'a T/tf/tn/esPair key must be written out, so it can be checked').toEqual([]);
+      expect(page.computed, 'a T/tf/tn/esPair/esSay key must be written out, so it can be checked').toEqual([]);
       const used = new Set([...page.keys, ...runtime.keys]);
       const dict = new Set(unitFiles().filter((u) => u.door === door).flatMap((u) => Object.keys(readUnit(u.file) ?? {})));
       expect([...used].filter((k) => !dict.has(k)), 'missing from the dictionary').toEqual([]);
