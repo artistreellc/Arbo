@@ -388,6 +388,10 @@ function crewWhy(e) {
   if (name === 'briefing_not_signed') return 'today’s briefing isn’t signed on this phone yet';
   if (name === 'not_todays_briefing') return 'that was not today’s briefing';
   if (name === 'signoff_unreadable') return 'Arbo couldn’t check your sign-off';
+  // Review round (D109): the sign-off's start and finish the server cannot use (unreadable or reversed).
+  if (name === 'bad_times') return 'this phone’s clock gave times the office can’t use — check the phone’s date and time';
+  // Any other 400 is still an answer: the office turned it down. Never "didn’t answer" over an answer.
+  if (e && e.code === 400) return 'the office couldn’t use what this phone sent';
   // A 401 that names nothing else: the door key on this phone stopped working (it was changed).
   if (e && e.code === 401) return 'the door key on this phone no longer opens the crew door — ask the office for the new one';
   const m = e && e.code === 503 ? e.message : '';
@@ -430,6 +434,9 @@ const GATE = {
   // C4 (D109): true while a sign-off is on its way — GO stays off until the
   // answer, so a second press cannot send a second one.
   sending: false,
+  // Review round (D109): true from a 409 until renderGate draws the briefing
+  // read again — GO stays off, so no tap sends a sign-off with no briefing.
+  rereading: false,
   // R26: why GO never arms in the office preview ('' on a crew phone). On
   // GATE, so the gate's own functions read it with the rest of its state.
   preview: PREVIEW ? PREVIEW_WHY : '',
@@ -440,6 +447,7 @@ const GATE_NEED = { scroll: 'scroll to the bottom', checkbox: 'tick the box', re
 function renderGate(brief) {
   document.querySelector('main').classList.remove('door-locked'); // the door answered: show the panels
   GATE.content = brief;
+  GATE.rereading = false; // review round (D109): the briefing a 409 asked for is here
   // M11: the briefing can land long after the page loaded (Try again, back
   // online, back on screen), so the read clock and the sign-off's start begin
   // HERE — never at page load — and nothing done before it counts toward it.
@@ -554,6 +562,9 @@ function refreshGate() {
   // C4 (D109): GO stays off while a sign-off is on its way — the 1-second
   // tick never re-arms it under a press that has not been answered yet.
   if (GATE.sending && go) { go.disabled = true; go.className = ''; }
+  // Review round (D109): after a 409 the briefing on screen is not today's —
+  // GO stays off until the one read again is drawn (renderGate clears this).
+  if (GATE.rereading && go) { go.disabled = true; go.className = ''; }
   // R26: in the preview GO never arms, whatever the briefing state, and the
   // line says why instead of "Ready".
   if (GATE.preview) {
@@ -611,6 +622,8 @@ function showSigned(signedAtIso, line) {
 
 async function submitGate() {
   if (GATE.preview) return; // R26: the preview never signs (api() and the server refuse it too)
+  // Review round (D109): no briefing on the gate (a 409's re-read on its way) — nothing to sign.
+  if (!GATE.content) return;
   const go = $('gobtn');
   go.disabled = true;
   GATE.serverMsg = '';
@@ -659,7 +672,9 @@ async function submitGate() {
     // retry line with GO green: a retry can pass (qa3_crew-sim item 27).
     const retry = !e.code || (e.code >= 500 && e.code !== 503);
     GATE.serverHold = !retry;
-    GATE.serverMsg = e.code === 400
+    // Review round (D109): only a crew code the office does not know keeps the
+    // crew-code line; any other 400 (bad_times, bad_request) goes through crewWhy.
+    GATE.serverMsg = e.code === 400 && (e.message === 'unknown_crew' || e.message === 'bad_crew_id')
       ? 'That sign-off was rejected — check your crew code with the office.'
       : retry
         ? 'Could not record that — try once more.'
@@ -670,7 +685,8 @@ async function submitGate() {
     // C4 (D109): a 409 means the server has another briefing for today (or
     // none) — read it again. The held line stays over the new gate until its
     // box is ticked; a day with no briefing gets the plain "none yet" card.
-    if (e.code === 409) { GATE.content = null; loadBriefing(); }
+    // Review round (D109): and GO stays off until that briefing is drawn (rereading).
+    if (e.code === 409) { GATE.content = null; GATE.rereading = true; loadBriefing(); }
     refreshGate();
   }
 }
@@ -1304,6 +1320,11 @@ function renderWhoAmI() {
     const code = crewCodeFrom(v);
     if (!code) { err.textContent = BAD_LINK; return; }
     try { localStorage.setItem('arboCrewId', code); } catch (e) { err.textContent = STORAGE_BLOCKED; return; }
+    // Review round (D109): the address now carries the pasted code's own link, as if it
+    // had been opened — a broken link's fragment never outlives the paste, and in a tab
+    // the reload says Add to Home Screen (the fragment carries the code there). The
+    // installed app keeps no fragment. The crew code only (Q6); a fragment is never sent.
+    try { history.replaceState(null, '', location.pathname + location.search + (installedApp() ? '' : '#crew=' + code)); } catch (e) { /* the stored code still signs in */ }
     location.reload();
   });
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') go.click(); });
