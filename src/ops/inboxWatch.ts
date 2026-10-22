@@ -819,8 +819,11 @@ export function startInboxWatch(
       if (!reader) {
         return unavailablePass(new Date().toISOString(), 'no Gmail credentials configured');
       }
-      const minutes = Math.max(1, Math.ceil((Date.now() - Date.parse(sinceIso)) / 60_000));
-      const raw = await watchInbox(reader, seen, new Date(), {
+      // One clock reading for both the reach and the pass: read twice, a tick
+      // between them could start the read a millisecond after sinceIso.
+      const now = new Date();
+      const minutes = Math.max(1, Math.ceil((now.getTime() - Date.parse(sinceIso)) / 60_000));
+      const raw = await watchInbox(reader, seen, now, {
         ...opts,
         lookbackMinutes: minutes,
         limit: BACKFILL_LIMIT,
