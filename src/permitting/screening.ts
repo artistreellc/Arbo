@@ -57,6 +57,7 @@
 
 import type { ServiceCity } from '../lib/address.js';
 import { rulesetFor, type CityRuleset, type MitigationRule } from './cities.js';
+import { bannedEsLine } from '../i18n/banList.js';
 
 // The ONLY three statuses. There is deliberately no CLEAR / NONE / OK value —
 // the type itself makes a bare "clear" unrepresentable.
@@ -218,6 +219,11 @@ export function assertNeverClear(result: ScreenResult): void {
   }
   if (FORBIDDEN_CLEAR.test(result.headline)) {
     throw new Error(`screen headline implied a "clear" — forbidden (§6B.3): ${result.headline}`);
+  }
+  // R27 (D110): banned in Spanish as in English — "libre", "exento", "no necesita permiso"… (src/i18n/banList.ts).
+  const es = bannedEsLine(result.headline);
+  if (es) {
+    throw new Error(`screen headline used a word banned in Spanish — forbidden (§6B.3, R27 #4): ${es}: ${result.headline}`);
   }
   if (!/verify/i.test(result.headline)) {
     throw new Error(`screen headline must direct the user to verify: ${result.headline}`);

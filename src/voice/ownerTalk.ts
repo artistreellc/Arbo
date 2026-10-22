@@ -26,6 +26,7 @@ import type { Guardrails } from '../config/guardrails.schema.js';
 import { loadGuardrails } from '../config/loadConfig.js';
 import { guardReply } from '../reception/outputGuard.js';
 import { FORBIDDEN_CLEAR } from '../permitting/screening.js';
+import { findBannedEs, type EsBanCategory } from '../i18n/banList.js';
 import { redact } from '../ops/inboxWatch.js';
 import { BRAIN_MODEL } from '../agents/brain.js';
 import { LinkCutError } from '../db/links.js';
@@ -626,12 +627,24 @@ export function toSpoken(raw: string): string {
   return s;
 }
 
+/** R27 (D110): the Talk rule a banned Spanish word breaks — the one its English twin breaks. */
+const TALK_ES_RULE: Record<EsBanCategory, string> = {
+  clear: 'clearance-language',
+  dig: 'clearance-language',
+  price: 'no-price',
+  money: 'no-financial-authority',
+  credential: 'forbidden-term',
+  safety_board: 'forbidden-term',
+};
+
 /** The brain's guard chain (brain.ts) plus the permit check. Returns the rule ids it broke. */
 export function talkGuard(spoken: string, g: Guardrails): string[] {
   const why: string[] = [];
   const guard = guardReply(spoken, g);
   if (!guard.safe) why.push(...guard.violations.map((v) => v.rule));
   if (FORBIDDEN_CLEAR.test(spoken)) why.push('clearance-language');
+  // R27 (D110): banned in Spanish as in English (src/i18n/banList.ts), named by the rule its English twin breaks.
+  for (const hit of findBannedEs(spoken)) why.push(TALK_ES_RULE[hit.category]);
   if (PERMIT_SOFT.test(spoken)) why.push('permit-softening');
   if (redact(spoken) !== spoken || BARE_PHONE.test(spoken)) why.push('customer-shaped');
   if (ACTION_CLAIM.test(spoken)) why.push('action-claim');
