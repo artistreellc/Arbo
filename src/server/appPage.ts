@@ -50,6 +50,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { FOUR_CITY_BOX, ZCTA_SOURCE, ZIP_CENTROIDS, ZIP_NO_AREA } from '../lib/zipCentroids.js';
 import { DEQ_MAPSERVER_BASE, DEQ_RPA_LAYER, DEQ_RPA_LIMITS } from '../permitting/gis/layers.js';
+import { loadDoorDictionary, type Door, type DoorDictionary } from '../i18n/dictionaries.js';
 
 const cache = new Map<string, string>();
 
@@ -74,14 +75,48 @@ function withSprite(html: string): string {
   return html.includes('<!--ARBO:SPRITE-->') ? html.replace('<!--ARBO:SPRITE-->', sprite) : html;
 }
 
+const dictionaries = new Map<Door, DoorDictionary>();
+/**
+ * A door's dictionary as it may be shown, read once. A broken unit or a held
+ * entry is logged by unit name and count only — never its text (§4.3).
+ */
+function doorDictionary(door: Door): DoorDictionary {
+  let d = dictionaries.get(door);
+  if (!d) {
+    d = loadDoorDictionary(door);
+    if (d.broken.length || d.held.length) {
+      console.warn(`[i18n] ${door}: ${d.broken.length} unit(s) broken${d.broken.length ? ` (${d.broken.join(', ')})` : ''}, ${d.held.length} entr(ies) held back`);
+    }
+    dictionaries.set(door, d);
+  }
+  return d;
+}
+
+/**
+ * R27 (D110): the Spanish version, inlined where a page carries the
+ * `<!--ARBO:I18N-->` marker — the sprite's way, so it works offline and needs
+ * no request. First the door's dictionary (src/app/i18n/<door>-<unit>.es.json,
+ * as src/i18n/dictionaries.ts lets it be shown), then the runtime
+ * (src/app/i18n/runtime.js), both just before the page's own script. The crew
+ * page carries only crew units. A broken unit is named in the block, and the
+ * runtime then keeps the page in English and says so in both languages.
+ * English is unchanged: the runtime turns Spanish on only for the exact stored "es".
+ */
+export function withI18n(html: string, door: Door, dict: DoorDictionary = doorDictionary(door)): string {
+  if (!html.includes('<!--ARBO:I18N-->')) return html;
+  const cfg = scriptJson({ door, units: dict.units, broken: dict.broken });
+  const block = `<script type="application/json" id="arbo-i18n" data-door="${door}">${cfg}</script>\n<script>\n${load('i18n/runtime.js')}</script>`;
+  return html.replace('<!--ARBO:I18N-->', () => block);
+}
+
 /** The ADMIN door (Mike's cockpit). */
 export function loadAppHtml(): string {
-  return withSprite(load('index.html'));
+  return withI18n(withSprite(load('index.html')), 'app');
 }
 
 /** The CREW door (§8C.1) — work orders + the gated briefing, nothing else. */
 export function loadCrewHtml(): string {
-  return withSprite(load('crew.html'));
+  return withI18n(withSprite(load('crew.html')), 'crew');
 }
 
 /**

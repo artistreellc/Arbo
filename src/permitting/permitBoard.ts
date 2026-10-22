@@ -73,6 +73,7 @@ import { rulesetFor } from './cities.js';
 import type { PermitLifecycle } from './permitRecord.js';
 import { requiresClearance, crewMayStartForProperty } from './permitRecord.js';
 import { FORBIDDEN_CLEAR, type OverlayHit, type ScreenStatus } from './screening.js';
+import { bannedEsLine } from '../i18n/banList.js';
 
 /**
  * One property's permit track as stored. Mirrors the `permit` table (0003)
@@ -344,6 +345,11 @@ export function assertBoardNeverClear(board: PermitBoard): void {
     for (const line of [r.headline, r.nextStep]) {
       if (FORBIDDEN_CLEAR.test(line)) {
         throw new Error(`permit board line implied a "clear" — forbidden (§6B.3): ${r.propertyId}: ${line}`);
+      }
+      // R27 (D110): banned in Spanish as in English (src/i18n/banList.ts).
+      const es = bannedEsLine(line);
+      if (es) {
+        throw new Error(`permit board line used a word banned in Spanish — forbidden (§6B.3, R27 #4): ${r.propertyId}: ${es}`);
       }
     }
     // The two buckets that look quiet are the two that must still point at a

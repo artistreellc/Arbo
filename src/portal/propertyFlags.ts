@@ -74,6 +74,7 @@
 // invent a finding, and it cannot: it has no GIS provider.
 
 import { FORBIDDEN_CLEAR, type OverlayHit, type OverlayKind } from '../permitting/screening.js';
+import { bannedEsLine } from '../i18n/banList.js';
 
 export type FlagState = 'present' | 'not_found_verify' | 'unknown';
 
@@ -314,6 +315,13 @@ export function assertFlagsNeverClear(flags: PropertyFlag[]): void {
   for (const f of flags) {
     if (FORBIDDEN_CLEAR.test(f.line)) {
       throw new Error(`portal flag implied a "clear" — forbidden (§6B.3): ${f.key}: ${f.line}`);
+    }
+    // R27 (D110): banned in Spanish as in English (src/i18n/banList.ts). The
+    // portal is customer-facing and never shows Spanish (R27 #3) — this only
+    // refuses a flag line that carries a banned Spanish word, as it refuses English.
+    const es = bannedEsLine(f.line);
+    if (es) {
+      throw new Error(`portal flag used a word banned in Spanish — forbidden (§6B.3, R27 #4): ${f.key}: ${es}`);
     }
     if (f.state === 'not_found_verify' && !/verif|confirm/i.test(f.line)) {
       throw new Error(`a not-found flag must still point at verification: ${f.key}: ${f.line}`);

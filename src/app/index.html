@@ -839,6 +839,29 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 .actrow .t{font-size:12.5px;font-weight:700;color:var(--gold-6);font-variant-numeric:tabular-nums}
 .actrow .txt{font-size:14.5px;line-height:1.45;color:var(--ink-1);overflow-wrap:anywhere}
 @media (min-width:900px){#view-today .assist,#view-assistant .assist{grid-column:1 / -1}}
+/* ── R27 (D110): the language switch and the Spanish marks. In English nothing below draws but the two
+   switches themselves (the key screen's toggle, Office → Appearance's chips); the marks, the pair and the
+   notices exist only in Spanish mode, or for a Spanish reader whose dictionary failed. ── */
+#keywall button.es-toggle{width:auto;min-width:44px;min-height:44px;margin-top:18px;padding:0 18px;background:none;border:1px solid rgba(244,239,224,.35);color:#F4EFE0;font-size:15px;font-weight:700;box-shadow:none}
+.es-lang-label{font-size:13px;font-weight:700;color:var(--ink-3);margin:14px 0 8px;letter-spacing:.04em}
+.es-broken,.es-storage{border-left:3px solid var(--warning);background:var(--warning-bg);color:var(--ink-1);border-radius:var(--r-md);padding:10px 12px;margin:10px 0;font-size:14px;font-weight:600;line-height:1.4;text-align:left}
+.es-broken div+div,.es-storage div+div{margin-top:4px;font-weight:500;color:var(--ink-2)}
+#keywall .es-broken{width:100%;max-width:340px;margin:0 0 18px}
+#keywall .es-storage{width:100%;max-width:340px;margin:12px 0 0}
+.es-en-mark{display:inline-block;margin-left:6px;padding:1px 6px;border:1px solid var(--border);border-radius:999px;font-size:12px;font-weight:700;color:var(--ink-3);vertical-align:middle}
+.view[data-es-en]::before,#keywall[data-es-en]::before{content:attr(data-es-en);display:inline-block;margin:0 0 8px;padding:2px 8px;border:1px solid var(--border);border-radius:999px;font-size:12px;font-weight:700;color:var(--ink-3)}
+#keywall[data-es-en]::before{position:absolute;top:calc(14px + env(safe-area-inset-top));left:16px;border-color:rgba(244,239,224,.35);color:rgba(244,239,224,.85)}
+/* Review round (D110, UI 4): on the desk's two-column grid the chip is a row of its own, sized to its
+   words — as a grid cell it filled the left column and pushed the first card to the right. */
+@media (min-width:900px){.view[data-es-en]::before{grid-column:1 / -1;justify-self:start}}
+/* Review round (D110, UI 1, UI 6): the English beneath a safety label is always the smaller — sized from
+   the label it sits in — and its "inglés" tag is boxed and muted, so it never reads as part of the label.
+   A badge holding a pair is a rounded box that wraps, not a one-line pill: two to four lines ran into
+   the pill's corners at 320px. */
+.es-pair-es{display:block}
+.es-pair-en{display:block;margin-top:2px;font-size:.85em;font-weight:600;opacity:.85}
+.es-pair-tag{display:inline-block;margin-right:5px;padding:0 4px;border:1px solid currentColor;border-radius:4px;opacity:.75;font-size:.9em;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.badge:has(> .es-pair-es){display:inline-block;border-radius:var(--r-md);white-space:normal;text-align:left;max-width:100%}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -1012,6 +1035,7 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
   <button id="tab-perf" class="dock-hidden"><span class="navpill"><svg class="ico" aria-hidden="true"><use href="#i-numbers"/></svg><span>Numbers</span></span></button>
 </nav>
 
+<!--ARBO:I18N-->
 <script>
 'use strict';
 // All user-sourced text is rendered via textContent (XSS-safe by construction).
@@ -1023,7 +1047,9 @@ const el = (tag, cls, text) => {
   return n;
 };
 
-let KEY = localStorage.getItem('arborKey') || '';
+// Storage can refuse outright (private browsing, site data off): the key then lasts this visit only,
+// and the app still starts, in English — a throw here used to stop the whole page (R27 check, D110).
+let KEY = (() => { try { return localStorage.getItem('arborKey') || ''; } catch (e) { return ''; } })();
 // The key screen's words when the server NAMED why a key was refused (audit
 // 2026-10-20, M1/M2) — never "that key didn't work" when the server has no
 // app key at all, or when this connection only has to wait.
@@ -6558,6 +6584,7 @@ async function buildSettings(v, gen) {
       seg.appendChild(b);
     }
     v.appendChild(seg);
+    esLanguageChips(v, el, T('Language')); // R27 review round (D110, UI 7): the language lives beside the theme here too
   };
   // R26: the R25 desks' heading. It reads no feed, so it draws whatever fails below.
   const head = el('div', 'viewhead');
@@ -7382,6 +7409,11 @@ function renderMore() {
     seg.appendChild(b);
   }
   v.appendChild(seg);
+  // R27 (D110): the language, beside the theme — each named in its own language, the one on this
+  // phone lit. A tap stores arboLang and reloads (the runtime's esChange); storage that refuses
+  // is said in both languages under the chips. Drawn by the runtime (esLanguageChips), the same
+  // chips as Settings → Appearance (review round, UI 7).
+  esLanguageChips(v, el, T('Language'));
 
   v.appendChild(el('div', 'panel-title', 'Install'));
   v.appendChild(installCard());
@@ -7400,6 +7432,26 @@ function setTheme(val) {
   applyTheme(val);
 }
 applyTheme(themePref());
+
+// ---------- Language (R27, D110): English | Español, remembered on this phone as arboLang ----------
+// The chips beside the theme, in Office → Appearance and (review round, UI 7) Settings → Appearance,
+// are the runtime's esLanguageChips.
+// The runtime (src/app/i18n/runtime.js, inlined just above this script) read arboLang before this
+// line: only the exact stored "es" turns Spanish on. A change reloads the page — the plain way to
+// leave no half-translated screen. The two switches are the key screen's toggle (an employee meets
+// that screen first) and Office → Appearance's chips (renderMore).
+// Each place below belongs to a unit (src/app/i18n/app-<unit>.es.json). Until its unit is translated
+// (Phase A), Spanish mode shows it in English, marked lang="en" and "en inglés" — never a silent page.
+const ES_PLACES = {
+  '#keywall': 'app-key', '#appbar': 'app-shell', nav: 'app-shell', '.sheet': 'app-sheets',
+  '#view-today': 'app-today', '#leads-head': 'app-leads', '#view-leads': 'app-leads', '#view-calls': 'app-leads',
+  '#view-cal': 'app-calendar', '#view-map': 'app-map', '#view-book': 'app-book', '#view-estimate': 'app-estimate',
+  '#view-followups': 'app-followups', '#view-money': 'app-money', '#view-fleet': 'app-fleet', '#view-safety': 'app-safety',
+  '#view-perf': 'app-numbers', '#view-settings': 'app-settings', '#view-more': 'app-office', '#view-permits': 'app-permits',
+  '#view-agents': 'app-agents', '#view-measure': 'app-measure', '#view-learn': 'app-learn', '#view-assistant': 'app-assistant',
+};
+esMarkPlaces(ES_PLACES);
+$('keywall').appendChild(esToggleButton('es-toggle'));
 
 // ---------- Install (iPhone: Share → Add to Home Screen; Android: prompt) ----------
 let INSTALL_EVT = null;

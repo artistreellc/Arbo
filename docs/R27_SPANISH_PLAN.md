@@ -1,5 +1,16 @@
 # R27 — The Spanish version: the build plan
 
+**Status (2026-10-22):** Foundation built (D110, branch `es-foundation`) — the
+runtime (`T`, `tf`, `tn`, `esPick`, `esPair`), per-door dictionaries inlined at
+serve time, both switches (Office → Appearance, Settings → Appearance and
+the key screen; the crew door's header toggle), the glossary, the ban list in
+every never-say-clear guard, `withEs`/`enSha` twins, the review ledger and the
+customer fence. Review round done (15 findings fixed, D110). Nothing is translated yet beyond the switches' own words:
+Spanish mode shows every screen in English, marked "en inglés". The plan's
+safety-label table is in the ledger as a draft, so no safety label is served
+in Spanish until its review is recorded. **Phase A is next** (crew door
+first). Not deployed.
+
 Mike, 2026-10-20: *"The whole app needs to be able to have a Spanish version
 as well for our Spanish speaking, employees"* (ruling R27). This is the plan
 the build follows. It came from six read-only inventories of every string in
