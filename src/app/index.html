@@ -895,6 +895,11 @@ html[lang="es"] #yard .grid2{align-items:end} /* a Spanish label that wraps keep
    pointer ran straight into the English ("…que se lo lea:Every text, before it goes out"). */
 /* The "en inglés" mark is a <small>; inside an alert box (.storm / .late small is a block line) it stretched into an empty-looking bar. */
 .storm .es-en-mark,.late .es-en-mark{display:inline-block;margin-top:0}
+/* D113 (the merged browser check, 320 px, Spanish only): an Office desk tile's Spanish title ("Seguimientos") ran past
+   its tile and was clipped; a feeds card head's Spanish count ("1 sin estar en los datos de práctica") ran past its
+   button. English keeps its sizes and its unbroken counts. */
+@media (max-width:359px){html[lang="es"] .otile .otitle{font-size:16px;overflow-wrap:anywhere}}
+html[lang="es"] .feeds-head .fh{white-space:normal}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
 </head>

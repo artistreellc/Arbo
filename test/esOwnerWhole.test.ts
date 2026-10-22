@@ -239,3 +239,16 @@ describe('a permit label held back wears the pointer on every screen — the Lea
     expect(box.textContent).toContain('PERMIT LIKELY');
   });
 });
+
+// ── What the merged browser check found at 320 px (D113), kept fixed — Spanish only, English lays out exactly as before. ──
+describe('the merged app at 320 px in Spanish — what the browser check found', () => {
+  const css = [...raw.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((m) => m[1]!).join('\n');
+  it('an Office desk tile’s Spanish title fits its tile ("Seguimientos" ran 15 px past it, clipped)', () => {
+    expect(css).toContain('@media (max-width:359px){html[lang="es"] .otile .otitle{font-size:16px;overflow-wrap:anywhere}}');
+  });
+  it('a feeds card head’s Spanish counts wrap inside the button ("1 sin estar en los datos de práctica" ran past it)', () => {
+    expect(css).toContain('html[lang="es"] .feeds-head .fh{white-space:normal}');
+    // English keeps each count with its words, as before.
+    expect(css).toContain('.feeds-head .fh{white-space:nowrap}');
+  });
+});
