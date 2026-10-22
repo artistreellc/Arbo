@@ -154,6 +154,9 @@ describe('while a list is open, the notes card and Route the day step aside (UI 
     expect(s).not.toContain('hudPad()');
     expect(s).toContain('MAP.getSize().y - 90');
   });
+  it('a name that opens Leads closes the list first, so Map comes back with its notes card (browser re-run)', () => {
+    expect(srcOf(script, 'leadsNode')).toContain("b.addEventListener('click', () => { if (MAP) MAP.closePopup(); toShell({ type: 'lead', id: l.id }); });");
+  });
 });
 
 describe('in Night the Key\'s swatch matches the shading on the map (UI review #6)', () => {
