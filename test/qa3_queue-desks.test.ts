@@ -63,7 +63,7 @@ describe('#10 — an unknown role is named once, on the roster card', () => {
   });
 
   it('the roster card on the same Queue screen still says it', () => {
-    expect(roster).toContain("w.textContent = '⚠ Arbo does not know this role, so it applies the strictest card requirements to them.';");
+    expect(roster).toContain("w.textContent = T('⚠ Arbo does not know this role, so it applies the strictest card requirements to them.');"); // pin moved (R27): through T
   });
 });
 
@@ -75,7 +75,8 @@ describe('#11 — taking someone off the roster promises nothing the code does n
   // a half-truth and is gone. The meaning kept: the line names the boards and
   // promises nothing the code does not do — no closed door.
   it('the armed line names the boards and promises no closed door', () => {
-    expect(roster).toContain("'Tap again to take ' + p.name + ' off the roster — the safety and training boards stop counting them.'");
+    // Pin moved (R27 Phase A, owner app b), meaning kept: the same armed line, the name its value.
+    expect(roster).toContain("tf('Tap again to take {name} off the roster — the safety and training boards stop counting them.', { name: p.name })");
     expect(roster).not.toContain('Their crew code still opens the crew door');
     expect(html).not.toContain('lose crew-door access');
   });

@@ -625,7 +625,9 @@ describe('R26 Fleet card — the hold is on screen, and signing it back on asks 
   it('the page reaches the route through the shared helpers, never a second fetch', () => {
     const f = html.slice(html.indexOf('async function renderFleetList('), html.indexOf('// A part that fits this unit'));
     expect(f).toContain("api('/api/fleet/units/' + u.id + '/sign-back', { method: 'POST', body: {} })");
-    expect(f).toContain("armTwice(sign, 'Tap again to sign ' + u.name + ' back on'");
+    // Pin moved (R27 Phase A, owner app b), meaning kept: the same armed line (with or without its open tasks), the name its value.
+    expect(f).toContain("armTwice(sign, u.openTasks > 0");
+    expect(f).toContain("tf('Tap again to sign {name} back on — it goes back on the schedule', { name: u.name })");
     expect(f).toContain('saveFailText(ex)');
     expect(f).not.toContain('fetch(');
     expect(f).not.toMatch(/\bbadge\(/);

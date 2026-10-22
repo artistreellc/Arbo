@@ -291,8 +291,12 @@ describe('the aerial-work warning names each person and opens their credential',
     const at = html.indexOf('if (s.aerialBlocked.length) {');
     const block = html.slice(at, html.indexOf('if (s.certProblems.length) {', at));
     expect(block).toContain('for (const id of s.aerialBlocked) {');
-    expect(block).toContain("const row = el('button', 'sliplink', ((lead && lead.crewMemberName) || 'A crew member') + (lead ? ' · ' + what(lead) : '')");
-    expect(block).toContain("' · ' + (CERT_STATE[f.state] || [String(f.state).toUpperCase()])[0]");
+    // Pins moved (R27 Phase A, owner app b), meaning kept: the row still says who · which card · its state (CERT_STATE's label),
+    // now said through certSay — the safety ones (EXPIRED, NO RECORD, NO EXPIRY DATE) through the safety pair.
+    expect(block).toContain("const who = (lead && lead.crewMemberName) || T('A crew member');");
+    expect(block).toContain("const row = el('button', 'sliplink');");
+    expect(block).toContain("const words = ES.lang === 'es' ? row.appendChild(el('span')) : row;"); // English: the row itself, as before
+    expect(block).toContain("if (lead) certSay(words, (CERT_STATE[lead.state] || [String(lead.state).toUpperCase()])[0], who + ' · ' + card(lead) + ' · ');");
     expect(block).toContain(".find((n) => n.dataset.crew === id);");
     expect(html).toContain('c.dataset.crew = f.crewMemberId;');
   });
@@ -301,7 +305,8 @@ describe('the aerial-work warning names each person and opens their credential',
 describe('a refused save says the server\'s own words', () => {
   it('api() carries body.line on the error, and the breakdown sheet shows it', () => {
     expect(html).toContain("throw Object.assign(new Error(body.error || 'error'), { code: res.status, line: typeof body.line === 'string' ? body.line : null });");
-    expect(html).toContain("out.appendChild(state('Not filed', e.line || ('The report did not save (' + (e.message || 'error') + '). Nothing was changed.')));");
+    // Pin moved (R27 Phase A, owner app b), meaning kept: the server's own words when it sent some (e.line), else the page's.
+    expect(html).toContain("const no = out.appendChild(state(T('Not filed'), e.line || (tf('The report did not save ({why}).', { why: e.message || 'error' }) + ' ' + T('Nothing was changed.'))));");
   });
 });
 

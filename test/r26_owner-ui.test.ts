@@ -126,16 +126,21 @@ describe('R26 qa-x6 — one label per permit state, the badge wording everywhere
       SCREEN_PENDING: ['PERMIT SCREEN PENDING', 'watch'],
     });
     // Each label is written once in the page script — every surface reads it from the map.
-    // R27 Phase A (es-owner-a; pin moved, meaning kept): the one other place a label is written is permitChip's Spanish
-    // pick — the === that matches the map's word and that word's esPair key (parity needs keys written out): twice
-    // there, never a third surface.
+    // Pins moved (R27 Phase A, owner app a + b, merged in D113), meaning kept: two places say a label again, each keyed by
+    // the same words, never a third surface. permitChip's Spanish pick (builder a) — the === that matches the map's word
+    // and that word's esPair key (parity needs keys written out): twice there. permitLabel (builder b) says a drawn label
+    // again through the safety pair — it matches the label the map drew (a case) and draws that same English (the
+    // dictionary key), so it is no second spelling. Outside both, each label is still written once.
     const chipSrc = fnSrc('permitChip');
-    const rest = html.replace(chipSrc, '');
+    const sayer = fnSrc('permitLabel');
+    const rest = html.replace(chipSrc, '').replace(sayer, '');
     for (const label of ['PERMIT: REVIEW NEEDED', 'NO OVERLAY — VERIFY W/ CITY', 'PERMIT SCREEN PENDING']) {
       expect(rest.split("'" + label + "'").length - 1, label).toBe(1);
       expect(chipSrc.split("w === '" + label + "' ? esPair('" + label + "')").length - 1, label).toBe(1);
       expect(chipSrc.split("'" + label + "'").length - 1, label).toBe(2);
+      expect(sayer, label).toContain(`case '${label}': return esSay(n, '${label}');`);
     }
+    expect(sayer).toContain("case 'PERMIT LIKELY': return esSay(n, 'PERMIT LIKELY');");
     expect(html.split("['PERMIT LIKELY', ").length - 1).toBe(1);
     // The pinned words are still on the page (appUi).
     expect(html).toContain('VERIFY W/ CITY');
@@ -157,13 +162,14 @@ describe('R26 qa-x6 — one label per permit state, the badge wording everywhere
 
   it('the property sheet (twin) uses the same chip — no second spelling of a permit state', () => {
     const twin = between('async function openTwin(', "$('twin-close')");
-    expect(twin).toContain('b.appendChild(permitChip(pr.screen_status));');
+    expect(twin).toContain('b.appendChild(permitLabel(permitChip(pr.screen_status)));'); // pin moved (R27): the same chip, said through the safety pair
     for (const old of ["chip('PERMIT LIKELY'", "chip('REVIEW NEEDED'", "chip('NO OVERLAY"]) expect(twin).not.toContain(old);
   });
 
   it("Book's prep sheet heads with the same label; a screen that never ran is PERMIT SCREEN PENDING, as on Leads", () => {
     const prep = fnSrc('estimatePrepPanel');
-    const m = /const ps = (PERMIT_STATE\[[^\n]+\]);\n\s*sheet\.appendChild\(el\('div', 'vhead', ([^\n]+)\)\);/.exec(prep);
+    // Pin moved (R27 Phase A, owner app b), meaning kept: the head is the same label, said through the safety pair (permitLabel).
+    const m = /const ps = (PERMIT_STATE\[[^\n]+\]);\n\s*sheet\.appendChild\(permitLabel\(el\('div', 'vhead', ([^\n]+)\)\)\);/.exec(prep);
     expect(m).not.toBeNull();
     const head = new Function('s', 'PERMIT_STATE', `const ps = ${m![1]}; return ${m![2]};`) as (s: unknown, p: unknown) => string;
     const h = (permit: unknown) => head({ permit }, PERMIT_STATE);
@@ -181,7 +187,9 @@ describe('R26 qa-x6 — one label per permit state, the badge wording everywhere
     expect(PERMIT_STATUS['REVIEW NEEDED']).toBe(PERMIT_STATE.REVIEW_NEEDED);
     expect(PERMIT_STATUS['NO OVERLAY–VERIFY']).toBe(PERMIT_STATE.NO_OVERLAY_VERIFY);
     const nb = new Function(`return ${/const nb = (\(s\) => [^\n]+);/.exec(html)![1]}`)() as (s: string) => string;
-    const checkCard = pageFn<(it: unknown) => N>('checkCard', { el, chip, nb, whoLine: () => el('div'), PERMIT_STATUS, document, window: {} });
+    // R27 Phase A (owner app b): checkCard says its label through the page's permitLabel (in English, as written).
+    const permitLabel = pageFn<(n: N) => N>('permitLabel', {});
+    const checkCard = pageFn<(it: unknown) => N>('checkCard', { el, chip, nb, whoLine: () => el('div'), PERMIT_STATUS, document, window: {}, permitLabel });
     const card = checkCard({ status: 'REVIEW NEEDED', step: 'UNKNOWN: right-of-way', why: 'w', factIds: [] });
     expect(chipsIn(card)).toEqual(['PERMIT: REVIEW NEEDED=watch']);
   });
@@ -252,7 +260,8 @@ describe('R26 qa-x7 / qa-x13 — Book, Queue, Numbers and Settings carry the des
 
   // Direction B P15 (R29 #4): the calculator moved from Today to Estimate, its name unchanged.
   it('the calculator stays "Yard check" (on Estimate now), and Measure keeps the Arborist eyebrow', () => {
-    expect(html).toMatch(/key: 'yard', [^}]*title: 'Yard check — will this job pay\?'/);
+    // Pin moved (R27 Phase A, owner app b), meaning kept: the same title, said through T when the tools are drawn.
+    expect(html).toMatch(/key: 'yard', [^}]*title: T\('Yard check — will this job pay\?'\)/);
     expect(fnSrc('renderMeasure')).toContain("el('div', 'eyebrow', 'Arborist')");
   });
 

@@ -207,27 +207,27 @@
       "pass": "draft",
       "translatedBy": "Claude — R27 Phase A es-owner-a first pass (2026-10-22), from the glossary and the D112 labels",
       "on": "2026-10-22",
-      "note": "Not recorded (R27 Phase A, es-owner-a) — first translation pass only; no blind second translation and no blind back-translation yet, so the owner app (and the map, for EMERGENCY) shows the English, marked, until both are recorded."
+      "note": "Not recorded — new in R27 Phase A (owner app): a first translation only. No blind second translation and no blind back-translation yet, so the owner app and the map show the English, marked, until both are recorded (R27 #5, D112)."
     },
     {
       "en": "POWER LINES",
       "es": "LÍNEAS ELÉCTRICAS",
       "sha": "800705c608d3ffc1426b44f9448187e8098bb6d9d2df1fc75e7cefac32f05536",
-      "where": "dict:app-today — a stop’s red flag on Today’s run (the reviewed hazard line L10 opens with the same words)",
+      "where": "dict:app-today — a stop’s red flag on Today’s run (the reviewed hazard line L10 opens with the same words); dict:app-book",
       "pass": "draft",
-      "translatedBy": "Claude — R27 Phase A es-owner-a first pass (2026-10-22), from the glossary and the D112 labels",
+      "translatedBy": "Claude — R27 Phase A es-owner-a first pass (2026-10-22), from the glossary and the D112 labels; Claude — R27 Phase A, owner app (Estimate, Permit rules, Properties on file, Follow-ups, Money, Fleet, Crew & safety), first translation pass",
       "on": "2026-10-22",
-      "note": "Not recorded (R27 Phase A, es-owner-a) — first translation pass only; no blind second translation and no blind back-translation yet, so the owner app (and the map, for EMERGENCY) shows the English, marked, until both are recorded."
+      "note": "Not recorded — new in R27 Phase A (owner app): a first translation only. No blind second translation and no blind back-translation yet, so it is served in English under the Spanish pointer until both are recorded (R27 #5, D112). One entry for every place this exact pair is drawn (D113: the units wrote the same Spanish)."
     },
     {
       "en": "DOWN",
       "es": "FUERA DE SERVICIO",
       "sha": "c7a55c37a765d0651e4e1f5c5e8b7f8486a10d3c3f61914bd6a4317e4f011736",
-      "where": "dict:app-today — a unit DOWN in Before you roll (Fleet’s UNIT_STATUS label)",
+      "where": "dict:app-today — a unit DOWN in Before you roll (Fleet’s UNIT_STATUS label); dict:app-fleet",
       "pass": "draft",
-      "translatedBy": "Claude — R27 Phase A es-owner-a first pass (2026-10-22), from the glossary and the D112 labels",
+      "translatedBy": "Claude — R27 Phase A es-owner-a first pass (2026-10-22), from the glossary and the D112 labels; Claude — R27 Phase A, owner app (Estimate, Permit rules, Properties on file, Follow-ups, Money, Fleet, Crew & safety), first translation pass",
       "on": "2026-10-22",
-      "note": "Not recorded (R27 Phase A, es-owner-a) — first translation pass only; no blind second translation and no blind back-translation yet, so the owner app (and the map, for EMERGENCY) shows the English, marked, until both are recorded."
+      "note": "Not recorded — new in R27 Phase A (owner app): a first translation only. No blind second translation and no blind back-translation yet, so it is served in English under the Spanish pointer until both are recorded (R27 #5, D112). One entry for every place this exact pair is drawn (D113: the units wrote the same Spanish)."
     },
     {
       "en": "STOP honored",
@@ -237,7 +237,127 @@
       "pass": "draft",
       "translatedBy": "Claude — R27 Phase A es-owner-a first pass (2026-10-22), from the glossary and the D112 labels",
       "on": "2026-10-22",
-      "note": "Not recorded (R27 Phase A, es-owner-a) — first translation pass only; no blind second translation and no blind back-translation yet, so the owner app (and the map, for EMERGENCY) shows the English, marked, until both are recorded."
+      "note": "Not recorded — new in R27 Phase A (owner app): a first translation only. No blind second translation and no blind back-translation yet, so the owner app shows the English, marked, until both are recorded (R27 #5, D112)."
+    },
+    {
+      "en": "Start with the address: permit, drive time, 811 and access.",
+      "es": "Empiece por la dirección: permiso, tiempo de viaje, 811 y acceso.",
+      "sha": "4234632889266e9cbd09a8d7d063b0f53d1c664593c2c09cb10bf30c3583bba2",
+      "where": "dict:app-estimate",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A, owner app (Estimate, Permit rules, Properties on file, Follow-ups, Money, Fleet, Crew & safety), first translation pass",
+      "on": "2026-10-22",
+      "note": "Not recorded — new in R27 Phase A (owner app): a first translation only. No blind second translation and no blind back-translation yet, so it is served in English under the Spanish pointer until both are recorded (R27 #5, D112)."
+    },
+    {
+      "en": "CALL FIRST",
+      "es": "LLAME PRIMERO",
+      "sha": "e0a9c16f0c9163c5ed25b6dbd29dc2c9c82faa24a6d0f228d87ce95d397425b7",
+      "where": "dict:app-permits",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A, owner app (Estimate, Permit rules, Properties on file, Follow-ups, Money, Fleet, Crew & safety), first translation pass",
+      "on": "2026-10-22",
+      "note": "Not recorded — new in R27 Phase A (owner app): a first translation only. No blind second translation and no blind back-translation yet, so it is served in English under the Spanish pointer until both are recorded (R27 #5, D112)."
+    },
+    {
+      "en": "TICKET REQUIRED",
+      "es": "SE REQUIERE TICKET DE LOCALIZACIÓN",
+      "sha": "4770cdb3172cf57412e7978c0781827fed8bb37c407e3d408afd703897abf84e",
+      "where": "dict:app-permits",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A, owner app (Estimate, Permit rules, Properties on file, Follow-ups, Money, Fleet, Crew & safety), first translation pass",
+      "on": "2026-10-22",
+      "note": "Not recorded — new in R27 Phase A (owner app): a first translation only. No blind second translation and no blind back-translation yet, so it is served in English under the Spanish pointer until both are recorded (R27 #5, D112)."
+    },
+    {
+      "en": "UNCONFIRMED",
+      "es": "SIN CONFIRMAR",
+      "sha": "74b051fbcdf46b590a1b6d809f34fb8f833f2e8d8b68d9d2d8af8b44ab0325dd",
+      "where": "dict:app-permits",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A, owner app (Estimate, Permit rules, Properties on file, Follow-ups, Money, Fleet, Crew & safety), first translation pass",
+      "on": "2026-10-22",
+      "note": "Not recorded — new in R27 Phase A (owner app): a first translation only. No blind second translation and no blind back-translation yet, so it is served in English under the Spanish pointer until both are recorded (R27 #5, D112)."
+    },
+    {
+      "en": "Anything a source didn’t state plainly is marked UNCONFIRMED — check it with the city before you tell a customer (the office to call is on the rule where we have one).",
+      "es": "Lo que una fuente no dijo con claridad está marcado UNCONFIRMED (sin confirmar) — verifíquelo con la ciudad antes de decírselo a un cliente (la oficina a la que hay que llamar aparece en la regla cuando la tenemos).",
+      "sha": "c9086aba7004957c384b76a4ba47d30d8fdcde3337ae8f63e990605cbe661ec7",
+      "where": "dict:app-permits",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A, owner app (Estimate, Permit rules, Properties on file, Follow-ups, Money, Fleet, Crew & safety), first translation pass",
+      "on": "2026-10-22",
+      "note": "Not recorded — new in R27 Phase A (owner app): a first translation only. No blind second translation and no blind back-translation yet, so it is served in English under the Spanish pointer until both are recorded (R27 #5, D112)."
+    },
+    {
+      "en": "STRUCTURES",
+      "es": "ESTRUCTURAS",
+      "sha": "32741f9808e15da09b2a397b45b3162a4dc54e2a7cb077c619c0d38317ec8b67",
+      "where": "dict:app-book",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A, owner app (Estimate, Permit rules, Properties on file, Follow-ups, Money, Fleet, Crew & safety), first translation pass",
+      "on": "2026-10-22",
+      "note": "Not recorded — new in R27 Phase A (owner app): a first translation only. No blind second translation and no blind back-translation yet, so it is served in English under the Spanish pointer until both are recorded (R27 #5, D112)."
+    },
+    {
+      "en": "EXPIRED",
+      "es": "VENCIDO",
+      "sha": "4d65a24f76f7f02d68096f8732b30132fb90ddd3f2f30c248c122320e79f8e91",
+      "where": "dict:app-safety",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A, owner app (Estimate, Permit rules, Properties on file, Follow-ups, Money, Fleet, Crew & safety), first translation pass",
+      "on": "2026-10-22",
+      "note": "Not recorded — new in R27 Phase A (owner app): a first translation only. No blind second translation and no blind back-translation yet, so it is served in English under the Spanish pointer until both are recorded (R27 #5, D112)."
+    },
+    {
+      "en": "NO RECORD",
+      "es": "SIN REGISTRO",
+      "sha": "b5de3a46a060a03365c83a616a4275b9b60901c694ca704a8f30905a55f55728",
+      "where": "dict:app-safety",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A, owner app (Estimate, Permit rules, Properties on file, Follow-ups, Money, Fleet, Crew & safety), first translation pass",
+      "on": "2026-10-22",
+      "note": "Not recorded — new in R27 Phase A (owner app): a first translation only. No blind second translation and no blind back-translation yet, so it is served in English under the Spanish pointer until both are recorded (R27 #5, D112)."
+    },
+    {
+      "en": "Unit is now DOWN",
+      "es": "La unidad ahora está FUERA DE SERVICIO",
+      "sha": "5b754f1ce5537c793b03517fa63142184f19e866f4246dcd8677bf33dcdf1a70",
+      "where": "dict:app-fleet",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A, owner app (Estimate, Permit rules, Properties on file, Follow-ups, Money, Fleet, Crew & safety), first translation pass",
+      "on": "2026-10-22",
+      "note": "Not recorded — new in R27 Phase A (owner app): a first translation only. No blind second translation and no blind back-translation yet, so it is served in English under the Spanish pointer until both are recorded (R27 #5, D112)."
+    },
+    {
+      "en": "Unit is now HELD",
+      "es": "La unidad ahora está RETENIDA (HELD)",
+      "sha": "8b51ad27c41d46c2fa1eb156886bd89da351f31a9a099217ae4462cee6b6c160",
+      "where": "dict:app-fleet",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A, owner app (Estimate, Permit rules, Properties on file, Follow-ups, Money, Fleet, Crew & safety), first translation pass",
+      "on": "2026-10-22",
+      "note": "Not recorded — new in R27 Phase A (owner app): a first translation only. No blind second translation and no blind back-translation yet, so it is served in English under the Spanish pointer until both are recorded (R27 #5, D112)."
+    },
+    {
+      "en": "No consent on file or STOP on record — these never send.",
+      "es": "No hay consentimiento registrado o hay un STOP registrado — estos nunca se envían.",
+      "sha": "517b94b8706cb0e38d748f5d45a1c92e18dc8bdecf29c451a3a3e5329efd998c",
+      "where": "dict:app-followups",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A, owner app (Estimate, Permit rules, Properties on file, Follow-ups, Money, Fleet, Crew & safety), first translation pass",
+      "on": "2026-10-22",
+      "note": "Not recorded — new in R27 Phase A (owner app): a first translation only. No blind second translation and no blind back-translation yet, so it is served in English under the Spanish pointer until both are recorded (R27 #5, D112)."
+    },
+    {
+      "en": "No consent on file or STOP on record — Arbo will not nudge these.",
+      "es": "No hay consentimiento registrado o hay un STOP registrado — Arbo no les enviará recordatorios.",
+      "sha": "bc7fabb7b7b76eae9b2f9c9159bb7f5997fa42c835b82cd4382bd404d9a4106b",
+      "where": "dict:app-money",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A, owner app (Estimate, Permit rules, Properties on file, Follow-ups, Money, Fleet, Crew & safety), first translation pass",
+      "on": "2026-10-22",
+      "note": "Not recorded — new in R27 Phase A (owner app): a first translation only. No blind second translation and no blind back-translation yet, so it is served in English under the Spanish pointer until both are recorded (R27 #5, D112)."
     }
   ]
 }

@@ -67,18 +67,24 @@ describe('Queue — one dead feed never blanks the screen (§1B)', () => {
     expect(q).toContain("feedLine(e, 'Open loops', 'That is not a sign that nothing is open.')");
     expect(q).not.toContain("feedState(e, 'Open loops'");
     expect(q).not.toContain('.catch(() => {})');
-    expect(q).toContain("'No open loops'");
+    // Pin moved (R27 Phase A, owner app b), meaning kept: the real empty list says so, in one keyed sentence (with or without the time).
+    expect(q).toContain("T('No open loops.')");
+    expect(q).toContain("tf('No open loops as of {time}.', { time: fmtTime(qq.checkedAtIso) })");
   });
 
   it('never draws Queue clear over storm or coming-due nudges Arbo could not check', () => {
     const q = queue();
     expect(q).toContain('q.seasonalUnavailable');
     expect(q).toContain('q.growthUnavailable');
-    expect(q).toContain("'feed-state unread', 'Arbo could not check '");
+    // Pins moved (R27 Phase A, owner app b), meaning kept: the unread line names what Arbo could not check, one keyed sentence
+    // per case (storm, coming-due, or both), and the calm line is reached only with neither unread.
+    expect(q).toContain("el('div', 'feed-state unread', (storm && grow");
+    expect(q).toContain("T('Arbo could not check storm nudges (weather feed unreadable).')");
+    expect(q).toContain("T('Arbo could not check coming-due nudges (property records unreadable).')");
     expect(q).toContain('This is not a claim that none are due.');
     // The only way to reach the calm line — 'No follow-ups due' since Direction B P19 (Queue → Follow-ups, an
     // approved rename) — is with nothing unread.
-    expect(q).toContain("state(unread.length ? 'Nothing due from what Arbo could read' : 'No follow-ups due',");
+    expect(q).toContain("state(storm || grow ? T('Nothing due from what Arbo could read') : T('No follow-ups due'),");
     expect(html).not.toContain("state('No follow-ups due'");
     expect(html).not.toContain('Queue clear');
   });
@@ -102,12 +108,16 @@ describe('Queue — one dead feed never blanks the screen (§1B)', () => {
   it('a save that fails says so, and a lost key opens the keywall', () => {
     // saveFailText (foundation) calls showKeywall() on a 401.
     const q = queue();
-    expect(q).toContain('} catch (e) { btn.disabled = false; showSaveFail(c, e); }');
+    // Pins moved (R27 Phase A, owner app b), meaning kept: each failed save still says so through showSaveFail (saveFailText),
+    // now marked "en inglés" in Spanish mode (the shared words).
+    expect(q).toContain('} catch (e) { btn.disabled = false; en(showSaveFail(c, e)); }');
     expect(q).toContain("c.querySelector(':scope > .save-err')");
     const money = between('async function renderMoney(', 'function paidButton(');
-    expect(money).toContain('} catch (e) { btn.disabled = false; showSaveFail(c, e); }');
+    expect(money).toContain('} catch (e) { btn.disabled = false; failed(c, e); }');
+    expect(money).toContain('const failed = (box, e) => { const n = showSaveFail(box, e);');
     const paid = between('function paidButton(', '// ---------- Fleet');
-    expect(paid).toContain('} catch (e) { btn.disabled = false; showSaveFail(btn.parentNode, e); }');
+    expect(paid).toContain('btn.disabled = false;');
+    expect(paid).toContain('const n = showSaveFail(btn.parentNode, e);');
     for (const body of [q, money, paid]) expect(body).not.toContain('catch { btn.disabled = false; }');
   });
 

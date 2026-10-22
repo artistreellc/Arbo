@@ -367,7 +367,8 @@ describe('T5: one cause, one card, plain words', () => {
 describe('T6: the Yard check says what it is for; the calendar way out sits in the schedule card', () => {
   // Direction B P15 (R29 #4): the Yard check lives on Estimate now, with the same words and the same sheet.
   it('names the will-this-job-pay check', () => {
-    expect(html).toMatch(/key: 'yard', [^}]*title: 'Yard check — will this job pay\?'/);
+    // Pin moved (R27 Phase A, owner app b), meaning kept: the same title, said through T when the tools are drawn.
+    expect(html).toMatch(/key: 'yard', [^}]*title: T\('Yard check — will this job pay\?'\)/);
     expect(html).not.toContain('run a number');
     expect(html.slice(html.indexOf('async function renderEstimate()'))).toContain('openYard();');
   });

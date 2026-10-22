@@ -879,6 +879,13 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 html[lang="es"] .hstat span,html[lang="es"] .hstat small{letter-spacing:.08em;-webkit-hyphens:auto;hyphens:auto}
 html[lang="es"] .sys{white-space:normal;max-width:100%;line-height:1.25}
 @media (max-width:389px){html[lang="es"] .hero-stats{grid-template-columns:repeat(2,minmax(0,1fr))}html[lang="es"] .hero-stats > :last-child{grid-column:1 / -1}html[lang="es"] .hstat span,html[lang="es"] .hstat small{overflow-wrap:anywhere}}
+/* R27 Phase A (es-owner-b): the held pointer's rule is the one above (D111, UI 1 + 3);
+   a badge holding a line said through esSay (its .es-pair holder) wraps as the plain pair does, and its pointer reads in
+   sentence case. English never matches these rules. */
+.badge:has(> .es-pair){display:inline-block;border-radius:var(--r-md);white-space:normal;text-align:left;max-width:100%}
+.badge .es-held-why{text-transform:none;letter-spacing:normal}
+.badge.t-alarm .es-en-mark{color:inherit;border-color:currentColor} /* the "en inglés" mark readable on the red alarm chip */
+html[lang="es"] #yard .grid2{align-items:end} /* a Spanish label that wraps keeps the two boxes of a row level */
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -3543,25 +3550,50 @@ $('y-go').addEventListener('click', async () => {
   try {
     r = await api('/api/estimating/check', { method: 'POST', body });
   } catch (e) {
-    out.appendChild(el('div', 'errline', e.code === 400 ? 'Fill in hours, crew, quote, and labor rate.' : 'Could not run the check — try again.'));
+    out.appendChild(el('div', 'errline', e.code === 400 ? T('Fill in hours, crew, quote, and labor rate.') : T('Could not run the check — try again.')));
     return;
   }
   const box = el('div', 'verdict ' + (r.verdict === 'ON_TARGET' ? 'v-on' : r.verdict === 'BELOW_TARGET' ? 'v-below' : 'v-lose'));
-  box.appendChild(el('div', 'vhead', r.verdict === 'ON_TARGET' ? '✓ ON TARGET' : r.verdict === 'BELOW_TARGET' ? '△ BELOW TARGET' : '✕ LOSES MONEY'));
+  box.appendChild(el('div', 'vhead', r.verdict === 'ON_TARGET' ? T('✓ ON TARGET') : r.verdict === 'BELOW_TARGET' ? T('△ BELOW TARGET') : T('✕ LOSES MONEY')));
   const line = (k, val) => {
     const d = el('div', 'vline');
     d.appendChild(el('span', '', k));
     d.appendChild(el('span', '', val));
     return d;
   };
-  box.appendChild(line('effective rate', '$' + Math.round(r.effectiveRatePerHr) + '/hr vs $' + r.targetRatePerHr));
-  box.appendChild(line('all-in cost', '$' + Math.round(r.allInCost)));
-  box.appendChild(line('margin', '$' + Math.round(r.margin)));
-  box.appendChild(line('day at this pace', '$' + Math.round(r.dayFloorEquivalent)));
-  box.appendChild(line('leakage load', '$' + Math.round(r.leakageLoad) + (r.leakageBasis === 'derived' ? ' (from actuals)' : ' (8% default)')));
-  if (r.drivers.length) box.appendChild(el('div', 'drv', r.drivers.join(' · ')));
+  box.appendChild(line(T('effective rate'), tf('${rate}/hr vs ${target}', { rate: Math.round(r.effectiveRatePerHr), target: r.targetRatePerHr })));
+  box.appendChild(line(T('all-in cost'), '$' + Math.round(r.allInCost)));
+  box.appendChild(line(T('margin'), '$' + Math.round(r.margin)));
+  box.appendChild(line(T('day at this pace'), '$' + Math.round(r.dayFloorEquivalent)));
+  box.appendChild(line(T('leakage load'), r.leakageBasis === 'derived'
+    ? tf('${n} (from actuals)', { n: Math.round(r.leakageLoad) }) : tf('${n} (8% default)', { n: Math.round(r.leakageLoad) })));
+  // The drivers are the server's own lines: English, marked "en inglés" in Spanish until they have twins (R27 Phase B).
+  if (r.drivers.length) box.appendChild(esSayTwin(el('div', 'drv'), { line: r.drivers.join(' · ') }, 'line'));
   out.appendChild(box);
 });
+// R27 Phase A (owner app): the Yard check sheet's fixed words. The markup above holds the English, and
+// English mode never runs this; in Spanish each is said from the dictionary (app-estimate), one per key.
+function yardWords() {
+  if (ES.lang !== 'es') return;
+  const y = $('yard');
+  const forLabel = (id, words) => { const l = y.querySelector('label[for="' + id + '"]'); if (l) l.textContent = words; };
+  $('twin-title-yard').textContent = T('YARD CHECK');
+  $('yard-close').setAttribute('aria-label', T('Close'));
+  forLabel('y-type', T('Job type'));
+  const opts = $('y-type').options;
+  opts[0].textContent = T('Removal ($1,000/hr target)');
+  opts[1].textContent = T('Pruning ($700/hr target)');
+  opts[2].textContent = T('Other');
+  forLabel('y-hours', T('Truck-to-truck hrs'));
+  forLabel('y-crew', T('Crew size'));
+  forLabel('y-price', T('Quote $'));
+  forLabel('y-labor', T('Loaded $/man-hr'));
+  forLabel('y-equip', T('Equipment $ (opt.)'));
+  forLabel('y-dump', T('Dump fees $ (opt.)'));
+  $('y-go').textContent = T('Run the number');
+  y.querySelector('.internal-tag').textContent = T('Internal instrument — never quoted to a customer (§6J2.5)');
+}
+yardWords();
 
 // ---------- The Leads hub's head (Direction B P16; R29 #1: "Calls folds into Leads … a red Sona flag stays above
 // the segments, just as loud as today, so it never sinks into the second segment") ----------
@@ -4356,6 +4388,24 @@ async function mapDay() {
 }
 window.addEventListener('message', mapMessage);
 
+// ---------- A permit or call-ahead label, through the safety pair (R27 Phase A, owner app) ----------
+// The one label per permit state (PERMIT_STATE) and the job check's call-ahead words (PERMIT_STATUS) are drawn
+// as they always were, then said again here from the node's own English: in English nothing changes; in
+// Spanish the label shows its Spanish over the FULL English once its review is recorded (D112), or the
+// English under the Spanish pointer until then (R27 #4, #5). Each key is written out, so the ledger and the
+// dictionary parity can check it. A label Arbo does not know stays as the server sent it.
+function permitLabel(n) {
+  switch (n.textContent) {
+    case 'PERMIT LIKELY': return esSay(n, 'PERMIT LIKELY');
+    case 'PERMIT: REVIEW NEEDED': return esSay(n, 'PERMIT: REVIEW NEEDED');
+    case 'NO OVERLAY — VERIFY W/ CITY': return esSay(n, 'NO OVERLAY — VERIFY W/ CITY');
+    case 'PERMIT SCREEN PENDING': return esSay(n, 'PERMIT SCREEN PENDING');
+    case 'CALL FIRST': return esSay(n, 'CALL FIRST');
+    case 'TICKET REQUIRED': return esSay(n, 'TICKET REQUIRED');
+    default: return n;
+  }
+}
+
 // ---------- Estimate (Direction B P15; R29 #1 and #4: "Before you write it up") ----------
 // Prep starts from the address (a lead's, P18), then the tools for the estimate. The head and the prep
 // form are drawn before any read: the form needs none, and nothing below may hide it (the talk-button
@@ -4365,7 +4415,9 @@ window.addEventListener('message', mapMessage);
 // nothing (§1B). Never a price, never a booking. Each row's small line is its desk, as on Office.
 // P15 review: the spec's order (Yard check, Measure, Properties on file, Permit rules), so the Yard check is
 // the first tool and on the first screen; its desk is the Yard Boss (R26: the money desk) — it was "Moved from Today".
-const ESTIMATE_TOOLS = [{ key: 'yard', line: 'Yard Boss', title: 'Yard check — will this job pay?', note: 'Internal only — the customer never sees it', icon: 'i-numbers' }, { key: 'measure', line: 'Arborist', title: 'Measure a tree', note: 'LiDAR scan → trunk width', icon: 'i-lidar' }, { key: 'book', line: 'Arborist', title: 'Properties on file', note: '', icon: 'i-book' }, { key: 'permits', line: 'Permit Desk', title: 'Permit rules', note: '4 cities, sourced and dated', icon: 'i-permit' }];
+// R27 Phase A (owner app): each title and note is said once, at load, in the page's language (the office app reloads on a
+// language change); the small line is its desk's name (the agents' names, R26), as written.
+const ESTIMATE_TOOLS = [{ key: 'yard', line: 'Yard Boss', title: T('Yard check — will this job pay?'), note: T('Internal only — the customer never sees it'), icon: 'i-numbers' }, { key: 'measure', line: 'Arborist', title: T('Measure a tree'), note: T('LiDAR scan → trunk width'), icon: 'i-lidar' }, { key: 'book', line: 'Arborist', title: T('Properties on file'), note: '', icon: 'i-book' }, { key: 'permits', line: 'Permit Desk', title: T('Permit rules'), note: T('4 cities, sourced and dated'), icon: 'i-permit' }];
 let EST_GEN = 0;
 // What the Properties on file row last said, and whether it could open: a redraw keeps it up until its
 // own read lands (P3's swap) — only a first draw says "Reading…", and opens the screen meanwhile.
@@ -4376,15 +4428,17 @@ async function renderEstimate() {
   v.replaceChildren();
   const head = el('div', 'viewhead');
   head.appendChild(el('div', 'eyebrow', 'Arborist · Permit Desk'));
-  head.appendChild(el('h1', '', 'Before you write it up'));
+  head.appendChild(el('h1', '', T('Before you write it up')));
   // P15 review: the prep card's own title and help line said this again; the head says it once, so the Yard check fits the first screen.
-  head.appendChild(el('p', '', 'Start with the address: permit, drive time, 811 and access. Never a price, never a booking.'));
+  // R27: two sentences — the first names 811, so it is a safety line (the pair, or the pointer while its review is owed).
+  const lede = head.appendChild(esSay(el('p'), 'Start with the address: permit, drive time, 811 and access.'));
+  lede.appendChild(document.createTextNode(' ' + T('Never a price, never a booking.')));
   v.appendChild(head);
   v.appendChild(estimatePrepPanel());
   // P15 review: no heading row above the tools (it pushed the Yard check off the first screen); the list keeps the name for a screen reader.
   const list = v.appendChild(el('div', 'est-tools'));
   list.setAttribute('role', 'group');
-  list.setAttribute('aria-label', 'Tools for the estimate');
+  list.setAttribute('aria-label', T('Tools for the estimate'));
   let book = null;
   for (const t of ESTIMATE_TOOLS) {
     const b = list.appendChild(el('button', 'est-tool'));
@@ -4412,7 +4466,13 @@ async function renderEstimate() {
     book.b.classList.toggle('gap', !yes);
   };
   book.b.addEventListener('click', () => { if (go) switchTab('book'); });
-  if (EST_BOOK) { book.note.textContent = EST_BOOK.said; can(EST_BOOK.go); }
+  // R27: a count said in the page's language; a dead feed in the shared feed words — English, marked "en inglés" in Spanish.
+  const said = () => {
+    book.note.textContent = EST_BOOK.said;
+    if (EST_BOOK.en && ES.lang === 'es') { book.note.setAttribute('lang', 'en'); book.note.appendChild(esEnMark()); }
+    else if (ES.lang === 'es') book.note.removeAttribute('lang');
+  };
+  if (EST_BOOK) { said(); can(EST_BOOK.go); }
   else { book.note.replaceChildren(readingLine()); can(true); } // P15 review: it opens while its count reads, as Office's desks do
   let p;
   try {
@@ -4423,15 +4483,17 @@ async function renderEstimate() {
     if (e.code === 401) return showKeywall();
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
     if (gen !== EST_GEN) return;
-    EST_BOOK = { said: 'Not counted — ' + FEED_WORD[feedKind(e)], go: false }; // the row's title already names the feed
-    book.note.textContent = EST_BOOK.said;
+    EST_BOOK = { said: 'Not counted — ' + FEED_WORD[feedKind(e)], go: false, en: true }; // the row's title already names the feed
+    said();
     can(false);
     return;
   }
   if (gen !== EST_GEN) return;
   // A forecast Arbo could not read is said beside the count — never "0 coming due" (§1B).
-  EST_BOOK = { said: p.properties.length + ' on file · ' + (Array.isArray(p.comingDue) ? p.comingDue.length + ' coming due' : 'coming due: ' + FEED_WORD.unread), go: true };
-  book.note.textContent = EST_BOOK.said;
+  EST_BOOK = Array.isArray(p.comingDue)
+    ? { said: tf('{n} on file · {due} coming due', { n: p.properties.length, due: p.comingDue.length }), go: true }
+    : { said: p.properties.length + ' on file · coming due: ' + FEED_WORD.unread, go: true, en: true };
+  said();
   can(true);
 }
 
@@ -4453,10 +4515,10 @@ function estimatePrepPanel() {
   // Estimate's head says what this sheet is and that it never prices or books (P15 review: said once, above it).
   const card = el('div', 'card prep-card');
   // Each label is tied to its field (a tap focuses it, a screen reader names
-  // it) and takes the shared .field label style.
-  const f = (label, node) => {
+  // it) and takes the shared .field label style. R27: the id is its own word, so it stays the same in Spanish.
+  const field = (id, label, node) => {
     const w = el('div', 'field');
-    node.id = 'ep-' + label.toLowerCase().replace(/\W+/g, '-');
+    node.id = 'ep-' + id;
     const l = el('label', '', label); l.htmlFor = node.id;
     w.appendChild(l); w.appendChild(node); return w;
   };
@@ -4465,25 +4527,25 @@ function estimatePrepPanel() {
   const lead = PREP_LEAD;
   const cities = ['Virginia Beach', 'Norfolk', 'Chesapeake', 'Portsmouth'];
   const citySel = el('select');
-  if (lead && !lead.city) citySel.appendChild(new Option('Choose the city', '')); // never a default that looks like the lead's
+  if (lead && !lead.city) citySel.appendChild(new Option(T('Choose the city'), '')); // never a default that looks like the lead's
   for (const c of cities) citySel.appendChild(new Option(c, c));
   // A city outside the four stays as the lead said it — the server flags it (R1: flag, never bin).
   if (lead && lead.city && !cities.includes(lead.city)) citySel.appendChild(new Option(lead.city, lead.city));
   // P18 review: a sample ZIP as the placeholder read like a filled-in value; the box says what goes in it.
-  const zip = el('input'); zip.type = 'text'; zip.placeholder = '5 digits'; zip.inputMode = 'numeric';
+  const zip = el('input'); zip.type = 'text'; zip.placeholder = T('5 digits'); zip.inputMode = 'numeric';
   const jobSel = el('select');
-  for (const [val, lab] of [['removal', 'Removal'], ['pruning', 'Pruning / trimming'], ['stump', 'Stump grinding'], ['land_clearing', 'Land clearing'], ['other', 'Other']]) {
+  for (const [val, lab] of [['removal', T('Removal')], ['pruning', T('Pruning / trimming')], ['stump', T('Stump grinding')], ['land_clearing', T('Land clearing')], ['other', T('Other')]]) {
     jobSel.appendChild(new Option(lab, val));
   }
-  const notes = el('textarea'); notes.placeholder = 'Access notes from the call — fenced backyard, tight gate, dogs…';
+  const notes = el('textarea'); notes.placeholder = T('Access notes from the call — fenced backyard, tight gate, dogs…');
   const said = []; // the lines that say what the lead lacks — × takes them away with the pill
   let streetLine = null;
   if (lead) {
     const pill = el('div', 'prep-from');
-    pill.appendChild(el('span', '', 'From ' + (lead.name || 'the caller') + '’s lead'));
+    pill.appendChild(el('span', '', lead.name ? tf('From {name}’s lead', { name: lead.name }) : T('From the caller’s lead')));
     const x = el('button', 'prep-x', '×');
     x.type = 'button';
-    x.setAttribute('aria-label', 'Clear the lead');
+    x.setAttribute('aria-label', T('Clear the lead'));
     x.addEventListener('click', () => {
       PREP_LEAD = null;
       addr.value = ''; zip.value = ''; notes.value = '';
@@ -4501,35 +4563,37 @@ function estimatePrepPanel() {
     if (!lead.street) {
       // §1B: a street Arbo could not read is named; one not on file is said — the box is focused, once, to type it.
       const gap = lead.streetUnreadable ? 'unread' : lead.streetCut ? 'cut' : null;
-      addr.placeholder = gap ? 'Type the street' : 'Street not on file';
-      streetLine = el('div', gap ? 'feed-state ' + gap : 'storm-muted', gap ? 'Street: ' + FEED_WORD[gap] + ' — type it in.' : 'Street not on file — type it in.');
+      addr.placeholder = gap ? T('Type the street') : T('Street not on file');
+      streetLine = el('div', gap ? 'feed-state ' + gap : 'storm-muted', gap ? 'Street: ' + FEED_WORD[gap] + ' — type it in.' : T('Street not on file — type it in.'));
+      // R27: a street Arbo could not read is said in the shared feed words — English, marked "en inglés" in Spanish.
+      if (gap && ES.lang === 'es') { streetLine.setAttribute('lang', 'en'); streetLine.appendChild(esEnMark()); }
       said.push(streetLine);
       if (!lead.focused) { lead.focused = true; setTimeout(() => addr.focus(), 0); }
     }
   }
-  card.appendChild(f('Address', addr));
+  card.appendChild(field('address', T('Address'), addr));
   if (streetLine) card.appendChild(streetLine);
   // Direction B P15: City and ZIP share a row, so Estimate's tools sit a field higher (a narrow phone stacks them).
   const cz = card.appendChild(el('div', 'prep-cityzip'));
-  cz.appendChild(f('City', citySel));
-  cz.appendChild(f('ZIP', zip));
+  cz.appendChild(field('city', T('City'), citySel));
+  cz.appendChild(field('zip', T('ZIP'), zip));
   if (lead && !lead.city) {
-    const n = card.appendChild(el('div', 'storm-muted', 'City not on file — choose one.'));
+    const n = card.appendChild(el('div', 'storm-muted', T('City not on file — choose one.')));
     said.push(n);
   }
   // P18 review: a lead with no ZIP says so before Build — without one the drive time can't be worked out (never a 0).
   if (lead && !lead.zip) {
-    const n = card.appendChild(el('div', 'storm-muted', 'ZIP not on file — without it the drive time can’t be worked out.'));
+    const n = card.appendChild(el('div', 'storm-muted', T('ZIP not on file — without it the drive time can’t be worked out.')));
     said.push(n);
   }
-  card.appendChild(f('Job type', jobSel));
-  card.appendChild(f('Access notes', notes));
-  const go = el('button', 'actbtn', 'Build prep sheet');
+  card.appendChild(field('job-type', T('Job type'), jobSel));
+  card.appendChild(field('access-notes', T('Access notes'), notes));
+  const go = el('button', 'actbtn', T('Build prep sheet'));
   const out = el('div');
   go.onclick = async () => {
-    if (!addr.value.trim()) { out.replaceChildren(el('div', 'errline', 'Address is required.')); return; }
-    if (!citySel.value) { out.replaceChildren(el('div', 'errline', 'Choose the city.')); return; }
-    go.disabled = true; go.textContent = 'Screening…';
+    if (!addr.value.trim()) { out.replaceChildren(el('div', 'errline', T('Address is required.'))); return; }
+    if (!citySel.value) { out.replaceChildren(el('div', 'errline', T('Choose the city.'))); return; }
+    go.disabled = true; go.textContent = T('Screening…');
     out.replaceChildren();
     let s;
     try {
@@ -4538,58 +4602,67 @@ function estimatePrepPanel() {
         jobType: jobSel.value, accessNotes: notes.value.trim() || undefined,
       } });
     } catch (e) {
-      go.disabled = false; go.textContent = 'Build prep sheet';
+      go.disabled = false; go.textContent = T('Build prep sheet');
       if (e.code === 401) return showKeywall();
       await LINKS_READY; // whether db_not_configured means "cut" depends on the links
       // §1B: a screen that never ran is a named feed, never a grey help tip.
-      out.appendChild(el('div', 'feed-state ' + feedKind(e), 'Prep sheet unavailable right now — nothing was screened.'));
+      out.appendChild(el('div', 'feed-state ' + feedKind(e), T('Prep sheet unavailable right now — nothing was screened.')));
       return;
     }
-    go.disabled = false; go.textContent = 'Build prep sheet';
+    go.disabled = false; go.textContent = T('Build prep sheet');
     // Never the green ON TARGET pricing style: a screen that never ran is a
     // warning, and NO OVERLAY — VERIFY is neutral — green would read as a pass.
     const pc = !s.permit.ran ? 'v-below' : s.permit.status === 'PERMIT_LIKELY' ? 'v-lose' : s.permit.status === 'REVIEW_NEEDED' ? 'v-below' : 'v-verify';
     const sheet = el('div', 'verdict ' + pc);
     // Direction B P15: one row each — Permit, Drive, 811, Access — in the server's own words.
     const lab = (t) => sheet.appendChild(el('div', 'loop-kind prep-lab', t));
-    lab('Permit');
+    lab(T('Permit'));
     // The head is the permit state's one label (PERMIT_STATE); a screen that never ran is PERMIT SCREEN PENDING, as on Leads.
+    // R27: said through the safety pair (permitLabel).
     const ps = PERMIT_STATE[s.permit.ran ? s.permit.status : 'SCREEN_PENDING'];
-    sheet.appendChild(el('div', 'vhead', ps ? ps[0] : s.permit.status.replace(/_/g, ' ')));
-    sheet.appendChild(el('div', 'drv', s.permit.ran ? s.permit.headline : s.permit.reason));
+    sheet.appendChild(permitLabel(el('div', 'vhead', ps ? ps[0] : s.permit.status.replace(/_/g, ' '))));
+    // The permit lines are the server's own (R27 Phase B gives them twins): until then each is its English, marked
+    // "en inglés" in Spanish mode. The power-line line is a safety instruction: its English under the Spanish pointer.
+    sheet.appendChild(esSayTwin(el('div', 'drv'), s.permit, s.permit.ran ? 'headline' : 'reason'));
     if (s.permit.ran) {
-      for (const o of s.permit.overlays) sheet.appendChild(el('div', 'drv', '⚠ ' + o.meaning));
-      if (s.permit.mitigation) sheet.appendChild(el('div', 'drv', '' + s.permit.mitigation));
-      if (s.permit.scaleEscalation) sheet.appendChild(el('div', 'drv', s.permit.scaleEscalation));
-      if (s.permit.powerLine) sheet.appendChild(el('div', 'drv', '' + s.permit.powerLine));
+      for (const o of s.permit.overlays) sheet.appendChild(esSayTwin(el('div', 'drv'), o, 'meaning', '⚠ '));
+      if (s.permit.mitigation) sheet.appendChild(esSayTwin(el('div', 'drv'), s.permit, 'mitigation'));
+      if (s.permit.scaleEscalation) sheet.appendChild(esSayTwin(el('div', 'drv'), s.permit, 'scaleEscalation'));
+      if (s.permit.powerLine) sheet.appendChild(esSayPick(el('div', 'drv'), s.permit, 'powerLine'));
     }
     // The city's own job check, one tap away, on that city (a city outside the four has none).
     if (s.city) {
-      const jc = el('button', 'minibtn prep-jc', 'Open the job check ›');
+      const jc = el('button', 'minibtn prep-jc', T('Open the job check ›'));
       jc.type = 'button';
       jc.addEventListener('click', () => { PERMIT_CITY = s.city; switchTab('permits'); renderPermits(); });
       sheet.appendChild(jc);
     }
     // Maps wave B (M2): DEQ's RPA areas on the map — the four-city view; this address is never handed to it (Q11).
-    const rpa = el('button', 'minibtn prep-jc', 'RPA areas on the map');
+    const rpa = el('button', 'minibtn prep-jc', T('RPA areas on the map'));
     rpa.type = 'button';
     rpa.addEventListener('click', () => openMap('permits'));
     sheet.appendChild(rpa);
-    lab('Drive');
-    if (s.drive.fromZip) sheet.appendChild(el('div', 'drv', '~' + s.drive.minutes + ' min from ' + s.drive.fromZip + ' — ' + s.drive.note));
-    else {
+    lab(T('Drive'));
+    if (s.drive.fromZip) {
+      // The minutes and the ZIP go into the page's words; the note after the dash is the server's (English, marked, until Phase B).
+      const d = sheet.appendChild(el('div', 'drv', tf('~{min} min from {zip}', { min: s.drive.minutes, zip: s.drive.fromZip }) + ' — '));
+      d.appendChild(esSayTwin(el('span'), s.drive, 'note'));
+    } else {
       // §1B: a drive time Arbo could not work out is named in the server's words — never a 0 — and ↻ builds the sheet again.
-      const d = sheet.appendChild(el('div', 'feed-state unset', s.drive.reason));
-      const again = el('button', 'minibtn prep-again', '↻ Build again');
+      const d = sheet.appendChild(esSayTwin(el('div', 'feed-state unset'), s.drive, 'reason'));
+      const again = el('button', 'minibtn prep-again', T('↻ Build again'));
       again.type = 'button';
       again.addEventListener('click', () => go.onclick());
       d.appendChild(again);
     }
     lab('811');
-    sheet.appendChild(el('div', 'drv', s.missUtility.note));
-    lab('Access');
-    sheet.appendChild(el('div', 'drv', '' + (s.access.notes ? '"' + s.access.notes + '" — ' + s.access.note : s.access.note)));
-    if (s.cityNote) sheet.appendChild(el('div', 'drv', s.cityNote));
+    // The 811 line is a safety instruction (call before you dig): its English under the Spanish pointer, until Phase B.
+    sheet.appendChild(esSayPick(el('div', 'drv'), s.missUtility, 'note'));
+    lab(T('Access'));
+    // What the caller said is theirs, as typed; the note after it is the server's.
+    const acc = sheet.appendChild(el('div', 'drv', s.access.notes ? '"' + s.access.notes + '" — ' : ''));
+    acc.appendChild(esSayTwin(el('span'), s.access, 'note'));
+    if (s.cityNote) sheet.appendChild(esSayTwin(el('div', 'drv'), s, 'cityNote'));
     out.replaceChildren(sheet);
   };
   card.appendChild(go);
@@ -4606,9 +4679,11 @@ async function renderBook() {
   const head = el('div', 'viewhead');
   head.appendChild(el('div', 'eyebrow', 'Arborist'));
   head.appendChild(el('h1', '', VIEW_TITLES.book));
-  head.appendChild(el('p', '', 'Every property Arbo has on file. Tap one for its history, trees and permit screens.'));
+  head.appendChild(el('p', '', T('Every property Arbo has on file.') + ' ' + T('Tap one for its history, trees and permit screens.')));
   v.appendChild(head);
   const reading = first ? v.appendChild(readingLine()) : null;
+  // R27: a dead feed is said in the shared §1B feed words — English as written, marked "en inglés" in Spanish.
+  const en = (n) => { if (ES.lang === 'es') { n.setAttribute('lang', 'en'); n.appendChild(esEnMark()); } return n; };
   let data;
   try {
     data = await api('/api/properties').finally(() => { if (reading) reading.remove(); });
@@ -4616,32 +4691,32 @@ async function renderBook() {
     if (e.code === 401) return showKeywall();
     // §1B: a Book Arbo could not read is NAMED, never headed "empty".
     await LINKS_READY;
-    v.appendChild(feedState(e, VIEW_TITLES.book, 'an empty list')); // P15 review: the screen's own name (the Book was renamed)
+    v.appendChild(en(feedState(e, VIEW_TITLES.book, 'an empty list'))); // P15 review: the screen's own name (the Book was renamed)
     return;
   }
   if (data.forecastUnavailable) {
     // §1B: a dead forecast is not "nothing due" — said before the list.
-    v.appendChild(el('div', 'sect', 'Coming due'));
-    v.appendChild(feedLine(null, 'Coming-due forecast', 'Due badges below are missing, not "nothing due".'));
+    v.appendChild(el('div', 'sect', T('Coming due')));
+    v.appendChild(en(feedLine(null, 'Coming-due forecast', 'Due badges below are missing, not "nothing due".')));
   } else if (data.comingDue && data.comingDue.length) {
-    v.appendChild(el('div', 'sect', 'Coming due — worth a look'));
+    v.appendChild(el('div', 'sect', T('Coming due — worth a look')));
     for (const d of data.comingDue) {
       const c = el('div', 'card');
       const top = el('div', 'toprow');
       top.appendChild(el('div', 'who', d.address));
       c.appendChild(top);
       if (d.city) c.appendChild(el('div', 'addr', d.city));
-      c.appendChild(el('div', 'due-note', d.note));
+      c.appendChild(esSayTwin(el('div', 'due-note'), d, 'note')); // the server's note: English, marked, until Phase B
       const b = el('div', 'badges');
-      b.appendChild(chip(d.state === 'overdue' ? 'OVERDUE' : 'DUE NOW', 'watch'));
+      b.appendChild(chip(d.state === 'overdue' ? T('OVERDUE') : T('DUE NOW'), 'watch'));
       c.appendChild(b);
       c.addEventListener('click', () => openTwin(d.propertyId, d.address));
       v.appendChild(c);
     }
   }
-  v.appendChild(el('div', 'sect', 'All properties'));
+  v.appendChild(el('div', 'sect', T('All properties')));
   if (!data.properties.length) {
-    v.appendChild(state('No properties yet', 'Every address Arbo touches opens a living profile here.'));
+    v.appendChild(state(T('No properties yet'), T('Every address Arbo touches opens a living profile here.')));
     return;
   }
   const count = (arr) => (arr && arr[0] ? arr[0].count : 0);
@@ -4652,10 +4727,11 @@ async function renderBook() {
     c.appendChild(top);
     c.appendChild(el('div', 'addr', p.city + (p.zip ? ' · ' + p.zip : '')));
     const b = el('div', 'badges');
-    b.appendChild(chip(plural(count(p.jobs), 'job') + ' · ' + plural(count(p.estimates), 'estimate') + ' · ' + plural(count(p.trees), 'tree'), 'info'));
-    if (p.due) b.appendChild(chip(p.due.state === 'overdue' ? 'OVERDUE' : 'COMING DUE', 'watch'));
-    if (p.hazard_power_lines) b.appendChild(chip('POWER LINES', 'alarm'));
-    if (p.hazard_structures) b.appendChild(chip('STRUCTURES', 'stop'));
+    const j = count(p.jobs), est = count(p.estimates), tr = count(p.trees);
+    b.appendChild(chip(tn(j, '{n} job', '{n} jobs') + ' · ' + tn(est, '{n} estimate', '{n} estimates') + ' · ' + tn(tr, '{n} tree', '{n} trees'), 'info'));
+    if (p.due) b.appendChild(chip(p.due.state === 'overdue' ? T('OVERDUE') : T('COMING DUE'), 'watch'));
+    if (p.hazard_power_lines) b.appendChild(esSay(chip('', 'alarm'), 'POWER LINES'));
+    if (p.hazard_structures) b.appendChild(esSay(chip('', 'stop'), 'STRUCTURES'));
     c.appendChild(b);
     c.addEventListener('click', () => openTwin(p.id, p.address));
     v.appendChild(c);
@@ -4665,7 +4741,7 @@ async function renderBook() {
 // The twin sheet: history, trees, permits, coming-due — "know this customer
 // instantly" (§9), one tap from anywhere.
 async function openTwin(id, title) {
-  $('twin-title').textContent = title || 'Property';
+  $('twin-title').textContent = title || T('Property');
   const body = $('twin-body');
   body.replaceChildren();
   $('twin').classList.add('show');
@@ -4677,7 +4753,9 @@ async function openTwin(id, title) {
     if (e.code === 401) { closeSheet('twin'); return showKeywall(); }
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
     // §1B: a twin Arbo could not read is named, never drawn as a lot with no history.
-    body.appendChild(feedState(e, 'This property', 'a property with no history', 'Close this and tap the property again.'));
+    // R27: in the shared §1B feed words — English as written, marked "en inglés" in Spanish.
+    const dead = body.appendChild(feedState(e, 'This property', 'a property with no history', 'Close this and tap the property again.'));
+    if (ES.lang === 'es') { dead.setAttribute('lang', 'en'); dead.appendChild(esEnMark()); }
     return;
   }
   const p = t.property;
@@ -4685,50 +4763,54 @@ async function openTwin(id, title) {
   body.appendChild(meta);
   if (p.hazard_power_lines || p.hazard_structures) {
     const b = el('div', 'badges');
-    if (p.hazard_power_lines) b.appendChild(chip('POWER LINES', 'alarm'));
-    if (p.hazard_structures) b.appendChild(chip('STRUCTURES', 'stop'));
+    if (p.hazard_power_lines) b.appendChild(esSay(chip('', 'alarm'), 'POWER LINES'));
+    if (p.hazard_structures) b.appendChild(esSay(chip('', 'stop'), 'STRUCTURES'));
     body.appendChild(b);
   }
   if (t.permits.length) {
-    body.appendChild(el('div', 'sect', 'Permit screens (never a bare "clear")'));
+    body.appendChild(el('div', 'sect', T('Permit screens (never a bare "clear")')));
+    // R27: a permit's lifecycle in the page's words; one Arbo does not know stays as stored.
+    const life = (st) => (st === 'needed' ? T('NEEDED') : st === 'applied' ? T('APPLIED') : st === 'approved' ? T('APPROVED')
+      : st === 'not_required_verified' ? T('NOT REQUIRED VERIFIED') : String(st).replace(/_/g, ' ').toUpperCase());
     for (const pr of t.permits) {
       const c = el('div', 'card');
       const b = el('div', 'badges');
-      b.appendChild(permitChip(pr.screen_status)); // the one label per permit state (PERMIT_STATE)
-      if (pr.in_rpa) b.appendChild(chip('IN RPA', 'watch'));
-      b.appendChild(chip(pr.status.replace(/_/g, ' ').toUpperCase(), 'info'));
+      b.appendChild(permitLabel(permitChip(pr.screen_status))); // the one label per permit state (PERMIT_STATE), through the safety pair
+      if (pr.in_rpa) b.appendChild(chip(T('IN RPA'), 'watch'));
+      b.appendChild(chip(life(pr.status), 'info'));
       c.appendChild(b);
       body.appendChild(c);
     }
   }
-  body.appendChild(el('div', 'sect', 'Trees on the lot'));
-  if (!t.trees.length) body.appendChild(state('No trees recorded yet', 'Trees land here as estimates and jobs record them.'));
+  body.appendChild(el('div', 'sect', T('Trees on the lot')));
+  if (!t.trees.length) body.appendChild(state(T('No trees recorded yet'), T('Trees land here as estimates and jobs record them.')));
   // A bare YYYY-MM-DD reads as 'Sep 28'; anything else stays as the record has it.
   const day = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? fmtWhen(v) : v);
   for (const tr of t.trees) {
     const c = el('div', 'card');
-    c.appendChild(el('div', 'who', (tr.species || 'Species unknown') + (tr.size ? ' · ' + tr.size : '')));
+    c.appendChild(el('div', 'who', (tr.species || T('Species unknown')) + (tr.size ? ' · ' + tr.size : '')));
     if (tr.location_on_lot) c.appendChild(el('div', 'addr', tr.location_on_lot));
-    if (tr.last_service_date) c.appendChild(el('div', 'scope', 'Last serviced ' + day(tr.last_service_date)));
-    if (tr.next_due_forecast) c.appendChild(el('div', 'due-note', 'Typically ready for another look around ' + day(tr.next_due_forecast)));
+    if (tr.last_service_date) c.appendChild(el('div', 'scope', tf('Last serviced {day}', { day: day(tr.last_service_date) })));
+    if (tr.next_due_forecast) c.appendChild(el('div', 'due-note', tf('Typically ready for another look around {day}', { day: day(tr.next_due_forecast) })));
     body.appendChild(c);
   }
-  body.appendChild(el('div', 'sect', 'History'));
+  body.appendChild(el('div', 'sect', T('History')));
   const tl = el('div', 'tl');
+  // A job's status and an estimate's outcome are the record's own words, as stored (data).
   const items = [
-    ...t.jobs.map(j => ({ when: j.completed_at || j.scheduled_for, line: 'Job — ' + j.status + (j.materials ? ' · ' + j.materials : ''), who: j.contact && j.contact.name })),
-    ...t.estimates.map(es => ({ when: es.scheduled_slot, line: 'Estimate — ' + (es.outcome || 'pending'), who: es.contact && es.contact.name })),
+    ...t.jobs.map(j => ({ when: j.completed_at || j.scheduled_for, line: tf('Job — {status}', { status: j.status }) + (j.materials ? ' · ' + j.materials : ''), who: j.contact && j.contact.name })),
+    ...t.estimates.map(es => ({ when: es.scheduled_slot, line: es.outcome ? tf('Estimate — {outcome}', { outcome: es.outcome }) : T('Estimate — pending'), who: es.contact && es.contact.name })),
   ].sort((a, b) => String(b.when || '').localeCompare(String(a.when || '')));
-  if (!items.length) tl.appendChild(state('No visits yet', 'Jobs and estimates stack up here.'));
+  if (!items.length) tl.appendChild(state(T('No visits yet'), T('Jobs and estimates stack up here.')));
   for (const it of items) {
     const c = el('div', 'card');
     c.appendChild(el('div', 'who', it.line));
-    c.appendChild(el('div', 'addr', (it.when ? fmtWhen(it.when) || String(it.when) : 'unscheduled') + (it.who ? ' · ' + it.who : '')));
+    c.appendChild(el('div', 'addr', (it.when ? fmtWhen(it.when) || String(it.when) : T('unscheduled')) + (it.who ? ' · ' + it.who : '')));
     tl.appendChild(c);
   }
   body.appendChild(tl);
   if (t.correspondence.length) {
-    body.appendChild(el('div', 'sect', 'City correspondence'));
+    body.appendChild(el('div', 'sect', T('City correspondence')));
     for (const co of t.correspondence) {
       const c = el('div', 'card');
       c.appendChild(el('div', 'who', co.city + ' — ' + co.kind.replace(/_/g, ' ')));
@@ -4739,6 +4821,12 @@ async function openTwin(id, title) {
   }
 }
 $('twin-close').addEventListener('click', () => closeSheet('twin'));
+// R27 Phase A (owner app): the property sheet's fixed words (the Close button's name); English mode never runs this.
+function twinWords() {
+  if (ES.lang !== 'es') return;
+  $('twin-close').setAttribute('aria-label', T('Close'));
+}
+twinWords();
 
 // ---------- Calls (§29 review loop: every conversation, your verdict) ----------
 async function renderCalls() {
@@ -4994,37 +5082,59 @@ async function renderSafety(slot) {
   } catch (e) {
     if (e.code === 401) return;
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
-    slot.appendChild(el('div', 'panel-title', 'Safety'));
-    slot.appendChild(state('Safety board — ' + FEED_WORD[feedKind(e)], e.code === 503
+    slot.appendChild(el('div', 'panel-title', T('Safety')));
+    // R27: a dead feed in the shared §1B feed words — English as written, marked "en inglés" in Spanish.
+    const dead = slot.appendChild(state('Safety board — ' + FEED_WORD[feedKind(e)], e.code === 503
       ? feedSays(e) + ' Arbo cannot check credentials or near misses.'
       : 'Could not read the safety board. This is not a claim that everyone is current.'));
+    if (ES.lang === 'es') { dead.setAttribute('lang', 'en'); dead.appendChild(esEnMark()); }
     return;
   }
+  // R27: a card's state (CERT_STATE's English label) said into its node after `lead` — EXPIRED, NO RECORD and NO EXPIRY
+  // DATE are safety labels, said through the safety pair; the other two are the page's own words.
+  const certSay = (n, label, lead) => {
+    const pre = lead || '';
+    switch (label) {
+      case 'EXPIRED': return esSay(n, 'EXPIRED', pre);
+      case 'NO RECORD': return esSay(n, 'NO RECORD', pre);
+      case 'NO EXPIRY DATE': return esSay(n, 'NO EXPIRY DATE', pre);
+      case 'EXPIRES SOON': n.textContent = pre + T('EXPIRES SOON'); return n;
+      case 'RENEWAL DUE': n.textContent = pre + T('RENEWAL DUE'); return n;
+      default: n.textContent = pre + label; return n;
+    }
+  };
 
   // The board's own heading, so its stops never read as part of the panel
   // above. The clean-board title further down only draws with no blind spots.
-  if (s.blindSpots.length || s.aerialBlocked.length) slot.appendChild(el('div', 'panel-title', s.aerialBlocked.length ? 'Safety — ' + s.aerialBlocked.length + ' cannot go aerial' : 'Safety'));
+  if (s.blindSpots.length || s.aerialBlocked.length) slot.appendChild(el('div', 'panel-title', s.aerialBlocked.length ? tf('Safety — {n} cannot go aerial', { n: s.aerialBlocked.length }) : T('Safety')));
   // Blind spots FIRST. A safety board with a hole in it must say so before it
   // shows anything reassuring (§1B).
   for (const b of s.blindSpots) {
     const c = el('div', 'card loop-card urgent');
-    c.appendChild(el('div', 'loop-kind', '⚠ CANNOT SEE'));
-    c.appendChild(el('div', 'scope', b));
+    c.appendChild(el('div', 'loop-kind', T('⚠ CANNOT SEE')));
+    c.appendChild(esSayTwin(el('div', 'scope'), { line: b }, 'line')); // the server's own line: English, marked, until Phase B
     slot.appendChild(c);
   }
 
   if (s.aerialBlocked.length) {
     const c = el('div', 'card emergency');
-    c.appendChild(el('div', 'who', plural(s.aerialBlocked.length, 'crew member') + ' cannot be put on aerial work'));
+    c.appendChild(el('div', 'who', tn(s.aerialBlocked.length, '{n} crew member cannot be put on aerial work', '{n} crew members cannot be put on aerial work')));
     c.appendChild(el('div', 'scope',
-      'A rescue-critical credential is expired, missing, or has no date on file. Fix before assigning the day.'));
+      T('A rescue-critical credential is expired, missing, or has no date on file.') + ' ' + T('Fix before assigning the day.')));
     // Mike, 2026-10-20: a red flag says WHO, and a tap opens that person's credential below.
     for (const id of s.aerialBlocked) {
       const probs = s.certProblems.filter((f) => f.crewMemberId === id);
       const lead = probs.find((f) => f.blocksAerialWork) || probs[0];
       // Short: who · which card · its state ("SIM-Alder · Aerial rescue · EXPIRED"); the full line is on the card.
-      const what = (f) => ((CERT_TYPES.find(([k]) => k === f.type) || [f.type, String(f.type).replace(/_/g, ' ')])[1]) + ' · ' + (CERT_STATE[f.state] || [String(f.state).toUpperCase()])[0];
-      const row = el('button', 'sliplink', ((lead && lead.crewMemberName) || 'A crew member') + (lead ? ' · ' + what(lead) : '') + (probs.length > 1 ? ' (+' + (probs.length - 1) + ' more)' : ''));
+      // R27: the state is said through certSay (the safety pair for EXPIRED, NO RECORD, NO EXPIRY DATE).
+      const card = (f) => (CERT_TYPES.find(([k]) => k === f.type) || [f.type, String(f.type).replace(/_/g, ' ')])[1];
+      const who = (lead && lead.crewMemberName) || T('A crew member');
+      const row = el('button', 'sliplink');
+      // In Spanish the safety pair is an element: the row's words go in one span, so the flex row never splits them into columns.
+      const words = ES.lang === 'es' ? row.appendChild(el('span')) : row;
+      if (lead) certSay(words, (CERT_STATE[lead.state] || [String(lead.state).toUpperCase()])[0], who + ' · ' + card(lead) + ' · ');
+      else words.textContent = who;
+      if (probs.length > 1) words.appendChild(document.createTextNode(' ' + tf('(+{n} more)', { n: probs.length - 1 })));
       row.addEventListener('click', () => {
         const t = [...slot.querySelectorAll('[data-crew]')].find((n) => n.dataset.crew === id);
         if (!t) return;
@@ -5037,7 +5147,7 @@ async function renderSafety(slot) {
   }
 
   if (s.certProblems.length) {
-    slot.appendChild(el('div', 'panel-title', 'Credentials — ' + s.certProblems.length + ' need attention'));
+    slot.appendChild(el('div', 'panel-title', tf('Credentials — {n} need attention', { n: s.certProblems.length })));
     for (const f of s.certProblems) {
       const hard = f.state === 'lapsed' || f.state === 'missing';
       const c = el('div', 'card' + (hard ? ' emergency' : ''));
@@ -5046,15 +5156,15 @@ async function renderSafety(slot) {
       top.appendChild(el('div', 'who', f.crewMemberName));
       // A lapsed card says how long ago, in the stop colour — never a gold '-19d'.
       const lapsed = f.daysUntil !== null && f.daysUntil < 0;
-      const when = el('div', 'when', f.daysUntil === null ? '—' : lapsed ? plural(-f.daysUntil, 'day') + ' ago' : f.daysUntil + 'd');
+      const when = el('div', 'when', f.daysUntil === null ? '—' : lapsed ? tn(-f.daysUntil, '{n} day ago', '{n} days ago') : tf('{n}d', { n: f.daysUntil }));
       if (lapsed) when.style.color = 'var(--emergency)';
       top.appendChild(when);
       c.appendChild(top);
-      c.appendChild(el('div', 'scope', f.line));
+      c.appendChild(esSayTwin(el('div', 'scope'), f, 'line')); // the server's own line: English, marked, until Phase B
       const b = el('div', 'badges');
       const [label, tone] = CERT_STATE[f.state] || [String(f.state).toUpperCase(), 'watch'];
-      b.appendChild(chip(label, tone));
-      if (f.blocksAerialWork) b.appendChild(chip('NO AERIAL WORK', 'alarm'));
+      b.appendChild(certSay(chip('', tone), label));
+      if (f.blocksAerialWork) b.appendChild(esSay(chip('', 'alarm'), 'NO AERIAL WORK'));
       c.appendChild(b);
       slot.appendChild(c);
     }
@@ -5062,11 +5172,14 @@ async function renderSafety(slot) {
 
   const openNm = (s.nearMisses || []).filter((n) => !n.hasTrainingItem);
   if (openNm.length) {
-    slot.appendChild(el('div', 'panel-title', 'Near misses — ' + openNm.length + ' with no lesson yet'));
+    slot.appendChild(el('div', 'panel-title', tf('Near misses — {n} with no lesson yet', { n: openNm.length })));
+    // R27: a hazard category in the page's words (the crew door's, D111); one Arbo does not know stays as stored.
+    const cat = (k) => (k === 'struck_by' ? T('struck by') : k === 'electrical' ? T('electrical') : k === 'fall' ? T('fall') : k === 'cutting' ? T('cutting')
+      : k === 'vehicle' ? T('vehicle') : k === 'rigging' ? T('rigging') : k === 'environmental' ? T('environmental') : !k ? T('uncategorised') : String(k).replace(/_/g, ' '));
     for (const n of openNm.slice(0, 8)) {
       const c = el('div', 'card');
       const top = el('div', 'toprow');
-      top.appendChild(el('div', 'who', (n.hazardCategory || 'uncategorised').replace(/_/g, ' ')));
+      top.appendChild(el('div', 'who', cat(n.hazardCategory)));
       top.appendChild(el('div', 'when', fmtWhen(n.occurredOn)));
       c.appendChild(top);
       c.appendChild(el('div', 'scope', n.description));
@@ -5076,10 +5189,10 @@ async function renderSafety(slot) {
 
   // Clean board must look different from a board that never ran.
   if (!s.blindSpots.length && !s.certProblems.length && !openNm.length) {
-    slot.appendChild(el('div', 'panel-title', 'Safety'));
-    slot.appendChild(state('No expiry problems found',
-      'Arbo checked every active crew member against the certs on file and found nothing expiring. '
-      + 'That is not a clearance — it means no problem was found in the records Arbo can see.'));
+    slot.appendChild(el('div', 'panel-title', T('Safety')));
+    slot.appendChild(state(T('No expiry problems found'),
+      T('Arbo checked every active crew member against the certs on file and found nothing expiring.')
+      + ' ' + T('That is not a clearance — it means no problem was found in the records Arbo can see.')));
   }
 }
 
@@ -5088,15 +5201,16 @@ async function renderSafety(slot) {
 // on file at all. Nothing here passes judgement on anybody — it reports how
 // many cards are RECORDED, which is a different fact, and findCertProblems on
 // the board above owns the only verdict in the app.
+// R27: each card's name is said once, at load, in the page's language (the office app reloads on a language change).
 const CERT_TYPES = [
-  ['first_aid', 'First aid'], ['cpr', 'CPR'], ['aerial_rescue', 'Aerial rescue'],
-  ['tree_rescue', 'Tree rescue'], ['cdl', 'CDL'], ['other', 'Other'],
+  ['first_aid', T('First aid')], ['cpr', T('CPR')], ['aerial_rescue', T('Aerial rescue')],
+  ['tree_rescue', T('Tree rescue')], ['cdl', T('CDL')], ['other', T('Other')],
 ];
 const CREW_ROLES = ['climber', 'foreman', 'groundie', 'driver'];
 
 async function renderRoster(slot) {
   slot.replaceChildren();
-  slot.appendChild(el('div', 'panel-title', 'Crew roster'));
+  slot.appendChild(el('div', 'panel-title', T('Crew roster')));
   const listSlot = el('div');
   slot.appendChild(listSlot);
   // No form over a feed Arbo could not read, the same as the fleet: nothing
@@ -5112,51 +5226,55 @@ async function renderRosterList(slot) {
   } catch (e) {
     if (e.code === 401) return false;
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
-    slot.appendChild(state('Roster — ' + FEED_WORD[feedKind(e)], e.code === 503
+    // R27: a dead feed in the shared §1B feed words — English as written, marked "en inglés" in Spanish.
+    const dead = slot.appendChild(state('Roster — ' + FEED_WORD[feedKind(e)], e.code === 503
       ? feedSays(e) + ' Arbo cannot tell you who is on the crew.'
       : 'Could not read the roster. This is not a claim that nobody is on it.'));
+    if (ES.lang === 'es') { dead.setAttribute('lang', 'en'); dead.appendChild(esEnMark()); }
     return false;
   }
   if (!r.certsKnown) {
     // §1B: unread cards are UNKNOWN, and a zero would read as "he has none".
     const w = el('div', 'card loop-card urgent');
-    w.appendChild(el('div', 'loop-kind', '⚠ CANNOT SEE'));
+    w.appendChild(el('div', 'loop-kind', T('⚠ CANNOT SEE')));
     w.appendChild(el('div', 'scope',
-      'Arbo could not read the certification rows. Card counts below are unknown — not zero.'));
+      T('Arbo could not read the certification rows.') + ' ' + T('Card counts below are unknown — not zero.')));
     slot.appendChild(w);
   }
   if (!r.people.length) {
-    slot.appendChild(state('Nobody on the roster yet',
-      'Add your crew below. Until somebody is on here the safety board has nothing to check and no one can sign into the crew door.'));
+    slot.appendChild(state(T('Nobody on the roster yet'),
+      T('Add your crew below.') + ' ' + T('Until somebody is on here the safety board has nothing to check and no one can sign into the crew door.')));
     return true;
   }
+  // R27: a role in the page's words (the glossary's, the English beside); one Arbo does not know stays as stored.
+  const role = (x) => (x === 'climber' ? T('climber') : x === 'foreman' ? T('foreman') : x === 'groundie' ? T('groundie') : x === 'driver' ? T('driver') : x);
   for (const p of r.people) {
     const c = el('div', 'card' + (p.active ? '' : ' loop-card'));
     const top = el('div', 'toprow');
     top.appendChild(el('div', 'who', p.name));
-    top.appendChild(el('div', 'when', 'level ' + p.competencyLevel));
+    top.appendChild(el('div', 'when', tf('level {n}', { n: p.competencyLevel })));
     c.appendChild(top);
     const b = el('div', 'badges');
-    b.appendChild(chip(p.role.toUpperCase(), CREW_ROLES.indexOf(p.role) === -1 ? 'watch' : 'info'));
-    if (!p.active) b.appendChild(chip('OFF ROSTER', 'info'));
+    b.appendChild(chip(role(p.role).toUpperCase(), CREW_ROLES.indexOf(p.role) === -1 ? 'watch' : 'info'));
+    if (!p.active) b.appendChild(chip(T('OFF ROSTER'), 'info'));
     // A count of cards on file — never a statement about what they can do.
-    b.appendChild(chip(p.certCount === null ? 'CARDS UNKNOWN' : plural(p.certCount, 'card') + ' on file',
+    b.appendChild(chip(p.certCount === null ? T('CARDS UNKNOWN') : ES.lang === 'es' ? tn(p.certCount, '{n} card on file', '{n} cards on file') : plural(p.certCount, 'card') + ' on file',
       p.certCount === null ? 'watch' : 'info'));
     c.appendChild(b);
     if (CREW_ROLES.indexOf(p.role) === -1) {
       const w = el('div', 'scope');
       w.style.color = 'var(--warning)';
-      w.textContent = '⚠ Arbo does not know this role, so it applies the strictest card requirements to them.';
+      w.textContent = T('⚠ Arbo does not know this role, so it applies the strictest card requirements to them.');
       c.appendChild(w);
     }
-    c.appendChild(el('div', 'scope', 'Crew code: ' + p.id));
+    c.appendChild(el('div', 'scope', tf('Crew code: {id}', { id: p.id })));
     c.appendChild(certAdder(p, slot));
     if (p.active) {
       // CREW_PLAN C3 (D109, Q6): this person's sign-in link — the crew code only,
       // never the door key or the app key. Arbo sends nothing: the phone's own
       // share sheet does, or the link is copied for Mike to paste into a text.
       const link = location.origin + '/crew#crew=' + encodeURIComponent(p.id);
-      const share = el('button', 'actbtn', 'Send sign-in link');
+      const share = el('button', 'actbtn', T('Send sign-in link'));
       const shared = el('div', 'scope', '');
       shared.style.overflowWrap = 'anywhere';
       share.addEventListener('click', async () => {
@@ -5168,9 +5286,9 @@ async function renderRosterList(slot) {
         }
         try {
           await navigator.clipboard.writeText(link);
-          shared.textContent = 'Link copied — paste it into a text to ' + p.name + '.';
+          shared.textContent = tf('Link copied — paste it into a text to {name}.', { name: p.name });
         } catch (e) {
-          shared.textContent = 'Copy this link and text it to ' + p.name + ': ' + link;
+          shared.textContent = tf('Copy this link and text it to {name}: {link}', { name: p.name, link });
         }
       });
       c.appendChild(share);
@@ -5178,16 +5296,16 @@ async function renderRosterList(slot) {
       // One-way and no undo in the app: quiet danger style, and it asks twice.
       // It says only what it does. C3: an off-roster code is refused on the paid
       // routes (sign-off, questions), but the armed line promises no closed door.
-      const off = el('button', 'actbtn danger', 'Take off the roster');
+      const off = el('button', 'actbtn danger', T('Take off the roster'));
       const err = el('div', 'errline', '');
-      armTwice(off, 'Tap again to take ' + p.name + ' off the roster — the safety and training boards stop counting them.', async () => {
+      armTwice(off, tf('Tap again to take {name} off the roster — the safety and training boards stop counting them.', { name: p.name }), async () => {
         off.disabled = true;
         try {
           await api('/api/roster/' + p.id + '/deactivate', { method: 'POST', body: {} });
           renderRosterList(slot);
         } catch {
           off.disabled = false;
-          err.textContent = 'Could not do that. Nothing was changed.';
+          err.textContent = T('Could not do that.') + ' ' + T('Nothing was changed.');
         }
       });
       c.appendChild(off);
@@ -5245,11 +5363,11 @@ function certAdder(person, listSlot) {
   exp.type = 'date';
   // A bare date box does not say which date it wants.
   exp.id = 'cert-exp-' + person.id;
-  exp.setAttribute('aria-label', 'Expires on');
-  const expLabel = el('label', '', 'Expires on');
+  exp.setAttribute('aria-label', T('Expires on'));
+  const expLabel = el('label', '', T('Expires on'));
   expLabel.htmlFor = exp.id;
   expLabel.style.marginTop = '12px'; // its own gap below the card-type box
-  const btn = el('button', 'actbtn', 'Record / renew a card');
+  const btn = el('button', 'actbtn', T('Record / renew a card'));
   const out = el('div', 'errline', '');
   btn.addEventListener('click', async () => {
     btn.disabled = true;
@@ -5260,15 +5378,15 @@ function certAdder(person, listSlot) {
       });
       // A card with no date must not read as a win — the line says UNKNOWN.
       out.style.color = res.expiryKnown ? 'var(--ok)' : 'var(--warning)';
-      out.textContent = res.line;
+      out.replaceChildren(esSayTwin(el('span'), res, 'line')); // the server's own line: English, marked, until Phase B
       exp.value = '';
       btn.disabled = false;
       renderRosterList(listSlot);
     } catch (e) {
       btn.disabled = false;
       out.textContent = e.message === 'bad_expiry_date'
-        ? 'Expiry has to be a real date.'
-        : 'Could not record that. Nothing was written.';
+        ? T('Expiry has to be a real date.')
+        : T('Could not record that.') + ' ' + T('Nothing was written.');
     }
   });
   wrap.appendChild(type);
@@ -5276,7 +5394,7 @@ function certAdder(person, listSlot) {
   wrap.appendChild(exp);
   wrap.appendChild(btn);
   wrap.appendChild(out);
-  return disclose('Record / renew a card', wrap);
+  return disclose(T('Record / renew a card'), wrap);
 }
 
 function rosterComposer(listSlot) {
@@ -5284,26 +5402,28 @@ function rosterComposer(listSlot) {
   const row = el('div', 'field');
   const name = document.createElement('input');
   name.type = 'text';
-  name.placeholder = 'Name';
+  name.placeholder = T('Name');
   const role = document.createElement('select');
+  // R27: each role in the page's words (the glossary's, the English beside); the code it sends is the role as stored.
+  const word = (x) => (x === 'climber' ? T('climber') : x === 'foreman' ? T('foreman') : x === 'groundie' ? T('groundie') : x === 'driver' ? T('driver') : x);
   for (const r of CREW_ROLES) {
     const o = document.createElement('option');
     o.value = r;
-    o.textContent = r;
+    o.textContent = word(r);
     role.appendChild(o);
   }
   const level = document.createElement('input');
   level.type = 'text';
-  level.placeholder = 'Skill level 1–10';
+  level.placeholder = T('Skill level 1–10');
   level.inputMode = 'numeric'; // still a text box: a typo reaches the server's own refusal
   row.appendChild(name);
   row.appendChild(role);
   row.appendChild(level);
   c.appendChild(row);
-  const btn = el('button', 'actbtn', 'Add to roster');
+  const btn = el('button', 'actbtn', T('Add to roster'));
   const out = el('div', 'errline', '');
   btn.addEventListener('click', async () => {
-    if (!name.value.trim()) { out.textContent = 'Needs a name.'; return; }
+    if (!name.value.trim()) { out.textContent = T('Needs a name.'); return; }
     btn.disabled = true;
     try {
       const res = await api('/api/roster', {
@@ -5311,7 +5431,7 @@ function rosterComposer(listSlot) {
         body: { name: name.value.trim(), role: role.value, competencyLevel: Number(level.value) || 1 },
       });
       out.style.color = res.roleRecognised ? 'var(--ok)' : 'var(--warning)';
-      out.textContent = res.line;
+      out.replaceChildren(esSayTwin(el('span'), res, 'line')); // the server's own line: English, marked, until Phase B
       name.value = '';
       level.value = '';
       btn.disabled = false;
@@ -5319,12 +5439,12 @@ function rosterComposer(listSlot) {
     } catch {
       btn.disabled = false;
       out.style.color = '';
-      out.textContent = 'Could not add them. Nothing was written.';
+      out.textContent = T('Could not add them.') + ' ' + T('Nothing was written.');
     }
   });
   c.appendChild(btn);
   c.appendChild(out);
-  return disclose('Add someone to the roster', c);
+  return disclose(T('Add someone to the roster'), c);
 }
 
 // ---------- Training board (§6M.5: weak, untested, strong are three states) ----------
@@ -5336,54 +5456,59 @@ async function renderTrainingBoard(slot) {
   } catch (e) {
     if (e.code === 401) return;
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
-    slot.appendChild(el('div', 'panel-title', 'Crew training'));
-    slot.appendChild(state('Training board — ' + FEED_WORD[feedKind(e)], e.code === 503
+    slot.appendChild(el('div', 'panel-title', T('Crew training')));
+    // R27: a dead feed in the shared §1B feed words — English as written, marked "en inglés" in Spanish.
+    const dead = slot.appendChild(state('Training board — ' + FEED_WORD[feedKind(e)], e.code === 503
       ? feedSays(e) + ' Arbo cannot show who is weak on what.'
       : 'Could not read the training board. This is not a claim that everyone is current.'));
+    if (ES.lang === 'es') { dead.setAttribute('lang', 'en'); dead.appendChild(esEnMark()); }
     return;
   }
   if (!b.rows.length && !b.blindSpots.length) return;
 
   slot.appendChild(el('div', 'panel-title',
     b.owingThisWeek.length
-      ? 'Crew training — ' + b.owingThisWeek.length + (b.owingThisWeek.length === 1 ? ' owes' : ' owe') + ' this week'
-      : 'Crew training'));
+      ? tn(b.owingThisWeek.length, 'Crew training — {n} owes this week', 'Crew training — {n} owe this week')
+      : T('Crew training')));
 
   // Blind spots FIRST: what the board cannot see outranks what it can (§1B).
   for (const spot of b.blindSpots) {
     const w = el('div', 'card loop-card urgent');
-    w.appendChild(el('div', 'loop-kind', '⚠ CANNOT SEE'));
-    w.appendChild(el('div', 'scope', spot));
+    w.appendChild(el('div', 'loop-kind', T('⚠ CANNOT SEE')));
+    w.appendChild(esSayTwin(el('div', 'scope'), { line: spot }, 'line')); // the server's own line: English, marked, until Phase B
     slot.appendChild(w);
   }
 
+  // R27: a role in the page's words (the glossary's, the English beside); one Arbo does not know stays as stored.
+  const role = (x) => (x === 'climber' ? T('climber') : x === 'foreman' ? T('foreman') : x === 'groundie' ? T('groundie') : x === 'driver' ? T('driver') : x);
   for (const r of b.rows) {
     const c = el('div', 'card' + (r.neverTested ? ' emergency' : ''));
     const top = el('div', 'toprow');
     top.appendChild(el('div', 'who', r.name));
-    top.appendChild(el('div', 'when', r.role));
+    top.appendChild(el('div', 'when', role(r.role)));
     c.appendChild(top);
 
     const badges = el('div', 'badges');
-    if (r.neverTested) badges.appendChild(chip('NEVER TESTED', 'stop'));
-    if (r.completedThisWeek === null) badges.appendChild(chip('WEEK UNKNOWN', 'watch'));
-    else if (r.completedThisWeek) badges.appendChild(chip('WEEK DONE', 'good'));
-    else badges.appendChild(chip('OWES THIS WEEK', 'watch'));
+    if (r.neverTested) badges.appendChild(chip(T('NEVER TESTED'), 'stop'));
+    if (r.completedThisWeek === null) badges.appendChild(chip(T('WEEK UNKNOWN'), 'watch'));
+    else if (r.completedThisWeek) badges.appendChild(chip(T('WEEK DONE'), 'good'));
+    else badges.appendChild(chip(T('OWES THIS WEEK'), 'watch'));
     c.appendChild(badges);
 
+    // The topics are the office's own labels (data), as written.
     if (r.weakTopics.length) {
-      c.appendChild(el('div', 'scope', 'Weak: ' + r.weakTopics
-        .map((w) => w.topic + ' (' + Math.round(w.score * 100) + '%)').join(' · ')));
+      c.appendChild(el('div', 'scope', tf('Weak: {topics}', { topics: r.weakTopics
+        .map((w) => w.topic + ' (' + Math.round(w.score * 100) + '%)').join(' · ') })));
     }
     if (r.untestedTopics.length) {
       // Deliberately NOT phrased as a pass. Never asked is our gap, not his.
       const u = el('div', 'scope');
       u.style.color = 'var(--warning)';
-      u.textContent = 'Never asked about: ' + r.untestedTopics.join(' · ');
+      u.textContent = tf('Never asked about: {topics}', { topics: r.untestedTopics.join(' · ') });
       c.appendChild(u);
     }
     if (r.strongTopics.length) {
-      c.appendChild(el('div', 'scope', 'Strong: ' + r.strongTopics.join(' · ')));
+      c.appendChild(el('div', 'scope', tf('Strong: {topics}', { topics: r.strongTopics.join(' · ') })));
     }
     slot.appendChild(c);
   }
@@ -5639,14 +5764,16 @@ async function renderVetting(slot) {
   } catch (e) {
     if (e.code === 401) return;
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
-    slot.appendChild(el('div', 'panel-title', 'Safety lessons'));
-    slot.appendChild(state('Draft queue — ' + FEED_WORD[feedKind(e)], e.code === 503
+    slot.appendChild(el('div', 'panel-title', T('Safety lessons')));
+    // R27: a dead feed in the shared §1B feed words — English as written, marked "en inglés" in Spanish.
+    const dead = slot.appendChild(state('Draft queue — ' + FEED_WORD[feedKind(e)], e.code === 503
       ? feedSays(e) + ' Arbo cannot show what is waiting to be vetted.'
       : 'Could not read the draft queue. This is not a claim that nothing is waiting.'));
+    if (ES.lang === 'es') { dead.setAttribute('lang', 'en'); dead.appendChild(esEnMark()); }
     return;
   }
   if (!d.count) return;
-  slot.appendChild(el('div', 'panel-title', 'Safety lessons awaiting YOUR sign-off — ' + d.count));
+  slot.appendChild(el('div', 'panel-title', tf('Safety lessons awaiting YOUR sign-off — {n}', { n: d.count })));
   for (const draft of d.drafts) {
     const c = el('div', 'card loop-card');
     c.appendChild(el('div', 'loop-kind', draft.topic));
@@ -5663,29 +5790,29 @@ async function renderVetting(slot) {
     const row = el('div', 'field');
     const input = document.createElement('input');
     input.type = 'text';
-    input.placeholder = 'Your name — required to publish';
+    input.placeholder = T('Your name — required to publish');
     row.appendChild(input);
     c.appendChild(row);
-    const btn = el('button', 'actbtn', 'Vet & publish');
+    const btn = el('button', 'actbtn', T('Vet & publish'));
     const err = el('div', 'errline', '');
     btn.addEventListener('click', async () => {
       const vettedBy = input.value.trim();
       if (!vettedBy) {
         // §4.7 in the UI, so the DB CHECK is never the thing that says no.
-        err.textContent = 'Life-safety content cannot publish without your name on it.';
+        err.textContent = T('Life-safety content cannot publish without your name on it.');
         return;
       }
       btn.disabled = true;
       try {
         await api('/api/training/drafts/' + draft.id + '/publish', { method: 'POST', body: { vettedBy } });
-        btn.textContent = 'Published ✓';
+        btn.textContent = T('Published ✓');
         btn.className = 'actbtn done';
         renderVetting(slot);
       } catch (ex) {
         btn.disabled = false;
         err.textContent = ex.code === 409
-          ? 'Already published — nothing to do.'
-          : 'Could not publish that. Nothing was changed.';
+          ? T('Already published — nothing to do.')
+          : T('Could not publish that.') + ' ' + T('Nothing was changed.');
       }
     });
     c.appendChild(btn);
@@ -5699,7 +5826,7 @@ async function renderVetting(slot) {
 // without a name attached (§4.7), and Arbo never writes an entry itself.
 async function renderLibraryDesk(slot) {
   slot.replaceChildren();
-  slot.appendChild(el('div', 'panel-title', 'Reference library'));
+  slot.appendChild(el('div', 'panel-title', T('Reference library')));
   // Queue and composer are separate slots on purpose: refreshing the queue
   // after a save must not wipe the confirmation the composer just printed.
   const queueSlot = el('div');
@@ -5717,40 +5844,43 @@ async function renderLibraryQueue(slot) {
     if (e.code === 401) return false;
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
     // §1B: a queue Arbo could not read is not an empty queue.
-    slot.appendChild(state('Library drafts — ' + FEED_WORD[feedKind(e)], e.code === 503
+    // R27: in the shared §1B feed words — English as written, marked "en inglés" in Spanish.
+    const dead = slot.appendChild(state('Library drafts — ' + FEED_WORD[feedKind(e)], e.code === 503
       ? feedSays(e) + ' Arbo cannot show what is waiting to be vetted.'
       : 'Could not read the library drafts. This is not a claim that nothing is waiting.'));
+    if (ES.lang === 'es') { dead.setAttribute('lang', 'en'); dead.appendChild(esEnMark()); }
     return false;
   }
 
+  // The entries are the office's own words (data), as written; the page's framing is said in its language.
   for (const draft of (d.drafts || [])) {
     const c = el('div', 'card loop-card');
     c.appendChild(el('div', 'loop-kind', draft.techniqueName));
     c.appendChild(el('div', 'scope', draft.howTo));
-    if (draft.wontWorkWhen) c.appendChild(el('div', 'scope', 'Limits: ' + draft.wontWorkWhen));
+    if (draft.wontWorkWhen) c.appendChild(el('div', 'scope', tf('Limits: {limits}', { limits: draft.wontWorkWhen })));
     if ((draft.standardRefs || []).length) {
-      c.appendChild(el('div', 'scope', 'Per ' + draft.standardRefs.join(' · ')));
+      c.appendChild(el('div', 'scope', tf('Per {refs}', { refs: draft.standardRefs.join(' · ') })));
     }
     // The holes come BEFORE the publish button, every time. A vetter should
     // have to look at what is missing before their name goes on it.
     for (const gap of (draft.gaps || [])) {
       const w = el('div', 'scope');
       w.style.color = 'var(--warning)';
-      w.textContent = '⚠ ' + gap;
+      esSayTwin(w, { line: gap }, 'line', '⚠ '); // the server's own line: English, marked, until Phase B
       c.appendChild(w);
     }
     const row = el('div', 'field');
     const input = document.createElement('input');
     input.type = 'text';
-    input.placeholder = 'Your name — required to publish';
+    input.placeholder = T('Your name — required to publish');
     row.appendChild(input);
     c.appendChild(row);
-    const btn = el('button', 'actbtn', 'Vet & publish');
+    const btn = el('button', 'actbtn', T('Vet & publish'));
     const err = el('div', 'errline', '');
     btn.addEventListener('click', async () => {
       const vettedBy = input.value.trim();
       if (!vettedBy) {
-        err.textContent = 'Life-safety content cannot publish without your name on it.';
+        err.textContent = T('Life-safety content cannot publish without your name on it.');
         return;
       }
       btn.disabled = true;
@@ -5760,8 +5890,8 @@ async function renderLibraryQueue(slot) {
       } catch (ex) {
         btn.disabled = false;
         err.textContent = ex.code === 409
-          ? 'Already published — nothing to do.'
-          : 'Could not publish that. Nothing was changed.';
+          ? T('Already published — nothing to do.')
+          : T('Could not publish that.') + ' ' + T('Nothing was changed.');
       }
     });
     c.appendChild(btn);
@@ -5775,7 +5905,7 @@ async function renderLibraryQueue(slot) {
 function libraryComposer(queueSlot) {
   const c = el('div', 'card');
   c.appendChild(el('div', 'scope',
-    'Cite the clause — never paste the standard text. Anything that is not a clause reference is dropped.'));
+    T('Cite the clause — never paste the standard text.') + ' ' + T('Anything that is not a clause reference is dropped.')));
 
   const fields = {};
   const add = (key, placeholder, multiline) => {
@@ -5787,17 +5917,17 @@ function libraryComposer(queueSlot) {
     c.appendChild(row);
     fields[key] = n;
   };
-  add('techniqueName', 'Technique name');
-  add('howTo', 'How to do it', true);
-  add('wontWorkWhen', 'When this does NOT work — the limits', true);
-  add('pros', 'Good for (one per line)', true);
-  add('cons', 'Downsides (one per line)', true);
-  add('standardRefs', 'Clause refs, e.g. Z133 §8.1');
-  add('skillLevel', 'Skill level 1–10');
+  add('techniqueName', T('Technique name'));
+  add('howTo', T('How to do it'), true);
+  add('wontWorkWhen', T('When this does NOT work — the limits'), true);
+  add('pros', T('Good for (one per line)'), true);
+  add('cons', T('Downsides (one per line)'), true);
+  add('standardRefs', T('Clause refs, e.g. Z133 §8.1'));
+  add('skillLevel', T('Skill level 1–10'));
   fields.skillLevel.inputMode = 'numeric'; // the number keyboard on the phone; still a text box
-  add('sourceLink', 'Source link (https://…) — optional');
+  add('sourceLink', T('Source link (https://…) — optional'));
 
-  const btn = el('button', 'actbtn', 'Save as draft');
+  const btn = el('button', 'actbtn', T('Save as draft'));
   const out = el('div', 'errline', '');
   btn.addEventListener('click', async () => {
     const lines = (v) => v.split('\n').map((x) => x.trim()).filter(Boolean);
@@ -5818,12 +5948,12 @@ function libraryComposer(queueSlot) {
         },
       });
       // Never just "saved" — say that it is still invisible to the crew, and
-      // say what got dropped on the way in.
-      let line = res.line;
-      if (res.refsDropped > 0) line += ' ' + plural(res.refsDropped, 'citation') + (res.refsDropped === 1 ? ' was' : ' were') + ' dropped for not being a clause reference.';
-      if (res.limitsMissing) line += ' No limits recorded — the crew will see a warning in their place.';
+      // say what got dropped on the way in. R27: the server's line first (English, marked, until Phase B),
+      // then the page's own sentences in its language.
       out.style.color = 'var(--ok)';
-      out.textContent = line;
+      out.replaceChildren(esSayTwin(el('span'), res, 'line'));
+      if (res.refsDropped > 0) out.appendChild(document.createTextNode(' ' + tn(res.refsDropped, '{n} citation was dropped for not being a clause reference.', '{n} citations were dropped for not being a clause reference.')));
+      if (res.limitsMissing) out.appendChild(document.createTextNode(' ' + T('No limits recorded — the crew will see a warning in their place.')));
       // Clear the form so the next entry does not inherit this one's text —
       // a half-copied entry in a safety library is worse than a blank one.
       for (const n of Object.values(fields)) n.value = '';
@@ -5832,22 +5962,23 @@ function libraryComposer(queueSlot) {
     } catch (e) {
       btn.disabled = false;
       out.textContent = e.message === 'name_and_howto_required'
-        ? 'It needs a technique name and a how-to.'
+        ? T('It needs a technique name and a how-to.')
         : e.message === 'bad_source_link'
-          ? 'A source link has to be an http(s) address.'
-          : 'Could not save that. Nothing was written.';
+          ? T('A source link has to be an http(s) address.')
+          : T('Could not save that.') + ' ' + T('Nothing was written.');
     }
   });
   c.appendChild(btn);
   c.appendChild(out);
-  return disclose('Write a new library entry', c);
+  return disclose(T('Write a new library entry'), c);
 }
 
 // ---------- Money (§4.8: bill the work, chase what is owed) ----------
+// R27: each stage's words are said once, at load, in the page's language (the office app reloads on a language change).
 const STAGE_LABEL = {
-  reminder: ['PAST DUE', 'watch'],
-  second_notice: ['SECOND NOTICE', 'watch'],
-  final_notice: ['FINAL — CALL THEM', 'stop'],
+  reminder: [T('PAST DUE'), 'watch'],
+  second_notice: [T('SECOND NOTICE'), 'watch'],
+  final_notice: [T('FINAL — CALL THEM'), 'stop'],
 };
 function money(n) {
   return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -5871,29 +6002,33 @@ async function renderMoney(slot) {
     if (e.code === 401) return;
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
     // §1B: a ledger Arbo could not read is NOT a ledger with nothing owed.
-    slot.appendChild(el('div', 'panel-title', 'Money'));
-    slot.appendChild(state('Ledger — ' + FEED_WORD[feedKind(e)], e.code === 503
+    slot.appendChild(el('div', 'panel-title', T('Money')));
+    // R27: a dead feed in the shared §1B feed words — English as written, marked "en inglés" in Spanish.
+    const dead = slot.appendChild(state('Ledger — ' + FEED_WORD[feedKind(e)], e.code === 503
       ? feedSays(e) + ' Arbo cannot tell you what is owed.'
       : 'Could not read the invoices. This is not a claim that everything is paid.'));
+    if (ES.lang === 'es') { dead.setAttribute('lang', 'en'); dead.appendChild(esEnMark()); }
     return;
   }
+  // R27: a save that failed is said in the shared words (saveFailText) — English, marked "en inglés" in Spanish.
+  const failed = (box, e) => { const n = showSaveFail(box, e); if (ES.lang === 'es') { n.setAttribute('lang', 'en'); n.appendChild(esEnMark()); } };
 
   if (m.collections.length) {
-    slot.appendChild(el('div', 'panel-title', 'Owed — ' + m.collections.length + ' past due'));
+    slot.appendChild(el('div', 'panel-title', tf('Owed — {n} past due', { n: m.collections.length })));
     for (const a of m.collections) {
       const inv = m.invoices.find((i) => i.id === a.invoiceId);
       const c = el('div', 'card' + (a.stage === 'final_notice' ? ' emergency' : ''));
       const top = el('div', 'toprow');
-      top.appendChild(el('div', 'who', a.name || 'Unknown'));
-      top.appendChild(el('div', 'when', a.daysOverdue + 'd late'));
+      top.appendChild(el('div', 'who', a.name || T('Unknown')));
+      top.appendChild(el('div', 'when', tf('{n}d late', { n: a.daysOverdue })));
       c.appendChild(top);
-      c.appendChild(el('div', 'scope', a.note));
+      c.appendChild(esSayTwin(el('div', 'scope'), a, 'note')); // the server's own line: English, marked, until Phase B
       const b = el('div', 'badges');
       const [label, tone] = STAGE_LABEL[a.stage] || [String(a.stage).toUpperCase(), 'watch'];
       b.appendChild(chip(label, tone));
       if (inv) {
         b.appendChild(chip(money(inv.amount), 'info'));
-        if (inv.lateFeeOwed > 0) b.appendChild(chip('+' + money(inv.lateFeeOwed) + ' LATE FEE (' + inv.lateFeePct + '% CAP)', 'watch'));
+        if (inv.lateFeeOwed > 0) b.appendChild(chip(tf('+{fee} LATE FEE ({pct}% CAP)', { fee: money(inv.lateFeeOwed), pct: inv.lateFeePct }), 'watch'));
       }
       c.appendChild(b);
       if (inv) c.appendChild(paidButton(inv.id, slot));
@@ -5902,23 +6037,24 @@ async function renderMoney(slot) {
   }
 
   if (m.drafts.length) {
-    slot.appendChild(el('div', 'panel-title', 'Ready to bill — ' + m.drafts.length));
+    slot.appendChild(el('div', 'panel-title', tf('Ready to bill — {n}', { n: m.drafts.length })));
     for (const d of m.drafts) {
       const c = el('div', 'card');
       const top = el('div', 'toprow');
-      top.appendChild(el('div', 'who', d.name || 'Unknown'));
+      top.appendChild(el('div', 'who', d.name || T('Unknown')));
       top.appendChild(el('div', 'when', money(d.amount)));
       c.appendChild(top);
-      c.appendChild(el('div', 'scope', 'Work is done and the agreed figure is on file. Net ' + d.netDays + ', late fee capped at ' + d.lateFeePct + '%.'));
-      const btn = el('button', 'actbtn', 'Draft the invoice');
+      c.appendChild(el('div', 'scope', T('Work is done and the agreed figure is on file.') + ' '
+        + tf('Net {days}, late fee capped at {pct}%.', { days: d.netDays, pct: d.lateFeePct })));
+      const btn = el('button', 'actbtn', T('Draft the invoice'));
       btn.addEventListener('click', async () => {
         btn.disabled = true;
         try {
           await api('/api/invoices', { method: 'POST', body: { jobId: d.jobId } });
-          btn.textContent = 'Drafted';
+          btn.textContent = T('Drafted');
           btn.className = 'actbtn done';
           renderMoney(slot);
-        } catch (e) { btn.disabled = false; showSaveFail(c, e); }
+        } catch (e) { btn.disabled = false; failed(c, e); }
       });
       c.appendChild(btn);
       slot.appendChild(c);
@@ -5926,14 +6062,14 @@ async function renderMoney(slot) {
   }
 
   if (m.blocked.length) {
-    slot.appendChild(el('div', 'panel-title', 'Cannot bill yet — ' + m.blocked.length));
+    slot.appendChild(el('div', 'panel-title', tf('Cannot bill yet — {n}', { n: m.blocked.length })));
     for (const x of m.blocked) {
       const c = el('div', 'card loop-card');
       // The customer is the card's name, as on every other money card.
       const top = el('div', 'toprow');
-      top.appendChild(el('div', 'who', x.name || 'Unknown'));
+      top.appendChild(el('div', 'who', x.name || T('Unknown')));
       c.appendChild(top);
-      c.appendChild(el('div', 'scope', x.line));
+      c.appendChild(esSayTwin(el('div', 'scope'), x, 'line')); // the server's own line: English, marked, until Phase B
       slot.appendChild(c);
     }
   }
@@ -5941,46 +6077,52 @@ async function renderMoney(slot) {
   // A sent invoice Arbo cannot date is an Owed question, not unbillable work:
   // its own heading, and the customer and amount so Mike knows which one.
   if (m.unknown.length) {
-    slot.appendChild(el('div', 'panel-title', 'Can’t tell if overdue — ' + m.unknown.length));
+    slot.appendChild(el('div', 'panel-title', tf('Can’t tell if overdue — {n}', { n: m.unknown.length })));
     for (const u of m.unknown) {
       const inv = m.invoices.find((i) => i.id === u.invoiceId);
       const c = el('div', 'card loop-card urgent');
-      c.appendChild(el('div', 'loop-kind', '⚠ UNKNOWN'));
+      c.appendChild(el('div', 'loop-kind', T('⚠ UNKNOWN')));
       const top = el('div', 'toprow');
-      top.appendChild(el('div', 'who', (inv && inv.name) || 'Unknown'));
+      top.appendChild(el('div', 'who', (inv && inv.name) || T('Unknown')));
       if (inv) top.appendChild(el('div', 'when', money(inv.amount)));
       c.appendChild(top);
-      c.appendChild(el('div', 'scope', u.line));
+      c.appendChild(esSayTwin(el('div', 'scope'), u, 'line')); // the server's own line: English, marked, until Phase B
       slot.appendChild(c);
     }
   }
 
   if (m.suppressed.length) {
     const box = el('div', 'state');
-    box.appendChild(el('b', '', m.suppressed.length + ' held by the legal gate'));
-    box.appendChild(document.createTextNode('No consent on file or STOP on record — Arbo will not nudge these.'));
+    box.appendChild(el('b', '', tf('{n} held by the legal gate', { n: m.suppressed.length })));
+    // R27: the legal gate's line names STOP — a safety line, said through the safety pair.
+    box.appendChild(esSay(el('span'), 'No consent on file or STOP on record — Arbo will not nudge these.'));
     slot.appendChild(box);
   }
 
   // A clean ledger must LOOK different from a section that never ran (§1B).
   if (!m.collections.length && !m.drafts.length && !m.blocked.length
       && !m.unknown.length && !m.suppressed.length) {
-    slot.appendChild(el('div', 'panel-title', 'Money'));
-    slot.appendChild(state('Nothing owed, nothing unbilled',
-      'Arbo checked the ledger — every finished job is invoiced and nothing is past due.'));
+    slot.appendChild(el('div', 'panel-title', T('Money')));
+    slot.appendChild(state(T('Nothing owed, nothing unbilled'),
+      T('Arbo checked the ledger — every finished job is invoiced and nothing is past due.')));
   }
 }
 
 function paidButton(invoiceId, slot) {
-  const btn = el('button', 'actbtn', 'Mark paid ✓');
+  const btn = el('button', 'actbtn', T('Mark paid ✓'));
   btn.addEventListener('click', async () => {
     btn.disabled = true;
     try {
       await api('/api/invoices/' + invoiceId + '/status', { method: 'POST', body: { status: 'paid' } });
-      btn.textContent = 'Recorded';
+      btn.textContent = T('Recorded');
       btn.className = 'actbtn done';
       renderMoney(slot);
-    } catch (e) { btn.disabled = false; showSaveFail(btn.parentNode, e); }
+    } catch (e) {
+      btn.disabled = false;
+      // R27: in the shared words (saveFailText) — English, marked "en inglés" in Spanish.
+      const n = showSaveFail(btn.parentNode, e);
+      if (ES.lang === 'es') { n.setAttribute('lang', 'en'); n.appendChild(esEnMark()); }
+    }
   });
   return btn;
 }
@@ -6001,80 +6143,88 @@ async function loadTrack() {
   return TRACK;
 }
 // [words, look] per state. A gap wears the feed-state look, never the help-text one.
+// R27: each state's words are said once, at load, in the page's language (the office app reloads on a language change).
 const TRACK_SAYS = {
-  keys_missing: ['Tracking not set up — the Bouncie keys aren’t on the server', 'feed-state unset'],
-  link_cut: ['Tracking cut on purpose — Arbo reads no positions until it is reconnected', 'feed-state cut'],
-  not_connected: ['Tracking not connected — connect Bouncie in Settings', 'feed-state unset'],
-  token_expired: ['Tracking stopped — the Bouncie sign-in expired; reconnect it in Settings', 'feed-state unset'],
-  sign_in_cut: ['Tracking off — the saved Bouncie sign-in is cut on purpose (ARBO_LINK_CREDENTIALS)', 'feed-state cut'],
-  sign_in_store: ['Tracking stopped — Arbo can’t open the saved Bouncie sign-in; Settings says why', 'feed-state unread'],
-  after_hours: ['After hours — not tracking (8am–8pm, Mon–Sat)', 'feed-state cut'],
-  unreadable: ['Tracking: couldn’t read Bouncie just now', 'feed-state unread'],
-  no_trucks: ['Bouncie lists no trucks on this account', 'storm-muted'],
+  keys_missing: [T('Tracking not set up — the Bouncie keys aren’t on the server'), 'feed-state unset'],
+  link_cut: [T('Tracking cut on purpose — Arbo reads no positions until it is reconnected'), 'feed-state cut'],
+  not_connected: [T('Tracking not connected — connect Bouncie in Settings'), 'feed-state unset'],
+  token_expired: [T('Tracking stopped — the Bouncie sign-in expired; reconnect it in Settings'), 'feed-state unset'],
+  sign_in_cut: [T('Tracking off — the saved Bouncie sign-in is cut on purpose (ARBO_LINK_CREDENTIALS)'), 'feed-state cut'],
+  sign_in_store: [T('Tracking stopped — Arbo can’t open the saved Bouncie sign-in; Settings says why'), 'feed-state unread'],
+  after_hours: [T('After hours — not tracking (8am–8pm, Mon–Sat)'), 'feed-state cut'],
+  unreadable: [T('Tracking: couldn’t read Bouncie just now'), 'feed-state unread'],
+  no_trucks: [T('Bouncie lists no trucks on this account'), 'storm-muted'],
 };
 // '4 min ago', '3 h ago', '2 days ago' — minutes counted on the server's clock.
 function agoWords(min) {
-  if (typeof min !== 'number') return 'at an unknown time';
-  if (min < 1) return 'just now';
-  if (min < 60) return min + ' min ago';
-  if (min < 2880) return Math.floor(min / 60) + ' h ago';
-  return Math.floor(min / 1440) + ' days ago';
+  if (typeof min !== 'number') return T('at an unknown time');
+  if (min < 1) return T('just now');
+  if (min < 60) return tf('{n} min ago', { n: min });
+  if (min < 2880) return tf('{n} h ago', { n: Math.floor(min / 60) });
+  return tf('{n} days ago', { n: Math.floor(min / 1440) });
 }
 // One truck, one line, [words, look] — never a coordinate. "Last seen" is the
 // age of the POSITION (positionAgeMinutes); "last report" is any report at all
 // (ageMinutes) — a trip start or a battery reading carries no position.
+// R27: the age (agoWords) goes into each sentence as its value, already in the page's language.
 function truckWords(k) {
   const when = fmtWhen(k.reportedAt);
-  if (k.motion === 'driving') return ['Driving · last report ' + agoWords(k.ageMinutes), 'storm-muted'];
-  if (k.motion === 'parked') return ['Last seen ' + agoWords(k.positionAgeMinutes) + ' · parked', 'storm-muted'];
-  if (k.motion === 'seen') return ['Last seen ' + agoWords(k.positionAgeMinutes), 'storm-muted'];
-  if (k.motion === 'unplugged') return ['Bouncie tracker unplugged' + (when ? ' since ' + when : ''), 'feed-state unset'];
+  if (k.motion === 'driving') return [tf('Driving · last report {ago}', { ago: agoWords(k.ageMinutes) }), 'storm-muted'];
+  if (k.motion === 'parked') return [tf('Last seen {ago} · parked', { ago: agoWords(k.positionAgeMinutes) }), 'storm-muted'];
+  if (k.motion === 'seen') return [tf('Last seen {ago}', { ago: agoWords(k.positionAgeMinutes) }), 'storm-muted'];
+  if (k.motion === 'unplugged') return [when ? tf('Bouncie tracker unplugged since {when}', { when }) : T('Bouncie tracker unplugged'), 'feed-state unset'];
   // Its newest report was after hours: where it went then is not Arbo's to show, and not "no position yet".
-  if (k.motion === 'after_hours') return ['Last report was after hours — not shown until it reports in working hours', 'feed-state cut'];
+  if (k.motion === 'after_hours') return [T('Last report was after hours — not shown until it reports in working hours'), 'feed-state cut'];
   if (k.motion === 'stale') {
     // The fix older than the last report: say the POSITION is old, and when Bouncie last said anything.
     if (k.positionAt && k.reportedAt && Date.parse(k.positionAt) < Date.parse(k.reportedAt)) {
-      return ['No Bouncie position since ' + fmtWhen(k.positionAt) + ' · last report ' + agoWords(k.ageMinutes), 'feed-state unread'];
+      return [tf('No Bouncie position since {when} · last report {ago}', { when: fmtWhen(k.positionAt), ago: agoWords(k.ageMinutes) }), 'feed-state unread'];
     }
-    return ['No Bouncie report since ' + (when || 'Arbo last restarted'), 'feed-state unread'];
+    return [when ? tf('No Bouncie report since {when}', { when }) : T('No Bouncie report since Arbo last restarted'), 'feed-state unread'];
   }
-  return ['Bouncie has no position for this truck yet', 'feed-state unread'];
+  return [T('Bouncie has no position for this truck yet'), 'feed-state unread'];
 }
 function trackWords(t, unitId) {
   if (!t) return ['', 'storm-muted']; // not read yet: no line rather than a guess
+  // R27: a line in the shared §1B feed words stays English as written; in Spanish it carries a third word, 'en',
+  // so the line is drawn marked "en inglés" (English mode answers exactly the [words, look] it always did).
+  const shared = (x) => (ES.lang === 'es' ? [x[0], x[1], 'en'] : x);
   // The Fleet list beside this line just read with the same key, so a 401 here is the route's own lock (no APP_ACCESS_KEY).
-  if (t.failed) return t.failed.code === 401 ? ['Tracking locked — APP_ACCESS_KEY isn’t set on the server', 'feed-state unset'] : ['Tracking: ' + FEED_WORD[feedKind(t.failed)], 'feed-state ' + feedKind(t.failed)];
-  if (t.state !== 'ok' && t.state !== 'unreadable') return TRACK_SAYS[t.state] || ['Tracking: ' + FEED_WORD.unread, 'feed-state unread'];
+  if (t.failed) return t.failed.code === 401 ? [T('Tracking locked — APP_ACCESS_KEY isn’t set on the server'), 'feed-state unset'] : shared(['Tracking: ' + FEED_WORD[feedKind(t.failed)], 'feed-state ' + feedKind(t.failed)]);
+  if (t.state !== 'ok' && t.state !== 'unreadable') return TRACK_SAYS[t.state] || shared(['Tracking: ' + FEED_WORD.unread, 'feed-state unread']);
   const u = (t.units || []).find((x) => x.unitId === unitId);
   if (u && u.truck) return truckWords(u.truck);
-  return t.state === 'unreadable' ? TRACK_SAYS.unreadable : ['No Bouncie truck matched to this unit', 'storm-muted'];
+  return t.state === 'unreadable' ? TRACK_SAYS.unreadable : [T('No Bouncie truck matched to this unit'), 'storm-muted'];
 }
 // The one line each Fleet card carries. Drawn from the last read; fillTrack rewrites it when a new read lands.
 function fleetTrackLine(u) {
-  const [words, look] = trackWords(TRACK, u.id);
+  const [words, look, en] = trackWords(TRACK, u.id);
   const n = el('div', look + ' fleet-track', words);
+  if (en) { n.setAttribute('lang', 'en'); n.appendChild(esEnMark()); } // R27: the shared feed words, marked "en inglés"
   n.dataset.unit = u.id;
   return n;
 }
 // After a read: every unit line, then the trucks no unit claims (with the fleet list unavailable, that is all of them).
 function fillTrack(listSlot, trackSlot) {
   for (const n of listSlot.querySelectorAll('.fleet-track')) {
-    const [words, look] = trackWords(TRACK, n.dataset.unit);
+    const [words, look, en] = trackWords(TRACK, n.dataset.unit);
     n.className = look + ' fleet-track';
     n.textContent = words;
+    // R27: the shared feed words are marked "en inglés"; a line rewritten into the page's words loses the mark.
+    if (en) { n.setAttribute('lang', 'en'); n.appendChild(esEnMark()); } else if (ES.lang === 'es') n.removeAttribute('lang');
   }
   trackSlot.replaceChildren();
   const t = TRACK;
   if (!t || t.failed || !(t.unmatched || []).length) return;
-  trackSlot.appendChild(el('div', 'panel-title', t.units ? 'Bouncie trucks not matched to a unit' : 'Bouncie trucks'));
+  trackSlot.appendChild(el('div', 'panel-title', t.units ? T('Bouncie trucks not matched to a unit') : T('Bouncie trucks')));
   trackSlot.appendChild(el('div', 'storm-muted', t.units
-    ? 'Give the truck the same name in Bouncie as its unit here, or put its VIN on the unit, and Arbo pairs them.'
-    : 'The fleet list isn’t available, so these aren’t matched to units.'));
+    ? T('Give the truck the same name in Bouncie as its unit here, or put its VIN on the unit, and Arbo pairs them.')
+    : T('The fleet list isn’t available, so these aren’t matched to units.')));
   for (const k of t.unmatched) {
     const c = el('div', 'card');
     const top = el('div', 'toprow');
-    top.appendChild(el('div', 'who', k.name || 'Unnamed truck'));
-    top.appendChild(el('div', 'when', k.vin4 ? 'VIN …' + k.vin4 : 'Tracker …' + k.device4));
+    top.appendChild(el('div', 'who', k.name || T('Unnamed truck')));
+    top.appendChild(el('div', 'when', k.vin4 ? tf('VIN …{vin}', { vin: k.vin4 }) : tf('Tracker …{id}', { id: k.device4 })));
     c.appendChild(top);
     const [words, look] = truckWords(k);
     c.appendChild(el('div', look, words));
@@ -6234,23 +6384,36 @@ async function renderFleetList(slot) {
     if (e.code === 401) return false;
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
     // §1B: a dead feed is named, never drawn as a confident "all trucks up".
-    slot.appendChild(el('div', 'panel-title', 'Fleet'));
-    slot.appendChild(state('Fleet — ' + FEED_WORD[feedKind(e)], e.code === 503
+    slot.appendChild(el('div', 'panel-title', T('Fleet')));
+    // R27: a dead feed in the shared §1B feed words — English as written, marked "en inglés" in Spanish.
+    const dead = slot.appendChild(state('Fleet — ' + FEED_WORD[feedKind(e)], e.code === 503
       ? feedSays(e) + ' Arbo cannot tell you which units are down.'
       : 'Could not read the fleet. This is not a claim that everything runs.'));
+    if (ES.lang === 'es') { dead.setAttribute('lang', 'en'); dead.appendChild(esEnMark()); }
     return false;
   }
   // A held unit is off the schedule as surely as a DOWN one, so the heading
   // never says "all units schedulable" while either is on the list (R26).
-  const offSchedule = [];
-  if (f.down > 0) offSchedule.push(plural(f.down, 'unit') + ' down');
-  if (f.held > 0) offSchedule.push(plural(f.held, 'unit') + ' held');
+  // R27: one sentence for each case — down, held, or both — each count its own value.
+  const down = f.down > 0 ? tn(f.down, '{n} unit down', '{n} units down') : '';
+  const held = f.held > 0 ? tn(f.held, '{n} unit held', '{n} units held') : '';
   slot.appendChild(el('div', 'panel-title',
-    offSchedule.length ? 'Fleet — ' + offSchedule.join(', ') : 'Fleet — all units schedulable'));
+    down && held ? tf('Fleet — {down}, {held}', { down, held }) : down || held ? tf('Fleet — {off}', { off: down || held }) : T('Fleet — all units schedulable')));
   if (!f.units.length) {
-    slot.appendChild(state('No units on file', 'Add equipment below and it shows up here.'));
+    slot.appendChild(state(T('No units on file'), T('Add equipment below and it shows up here.')));
     return true;
   }
+  // R27: a unit's status (UNIT_STATUS's English, shared with Today) said into its chip — DOWN and HELD are safety labels,
+  // said through the safety pair (HELD is the ledger's held label); the others are the page's own words.
+  const statusSay = (n) => {
+    switch (n.textContent) {
+      case 'DOWN': return esSay(n, 'DOWN');
+      case 'HELD': return esSay(n, 'HELD');
+      case 'UP': n.textContent = T('UP'); return n;
+      case 'NEEDS ATTENTION': n.textContent = T('NEEDS ATTENTION'); return n;
+      default: return n;
+    }
+  };
   // A unit off the schedule (DOWN or HELD) is the one that changes the day, so it leads the list.
   for (const u of [...f.units].sort((a, b) => (!b.schedulable) - (!a.schedulable))) {
     const c = el('div', 'card' + (u.schedulable ? '' : ' emergency'));
@@ -6262,50 +6425,56 @@ async function renderFleetList(slot) {
     c.appendChild(top);
     const b = el('div', 'badges');
     const [label, tone] = UNIT_STATUS[u.status] || [String(u.status).toUpperCase(), 'watch'];
-    b.appendChild(chip(label, tone));
-    if (!u.schedulable) b.appendChild(chip('NOT SCHEDULABLE', 'stop'));
-    if (u.openTasks > 0) b.appendChild(chip(plural(u.openTasks, 'open task'), 'watch'));
+    b.appendChild(statusSay(chip(label, tone)));
+    if (!u.schedulable) b.appendChild(chip(T('NOT SCHEDULABLE'), 'stop'));
+    if (u.openTasks > 0) b.appendChild(chip(tn(u.openTasks, '{n} open task', '{n} open tasks'), 'watch'));
     c.appendChild(b);
     // §6M2.4: a null clearance is UNKNOWN and the router stays conservative.
     // Say that on the card, so nobody assumes the number is simply missing.
     if (!u.heightInches || !u.weightLbsLoaded) {
-      b.appendChild(chip('SIZE UNKNOWN — ROUTED CONSERVATIVELY', 'watch'));
+      b.appendChild(chip(T('SIZE UNKNOWN — ROUTED CONSERVATIVELY'), 'watch'));
     }
     c.appendChild(fleetTrackLine(u)); // R31: where the truck is, in words — never a coordinate
     // R26: a brake or steering defect holds the unit, and its reason is named
     // on the card. Nothing returns it on its own: this button, behind the owner
     // key, is the only way back, and it asks twice like every one-way action.
     if (u.status === 'held') {
-      const why = el('div', 'scope', 'On hold: ' + (u.holdReason || 'brake/steering defect') + '. It stays off the schedule until you sign it back on.');
+      // R27: the reason is the server's (as recorded); with none on file, the page's own words.
+      const why = el('div', 'scope', (u.holdReason ? tf('On hold: {why}.', { why: u.holdReason }) : T('On hold: brake/steering defect.'))
+        + ' ' + T('It stays off the schedule until you sign it back on.'));
       why.style.marginTop = '10px'; // its own line under the chips, not pressed against them
       c.appendChild(why);
-      const sign = el('button', 'actbtn', 'Sign it back on');
+      const sign = el('button', 'actbtn', T('Sign it back on'));
       const signErr = el('div', 'errline', '');
-      armTwice(sign, 'Tap again to sign ' + u.name + ' back on'
-        + (u.openTasks > 0 ? ' with ' + plural(u.openTasks, 'open task') + ' still on it' : '')
-        + ' — it goes back on the schedule', async () => {
+      armTwice(sign, u.openTasks > 0
+        ? tn(u.openTasks, 'Tap again to sign {name} back on with {n} open task still on it — it goes back on the schedule',
+          'Tap again to sign {name} back on with {n} open tasks still on it — it goes back on the schedule', { name: u.name })
+        : tf('Tap again to sign {name} back on — it goes back on the schedule', { name: u.name }), async () => {
         sign.disabled = true;
         signErr.textContent = '';
+        if (ES.lang === 'es') signErr.removeAttribute('lang');
         try {
           await api('/api/fleet/units/' + u.id + '/sign-back', { method: 'POST', body: {} });
           renderFleetList(slot);
         } catch (ex) {
           sign.disabled = false;
           // A refused tap says so under the button; the hold stays on screen as it is.
-          signErr.textContent = ex.code === 409 ? 'Not on hold any more — nothing to sign back on. Tap ↻ to see where it stands.' : saveFailText(ex);
+          signErr.textContent = ex.code === 409 ? T('Not on hold any more — nothing to sign back on.') + ' ' + T('Tap ↻ to see where it stands.') : saveFailText(ex);
+          // R27: a save that failed is said in the shared words (saveFailText) — English, marked "en inglés" in Spanish.
+          if (ex.code !== 409 && ES.lang === 'es') { signErr.setAttribute('lang', 'en'); signErr.appendChild(esEnMark()); }
         }
       });
       c.appendChild(sign);
       c.appendChild(signErr);
     }
-    const btn = el('button', 'actbtn', 'Report a breakdown');
+    const btn = el('button', 'actbtn', T('Report a breakdown'));
     btn.addEventListener('click', () => openBreakdown(u));
     c.appendChild(btn);
     c.appendChild(partAdder(u, slot));
     // One-way and no undo in the app: quiet danger style, and it asks twice.
-    const off = el('button', 'actbtn danger', 'Retire this unit');
+    const off = el('button', 'actbtn danger', T('Retire this unit'));
     const offerr = el('div', 'errline', '');
-    armTwice(off, 'Tap again to retire ' + u.name, async () => {
+    armTwice(off, tf('Tap again to retire {name}', { name: u.name }), async () => {
       off.disabled = true;
       try {
         const res = await api('/api/fleet/units/' + u.id + '/retire', { method: 'POST', body: {} });
@@ -6314,7 +6483,7 @@ async function renderFleetList(slot) {
         renderFleetList(slot);
       } catch (ex) {
         off.disabled = false;
-        offerr.textContent = ex.code === 409 ? 'Already retired.' : 'Could not do that. Nothing was changed.';
+        offerr.textContent = ex.code === 409 ? T('Already retired.') : T('Could not do that.') + ' ' + T('Nothing was changed.');
       }
     });
     c.appendChild(off);
@@ -6334,17 +6503,17 @@ function partAdder(unit, slot) {
   const wrap = el('div', 'field');
   const num = document.createElement('input');
   num.type = 'text';
-  num.placeholder = 'Part number that fits this unit';
+  num.placeholder = T('Part number that fits this unit');
   const sup = document.createElement('input');
   sup.type = 'text';
-  sup.placeholder = 'Supplier (optional)';
+  sup.placeholder = T('Supplier (optional)');
   const fit = document.createElement('input');
   fit.type = 'text';
-  fit.placeholder = 'Also fits (optional)';
-  const btn = el('button', 'actbtn', 'Save the part');
+  fit.placeholder = T('Also fits (optional)');
+  const btn = el('button', 'actbtn', T('Save the part'));
   const out = el('div', 'errline', '');
   btn.addEventListener('click', async () => {
-    if (!num.value.trim()) { out.textContent = 'Needs a part number.'; return; }
+    if (!num.value.trim()) { out.textContent = T('Needs a part number.'); return; }
     btn.disabled = true;
     try {
       await api('/api/fleet/units/' + unit.id + '/part', {
@@ -6356,7 +6525,7 @@ function partAdder(unit, slot) {
         },
       });
       out.style.color = 'var(--ok)';
-      out.textContent = 'Saved. It will show up in the breakdown plan for this unit.';
+      out.textContent = T('Saved.') + ' ' + T('It will show up in the breakdown plan for this unit.');
       num.value = '';
       sup.value = '';
       fit.value = '';
@@ -6365,10 +6534,10 @@ function partAdder(unit, slot) {
       btn.disabled = false;
       out.style.color = '';
       out.textContent = e.code === 404
-        ? 'That unit is not on file any more.'
+        ? T('That unit is not on file any more.')
         : e.code === 409
-          ? 'That unit is retired.'
-          : 'Could not save that. Nothing was written.';
+          ? T('That unit is retired.')
+          : T('Could not save that.') + ' ' + T('Nothing was written.');
     }
   });
   wrap.appendChild(num);
@@ -6376,30 +6545,30 @@ function partAdder(unit, slot) {
   wrap.appendChild(fit);
   wrap.appendChild(btn);
   wrap.appendChild(out);
-  return disclose('Add a part that fits this unit', wrap);
+  return disclose(T('Add a part that fits this unit'), wrap);
 }
 
 function fleetComposer(listSlot) {
   const slot = listSlot;
   const c = el('div', 'card');
   c.appendChild(el('div', 'scope',
-    'Leave height and weight blank if you do not know them. Arbo routes an unknown unit '
-    + 'conservatively — a guessed clearance is worse than none, because routing would trust it.'));
+    T('Leave height and weight blank if you do not know them.') + ' '
+    + T('Arbo routes an unknown unit conservatively — a guessed clearance is worse than none, because routing would trust it.')));
   const row = el('div', 'field');
   const mk = (ph) => { const n = document.createElement('input'); n.type = 'text'; n.placeholder = ph; row.appendChild(n); return n; };
-  const name = mk('Name — e.g. Chip truck 1');
-  const kind = mk('Kind — chip truck / chipper / crane');
-  const vin = mk('VIN or serial');
-  const height = mk('Height in inches (optional)');
-  const weight = mk('Loaded weight in lbs (optional)');
+  const name = mk(T('Name — e.g. Chip truck 1'));
+  const kind = mk(T('Kind — chip truck / chipper / crane'));
+  const vin = mk(T('VIN or serial'));
+  const height = mk(T('Height in inches (optional)'));
+  const weight = mk(T('Loaded weight in lbs (optional)'));
   height.inputMode = 'numeric'; weight.inputMode = 'numeric'; // the number keyboard; still text, so a typo reaches the server's refusal
   c.appendChild(row);
-  const btn = el('button', 'actbtn', 'Add the unit');
+  const btn = el('button', 'actbtn', T('Add the unit'));
   const out = el('div', 'errline', '');
   btn.addEventListener('click', async () => {
     if (!name.value.trim() || !kind.value.trim() || !vin.value.trim()) {
       out.style.color = '';
-      out.textContent = 'Needs a name, a kind, and a VIN or serial.';
+      out.textContent = T('Needs a name, a kind, and a VIN or serial.');
       return;
     }
     btn.disabled = true;
@@ -6413,7 +6582,7 @@ function fleetComposer(listSlot) {
       });
       // An unmeasured unit is a warning, not a win — it changes how it routes.
       out.style.color = res.dimensionsKnown ? 'var(--ok)' : 'var(--warning)';
-      out.textContent = res.line;
+      out.replaceChildren(esSayTwin(el('span'), res, 'line')); // the server's own line: English, marked, until Phase B
       name.value = ''; kind.value = ''; vin.value = ''; height.value = ''; weight.value = '';
       btn.disabled = false;
       renderFleetList(slot);
@@ -6421,13 +6590,13 @@ function fleetComposer(listSlot) {
       btn.disabled = false;
       out.style.color = '';
       out.textContent = e.code === 409
-        ? 'That VIN or serial is already on a unit.'
-        : 'Could not add it. Nothing was written.';
+        ? T('That VIN or serial is already on a unit.')
+        : T('Could not add it.') + ' ' + T('Nothing was written.');
     }
   });
   c.appendChild(btn);
   c.appendChild(out);
-  return disclose('Add a unit to the fleet', c);
+  return disclose(T('Add a unit to the fleet'), c);
 }
 
 let BREAKDOWN_UNIT = null;
@@ -6446,7 +6615,7 @@ $('bd-go').addEventListener('click', async () => {
   out.replaceChildren();
   const description = $('bd-desc').value.trim();
   if (!BREAKDOWN_UNIT || !description) {
-    out.appendChild(state('Say what broke', 'A blank report tells nobody anything.'));
+    out.appendChild(state(T('Say what broke'), T('A blank report tells nobody anything.')));
     return;
   }
   $('bd-go').disabled = true;
@@ -6457,32 +6626,54 @@ $('bd-go').addEventListener('click', async () => {
       body: { unitId: BREAKDOWN_UNIT.id, description, immobilized: $('bd-down').checked, reportedBy: 'owner' },
     });
   } catch (e) {
-    out.appendChild(state('Not filed', e.line || ('The report did not save (' + (e.message || 'error') + '). Nothing was changed.')));
+    // The server's own words when it wrote some (English, marked, until Phase B); else the page's, the reason as sent.
+    const no = out.appendChild(state(T('Not filed'), e.line || (tf('The report did not save ({why}).', { why: e.message || 'error' }) + ' ' + T('Nothing was changed.'))));
+    if (e.line && ES.lang === 'es') { no.lastChild.remove(); no.appendChild(esSayTwin(el('span'), e, 'line')); }
     $('bd-go').disabled = false;
     return;
   }
   $('bd-go').disabled = false;
-  out.appendChild(el('div', 'panel-title', 'Unit is now ' + String(plan.newStatus).toUpperCase()));
-  for (const s of plan.steps) out.appendChild(el('div', 'scope', '• ' + s));
+  // R27: the unit's new status — DOWN and HELD are safety lines, said through the safety pair; the others are the page's words.
+  const now = el('div', 'panel-title');
+  const st = String(plan.newStatus).toUpperCase();
+  if (st === 'DOWN') esSay(now, 'Unit is now DOWN');
+  else if (st === 'HELD') esSay(now, 'Unit is now HELD');
+  else now.textContent = st === 'MAINTENANCE' ? T('Unit is now MAINTENANCE') : st === 'UP' ? T('Unit is now UP') : tf('Unit is now {status}', { status: st });
+  out.appendChild(now);
+  // The plan's steps and unknowns are the server's own lines: English, marked "en inglés", until Phase B.
+  for (const s of plan.steps) out.appendChild(esSayTwin(el('div', 'scope'), { line: s }, 'line', '• '));
   for (const u of plan.unknowns) {
     const w = el('div', 'card loop-card urgent');
-    w.appendChild(el('div', 'loop-kind', '⚠ UNKNOWN'));
-    w.appendChild(el('div', 'scope', u));
+    w.appendChild(el('div', 'loop-kind', T('⚠ UNKNOWN')));
+    w.appendChild(esSayTwin(el('div', 'scope'), { line: u }, 'line'));
     out.appendChild(w);
   }
   for (const l of plan.supplierLinks) {
-    const a = el('a', '', l.label);
+    const a = el('a', '', l.label); // a supplier's name, as the server sends it
     a.href = l.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
     const row = el('div', 'scope');
     row.appendChild(a);
     out.appendChild(row);
   }
   out.appendChild(el('div', 'internal-tag',
-    'Arbo never places the order and holds no card — you click, you buy.'));
+    T('Arbo never places the order and holds no card — you click, you buy.')));
   // Direction B P13: the unit lives on Fleet now, and Today's Before you roll names a unit DOWN or HELD.
   renderFleetView();
   renderToday();
 });
+// R27 Phase A (owner app): the breakdown sheet's fixed words. The markup holds the English, and English mode never
+// runs this; in Spanish each is said from the dictionary (app-fleet). The unit's name after the dash is data.
+function bdWords() {
+  if (ES.lang !== 'es') return;
+  const bd = $('bd');
+  $('bd-close').setAttribute('aria-label', T('Close'));
+  $('bd-unit').parentNode.firstChild.textContent = T('BREAKDOWN') + ' — ';
+  bd.querySelector('label[for="bd-desc"]').textContent = T('What happened?');
+  $('bd-desc').placeholder = T('Hydraulic hose blew on the chipper');
+  bd.querySelector('.checkfield span').textContent = T('It cannot be driven or run at all');
+  $('bd-go').textContent = T('File the report');
+}
+bdWords();
 
 // ---------- Money, Fleet, Crew & safety (Direction B P13; R29 #1: the Queue split by the job it holds) ----------
 // Each is a screen of its own, with its R26 desk name as the small line above its title (DESK_LINE),
@@ -6521,35 +6712,36 @@ async function deskView(view, sub, panels, headExtra) {
 }
 // §4.8 money: unbilled work and unpaid invoices.
 function renderMoneyView() {
-  return deskView('money', 'What is past due, and finished work ready to bill. Arbo recommends — you decide.', [['queue-money', renderMoney]]);
+  return deskView('money', T('What is past due, and finished work ready to bill.') + ' ' + T('Arbo recommends — you decide.'), [['queue-money', renderMoney]]);
 }
 // §6E fleet: every unit, what is down or held (R26) — a scheduling constraint — and the Bouncie line (R31).
 function renderFleetView() {
   // Maps wave B (M4): the trucks on the map — Bouncie's positions, owner only, working hours only (R31).
   const toMap = () => {
-    const b = el('button', 'minibtn mapbtn', 'Trucks on the map');
+    const b = el('button', 'minibtn mapbtn', T('Trucks on the map'));
     b.type = 'button';
     b.addEventListener('click', () => openMap('trucks'));
     return b;
   };
-  return deskView('fleet', 'Every unit, what is down or held, and breakdowns. Only you sign a held unit back on.', [['queue-fleet', renderFleet]], toMap);
+  return deskView('fleet', T('Every unit, what is down or held, and breakdowns.') + ' ' + T('Only you sign a held unit back on.'), [['queue-fleet', renderFleet]], toMap);
 }
 // §6V safety leads: a lapsed rescue card outranks everything else on the desk; its blind spots and
 // aerial stops come first (renderSafety). Then the people and cards on file (§4), training (§6M.5),
 // lessons waiting on Mike's name (§4.7) and the reference library (§6U).
 function renderSafetyView() {
-  return deskView('safety', 'Credentials and near misses first, then the roster, training, safety lessons and the library. Arbo recommends — you decide.', [
+  return deskView('safety', T('Credentials and near misses first, then the roster, training, safety lessons and the library.') + ' ' + T('Arbo recommends — you decide.'), [
     ['queue-safety', renderSafety], [null, renderRoster], [null, renderTrainingBoard], [null, renderVetting], ['safety-library', renderLibraryDesk],
   ]);
 }
 
 // ---------- Follow-ups (§16–20 queue: ARBOR recommends, you approve) ----------
+// R27: each label is said once, at load, in the page's language (the office app reloads on a language change).
 const FU_LABEL = {
-  estimate_follow_up: ['FOLLOW-UP', 'watch'],
-  review_request: ['REVIEW ASK', 'info'],
-  no_show_saver: ['NO-SHOW SAVE', 'watch'],
-  seasonal_outreach: ['SEASONAL', 'info'],
-  growth_outreach: ['COMING DUE', 'info'],
+  estimate_follow_up: [T('FOLLOW-UP'), 'watch'],
+  review_request: [T('REVIEW ASK'), 'info'],
+  no_show_saver: [T('NO-SHOW SAVE'), 'watch'],
+  seasonal_outreach: [T('SEASONAL'), 'info'],
+  growth_outreach: [T('COMING DUE'), 'info'],
 };
 // A newer render owns the screen. Refresh, the online event and the breakdown
 // sheet can all start one while another is still reading.
@@ -6567,8 +6759,10 @@ async function renderFollowUps() {
   const head = el('div', 'viewhead');
   head.appendChild(el('div', 'eyebrow', DESK_LINE.followups));
   head.appendChild(el('h1', '', VIEW_TITLES.followups));
-  head.appendChild(el('p', '', 'Open loops and recommended sends. Arbo recommends — you decide.'));
+  head.appendChild(el('p', '', T('Open loops and recommended sends.') + ' ' + T('Arbo recommends — you decide.')));
   v.appendChild(head);
+  // R27: a dead feed is said in the shared §1B feed words — English as written, marked "en inglés" in Spanish.
+  const en = (n) => { if (ES.lang === 'es') { n.setAttribute('lang', 'en'); n.appendChild(esEnMark()); } return n; };
   // Both panels read their own feed and name their own failure, so both are
   // built BEFORE the follow-ups read. One missing feed must never blank the
   // whole screen (§1B).
@@ -6578,25 +6772,26 @@ async function renderFollowUps() {
   v.appendChild(loopsSlot);
   const loopsP = api('/api/queue').then((qq) => {
     if (!qq.open.length) {
-      loopsSlot.appendChild(el('div', 'storm-muted', 'No open loops' + (qq.checkedAtIso ? ' as of ' + fmtTime(qq.checkedAtIso) : '') + '.'));
+      loopsSlot.appendChild(el('div', 'storm-muted', qq.checkedAtIso ? tf('No open loops as of {time}.', { time: fmtTime(qq.checkedAtIso) }) : T('No open loops.')));
       return;
     }
-    loopsSlot.appendChild(el('div', 'panel-title', 'Open loops — silence is never success'));
+    loopsSlot.appendChild(el('div', 'panel-title', T('Open loops — silence is never success')));
+    // Each loop card is the shared loopCard (Today's too): its words are not this unit's.
     for (const o of qq.open) loopsSlot.appendChild(loopCard(o));
   }).catch(async (e) => {
     if (e.code === 401) return;
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
     // One line, not a dashed card: the recommended sends below stay on the first screen.
-    loopsSlot.appendChild(el('div', 'panel-title', 'Open loops'));
-    loopsSlot.appendChild(feedLine(e, 'Open loops', 'That is not a sign that nothing is open.'));
+    loopsSlot.appendChild(el('div', 'panel-title', T('Open loops')));
+    loopsSlot.appendChild(en(feedLine(e, 'Open loops', 'That is not a sign that nothing is open.')));
   });
   // The sends this screen is named for come next, in their own slot, so the
   // read below fills this place whenever it lands.
   const fuSlot = el('div');
   v.appendChild(fuSlot);
-  fuSlot.appendChild(el('div', 'panel-title', 'Recommended sends'));
+  fuSlot.appendChild(el('div', 'panel-title', T('Recommended sends')));
   const note = el('div', 'zip-run');
-  note.appendChild(document.createTextNode('Arbo recommends — nothing sends without you.'));
+  note.appendChild(document.createTextNode(T('Arbo recommends — nothing sends without you.')));
   fuSlot.appendChild(note);
   const reading = first ? fuSlot.appendChild(readingLine()) : null;
   const release = () => loopsP.then(() => { if (gen === FU_GEN) v.style.minHeight = ''; });
@@ -6608,48 +6803,53 @@ async function renderFollowUps() {
     if (gen !== FU_GEN) return;
     if (e.code === 401) return showKeywall(); // the key wall owns the screen; the next draw takes the hold over
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
-    fuSlot.appendChild(feedState(e, 'Follow-ups', 'an empty queue'));
+    fuSlot.appendChild(en(feedState(e, 'Follow-ups', 'an empty queue')));
     release();
     return;
   }
   if (gen !== FU_GEN) return;
   // The server drops storm and coming-due nudges it could not check, and says
   // so. 'No follow-ups due' must never be drawn over a feed Arbo could not read.
-  const unread = [];
-  if (q.seasonalUnavailable) unread.push('storm nudges (weather feed unreadable)');
-  if (q.growthUnavailable) unread.push('coming-due nudges (property records unreadable)');
-  if (unread.length) fuSlot.appendChild(el('div', 'feed-state unread', 'Arbo could not check ' + unread.join(' or ') + '. This is not a claim that none are due.'));
+  // R27: one sentence for each case — storm, coming-due, or both.
+  const storm = !!q.seasonalUnavailable;
+  const grow = !!q.growthUnavailable;
+  if (storm || grow) {
+    fuSlot.appendChild(el('div', 'feed-state unread', (storm && grow
+      ? T('Arbo could not check storm nudges (weather feed unreadable) or coming-due nudges (property records unreadable).')
+      : storm ? T('Arbo could not check storm nudges (weather feed unreadable).') : T('Arbo could not check coming-due nudges (property records unreadable).'))
+      + ' ' + T('This is not a claim that none are due.')));
+  }
   if (!q.due.length) {
-    fuSlot.appendChild(state(unread.length ? 'Nothing due from what Arbo could read' : 'No follow-ups due',
-      'Estimate follow-ups, review asks, and no-show saves land here when due.'));
+    fuSlot.appendChild(state(storm || grow ? T('Nothing due from what Arbo could read') : T('No follow-ups due'),
+      T('Estimate follow-ups, review asks, and no-show saves land here when due.')));
   }
   for (const a of q.due) {
     const c = el('div', 'card' + (a.type === 'no_show_saver' ? ' emergency' : ''));
     const top = el('div', 'toprow');
-    top.appendChild(el('div', 'who', a.name || 'Unknown'));
+    top.appendChild(el('div', 'who', a.name || T('Unknown')));
     top.appendChild(el('div', 'when', fmtTime(a.scheduledFor)));
     c.appendChild(top);
-    c.appendChild(el('div', 'scope', a.note));
+    c.appendChild(esSayTwin(el('div', 'scope'), a, 'note')); // the server's own line: English, marked, until Phase B
     const b = el('div', 'badges');
     const [label, tone] = FU_LABEL[a.type] || [String(a.type).toUpperCase(), 'info'];
     b.appendChild(chip(label, tone));
-    if (a.includeProofOfInsurance) b.appendChild(chip('+ PROOF OF INSURANCE', 'info'));
+    if (a.includeProofOfInsurance) b.appendChild(chip(T('+ PROOF OF INSURANCE'), 'info'));
     c.appendChild(b);
     // "I sent it" — the only way the cadence advances (ARBOR never marks its
     // own recommendations done). Only estimate/review items have a cadence to
     // advance; seasonal + growth nudges are one-shot suggestions.
     if (a.type === 'estimate_follow_up' || a.type === 'no_show_saver' || a.type === 'review_request') {
       const kind = a.type === 'review_request' ? 'review' : 'estimate';
-      const btn = el('button', 'actbtn', 'Mark sent ✓');
+      const btn = el('button', 'actbtn', T('Mark sent ✓'));
       btn.addEventListener('click', async () => {
         btn.disabled = true;
         try {
           await api('/api/followups/' + kind + '/' + a.targetId + '/sent', { method: 'POST', body: {} });
-          btn.textContent = 'Recorded';
+          btn.textContent = T('Recorded');
           btn.className = 'actbtn done';
           const err = c.querySelector(':scope > .save-err');
           if (err) err.remove();
-        } catch (e) { btn.disabled = false; showSaveFail(c, e); }
+        } catch (e) { btn.disabled = false; en(showSaveFail(c, e)); }
       });
       c.appendChild(btn);
     }
@@ -6657,8 +6857,9 @@ async function renderFollowUps() {
   }
   if (q.suppressed.length) {
     const s = el('div', 'state');
-    s.appendChild(el('b', '', q.suppressed.length + ' held by the legal gate'));
-    s.appendChild(document.createTextNode('No consent on file or STOP on record — these never send.'));
+    s.appendChild(el('b', '', tf('{n} held by the legal gate', { n: q.suppressed.length })));
+    // R27: the legal gate's line names STOP — a safety line, said through the safety pair.
+    s.appendChild(esSay(el('span'), 'No consent on file or STOP on record — these never send.'));
     fuSlot.appendChild(s);
   }
   release();
@@ -7676,6 +7877,8 @@ const ES_PLACES = {
   '#view-followups': 'app-followups', '#view-money': 'app-money', '#view-fleet': 'app-fleet', '#view-safety': 'app-safety',
   '#view-perf': 'app-numbers', '#view-settings': 'app-settings', '#view-more': 'app-office', '#view-permits': 'app-permits',
   '#view-agents': 'app-agents', '#view-measure': 'app-measure', '#view-learn': 'app-learn', '#view-assistant': 'app-assistant',
+  // R27 Phase A (owner app): a sheet a screen opens says that screen's words — after '.sheet', so its own unit decides.
+  '#yard': 'app-estimate', '#twin': 'app-book', '#bd': 'app-fleet',
 };
 esMarkPlaces(ES_PLACES);
 $('keywall').appendChild(esToggleButton('es-toggle'));
@@ -7739,11 +7942,12 @@ const PERMIT_STATUS = {
   'CALL FIRST': ['CALL FIRST', 'alarm'], // the strongest chip, as EMERGENCY — but only the power-line step (it.safety) wears it; checkCard turns hauling's call-ahead amber
   'TICKET REQUIRED': ['TICKET REQUIRED', 'stop'],
 };
+// R27: each topic's name is said once, at load, in the page's language (the office app reloads on a language change).
 const TOPIC_NAMES = {
-  private_tree_cbpa: 'Bay buffer (CBPA / RPA)', street_tree_row: 'Street & city trees', row_work_mot: 'Working in the street',
-  historic: 'Historic districts', wetlands: 'Wetlands', disposal: 'Debris & disposal', burning: 'Burning',
-  utility_811: 'VA811 — digging & stumps', power_lines: 'Power lines', licensing: 'Contractor licensing',
-  hazard_order: 'Hazard-tree orders', eagle_wildlife: 'Eagles & wildlife', pests_quarantine: 'Pests & quarantines',
+  private_tree_cbpa: T('Bay buffer (CBPA / RPA)'), street_tree_row: T('Street & city trees'), row_work_mot: T('Working in the street'),
+  historic: T('Historic districts'), wetlands: T('Wetlands'), disposal: T('Debris & disposal'), burning: T('Burning'),
+  utility_811: T('VA811 — digging & stumps'), power_lines: T('Power lines'), licensing: T('Contractor licensing'),
+  hazard_order: T('Hazard-tree orders'), eagle_wildlife: T('Eagles & wildlife'), pests_quarantine: T('Pests & quarantines'),
 };
 let PERMIT_CITY = 'Virginia Beach';
 const PERMIT_ANS = { inRpa: 'unknown', nearPowerLines: 'unknown', inRightOfWay: 'unknown', historicDistrict: 'unknown', stumpGrinding: false, haulingDebris: false, burning: false };
@@ -7759,7 +7963,7 @@ const nb = (s) => String(s).replace(/(\d)-(?=\d)/g, '$1-\u2060').replace(/§\s+/
 // (b-wave-1b): one chip picked by colour let a tie or a louder call-ahead drop
 // PERMIT LIKELY off the pin. No steps back is never a calm line: it is not an answer.
 function permitVerdict(items, city) {
-  if (!items.length) return { chips: [], line: 'No steps came back — that is not an answer. Check with the city.' };
+  if (!items.length) return { chips: [], line: T('No steps came back — that is not an answer.') + ' ' + T('Check with the city.') };
   const rank = ['alarm', 'stop', 'watch', 'good', 'info'];
   const strength = { 'PERMIT LIKELY': 0, 'REVIEW NEEDED': 1, 'NO OVERLAY–VERIFY': 2 }; // the permit words, strongest first (keys only: the labels live in PERMIT_STATE)
   // The chip each result card wears (checkCard): CALL FIRST is the alarm only on the power-line step.
@@ -7774,7 +7978,7 @@ function permitVerdict(items, city) {
     else if (rank.indexOf(c[1]) < rank.indexOf(had[1])) had[1] = c[1]; // the power-line CALL FIRST keeps its alarm
   }
   chips.sort((a, b) => rank.indexOf(a[1]) - rank.indexOf(b[1])); // stable: the permit word stays first among equals
-  return { chips, line: plural(items.length, 'step') + ' · ' + city };
+  return { chips, line: tn(items.length, '{n} step · {city}', '{n} steps · {city}', { city }) };
 }
 // Direction B P9: one rule topic, folded. The summary names it, counts its rules and
 // keeps UNCONFIRMED and RE-CHECK DUE in sight while it is closed. Permits is not on
@@ -7783,13 +7987,14 @@ function topicFold(name, facts, staleSet) {
   const d = el('details', 'topic');
   const s = el('summary');
   s.appendChild(el('span', 'topic-name', name));
-  s.appendChild(el('span', 'topic-n', plural(facts.length, 'rule')));
+  s.appendChild(el('span', 'topic-n', tn(facts.length, '{n} rule', '{n} rules')));
   const counts = {};
   for (const f of facts) if (f.confidence !== 'SOURCED') counts[f.confidence] = (counts[f.confidence] || 0) + 1;
   const due = facts.filter((f) => staleSet.has(f.id)).length;
   const b = el('span', 'badges');
-  for (const k of Object.keys(counts)) b.appendChild(chip(counts[k] + ' ' + k, 'watch'));
-  if (due) b.appendChild(chip(due + ' RE-CHECK DUE', 'watch'));
+  // R27: UNCONFIRMED is a safety label — said through the safety pair, after its count.
+  for (const k of Object.keys(counts)) b.appendChild(k === 'UNCONFIRMED' ? esSay(chip('', 'watch'), 'UNCONFIRMED', counts[k] + ' ') : chip(counts[k] + ' ' + k, 'watch'));
+  if (due) b.appendChild(chip(tf('{n} RE-CHECK DUE', { n: due }), 'watch'));
   if (b.children.length) s.appendChild(b);
   d.appendChild(s);
   for (const f of facts) d.appendChild(factCard(f, staleSet.has(f.id)));
@@ -7804,10 +8009,12 @@ async function renderPermits() {
   v.replaceChildren();
   const head = el('div', 'viewhead');
   head.appendChild(el('div', 'eyebrow', 'Permit Desk'));
-  head.appendChild(el('h1', '', 'Permits & public works'));
-  head.appendChild(el('p', '', 'Every rule shows its source and the date it was checked. Anything a source didn’t state plainly is marked UNCONFIRMED — check it with the city before you tell a customer (the office to call is on the rule where we have one).'));
+  head.appendChild(el('h1', '', T('Permits & public works')));
+  // R27: two sentences — the second names UNCONFIRMED, a safety label, so it is a safety line (the pair, or the pointer).
+  head.appendChild(esSay(el('p'), 'Anything a source didn’t state plainly is marked UNCONFIRMED — check it with the city before you tell a customer (the office to call is on the rule where we have one).',
+    T('Every rule shows its source and the date it was checked.') + ' '));
   // Maps wave B (M2): DEQ's RPA areas on the map, on the four-city view (Q11).
-  const rpa = el('button', 'minibtn mapbtn', 'RPA areas on the map');
+  const rpa = el('button', 'minibtn mapbtn', T('RPA areas on the map'));
   rpa.type = 'button';
   rpa.addEventListener('click', () => openMap('permits'));
   head.appendChild(rpa);
@@ -7824,7 +8031,7 @@ async function renderPermits() {
   // only the checklist under it: the page, the rules library and the scroll stay
   // put. A city change is the one thing that rebuilds the whole desk.
   const job = el('div', 'slot');
-  job.appendChild(el('div', 'panel-title', 'Job check — ' + PERMIT_CITY));
+  job.appendChild(el('div', 'panel-title', tf('Job check — {city}', { city: PERMIT_CITY })));
   // Direction B P9: the result, pinned above the questions (sticky while they are worked); a tap goes to the steps.
   const verdict = el('button', 'permit-verdict');
   verdict.type = 'button';
@@ -7844,13 +8051,14 @@ async function renderPermits() {
       if (g !== ck || gen !== PERMIT_GEN) return; // a newer check or render owns the screen
       out.replaceChildren(...r.items.map(checkCard));
       const pv = permitVerdict(r.items, PERMIT_CITY);
-      verdict.replaceChildren(...pv.chips.map((c) => chip(c[0], c[1])), el('span', 'pv-line', pv.line));
+      verdict.replaceChildren(...pv.chips.map((c) => permitLabel(chip(c[0], c[1]))), el('span', 'pv-line', pv.line));
     }).catch((e) => {
       if (g !== ck || gen !== PERMIT_GEN) return;
       if (e.code === 401) showKeywall();
       // §1B: a failed check REPLACES the old results — they are never left up as current.
-      out.replaceChildren(el('div', 'feed-state unread', (e.code ? 'Arbo could not build the checklist right now.' : 'Could not reach Arbo (no signal?).') + ' An empty list here is not an answer — Arbo could not check.'));
-      verdict.replaceChildren(el('span', 'pv-line', 'Not checked — Arbo could not build the checklist. That is not an answer.'));
+      out.replaceChildren(el('div', 'feed-state unread', (e.code ? T('Arbo could not build the checklist right now.') : T('Could not reach Arbo (no signal?).'))
+        + ' ' + T('An empty list here is not an answer — Arbo could not check.')));
+      verdict.replaceChildren(el('span', 'pv-line', T('Not checked — Arbo could not build the checklist.') + ' ' + T('That is not an answer.')));
     }).finally(() => {
       if (g === ck) { out.style.minHeight = ''; out.style.opacity = ''; verdict.style.opacity = ''; out.removeAttribute('aria-busy'); }
     });
@@ -7859,7 +8067,7 @@ async function renderPermits() {
     const row = el('div', 'qrow');
     row.appendChild(el('span', 'q', q));
     const seg = el('div', 'seg');
-    for (const [val, label] of [[true, 'Yes'], [false, 'No'], ['unknown', 'Don’t know']]) {
+    for (const [val, label] of [[true, T('Yes')], [false, T('No')], ['unknown', T('Don’t know')]]) {
       const b = el('button', PERMIT_ANS[key] === val ? 'on' : '', label);
       b.addEventListener('click', () => {
         PERMIT_ANS[key] = val;
@@ -7871,10 +8079,10 @@ async function renderPermits() {
     row.appendChild(seg);
     job.appendChild(row);
   };
-  tri('inRpa', 'Inside the Bay buffer (RPA)?');
-  tri('nearPowerLines', 'Branches within 10 ft of a power line?');
-  tri('inRightOfWay', 'Tree or work in the street / right-of-way?');
-  tri('historicDistrict', 'In a historic district?');
+  tri('inRpa', T('Inside the Bay buffer (RPA)?'));
+  tri('nearPowerLines', T('Branches within 10 ft of a power line?'));
+  tri('inRightOfWay', T('Tree or work in the street / right-of-way?'));
+  tri('historicDistrict', T('In a historic district?'));
   const flag = (key, q) => {
     const lab = el('label', 'checkfield');
     const box = document.createElement('input');
@@ -7884,9 +8092,9 @@ async function renderPermits() {
     lab.appendChild(el('span', '', q));
     job.appendChild(lab);
   };
-  flag('stumpGrinding', 'Stump grinding');
-  flag('haulingDebris', 'Hauling the debris away');
-  flag('burning', 'Burning on site');
+  flag('stumpGrinding', T('Stump grinding'));
+  flag('haulingDebris', T('Hauling the debris away'));
+  flag('burning', T('Burning on site'));
   job.appendChild(out);
   v.appendChild(job);
   runCheck();
@@ -7897,7 +8105,9 @@ async function renderPermits() {
   try { db = await api('/api/permits/db?city=' + encodeURIComponent(PERMIT_CITY)).finally(() => { if (reading) reading.remove(); }); } catch (e) {
     if (gen !== PERMIT_GEN) return;
     if (e.code === 401) return showKeywall();
-    v.appendChild(state('Permit base — ' + FEED_WORD[feedKind(e)], 'Arbo could not read its permit base right now. That is not the same as “no rules”.'));
+    // R27: a dead feed in the shared §1B feed words — English as written, marked "en inglés" in Spanish.
+    const dead = v.appendChild(state('Permit base — ' + FEED_WORD[feedKind(e)], 'Arbo could not read its permit base right now. That is not the same as “no rules”.'));
+    if (ES.lang === 'es') { dead.setAttribute('lang', 'en'); dead.appendChild(esEnMark()); }
     return;
   }
   if (gen !== PERMIT_GEN) return;
@@ -7905,7 +8115,7 @@ async function renderPermits() {
   const byTopic = {};
   for (const f of db.facts) (byTopic[f.topic] = byTopic[f.topic] || []).push(f);
   // Direction B P9: each topic folds; a summary keeps its counts in sight.
-  v.appendChild(el('div', 'panel-title', 'The rules, by topic'));
+  v.appendChild(el('div', 'panel-title', T('The rules, by topic')));
   for (const topic of Object.keys(TOPIC_NAMES)) {
     const list = byTopic[topic];
     if (!list) continue;
@@ -7921,15 +8131,19 @@ function checkCard(it) {
   const st = PERMIT_STATUS[it.status] || [it.status, 'watch'];
   // CALL FIRST is the alarm chip only on the life-safety step (power lines);
   // hauling's call-ahead shares the words, not the colour.
-  const b = el('div', 'badges'); b.appendChild(chip(st[0], it.status === 'CALL FIRST' && !it.safety ? 'watch' : st[1]));
+  // R27: the label through the safety pair (permitLabel). The step and its reason are the Permit Desk's own lines (R27
+  // Phase B gives them twins): until then English, marked "en inglés" — and a life-safety step (power lines, the 811
+  // ticket) wears the Spanish pointer, so a Spanish reader knows to have it read.
+  const b = el('div', 'badges'); b.appendChild(permitLabel(chip(st[0], it.status === 'CALL FIRST' && !it.safety ? 'watch' : st[1])));
   c.appendChild(b);
-  c.appendChild(el('div', 'who', nb(it.step)));
-  c.appendChild(el('div', 'scope', nb(it.why)));
+  const step = { step: nb(it.step) };
+  c.appendChild(it.safety || it.status === 'TICKET REQUIRED' ? esSayPick(el('div', 'who'), step, 'step') : esSayTwin(el('div', 'who'), step, 'step'));
+  c.appendChild(esSayTwin(el('div', 'scope'), { why: nb(it.why) }, 'why'));
   const meta = el('div', 'factmeta');
   if (it.call) meta.appendChild(whoLine(it.call));
   if (it.factIds && it.factIds[0]) {
     const s = el('div', 'srcs');
-    const a = el('a', '', 'Source & date checked ↓');
+    const a = el('a', '', T('Source & date checked ↓'));
     a.href = '#fact-' + it.factIds[0];
     // Scroll in place: a #fact-… hash would outlive a reload, and the start-up
     // router only knows view names, so the reload would land on Today.
@@ -7945,7 +8159,7 @@ function checkCard(it) {
       const old = t.querySelector('.back-to-check');
       if (old) old.remove();
       const back = el('div', 'srcs back-to-check');
-      const up = el('a', '', '↑ Back to the job check');
+      const up = el('a', '', T('↑ Back to the job check'));
       up.href = '#';
       up.addEventListener('click', (e2) => {
         e2.preventDefault();
@@ -7978,34 +8192,39 @@ function whoLine(w) {
 }
 
 // A source whose web address would put the wrong name on screen gets a plain one.
-const KNOWN_HOSTS = { 'tcimag.tcia.org': 'TCI Magazine (trade press)' };
+// R27: the plain name is said once, at load, in the page's language (the office app reloads on a language change).
+const KNOWN_HOSTS = { 'tcimag.tcia.org': T('TCI Magazine (trade press)') };
 
 function factCard(f, isStale) {
   const c = el('div', 'card fact');
   c.id = 'fact-' + f.id; // where a job-check result's "Source & date checked ↓" lands
   const b = el('div', 'badges');
   b.appendChild(chip(f.city.toUpperCase(), 'info'));
-  b.appendChild(chip(f.confidence, f.confidence === 'SOURCED' ? 'good' : 'watch'));
-  if (isStale) b.appendChild(chip('RE-CHECK DUE', 'watch'));
+  // R27: UNCONFIRMED is a safety label — said through the safety pair; SOURCED in the page's words.
+  const conf = chip(f.confidence === 'SOURCED' ? T('SOURCED') : f.confidence, f.confidence === 'SOURCED' ? 'good' : 'watch');
+  b.appendChild(f.confidence === 'UNCONFIRMED' ? esSay(conf, 'UNCONFIRMED') : conf);
+  if (isStale) b.appendChild(chip(T('RE-CHECK DUE'), 'watch'));
   c.appendChild(b);
-  c.appendChild(el('div', 'who', nb(f.title)));
-  c.appendChild(el('div', 'scope', nb(f.rule)));
+  // The rule itself is the Permit Desk's (R27 Phase B: Spanish with the English rule beneath) — until then English, marked.
+  c.appendChild(esSayTwin(el('div', 'who'), { title: nb(f.title) }, 'title'));
+  c.appendChild(esSayTwin(el('div', 'scope'), { rule: nb(f.rule) }, 'rule'));
   const meta = el('div', 'factmeta');
   // No office on file: a city rule points at the city; a state, regional or industry rule
   // (e.g. ANSI Z133) is no city office's to answer, so it never says 'ask the city'.
   if (f.whoToCall) meta.appendChild(whoLine(f.whoToCall));
   else if (f.confidence !== 'SOURCED') meta.appendChild(el('div', '', (f.city === 'Virginia' || f.city === 'Regional')
-    ? 'No office on file — confirm it with the body that publishes it before relying on it.'
-    : 'No office on file — ask the city which office handles this.'));
-  if (f.form) meta.appendChild(el('div', '', 'Form: ' + f.form.name));
-  if (f.fee) meta.appendChild(el('div', '', 'Government-set figure (fee, fine or license tier): ' + f.fee));
-  if (f.leadTime) meta.appendChild(el('div', '', 'Lead time: ' + f.leadTime));
+    ? T('No office on file — confirm it with the body that publishes it before relying on it.')
+    : T('No office on file — ask the city which office handles this.')));
+  // The form's name, the figure and the lead time are the rule's own words (data), as written.
+  if (f.form) meta.appendChild(el('div', '', tf('Form: {name}', { name: f.form.name })));
+  if (f.fee) meta.appendChild(el('div', '', tf('Government-set figure (fee, fine or license tier): {fee}', { fee: f.fee })));
+  if (f.leadTime) meta.appendChild(el('div', '', tf('Lead time: {time}', { time: f.leadTime })));
   const src = el('div', 'srcs');
-  src.appendChild(document.createTextNode('Checked ' + nb(fmtWhen(f.verifiedOn)) + ' · '));
+  src.appendChild(document.createTextNode(tf('Checked {date}', { date: nb(fmtWhen(f.verifiedOn)) }) + ' · '));
   // Named by its site, so a city code page reads differently from a third-party
   // summary; two pages on one site are numbered so they never look like one link.
-  const siteOf = (u) => { try { const h = new URL(u).hostname.replace(/^www\./, ''); return KNOWN_HOSTS[h] || h; } catch (e) { return 'source'; } };
-  const labels = f.sourceUrls.map((u) => (u.indexOf('arbo:') === 0 ? 'your permit correspondence' : siteOf(u)));
+  const siteOf = (u) => { try { const h = new URL(u).hostname.replace(/^www\./, ''); return KNOWN_HOSTS[h] || h; } catch (e) { return T('source'); } };
+  const labels = f.sourceUrls.map((u) => (u.indexOf('arbo:') === 0 ? T('your permit correspondence') : siteOf(u)));
   const total = {};
   for (const l of labels) total[l] = (total[l] || 0) + 1;
   const nth = {};
@@ -8020,7 +8239,7 @@ function factCard(f, isStale) {
     src.appendChild(a);
   });
   meta.appendChild(src);
-  if (f.notes) meta.appendChild(el('div', 'internal-note', 'Internal (never read to a customer): ' + nb(f.notes.replace(/^INTERNAL:\s*/i, ''))));
+  if (f.notes) meta.appendChild(el('div', 'internal-note', tf('Internal (never read to a customer): {note}', { note: nb(f.notes.replace(/^INTERNAL:\s*/i, '')) })));
   c.appendChild(meta);
   return c;
 }

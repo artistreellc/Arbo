@@ -22,10 +22,7 @@ const PANEL = 'async function outreachPanel(full) {';
 // the same words (permitChip: w === 'PERMIT LIKELY' ? esPair('PERMIT LIKELY')). That draw is relabelled with the map,
 // so the word is left only in lookups — the map's key, the === that picks the pair, PERMIT_STATUS['PERMIT LIKELY'].
 const PAIR_DRAW = "w === 'PERMIT LIKELY' ? esPair('PERMIT LIKELY')";
-const relabelPair = (html: string): string => {
-  expect(html.split(PAIR_DRAW).length - 1, `mutation target: ${PAIR_DRAW}`).toBe(1);
-  return html.replace(PAIR_DRAW, () => "w === 'PERMIT LIKELY' ? esPair('Permit likely')");
-};
+const PAIR_UNDRAWN = "w === 'PERMIT LIKELY' ? esPair('Permit likely')";
 /** The page with a line of code added at the top of outreachPanel. */
 const withCode = (line: string) => mutate(PANEL, `${PANEL}\n  if (full === 'x') { ${line} }`);
 
@@ -77,19 +74,30 @@ describe('the send snapshot sees every send, however it is spelled (D2)', () => 
 });
 
 describe('the strings guard reads what can be on screen, never a comment or a lookup key (D4)', () => {
+  // Pins moved (R27 Phase A, owner app b), meaning kept: these cases ask whether the page's CODE keeps a word alive, so they
+  // run on the page with its inlined Spanish dictionary emptied — a dictionary key is no code (it is said only through a
+  // keyed call the code still makes). NO AERIAL WORK is now drawn through the safety pair, and PERMIT LIKELY is said again
+  // by permitLabel (a case it looks up, then the key it draws): each mutation relabels every place the code draws the word.
+  const code = raw.replace(/(<script type="application\/json" id="arbo-i18n"[^>]*>)[\s\S]*?(<\/script>)/, '$1{}$2');
+  const mutateCode = (page: string, from: string, to: string): string => {
+    expect(page.split(from).length - 1, `mutation target: ${from}`).toBe(1);
+    return page.replace(from, () => to);
+  };
+  const LIKELY_SAID = "case 'PERMIT LIKELY': return esSay(n, 'PERMIT LIKELY');";
+  const LIKELY_UNSAID = "case 'PERMIT LIKELY': return esSay(n, 'Permit likely');";
   it.each([
-    ['a trailing // comment', "b.appendChild(chip('NO AERIAL WORK', 'alarm'));", "b.appendChild(chip('GROUNDED', 'alarm')); // was NO AERIAL WORK", 'NO AERIAL WORK'],
-    // R27 Phase A (es-owner-a): the chip's words now go through T — the comment still keeps nothing on screen.
-    ['a trailing /* */ comment', "b.appendChild(chip(T('SONA BROKE A RULE'), 'stop'));", "b.appendChild(chip(T('SLIP'), 'stop')); /* SONA BROKE A RULE */", 'SONA BROKE A RULE'],
-    ['a lookup key', "PERMIT_LIKELY: ['PERMIT LIKELY', 'watch']", "PERMIT_LIKELY: ['Permit likely', 'watch']", 'PERMIT LIKELY'],
-  ])('a ruling word kept only in %s is gone', (_why, from, to, word) => {
-    expect(screenText(raw)).toContain(word); // control: it is on screen today
-    const broken = mutate(from, to);
-    expect(screenText(word === 'PERMIT LIKELY' ? relabelPair(broken) : broken)).not.toContain(word);
+    // Merged (D113): builder a's T('SONA BROKE A RULE') and permitChip pair draw, builder b's NO AERIAL WORK pair and
+    // permitLabel case — each mutation relabels every place the merged code draws the word.
+    ['a trailing // comment', [["b.appendChild(esSay(chip('', 'alarm'), 'NO AERIAL WORK'));", "b.appendChild(chip('GROUNDED', 'alarm')); // was NO AERIAL WORK"]], 'NO AERIAL WORK'],
+    ['a trailing /* */ comment', [["b.appendChild(chip(T('SONA BROKE A RULE'), 'stop'));", "b.appendChild(chip(T('SLIP'), 'stop')); /* SONA BROKE A RULE */"]], 'SONA BROKE A RULE'],
+    ['a lookup key', [["PERMIT_LIKELY: ['PERMIT LIKELY', 'watch']", "PERMIT_LIKELY: ['Permit likely', 'watch']"], [LIKELY_SAID, LIKELY_UNSAID], [PAIR_DRAW, PAIR_UNDRAWN]], 'PERMIT LIKELY'],
+  ] as Array<[string, Array<[string, string]>, string]>)('a ruling word kept only in %s is gone', (_why, edits, word) => {
+    expect(screenText(code)).toContain(word); // control: it is on screen today
+    expect(screenText(edits.reduce((page, [from, to]) => mutateCode(page, from, to), code))).not.toContain(word);
   });
 
   it('a ruling word kept only as an index or a lookup argument is gone', () => {
-    const relabelled = relabelPair(mutate("PERMIT_LIKELY: ['PERMIT LIKELY', 'watch']", "PERMIT_LIKELY: ['Permit likely', 'watch']"));
+    const relabelled = mutateCode(mutateCode(mutateCode(code, "PERMIT_LIKELY: ['PERMIT LIKELY', 'watch']", "PERMIT_LIKELY: ['Permit likely', 'watch']"), LIKELY_SAID, LIKELY_UNSAID), PAIR_DRAW, PAIR_UNDRAWN);
     const kept = relabelled.replace(PANEL, `${PANEL}\n  const k = PERMIT_STATUS['PERMIT LIKELY']; if (String(k).includes('PERMIT LIKELY')) return;`);
     expect(screenText(kept)).not.toContain('PERMIT LIKELY');
   });

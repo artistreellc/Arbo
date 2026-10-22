@@ -102,31 +102,34 @@ describe('Q0 — chips speak one tone table', () => {
   });
 
   it('life-safety chips are the alarm tone, and nothing else here is', () => {
-    expect(safety()).toContain("chip('NO AERIAL WORK', 'alarm')");
-    expect(book()).toContain("chip('POWER LINES', 'alarm')");
-    expect(twin()).toContain("chip('POWER LINES', 'alarm')");
-    expect(book()).toContain("chip('STRUCTURES', 'stop')");
-    expect(twin()).toContain("chip('STRUCTURES', 'stop')");
+    // Pins moved (R27 Phase A, owner app b), meaning kept: the same words and tones, now said through the runtime (T/tf/tn, and esSay for a safety label).
+    expect(safety()).toContain("esSay(chip('', 'alarm'), 'NO AERIAL WORK')");
+    expect(book()).toContain("esSay(chip('', 'alarm'), 'POWER LINES')");
+    expect(twin()).toContain("esSay(chip('', 'alarm'), 'POWER LINES')");
+    expect(book()).toContain("esSay(chip('', 'stop'), 'STRUCTURES')");
+    expect(twin()).toContain("esSay(chip('', 'stop'), 'STRUCTURES')");
     const alarms = owned().join('\n').match(/'alarm'\)/g) ?? [];
     expect(alarms).toHaveLength(3); // NO AERIAL WORK, POWER LINES on the list and on the twin sheet
   });
 
   it('the rest of the chips carry the tone the word list gives them', () => {
-    for (const pin of ["chip('NEVER TESTED', 'stop')", "chip('WEEK UNKNOWN', 'watch')", "chip('WEEK DONE', 'good')",
-      "chip('OWES THIS WEEK', 'watch')"]) expect(training()).toContain(pin);
-    expect(roster()).toContain("chip(p.role.toUpperCase(), CREW_ROLES.indexOf(p.role) === -1 ? 'watch' : 'info')");
-    expect(roster()).toContain("chip('OFF ROSTER', 'info')");
+    // Pins moved (R27 Phase A, owner app b), meaning kept: the same words and tones, now said through the runtime (T/tf/tn, and esSay for a safety label).
+    for (const pin of ["chip(T('NEVER TESTED'), 'stop')", "chip(T('WEEK UNKNOWN'), 'watch')", "chip(T('WEEK DONE'), 'good')",
+      "chip(T('OWES THIS WEEK'), 'watch')"]) expect(training()).toContain(pin);
+    expect(roster()).toContain("chip(role(p.role).toUpperCase(), CREW_ROLES.indexOf(p.role) === -1 ? 'watch' : 'info')");
+    expect(roster()).toContain("chip(T('OFF ROSTER'), 'info')");
     expect(roster()).toContain("p.certCount === null ? 'watch' : 'info'");
     expect(area()).toContain("chip(mix, 'info')");
     expect(money()).toContain("chip(money(inv.amount), 'info')");
-    expect(money()).toContain("LATE FEE (' + inv.lateFeePct + '% CAP)', 'watch')");
-    for (const pin of ["chip('NOT SCHEDULABLE', 'stop')", "chip(plural(u.openTasks, 'open task'), 'watch')",
-      "chip('SIZE UNKNOWN — ROUTED CONSERVATIVELY', 'watch')"]) expect(fleet()).toContain(pin);
-    expect(queue()).toContain("chip('+ PROOF OF INSURANCE', 'info')");
-    expect(book()).toContain("chip(d.state === 'overdue' ? 'OVERDUE' : 'DUE NOW', 'watch')");
-    expect(book()).toContain("chip(p.due.state === 'overdue' ? 'OVERDUE' : 'COMING DUE', 'watch')");
-    // R26 (qa-x6): the twin's permit chip is the one label per permit state (PERMIT_STATE via permitChip).
-    for (const pin of ['b.appendChild(permitChip(pr.screen_status));', "chip('IN RPA', 'watch')"]) expect(twin()).toContain(pin);
+    expect(money()).toContain("chip(tf('+{fee} LATE FEE ({pct}% CAP)', { fee: money(inv.lateFeeOwed), pct: inv.lateFeePct }), 'watch')");
+    for (const pin of ["chip(T('NOT SCHEDULABLE'), 'stop')", "chip(tn(u.openTasks, '{n} open task', '{n} open tasks'), 'watch')",
+      "chip(T('SIZE UNKNOWN — ROUTED CONSERVATIVELY'), 'watch')"]) expect(fleet()).toContain(pin);
+    expect(queue()).toContain("chip(T('+ PROOF OF INSURANCE'), 'info')");
+    expect(book()).toContain("chip(d.state === 'overdue' ? T('OVERDUE') : T('DUE NOW'), 'watch')");
+    expect(book()).toContain("chip(p.due.state === 'overdue' ? T('OVERDUE') : T('COMING DUE'), 'watch')");
+    // R26 (qa-x6): the twin's permit chip is the one label per permit state (PERMIT_STATE via permitChip) — said through
+    // the safety pair (permitLabel, R27).
+    for (const pin of ['b.appendChild(permitLabel(permitChip(pr.screen_status)));', "chip(T('IN RPA'), 'watch')"]) expect(twin()).toContain(pin);
     expect(twin()).not.toContain("chip('REVIEW NEEDED'");
   });
 });
@@ -166,12 +169,13 @@ describe('Q1 — a failed read has one title shape: "X — <feed word>"', () => 
 describe('Q2 — the safety board has its own heading and words its blind spots', () => {
   it('a heading leads the board, and it never doubles the clean-board title', () => {
     const s = safety();
-    const head = "if (s.blindSpots.length || s.aerialBlocked.length) slot.appendChild(el('div', 'panel-title', s.aerialBlocked.length ? 'Safety — ' + s.aerialBlocked.length + ' cannot go aerial' : 'Safety'));";
+    // Pin moved (R27 Phase A, owner app b), meaning kept: the same heading, said through the runtime.
+    const head = "if (s.blindSpots.length || s.aerialBlocked.length) slot.appendChild(el('div', 'panel-title', s.aerialBlocked.length ? tf('Safety — {n} cannot go aerial', { n: s.aerialBlocked.length }) : T('Safety')));";
     expect(s).toContain(head);
     expect(s.indexOf(head)).toBeLessThan(s.indexOf('for (const b of s.blindSpots) {'));
     // The clean title only draws with no blind spots (and no cert problems, which aerialBlocked implies).
     expect(s).toContain("if (!s.blindSpots.length && !s.certProblems.length && !openNm.length) {");
-    expect(s).toContain("plural(s.aerialBlocked.length, 'crew member') + ' cannot be put on aerial work'");
+    expect(s).toContain("tn(s.aerialBlocked.length, '{n} crew member cannot be put on aerial work', '{n} crew members cannot be put on aerial work')");
     expect(s).not.toContain('crew member(s)');
   });
 
@@ -219,7 +223,8 @@ describe('Q2 — the safety board has its own heading and words its blind spots'
 
   it('a dead open-loops feed is one line, so the safety stop leads the first screen', () => {
     const q = queue();
-    expect(q).toContain("loopsSlot.appendChild(feedLine(e, 'Open loops', 'That is not a sign that nothing is open.'));");
+    // Pin moved (R27 Phase A, owner app b), meaning kept: the same one line, marked "en inglés" in Spanish (the shared feed words).
+    expect(q).toContain("loopsSlot.appendChild(en(feedLine(e, 'Open loops', 'That is not a sign that nothing is open.')));");
     expect(q).not.toContain("feedState(e, 'Open loops'");
   });
 });
@@ -227,18 +232,19 @@ describe('Q2 — the safety board has its own heading and words its blind spots'
 describe('Q3 — an invoice Arbo cannot date says whose and how much', () => {
   it('unknowns get their own heading, the customer and the amount', () => {
     const m = money();
-    expect(m).toContain("slot.appendChild(el('div', 'panel-title', 'Can’t tell if overdue — ' + m.unknown.length));");
+    // Pins moved (R27 Phase A, owner app b), meaning kept: the same heading and name, said through the runtime.
+    expect(m).toContain("slot.appendChild(el('div', 'panel-title', tf('Can’t tell if overdue — {n}', { n: m.unknown.length })));");
     expect(m).toContain('const inv = m.invoices.find((i) => i.id === u.invoiceId);');
-    expect(m).toContain("top.appendChild(el('div', 'who', (inv && inv.name) || 'Unknown'));");
+    expect(m).toContain("top.appendChild(el('div', 'who', (inv && inv.name) || T('Unknown')));");
     expect(m).toContain("if (inv) top.appendChild(el('div', 'when', money(inv.amount)));");
     // Filed apart from 'Cannot bill yet', after it.
-    expect(m.indexOf("'Can’t tell if overdue — '")).toBeGreaterThan(m.indexOf("'Cannot bill yet — '"));
+    expect(m.indexOf("'Can’t tell if overdue — {n}'")).toBeGreaterThan(m.indexOf("'Cannot bill yet — {n}'"));
   });
 
   it('a blocked job shows its customer as the serif name, not a grey kicker', () => {
     const m = money();
-    const blocked = m.slice(m.indexOf('for (const x of m.blocked)'), m.indexOf("'Can’t tell if overdue — '"));
-    expect(blocked).toContain("top.appendChild(el('div', 'who', x.name || 'Unknown'));");
+    const blocked = m.slice(m.indexOf('for (const x of m.blocked)'), m.indexOf("'Can’t tell if overdue — {n}'"));
+    expect(blocked).toContain("top.appendChild(el('div', 'who', x.name || T('Unknown')));"); // pin moved (R27): the fallback through T
     expect(blocked).not.toContain("'loop-kind', x.name");
   });
 });
@@ -308,15 +314,16 @@ describe('Q4 — one-way actions look different and ask twice', () => {
 
   it('take off the roster and retire this unit use it, in the danger style', () => {
     const r = roster();
-    expect(r).toContain("const off = el('button', 'actbtn danger', 'Take off the roster');");
+    // Pins moved (R27 Phase A, owner app b), meaning kept: the same words and style, said through the runtime.
+    expect(r).toContain("const off = el('button', 'actbtn danger', T('Take off the roster'));");
     // QA round 3: the armed line never promises the door closes. Deliberately
     // updated (CREW_PLAN C3, D109): the paid crew routes now check the roster, so
     // "Their crew code still opens the crew door." is gone — and no closed door is promised.
-    expect(r).toContain("armTwice(off, 'Tap again to take ' + p.name + ' off the roster — the safety and training boards stop counting them.', async () => {");
+    expect(r).toContain("armTwice(off, tf('Tap again to take {name} off the roster — the safety and training boards stop counting them.', { name: p.name }), async () => {");
     expect(r).not.toMatch(/lose crew-door access|can no longer open/);
     const f = fleet();
-    expect(f).toContain("const off = el('button', 'actbtn danger', 'Retire this unit');");
-    expect(f).toContain("armTwice(off, 'Tap again to retire ' + u.name, async () => {");
+    expect(f).toContain("const off = el('button', 'actbtn danger', T('Retire this unit'));");
+    expect(f).toContain("armTwice(off, tf('Tap again to retire {name}', { name: u.name }), async () => {");
     for (const body of [r, f]) expect(body).not.toContain("off.addEventListener('click'");
   });
 });
@@ -339,11 +346,12 @@ describe('Q5 — admin forms fold away, and the sends come right after safety', 
   });
 
   it('every per-card form and composer returns folded, so the pinned callers stay as they are', () => {
-    expect(certAdder()).toContain("return disclose('Record / renew a card', wrap);");
-    expect(partAdder()).toContain("return disclose('Add a part that fits this unit', wrap);");
-    expect(rosterComposer()).toContain("return disclose('Add someone to the roster', c);");
-    expect(libComposer()).toContain("return disclose('Write a new library entry', c);");
-    expect(fleetComposer()).toContain("return disclose('Add a unit to the fleet', c);");
+    // Pins moved (R27 Phase A, owner app b), meaning kept: each still folds under its name, said through T.
+    expect(certAdder()).toContain("return disclose(T('Record / renew a card'), wrap);");
+    expect(partAdder()).toContain("return disclose(T('Add a part that fits this unit'), wrap);");
+    expect(rosterComposer()).toContain("return disclose(T('Add someone to the roster'), c);");
+    expect(libComposer()).toContain("return disclose(T('Write a new library entry'), c);");
+    expect(fleetComposer()).toContain("return disclose(T('Add a unit to the fleet'), c);");
     // The summary is the form's name now; no second kicker repeats it inside.
     for (const gone of ["'loop-kind', 'Add somebody to the roster'", "'loop-kind', 'Write a new entry'", "'loop-kind', 'Add a unit to the fleet'"]) {
       expect(html).not.toContain(gone);
@@ -352,12 +360,13 @@ describe('Q5 — admin forms fold away, and the sends come right after safety', 
 
   it('the card date says which date it wants, and placeholders fit their box', () => {
     const c = certAdder();
-    expect(c).toContain("exp.setAttribute('aria-label', 'Expires on');");
-    expect(c).toContain("const expLabel = el('label', '', 'Expires on');");
+    // Pins moved (R27 Phase A, owner app b), meaning kept: the same words, said through T.
+    expect(c).toContain("exp.setAttribute('aria-label', T('Expires on'));");
+    expect(c).toContain("const expLabel = el('label', '', T('Expires on'));");
     expect(c).toContain('expLabel.htmlFor = exp.id;');
     expect(c.indexOf('wrap.appendChild(expLabel);')).toBeLessThan(c.indexOf('wrap.appendChild(exp);'));
-    expect(partAdder()).toContain("fit.placeholder = 'Also fits (optional)';");
-    expect(libComposer()).toContain("add('standardRefs', 'Clause refs, e.g. Z133 §8.1');");
+    expect(partAdder()).toContain("fit.placeholder = T('Also fits (optional)');");
+    expect(libComposer()).toContain("add('standardRefs', T('Clause refs, e.g. Z133 §8.1'));");
     expect(html).not.toContain('Clause citations, comma separated');
     expect(html).not.toContain('Also fits — e.g. both chippers');
   });
@@ -372,10 +381,12 @@ describe('Q5 — admin forms fold away, and the sends come right after safety', 
     const safety = html.slice(html.indexOf('function renderSafetyView('), html.indexOf('// ---------- Shell'));
     expect(safety.indexOf("['queue-safety', renderSafety]")).toBeGreaterThan(-1);
     expect(safety.indexOf("['queue-safety', renderSafety]")).toBeLessThan(safety.indexOf('[null, renderRoster]'));
-    const sends = q.slice(q.indexOf("fuSlot.appendChild(el('div', 'panel-title', 'Recommended sends'));"));
+    // Pins moved (R27 Phase A, owner app b), meaning kept: the same slot and heading (said through T), the same dead-feed card
+    // (marked "en inglés" in Spanish — the shared feed words).
+    const sends = q.slice(q.indexOf("fuSlot.appendChild(el('div', 'panel-title', T('Recommended sends')));"));
     expect(sends.length).toBeGreaterThan(0);
-    expect(sends.startsWith("fuSlot.appendChild(el('div', 'panel-title', 'Recommended sends'));")).toBe(true);
-    expect(sends).toContain("fuSlot.appendChild(feedState(e, 'Follow-ups', 'an empty queue'));");
+    expect(sends.startsWith("fuSlot.appendChild(el('div', 'panel-title', T('Recommended sends')));")).toBe(true);
+    expect(sends).toContain("fuSlot.appendChild(en(feedState(e, 'Follow-ups', 'an empty queue')));");
     expect(sends).not.toContain('v.appendChild(');
     // Every stale-render guard is still there.
     expect(q.match(/gen !== FU_GEN/g)).toHaveLength(2);
@@ -390,18 +401,22 @@ describe('Q6 — counts and dates read like a person wrote them', () => {
       expect(copy.replace(/http\(s\)/g, '')).not.toMatch(/[A-Za-z]\(s\)[ .,'’]/);
       expect(copy).not.toMatch(/\(§\d|'lvl /);
     }
-    expect(roster()).toContain("'level ' + p.competencyLevel");
+    // Pins moved (R27 Phase A, owner app b), meaning kept: a level and a count said as one keyed sentence, a real plural each.
+    expect(roster()).toContain("tf('level {n}', { n: p.competencyLevel })");
     expect(roster()).toContain("plural(p.certCount, 'card') + ' on file'");
-    expect(libComposer()).toContain("plural(res.refsDropped, 'citation') + (res.refsDropped === 1 ? ' was' : ' were')");
+    expect(roster()).toContain("tn(p.certCount, '{n} card on file', '{n} cards on file')");
+    expect(libComposer()).toContain("tn(res.refsDropped, '{n} citation was dropped for not being a clause reference.', '{n} citations were dropped for not being a clause reference.')");
     expect(breakdown()).toContain("'Arbo never places the order and holds no card — you click, you buy.'");
   });
 
   it('the fleet heading counts in words, and a unit off the schedule leads the list', () => {
     const f = fleet();
     // R26: DOWN and HELD both count against "all units schedulable".
-    expect(f).toContain("if (f.down > 0) offSchedule.push(plural(f.down, 'unit') + ' down');");
-    expect(f).toContain("if (f.held > 0) offSchedule.push(plural(f.held, 'unit') + ' held');");
-    expect(f).toContain("offSchedule.length ? 'Fleet — ' + offSchedule.join(', ') : 'Fleet — all units schedulable'");
+    // Pins moved (R27 Phase A, owner app b), meaning kept: down and held each counted in words, both said together, and
+    // "all units schedulable" only when neither is on the list — one keyed sentence per case.
+    expect(f).toContain("const down = f.down > 0 ? tn(f.down, '{n} unit down', '{n} units down') : '';");
+    expect(f).toContain("const held = f.held > 0 ? tn(f.held, '{n} unit held', '{n} units held') : '';");
+    expect(f).toContain("down && held ? tf('Fleet — {down}, {held}', { down, held }) : down || held ? tf('Fleet — {off}', { off: down || held }) : T('Fleet — all units schedulable')");
     expect(f).toContain('for (const u of [...f.units].sort((a, b) => (!b.schedulable) - (!a.schedulable))) {');
     const units = [{ n: 'a', schedulable: true }, { n: 'b', schedulable: false }, { n: 'c', schedulable: true }, { n: 'd', schedulable: false }];
     const sorted = [...units].sort((a, b) => Number(!b.schedulable) - Number(!a.schedulable)).map((u) => u.n);
@@ -410,7 +425,7 @@ describe('Q6 — counts and dates read like a person wrote them', () => {
 
   it('a lapsed card says how long ago, in the stop colour', () => {
     const s = safety();
-    expect(s).toContain("lapsed ? plural(-f.daysUntil, 'day') + ' ago' : f.daysUntil + 'd'");
+    expect(s).toContain("lapsed ? tn(-f.daysUntil, '{n} day ago', '{n} days ago') : tf('{n}d', { n: f.daysUntil })"); // pin moved (R27)
     expect(s).toContain("if (lapsed) when.style.color = 'var(--emergency)';");
     expect(s).toContain("top.appendChild(el('div', 'when', fmtWhen(n.occurredOn)));");
   });
@@ -436,33 +451,40 @@ describe('Q6 — counts and dates read like a person wrote them', () => {
   it('the twin sheet shows dates the one human way', () => {
     const t = twin();
     expect(t).not.toContain('toLocaleDateString');
-    expect(t).toContain("(it.when ? fmtWhen(it.when) || String(it.when) : 'unscheduled')");
+    // Pins moved (R27 Phase A, owner app b), meaning kept: the same day, the value of one keyed sentence each.
+    expect(t).toContain("(it.when ? fmtWhen(it.when) || String(it.when) : T('unscheduled'))");
     expect(t).toContain("const day = (v) => (/^\\d{4}-\\d{2}-\\d{2}$/.test(String(v)) ? fmtWhen(v) : v);");
-    expect(t).toContain("'Last serviced ' + day(tr.last_service_date)");
-    expect(t).toContain("'Typically ready for another look around ' + day(tr.next_due_forecast)");
+    expect(t).toContain("tf('Last serviced {day}', { day: day(tr.last_service_date) })");
+    expect(t).toContain("tf('Typically ready for another look around {day}', { day: day(tr.next_due_forecast) })");
   });
 });
 
 describe('Q7 — the Book never dresses a dead screen as a help tip', () => {
   it('a missing address is an error line, and a failed prep read is a named feed', () => {
     const p = prep();
-    expect(p).toContain("out.replaceChildren(el('div', 'errline', 'Address is required.'))");
-    expect(p).toContain("out.appendChild(el('div', 'feed-state ' + feedKind(e), 'Prep sheet unavailable right now — nothing was screened.'));");
+    // Pins moved (R27 Phase A, owner app b), meaning kept: the same lines and looks, said through T.
+    expect(p).toContain("out.replaceChildren(el('div', 'errline', T('Address is required.')))");
+    expect(p).toContain("out.appendChild(el('div', 'feed-state ' + feedKind(e), T('Prep sheet unavailable right now — nothing was screened.')));");
     expect(p).not.toContain("'storm-muted', 'Prep sheet unavailable");
     const c = p.slice(p.indexOf('} catch (e) {'));
-    expect(c.indexOf("go.disabled = false; go.textContent = 'Build prep sheet';")).toBeLessThan(c.indexOf('if (e.code === 401) return showKeywall();'));
+    expect(c.indexOf("go.disabled = false; go.textContent = T('Build prep sheet');")).toBeLessThan(c.indexOf('if (e.code === 401) return showKeywall();'));
     expect(c.indexOf('if (e.code === 401) return showKeywall();')).toBeLessThan(c.indexOf('await LINKS_READY;'));
     expect(c.indexOf('await LINKS_READY;')).toBeLessThan(c.indexOf("'feed-state ' + feedKind(e)"));
     // The intro stays a help tip, and the Book's own dead feed stays the dashed card.
     // Direction B P15 review: the intro is Estimate's head line now (said once, above the form), still plain help text;
     // the Book is "Properties on file", and its dead feed says that name.
-    expect(between('async function renderEstimate()', 'function estimatePrepPanel()')).toContain("head.appendChild(el('p', '', 'Start with the address: permit, drive time, 811 and access. Never a price, never a booking.'));");
+    // Pin moved (R27 Phase A, owner app b), meaning kept: the same two sentences in one plain help line — the first names 811,
+    // so it is said through the safety pair (esSay), the second through T.
+    const est = between('async function renderEstimate()', 'function estimatePrepPanel()');
+    expect(est).toContain("const lede = head.appendChild(esSay(el('p'), 'Start with the address: permit, drive time, 811 and access.'));");
+    expect(est).toContain("lede.appendChild(document.createTextNode(' ' + T('Never a price, never a booking.')));");
     expect(p).not.toContain("'feed-state', 'Permit check");
     expect(book()).toContain("feedState(e, VIEW_TITLES.book, 'an empty list')");
   });
 
   it('the property counts read as real plurals', () => {
-    expect(book()).toContain("chip(plural(count(p.jobs), 'job') + ' · ' + plural(count(p.estimates), 'estimate') + ' · ' + plural(count(p.trees), 'tree'), 'info')");
+    // Pin moved (R27 Phase A, owner app b), meaning kept: three real plurals, each its own count.
+    expect(book()).toContain("chip(tn(j, '{n} job', '{n} jobs') + ' · ' + tn(est, '{n} estimate', '{n} estimates') + ' · ' + tn(tr, '{n} tree', '{n} trees'), 'info')");
   });
 });
 
