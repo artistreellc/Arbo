@@ -336,7 +336,8 @@ describe('review fixes (wave B)', () => {
     expect(facts(true)).not.toContain(POSITIONS_SAYS.ok);
   });
   it('an opened key is scrolled into the notes card; the zoom buttons step aside while a list is open', () => {
-    expect(srcOf(script, 'keyButton')).toContain("if (KEY_OPEN) $('card').scrollTop = Math.max(0, $('legend').offsetTop - 8);");
+    // Review round (D108): the key now opens under its own button, which stays at the card's top (mapCard.test.ts).
+    expect(srcOf(script, 'keyButton')).toContain("if (KEY_OPEN && kb) $('card').scrollTop = Math.max(0, kb.parentElement.offsetTop - 4);");
     expect(script).toContain("$('mapbox').classList.add('popopen')");
     expect(script).toContain("$('mapbox').classList.remove('popopen')");
     expect(page).toContain('#mapbox.popopen .leaflet-control-zoom{visibility:hidden}');

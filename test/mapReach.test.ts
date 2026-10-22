@@ -253,7 +253,7 @@ describe('today\'s trips: in view when Mike asks, in their own colour (UI review
   });
   it('when the notes card or Route the day changes size, markers moved aside are placed again (never left under the card)', () => {
     expect(srcOf(script, 'placeAgain')).toMatch(/drawTrucks\(\);\s*drawLeadPins\(\);/);
-    expect(script).toContain('const ro = new ResizeObserver(() => { if (KEEP_VIEW) openView(); offView(); placeAgain(); });');
+    expect(script).toContain('const ro = new ResizeObserver(() => { if (KEEP_VIEW) openView(); offView(); placeAgain(); moreCue(); });');
   });
   it('drawn trips fit the clear part of the map (Mike\'s own tap) and widen the pan limit', () => {
     const s = srcOf(script, 'readTrips');
