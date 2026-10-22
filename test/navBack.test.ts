@@ -293,7 +293,8 @@ describe('the aerial-work warning names each person and opens their credential',
     // now said through certSay — the safety ones (EXPIRED, NO RECORD, NO EXPIRY DATE) through the safety pair.
     expect(block).toContain("const who = (lead && lead.crewMemberName) || T('A crew member');");
     expect(block).toContain("const row = el('button', 'sliplink');");
-    expect(block).toContain("if (lead) certSay(row, (CERT_STATE[lead.state] || [String(lead.state).toUpperCase()])[0], who + ' · ' + card(lead) + ' · ');");
+    expect(block).toContain("const words = ES.lang === 'es' ? row.appendChild(el('span')) : row;"); // English: the row itself, as before
+    expect(block).toContain("if (lead) certSay(words, (CERT_STATE[lead.state] || [String(lead.state).toUpperCase()])[0], who + ' · ' + card(lead) + ' · ');");
     expect(block).toContain(".find((n) => n.dataset.crew === id);");
     expect(html).toContain('c.dataset.crew = f.crewMemberId;');
   });

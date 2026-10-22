@@ -870,6 +870,8 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
 .es-held-why{display:block;margin-bottom:2px;font-size:.85em;font-weight:700}
 .badge:has(> .es-pair){display:inline-block;border-radius:var(--r-md);white-space:normal;text-align:left;max-width:100%}
 .badge .es-held-why{text-transform:none;letter-spacing:normal}
+.badge.t-alarm .es-en-mark{color:inherit;border-color:currentColor} /* the "en inglés" mark readable on the red alarm chip */
+html[lang="es"] #yard .grid2{align-items:end} /* a Spanish label that wraps keeps the two boxes of a row level */
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -4997,9 +4999,11 @@ async function renderSafety(slot) {
       const card = (f) => (CERT_TYPES.find(([k]) => k === f.type) || [f.type, String(f.type).replace(/_/g, ' ')])[1];
       const who = (lead && lead.crewMemberName) || T('A crew member');
       const row = el('button', 'sliplink');
-      if (lead) certSay(row, (CERT_STATE[lead.state] || [String(lead.state).toUpperCase()])[0], who + ' · ' + card(lead) + ' · ');
-      else row.textContent = who;
-      if (probs.length > 1) row.appendChild(document.createTextNode(' ' + tf('(+{n} more)', { n: probs.length - 1 })));
+      // In Spanish the safety pair is an element: the row's words go in one span, so the flex row never splits them into columns.
+      const words = ES.lang === 'es' ? row.appendChild(el('span')) : row;
+      if (lead) certSay(words, (CERT_STATE[lead.state] || [String(lead.state).toUpperCase()])[0], who + ' · ' + card(lead) + ' · ');
+      else words.textContent = who;
+      if (probs.length > 1) words.appendChild(document.createTextNode(' ' + tf('(+{n} more)', { n: probs.length - 1 })));
       row.addEventListener('click', () => {
         const t = [...slot.querySelectorAll('[data-crew]')].find((n) => n.dataset.crew === id);
         if (!t) return;

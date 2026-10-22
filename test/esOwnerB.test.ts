@@ -610,6 +610,10 @@ describe('the screens in Spanish — the page’s words in Spanish, data as writ
     const row = all(slot).find((n) => n.className === 'sliplink')!;
     expect(row.textContent.startsWith('SIM-Alder · Rescate en altura (aerial rescue) · ')).toBe(true);
     expect(heldEnglish(row)).toBe('EXPIRED');
+    // The row is a flex row: its words are ONE span, so the pair never splits it into columns (the browser check at 320 caught it).
+    expect(row.children.length).toBe(1);
+    expect(row.children[0]!.tagName).toBe('span');
+    expect(row.children[0]!.textContent).toBe(row.textContent);
     expect(t).toContain('golpe por objeto');
     expect(t).toContain('A limb swung back toward the groundie.');
     expect(markedEnglish(slot).map((n) => n.textContent)).toEqual(expect.arrayContaining([
@@ -621,6 +625,7 @@ describe('the screens in Spanish — the page’s words in Spanish, data as writ
     await p.renderSafety(slot);
     const row = all(slot).find((n) => n.className === 'sliplink')!;
     expect(row.textContent).toBe('SIM-Alder · Aerial rescue · EXPIRED');
+    expect(row.children.every((k) => k.tagName === '#text')).toBe(true); // English: the row's own text, exactly as before
     const chips = slot.children.filter((c) => c.dataset.crew).map((c) => c.querySelector('.badges')!.children.map((b) => b.textContent));
     expect(chips).toEqual([['EXPIRED', 'NO AERIAL WORK'], ['NO EXPIRY DATE']]);
     expect(slot.textContent).toContain('Safety — 1 cannot go aerial');
@@ -764,5 +769,16 @@ describe('the sheets’ fixed words: the markup holds the English, and each is a
       expect(fnOf(fn)).toMatch(/^function \w+\(\) \{\n {2}if \(ES\.lang !== 'es'\) return;/);
       expect(script).toContain(`\n${fn}();\n`);
     }
+  });
+});
+
+describe('what the browser check found at 320 and 390, pinned', () => {
+  const css = [...raw.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((m) => m[1]!).join('\n');
+  it('the "en inglés" mark on a red alarm chip (POWER LINES) takes the chip’s own color — it was dark on red, unreadable', () => {
+    expect(css).toContain('.badge.t-alarm .es-en-mark{color:inherit;border-color:currentColor}');
+  });
+  it('the Yard check rows stay level when a Spanish label wraps — scoped to Spanish, so English lays out exactly as before', () => {
+    expect(css).toContain('html[lang="es"] #yard .grid2{align-items:end}');
+    expect(css).not.toMatch(/(^|\})#yard \.grid2\{/m);
   });
 });
