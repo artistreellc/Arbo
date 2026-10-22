@@ -76,31 +76,34 @@ describe('the twin tables — every row is the Spanish of a line the module writ
     expect(readTwinTable('no-such-table')).toBeNull();
     expect(twinOf('no-such-table', 'x')).toBeNull();
   });
-  // D112 (pin moved): the blind review recorded the two hazards and REVIEW NEEDED; the four lines that
-  // say "protected work" stay drafts (no blind second translation has agreed with their words yet).
-  it('every safety-class row is in the review ledger — the three recorded by the blind review reviewed, the four "protected work" lines drafts', () => {
+  // D112 (pin moved): the blind review recorded the two hazards and REVIEW NEEDED. D112's protected-work
+  // round (pin moved, meaning kept): the four lines that say "protected work" are recorded too — a blind
+  // second translation given the glossary's term agreed — so every row is recorded, as the very pair the
+  // table holds, and none is held.
+  it('every safety-class row is in the review ledger — all seven recorded by the blind review, none held', () => {
     const safety = currentTwinPairs().filter((p) => isSafetyClass(p.en));
     expect(safety.length).toBe(Object.keys(CREW_LINES).length);
-    const recorded: string[] = [CREW_LINES.hazardPowerLines, CREW_LINES.hazardStructures, CREW_LINES.reviewNeeded];
     for (const p of safety) {
       expect(currentSafetyPairs().some((c) => c.en === p.en && c.es === p.es), p.en).toBe(true);
       const e = loadLedger().find((x) => x.en === p.en && x.es === p.es);
-      expect(e?.pass, p.en).toBe(recorded.includes(p.en) ? 'reviewed' : 'draft');
-      expect(RECORDED_EN.includes(p.en), p.en).toBe(recorded.includes(p.en));
-      expect(HELD_EN.includes(p.en), p.en).toBe(!recorded.includes(p.en));
+      expect(e?.pass, p.en).toBe('reviewed');
+      expect(RECORDED_EN.includes(p.en), p.en).toBe(true);
+      expect(HELD_EN.includes(p.en), p.en).toBe(false);
     }
   });
 });
 
 describe('work orders — the English payload is byte-identical; a twin rides under es only once it may be served', () => {
   // D112 (pin moved, meaning kept): the committed ledger now records the two hazards, so their twins
-  // ride under es; PERMIT LIKELY's line is still a draft, so no permitNote twin. The English is untouched.
-  it('the English fields are the very same as before; the recorded hazards ride under es; the held PERMIT LIKELY line does not', () => {
+  // ride under es. D112's protected-work round (pin moved, meaning kept): PERMIT LIKELY's line and the
+  // other three "protected work" lines are recorded too, so each permit note's twin rides under es as
+  // well. The English is untouched.
+  it('the English fields are the very same as before; the recorded hazards and every recorded permit note ride under es', () => {
     const p = buildCrewPayload(src());
     const table = readTwinTable('crew-workorder')!;
     expect(p.hazards).toEqual([CREW_LINES.hazardPowerLines, CREW_LINES.hazardStructures]);
     expect(p.permitNote).toBe(CREW_LINES.permitLikely);
-    expect(p.es).toEqual({ hazards: [table.hazardPowerLines!.es, table.hazardStructures!.es] });
+    expect(p.es).toEqual({ hazards: [table.hazardPowerLines!.es, table.hazardStructures!.es], permitNote: table.permitLikely!.es });
     const english = { ...p };
     delete english.es;
     expect(JSON.stringify(english)).toBe(JSON.stringify({
@@ -108,13 +111,19 @@ describe('work orders — the English payload is byte-identical; a twin rides un
       hazards: [CREW_LINES.hazardPowerLines, CREW_LINES.hazardStructures], permitNote: CREW_LINES.permitLikely,
       photoRefs: [], briefingId: null, requiresBeforeAfterPhotos: true,
     }));
-    // Each held permit line: no twin from the committed ledger. The recorded one (REVIEW NEEDED): its twin.
-    for (const s of ['PERMIT_LIKELY', 'NO_OVERLAY_VERIFY'] as const) {
-      expect(buildCrewPayload(src({ hazardPowerLines: false, hazardStructures: false, permitStatus: s })).es, s).toBeUndefined();
+    // Each permit line, recorded: its own twin from the committed ledger, the English note untouched.
+    const notes = [
+      [{ permitStatus: 'PERMIT_LIKELY' }, 'permitLikely'],
+      [{ permitStatus: 'REVIEW_NEEDED' }, 'reviewNeeded'],
+      [{ permitStatus: 'NO_OVERLAY_VERIFY' }, 'noOverlayVerify'],
+      [{ permitStatus: null, permitUnreadable: true }, 'permitUnreadable'],
+      [{ permitStatus: null, permitScreenPending: true }, 'permitScreenPending'],
+    ] as const;
+    for (const [over, id] of notes) {
+      const one = buildCrewPayload(src({ hazardPowerLines: false, hazardStructures: false, ...over }));
+      expect(one.permitNote, id).toBe(CREW_LINES[id]);
+      expect(one.es, id).toEqual({ permitNote: table[id]!.es });
     }
-    expect(buildCrewPayload(src({ hazardPowerLines: false, hazardStructures: false, permitStatus: null, permitUnreadable: true })).es).toBeUndefined();
-    expect(buildCrewPayload(src({ hazardPowerLines: false, hazardStructures: false, permitStatus: null, permitScreenPending: true })).es).toBeUndefined();
-    expect(buildCrewPayload(src({ hazardPowerLines: false, hazardStructures: false, permitStatus: 'REVIEW_NEEDED' })).es).toEqual({ permitNote: table.reviewNeeded!.es });
     // No hazard and no permit note: the payload has no es at all — the same object as before.
     expect('es' in buildCrewPayload(src({ hazardPowerLines: false, hazardStructures: false, permitStatus: null }))).toBe(false);
   });
@@ -271,10 +280,15 @@ describe('the quiz — a twin only with the same options in the same order, the 
 });
 
 describe('twinFor takes a ledger, so a review can be proven in a test without editing the committed one', () => {
-  it('the committed ledger: a draft safety line is held back; the same pair reviewed is served', () => {
+  // D112's protected-work round (pin moved, meaning kept): the committed ledger holds no draft any more,
+  // so the draft is the committed ledger with this one entry set back to draft — the same pair.
+  it('a draft safety line is held back; the same pair reviewed is served (the committed ledger records it)', () => {
     const r = readTwinTable('crew-workorder')!.permitLikely!;
-    expect(twinFor(r.en, { es: r.es, enSha: r.enSha })).toBeNull();
+    const asDraft = loadLedger().map((e) => (e.en === r.en ? { ...e, pass: 'draft' as const } : e));
+    expect(asDraft.find((e) => e.en === r.en && e.es === r.es)?.pass).toBe('draft');
+    expect(twinFor(r.en, { es: r.es, enSha: r.enSha }, asDraft)).toBeNull();
     expect(twinFor(r.en, { es: r.es, enSha: r.enSha }, reviewedLedger('crew-workorder'))).toBe(r.es);
+    expect(twinFor(r.en, { es: r.es, enSha: r.enSha })).toBe(r.es);
   });
 });
 
