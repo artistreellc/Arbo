@@ -95,8 +95,9 @@ on a map (Maps wave A, D106; draft ruling R37).
 - **ZIP-area pin** (hollow) for every other stop with a ZIP: *"ZIP area — not
   the exact spot"*. Stops in one ZIP share one pin; tap it to see each one.
   A stop before 4 PM, all day or ongoing gets a ZIP-area pin with no number.
-- **Stops close together share one pin** (*"1·2"*) until you zoom in; tap it
-  to see each one, with how it was placed.
+- **Stops close together share one pin** (*"1·2"*), drawn between them, only
+  when their pins would touch — zoom in and they part; tap it to see each one,
+  with how it was placed.
 - **Not on the map:** the line *"6 of 8 events on the map · 2 not on the
   map"* — tap it to see which, and why (no address, no ZIP, a PO box ZIP, a
   ZIP outside the four cities).
