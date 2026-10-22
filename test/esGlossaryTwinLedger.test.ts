@@ -108,15 +108,24 @@ describe('server twins — withEs and enSha (a stale twin is never served)', () 
 
   it('a safety-class twin is served only once the ledger records its review (a draft is not enough)', () => {
     // D112 held-five round (pin moved, meaning kept): every glossary label is recorded now, so the draft
-    // is PERMIT LIKELY's work-order line — one of the four "protected work" lines the review still holds.
+    // is PERMIT LIKELY's work-order line. D112's protected-work round (pin moved, meaning kept): that line
+    // is recorded too and the committed ledger holds no draft, so the draft is this very pair in a ledger
+    // that says "draft" — held back — and the committed ledger serves it.
     const label = 'PERMIT LIKELY — do not start protected work until the permit is confirmed.';
     const es = 'PROBABLEMENTE SE NECESITA PERMISO — no empiece el trabajo que requiere permiso (protected work) hasta que se confirme el permiso.';
     expect(isSafetyClass(label)).toBe(true);
-    expect(loadLedger().find((e) => e.en === label && e.es === es)?.pass).toBe('draft');
-    expect(twinFor(label, { es, enSha: enSha(label) })).toBeNull();
+    const draft: LedgerEntry[] = [{ en: label, es, sha: pairSha(label, es), where: 'test', pass: 'draft', translatedBy: 't', on: '2026-10-22' }];
+    expect(safetyCleared(label, es, draft)).toBe(false);
+    expect(twinFor(label, { es, enSha: enSha(label) }, draft)).toBeNull();
     const reviewed: LedgerEntry[] = [{ en: label, es, sha: pairSha(label, es), where: 'test', pass: 'reviewed', translatedBy: 't', reviewedBy: 'r', backTranslation: 'A PERMIT IS PROBABLY NEEDED — …', on: '2026-10-22' }];
     expect(safetyCleared(label, es, reviewed)).toBe(true);
     expect(safetyCleared(label, es + ' ', reviewed)).toBe(false);
+    expect(loadLedger().find((e) => e.en === label && e.es === es)?.pass).toBe('reviewed');
+    expect(twinFor(label, { es, enSha: enSha(label) })).toBe(es);
+    // A wording no blind pass agreed with (D111's "en zona protegida") has no entry and is not served.
+    const zone = 'PROBABLEMENTE SE NECESITA PERMISO — no empiece el trabajo en zona protegida (protected work) hasta que se confirme el permiso.';
+    expect(loadLedger().some((e) => e.es === zone)).toBe(false);
+    expect(twinFor(label, { es: zone, enSha: enSha(label) })).toBeNull();
     // And a recorded glossary label is served from the committed ledger, exactly as recorded.
     expect(twinFor('PERMIT LIKELY', { es: 'PROBABLEMENTE SE NECESITA PERMISO', enSha: enSha('PERMIT LIKELY') })).toBe('PROBABLEMENTE SE NECESITA PERMISO');
     // HELD: its recorded Spanish is served; the plan's words it replaced have no ledger entry and are not.
@@ -148,7 +157,8 @@ describe('the review ledger (src/i18n/reviewed.json) — a safety string edited 
   // D112 (replaces "the plan's table is a draft"): the blind review recorded exactly these lines and
   // held exactly these — RECORDED_EN / HELD_EN (test/support/esRecorded.ts) are the one list the page
   // and twin tests read. Only a blind-reviewed line is served; nothing is at "person" yet (R27 #5).
-  it('records exactly the blind-reviewed set — 13 reviewed, 4 held as drafts, none read by a person yet', () => {
+  // D112's protected-work round (pin moved): the four "protected work" lines are recorded — 17 and 0.
+  it('records exactly the blind-reviewed set — 17 reviewed, none held, none read by a person yet', () => {
     const at = (pass: string) => loadLedger().filter((e) => e.pass === pass).map((e) => e.en);
     expect(at('reviewed')).toEqual([...RECORDED_EN]);
     // …and by fingerprint, so a recorded line's Spanish can't change and be re-marked unnoticed.
@@ -175,8 +185,25 @@ describe('the review ledger (src/i18n/reviewed.json) — a safety string edited 
       expect(e?.pass, p.en).toBe('reviewed');
       expect(e?.es, p.en).toBe(p.es);
     }
-    expect(RECORDED_EN.length).toBe(13);
-    expect(HELD_EN.length).toBe(4);
+    expect(RECORDED_EN.length).toBe(17);
+    expect(HELD_EN.length).toBe(0);
+    // The four "protected work" lines: recorded on three blind passes — two forward translations and the
+    // back-translation — with the Spanish D111 wrote (their fingerprints are the ones they had as drafts).
+    for (const e of loadLedger().filter((x) => /\bprotected work\b/.test(x.en))) {
+      expect(e.pass, e.en).toBe('reviewed');
+      expect(e.reviewedBy, e.en).toMatch(/^Three blind passes \(D112’s protected-work round\)/);
+      expect(e.reviewedBy, e.en).toMatch(/D111’s review-round second translation/);
+      expect(e.reviewedBy, e.en).toMatch(/held-five round’s back-translation/);
+      expect(e.reviewedBy, e.en).toMatch(/protected-work round’s second translation/);
+      expect(e.note, e.en).toMatch(/^Recorded 2026-10-22 \(D112\) — the protected-work round/);
+      expect(e.es, e.en).toContain('el trabajo que requiere permiso (protected work)');
+    }
+    expect(loadLedger().filter((x) => /\bprotected work\b/.test(x.en)).map((x) => x.sha)).toEqual([
+      'e6d1da2f58ad48d9aa007ad1ebb50e0ceb04c06a94026949c291f27398e79e29',
+      'ee88f3090d525ad66636d9119803bcbf658dc57f8e3a446793b764c701bbb332',
+      'cbe406dfa33f79b31563346fe201fbd40fc1b23e7d22ffb63bc968c14b04f4d7',
+      'd0f2fd745d884f377ee02b9c01f6a456f4ab7dc94d0fbb585d4159f101a91820',
+    ]);
   });
 
   it('serves exactly the recorded lines as written — and a recorded line whose Spanish is edited by ONE character stops being served', () => {

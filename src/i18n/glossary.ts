@@ -57,6 +57,8 @@ export const TRADE_TERMS: readonly GlossaryPair[] = [
   // Review round (D111, UI 5 + the blind second pass): work that needs permit clearance before a crew
   // starts (src/permitting/permitRecord.ts requiresClearance). Never "trabajo protegido" — it reads as
   // work done with protection, and a back-translation returns "protected work" without flagging it.
+  // D112's protected-work round: a blind second translation given this term agreed with the four
+  // work-order lines that use it, and they are recorded in the ledger.
   { en: 'protected work', es: 'trabajo que requiere permiso (protected work)', note: 'Work that needs permit clearance before a crew starts.' },
 ];
 
