@@ -82,13 +82,17 @@ describe('what may be inlined — a broken unit is named; a banned, unservable o
   const dir = mkdtempSync(join(tmpdir(), 'arbo-i18n-'));
   writeFileSync(join(dir, 'crew-good.es.json'), JSON.stringify({ Language: 'Idioma', 'Wait {n} minutes': 'Espere {n} minutos' }));
   writeFileSync(join(dir, 'crew-banned.es.json'), JSON.stringify({ 'No overlay found': 'Zona libre', 'Look it up': 'Búsquelo' }));
-  // D112 (fixture moved, meaning kept): PERMIT LIKELY's pair is recorded now, so it is served; HELD's
-  // pair is a draft, and a recorded pair edited by one character has no review — both held back.
+  // D112 (fixture moved, meaning kept): PERMIT LIKELY's pair is recorded now, so it is served; a
+  // draft pair, and a recorded pair edited by one character, have no review — both held back.
+  // D112 held-five round: HELD's new pair is recorded (served); the draft is PERMIT LIKELY's
+  // work-order line, still held; HELD's replaced Spanish has no entry at all (held).
   writeFileSync(join(dir, 'crew-safety.es.json'), JSON.stringify({
     'PERMIT LIKELY': 'PROBABLEMENTE SE NECESITA PERMISO',
-    HELD: 'NO SE MANEJA — FRENOS/DIRECCIÓN',
+    HELD: 'NO LO MANEJE NI LO USE — FUERA DE SERVICIO (FRENOS O DIRECCIÓN)',
+    'PERMIT LIKELY — do not start protected work until the permit is confirmed.': 'PROBABLEMENTE SE NECESITA PERMISO — no empiece el trabajo que requiere permiso (protected work) hasta que se confirme el permiso.',
     'NO AERIAL WORK': 'NO PUEDE TRABAJAR EN ALTURa',
   }));
+  writeFileSync(join(dir, 'crew-replaced.es.json'), JSON.stringify({ HELD: 'NO SE MANEJA — FRENOS/DIRECCIÓN' }));
   writeFileSync(join(dir, 'crew-slots.es.json'), JSON.stringify({ '{n} calls today': '{count} llamadas hoy' }));
   writeFileSync(join(dir, 'crew-broken.es.json'), '{"Language": ');
   writeFileSync(join(dir, 'crew-notflat.es.json'), JSON.stringify({ Language: { es: 'Idioma' } }));
@@ -97,8 +101,8 @@ describe('what may be inlined — a broken unit is named; a banned, unservable o
   const d = loadDoorDictionary('crew', pathToFileURL(dir + '/'));
 
   it('only this door’s unit files are read, by name', () => {
-    expect(unitFiles(pathToFileURL(dir + '/')).map((u) => u.unit)).toEqual(['app-other', 'crew-banned', 'crew-broken', 'crew-good', 'crew-notflat', 'crew-safety', 'crew-slots']);
-    expect(Object.keys(d.units).sort()).toEqual(['crew-banned', 'crew-good', 'crew-safety', 'crew-slots']);
+    expect(unitFiles(pathToFileURL(dir + '/')).map((u) => u.unit)).toEqual(['app-other', 'crew-banned', 'crew-broken', 'crew-good', 'crew-notflat', 'crew-replaced', 'crew-safety', 'crew-slots']);
+    expect(Object.keys(d.units).sort()).toEqual(['crew-banned', 'crew-good', 'crew-replaced', 'crew-safety', 'crew-slots']);
   });
   it('a unit that is not a flat object of strings is BROKEN — the page will stay English and say so', () => {
     expect(d.broken.sort()).toEqual(['crew-broken', 'crew-notflat']);
@@ -106,9 +110,10 @@ describe('what may be inlined — a broken unit is named; a banned, unservable o
   it('a banned Spanish word, a renamed slot, or a safety line the ledger has not cleared is held back — the rest of the unit stays', () => {
     expect(d.units['crew-good']).toEqual({ Language: 'Idioma', 'Wait {n} minutes': 'Espere {n} minutos' });
     expect(d.units['crew-banned']).toEqual({ 'Look it up': 'Búsquelo' });
-    expect(d.units['crew-safety']).toEqual({ 'PERMIT LIKELY': 'PROBABLEMENTE SE NECESITA PERMISO' });
+    expect(d.units['crew-safety']).toEqual({ 'PERMIT LIKELY': 'PROBABLEMENTE SE NECESITA PERMISO', HELD: 'NO LO MANEJE NI LO USE — FUERA DE SERVICIO (FRENOS O DIRECCIÓN)' });
+    expect(d.units['crew-replaced']).toEqual({});
     expect(d.units['crew-slots']).toEqual({});
-    expect(d.held.map((h) => `${h.unit}:${h.key}`).sort()).toEqual(['crew-banned:No overlay found', 'crew-safety:HELD', 'crew-safety:NO AERIAL WORK', 'crew-slots:{n} calls today']);
+    expect(d.held.map((h) => `${h.unit}:${h.key}`).sort()).toEqual(['crew-banned:No overlay found', 'crew-replaced:HELD', 'crew-safety:NO AERIAL WORK', 'crew-safety:PERMIT LIKELY — do not start protected work until the permit is confirmed.', 'crew-slots:{n} calls today']);
   });
 });
 

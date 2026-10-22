@@ -7,12 +7,16 @@
 // at pass "person" — the phone read-through (Rudy, Marco or Temo; R27 #5) is
 // still owed before crews rely on any of it.
 
-/** Recorded (12): the glossary labels L0–L3, L5, L6; the stop-work orders L7–L9; the work-order lines L10, L11, L13. */
+/**
+ * Recorded (13): the seven glossary labels L0–L6 (HELD, L4, with new Spanish since D112's held-five
+ * round); the stop-work orders L7–L9; the work-order lines L10, L11, L13.
+ */
 export const RECORDED_EN: readonly string[] = [
   'PERMIT LIKELY',
   'PERMIT: REVIEW NEEDED',
   'NO OVERLAY — VERIFY W/ CITY',
   'PERMIT SCREEN PENDING',
+  'HELD',
   'NO AERIAL WORK',
   'NO EXPIRY DATE',
   'Do not start work — call the office.',
@@ -27,13 +31,16 @@ export const RECORDED_EN: readonly string[] = [
  * The exact pairs the blind review passed, by fingerprint (pairSha(en, es)), in the
  * same order as RECORDED_EN. Pinning the English alone would let a recorded line's
  * Spanish be edited and re-marked "reviewed" with a fresh sha unnoticed; a Spanish
- * change here means a new blind review first (D112 verify).
+ * change here means a new blind review first (D112 verify). HELD's is the pair
+ * "HELD" → "NO LO MANEJE NI LO USE — FUERA DE SERVICIO (FRENOS O DIRECCIÓN)" (D112,
+ * held-five round); the plan's "NO SE MANEJA — FRENOS/DIRECCIÓN" was never recorded.
  */
 export const RECORDED_SHA: readonly string[] = [
   '599563718f51c47c2f40d7ed9184af4eb6d3980a955cae8c3de86f6a4bdfee42',
   'f9fcaf3eba494eab26db1adbeff595ec33db818dc7858498027487ce2e4d8542',
   '991333dcd2506c390e75680e446a7305f008b9ce8a4a7441c1ee293bad6d9eee',
   'f3e9021d3831b55c1b098dbc6f389397537c0b833cc229ba7ef3d211cd05e690',
+  'a872f7f76a1ed475ad901efb7150e82d33e59a29683bf9782abd301dbed4a37f',
   'fe1f7608cb6d608f6d8c05c41d159aac60a35d487c12770451a83cf8285ffd77',
   '9e612bc3515e39644a2ca3f708baed6e157608fc60dcc431fc5f82a5d9290611',
   '7ca16938e280e50114a481cb1812e7c05f8315b8f4a116654533f500adcf80fa',
@@ -45,13 +52,12 @@ export const RECORDED_SHA: readonly string[] = [
 ];
 
 /**
- * Held (5): L4 HELD (drift — the blind second translation says "do not drive —
- * out of service", the ledger "not driven — brakes/steering"), and the four
- * permit lines that say "protected work" (L12, L14, L15, L16 — no blind second
- * translation has agreed with "el trabajo que requiere permiso" yet).
+ * Held (4): the four permit lines that say "protected work" (L12, L14, L15, L16). Two blind
+ * second translations have now been made of them from the English alone, and neither agreed
+ * with "el trabajo que requiere permiso": D111's wrote "en zona protegida", the held-five
+ * round's "el trabajo protegido" — the rendering the glossary rules out.
  */
 export const HELD_EN: readonly string[] = [
-  'HELD',
   'PERMIT LIKELY — do not start protected work until the permit is confirmed.',
   'NO OVERLAY — VERIFY W/ CITY before protected work.',
   'PERMIT STATUS UNKNOWN — Arbo could not read the permit screen. Check with the office before protected work.',

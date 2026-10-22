@@ -26,10 +26,16 @@ applied) and the four permit lines that say "protected work" (PERMIT LIKELY,
 NO OVERLAY, UNKNOWN, PENDING — no blind second translation has agreed with
 "el trabajo que requiere permiso" yet), which still show in English under the
 Spanish pointer ("Aviso de seguridad — por ahora solo en inglés; pídale a
-alguien que se lo lea:"). Next for this unit: a blind second translation of
-those four lines (and of a fixed HELD), then the phone read-through by a
-Spanish-reading crew member — Mike named "rudy or marco or temo" (R29 #3) —
-which is STILL OWED before crews rely on any of it (`docs/GO_LIVE.md` §2;
+alguien que se lo lea:"). **Held-five round (D112, 2026-10-22):** a fresh
+blind pass of those five — HELD recorded with D112's proposed words ("NO LO
+MANEJE NI LO USE — FUERA DE SERVICIO (FRENOS O DIRECCIÓN)"), now in the
+glossary and the table below, so **13 recorded**; the four permit lines held
+again (the blind second translation wrote "el trabajo protegido", which the
+glossary rules out), so **4 held**. Next for this unit: Mike's ruling that
+the glossary settles "protected work" (the four are then recorded as they
+stand) or a blind second translation given that term, then the phone
+read-through by a Spanish-reading crew member — Mike named "rudy or marco or
+temo" (R29 #3) — which is STILL OWED before crews rely on any of it (`docs/GO_LIVE.md` §2;
 recorded as pass "person", which no line has yet). A briefing or quiz question
 whose English holds a safety line (911, 811, Dominion, stop work, a badge) is
 never served in Spanish from its row until Mike rules how those get reviewed
@@ -105,9 +111,14 @@ Labels lead with what to do, so a clipped label still shows the obligation:
 | PERMIT: REVIEW NEEDED | PERMISO: HAY QUE REVISAR |
 | NO OVERLAY — VERIFY W/ CITY | VERIFIQUE CON LA CIUDAD — EL MAPA NO MOSTRÓ ZONA PROTEGIDA |
 | PERMIT SCREEN PENDING | CHEQUEO DE PERMISO SIN HACER |
-| HELD (brake/steering) | NO SE MANEJA — FRENOS/DIRECCIÓN |
+| HELD (brake/steering) | NO LO MANEJE NI LO USE — FUERA DE SERVICIO (FRENOS O DIRECCIÓN) |
 | NO AERIAL WORK | NO PUEDE TRABAJAR EN ALTURA |
 | NO EXPIRY DATE | FALTA LA FECHA DE VENCIMIENTO |
+
+HELD's Spanish changed after the table was decided (D112): the plan's "NO SE
+MANEJA — FRENOS/DIRECCIÓN" drifted in the blind review (it can read as a
+description, not an order, and it said less than "out of service"); the words
+above passed a fresh blind pass in D112's held-five round (2026-10-22).
 
 The rest of the safety and legal set gets the same treatment:
 - the chips EMERGENCY, POWER LINES, STRUCTURES, CALL FIRST, TICKET REQUIRED,

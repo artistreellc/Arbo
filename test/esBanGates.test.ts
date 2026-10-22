@@ -99,7 +99,7 @@ describe('the ban list does not bite honest Spanish — the plan’s own labels 
     'PERMISO: HAY QUE REVISAR',
     'VERIFIQUE CON LA CIUDAD — EL MAPA NO MOSTRÓ ZONA PROTEGIDA',
     'CHEQUEO DE PERMISO SIN HACER',
-    'NO SE MANEJA — FRENOS/DIRECCIÓN',
+    'NO LO MANEJE NI LO USE — FUERA DE SERVICIO (FRENOS O DIRECCIÓN)', // HELD (D112 held-five round)
     'NO PUEDE TRABAJAR EN ALTURA',
     'FALTA LA FECHA DE VENCIMIENTO',
     'No excave sin llamar al 811.',
