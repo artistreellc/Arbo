@@ -198,6 +198,14 @@ describe('the switches — a change is stored for this door, then the page acts 
     b.click();
     expect(r.doc.querySelectorAll('.es-storage')).toHaveLength(1); // said once, not stacked
   });
+  it('a toggle in a header row (the crew door) has the storage line said at the top of the page, not in the row', () => {
+    const header = new FakeNode('header');
+    const r = loadI18n({ door: 'crew', units: DICT, stored: 'throw', extra: [header] });
+    const b = header.appendChild(r.esToggleButton('es-toggle') as FakeNode);
+    b.click();
+    expect(header.children).toHaveLength(1);
+    expect(r.doc.querySelector('main')!.children[0]!.className).toBe('es-storage');
+  });
   it('tapping the language already chosen does nothing', () => {
     const r = loadI18n({ door: 'app', units: {} });
     r.esChange('en', null);
