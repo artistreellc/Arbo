@@ -295,6 +295,8 @@ main[data-es-en]::before{content:attr(data-es-en);display:inline-block;margin:0 
    its "inglés" tag is boxed and muted so it never reads as part of the label. */
 .es-pair-es{display:block}
 .es-pair-en{display:block;margin-top:2px;font-size:.85em;font-weight:600;opacity:.85}
+/* Review round (D111, UI 1 + 3): a held safety line's Spanish pointer — its own line, above the English. */
+.es-held-why{display:block;margin-bottom:2px;font-size:.85em;font-weight:700}
 .es-pair-tag{display:inline-block;margin-right:5px;padding:0 4px;border:1px solid currentColor;border-radius:4px;opacity:.75;font-size:.9em;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
 /* R27 Phase A unit 1 (D111): Spanish is longer. "Clave de la puerta de la cuadrilla" runs past the key
    box at 320px in the field's 17px, and a placeholder cannot wrap — so in Spanish it is drawn a little
@@ -534,7 +536,9 @@ function renderGate(brief) {
     if (ES.lang === 'es' && !twin) { body.setAttribute('lang', 'en'); body.insertBefore(esEnMark(), body.firstChild); }
     else if (body.lang) body.removeAttribute('lang');
     if (brief.standardRefs && brief.standardRefs.length) {
-      body.appendChild(el('div', 'clause', tf('Per {refs} — verify on site.', { refs: brief.standardRefs.join(' · ') })));
+      const clause = body.appendChild(el('div', 'clause', tf('Per {refs} — verify on site.', { refs: brief.standardRefs.join(' · ') })));
+      // Review round (D111, UI 4): Spanish inside a body marked English says so, for a screen reader.
+      if (ES.lang === 'es') clause.setAttribute('lang', 'es');
     }
   };
   drawBody();
@@ -902,7 +906,8 @@ async function renderQuiz(context, kept) {
     const prompt = card.appendChild(el('div', 'qprompt', tw ? tw.prompt : item.prompt));
     if (ES.lang === 'es' && !tw) { card.setAttribute('lang', 'en'); prompt.appendChild(esEnMark()); }
     if (item.readOnly) {
-      card.appendChild(el('div', 'scope', T('Read this one \u2014 there is nothing to answer.')));
+      const scope = card.appendChild(el('div', 'scope', T('Read this one \u2014 there is nothing to answer.')));
+      if (ES.lang === 'es') scope.setAttribute('lang', 'es'); // review round (D111, UI 4): Spanish in a card marked English
     } else {
       (tw ? tw.options : item.options).forEach((opt, idx) => {
         const b = el('button', 'qopt', opt);

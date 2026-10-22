@@ -39,6 +39,8 @@ const SERVED = loadDoorDictionary('crew');
 const DICT: Record<string, string> = Object.assign({}, ...Object.values(SERVED.units));
 const ORDER_LOCKED = 'Your work orders stay locked — do not start work; call the office to log your briefing.';
 const ORDER = 'Do not start work — call the office.';
+// Review round (D111, UI 1 + 3): the Spanish pointer a held safety line wears, on its own line.
+const POINTER = 'Aviso de seguridad — por ahora solo en inglés; pídale a alguien que se lo lea:';
 const raw = (unit: string): Record<string, string> => JSON.parse(readFileSync(new URL(`../src/app/i18n/${unit}.es.json`, import.meta.url), 'utf8'));
 /** The dictionary as it will be served once the stop-work orders' reviews are recorded (nothing else changes). */
 const REVIEWED_UNITS = { ...SERVED.units, 'crew-gate': raw('crew-gate'), 'crew-work': raw('crew-work') };
@@ -139,10 +141,10 @@ describe('work orders in Spanish — the page’s words in Spanish, the job’s 
     expect(t).toContain('SIMULATED — remove leaning pine');
     expect(t).toContain('📷 Se requieren fotos de antes y después');
     const hz = work.querySelectorAll('.hz');
-    expect(hz.map((h) => h.textContent)).toEqual([`⚠ ${CREW_LINES.hazardPowerLines}en inglés`, `⚠ ${CREW_LINES.hazardStructures}en inglés`]);
-    for (const h of hz) expect(h.all().some((k) => k.getAttribute('lang') === 'en' && k.textContent === h.textContent.slice(2, -'en inglés'.length))).toBe(true);
+    expect(hz.map((h) => h.textContent)).toEqual([`⚠ ${POINTER}${CREW_LINES.hazardPowerLines}en inglés`, `⚠ ${POINTER}${CREW_LINES.hazardStructures}en inglés`]);
+    for (const h of hz) expect(h.all().some((k) => k.getAttribute('lang') === 'en' && k.textContent === h.textContent.slice(2 + POINTER.length, -'en inglés'.length))).toBe(true);
     expect(hz[0]!.className).toBe('hz power');
-    expect(work.querySelector('.permit')!.textContent).toBe(`${CREW_LINES.permitLikely}en inglés`);
+    expect(work.querySelector('.permit')!.textContent).toBe(`${POINTER}${CREW_LINES.permitLikely}en inglés`);
   });
 
   it('once a line’s review is recorded, the server sends its twin and the page shows the Spanish over the FULL English', async () => {
@@ -201,7 +203,7 @@ describe('work orders in Spanish — the page’s words in Spanish, the job’s 
     expect(work.textContent).toContain('No se pueden confirmar los trabajos de hoy');
     expect(work.textContent).toContain('Arbo no pudo leer la lista de contratos, así que ningún trabajo está confirmado. ');
     // The stop-work order is a safety line with no recorded review: the English, marked.
-    expect(work.textContent).toContain('This is not an empty day — do not start work; call the office.en inglés');
+    expect(work.textContent).toContain(`${POINTER}This is not an empty day — do not start work; call the office.en inglés`);
   });
 });
 
@@ -223,6 +225,19 @@ describe('the gate in Spanish — its words in Spanish, the briefing the office�
     expect(gate.querySelector('label')!.textContent).toBe('Leí esta charla de seguridad y la entiendo.');
     expect(gate.querySelector('#gobtn')!.textContent).toBe('EMPEZAR');
     expect(gate.querySelector('#gate-status')!.textContent).toMatch(/^Todavía falta: baje hasta el final · marque la casilla · lea \d+ s más$/);
+  });
+
+  // Review round (D111, UI 4): Spanish inside a container marked English says it is Spanish, so a screen
+  // reader does not read it with English pronunciation. English mode adds no attribute.
+  it('the clause line under an English briefing is marked lang="es" in Spanish — and carries no lang in English', () => {
+    const rt = runtime('es');
+    page(rt, () => ({})).renderGate({ ...BRIEF });
+    const body = node(rt, 'gate-slot').querySelector('#brief-body')!;
+    expect(body.getAttribute('lang')).toBe('en');
+    expect(body.querySelector('.clause')!.getAttribute('lang')).toBe('es');
+    const rt2 = runtime('en');
+    page(rt2, () => ({})).renderGate({ ...BRIEF });
+    expect(node(rt2, 'gate-slot').querySelector('.clause')!.hasAttribute('lang')).toBe(false);
   });
 
   it('a reviewed twin the server sent: the briefing in Spanish, no English mark', () => {
@@ -257,8 +272,10 @@ describe('the gate in Spanish — its words in Spanish, the briefing the office�
     expect(p.GATE.serverMsg).toBe('No se pudo registrar su firma (la conexión con los registros de la oficina está cortada a propósito).');
     expect(p.GATE.serverOrder).toBe(true);
     const status = node(rt, 'gate-slot').querySelector('#gate-status')!;
-    expect(status.textContent).toBe(`No se pudo registrar su firma (la conexión con los registros de la oficina está cortada a propósito). ${ORDER_LOCKED}en inglés`);
-    expect(status.querySelector('.es-pair')!.querySelector('span')!.getAttribute('lang')).toBe('en');
+    expect(status.textContent).toBe(`No se pudo registrar su firma (la conexión con los registros de la oficina está cortada a propósito). ${POINTER}${ORDER_LOCKED}en inglés`);
+    // Review round (D111, UI 1 + 3): the Spanish pointer first (its own line), then the English order.
+    expect(status.querySelector('.es-pair')!.children[0]!.getAttribute('lang')).toBe('es');
+    expect(status.querySelector('.es-pair')!.children[1]!.getAttribute('lang')).toBe('en');
     expect(node(rt, 'gate-slot').querySelector('#gobtn')!.className).toBe('');
     p.refreshGate(); // the 1-second tick says it the same way, and never stacks it
     expect(status.querySelectorAll('.es-pair')).toHaveLength(1);
@@ -283,7 +300,9 @@ describe('the gate in Spanish — its words in Spanish, the briefing the office�
     const ro = node(rt, 'gate-slot').querySelector('.ro-note')!;
     expect(ro.children[0]!.textContent).toBe('Arbo está en solo lectura hoy — su firma no se puede guardar en este teléfono.');
     expect(ro.children[1]!.tagName).toBe('b');
-    expect(ro.children[1]!.textContent).toBe(`${ORDER}en inglés`);
+    expect(ro.children[1]!.textContent).toBe(`${POINTER}${ORDER}en inglés`);
+    // UI 1: the pointer is Spanish and its own line; the order is English, its own line under it.
+    expect(ro.children[1]!.querySelector('.es-held-why')!.getAttribute('lang')).toBe('es');
   });
 
   it('signed: the unlocked gate in Spanish — "Firmado a las …", DÍA DESBLOQUEADO', () => {
@@ -342,6 +361,18 @@ describe('the quiz in Spanish — a twin only with the same options in the same 
     expect(quiz.querySelector('.qprompt')!.textContent).toBe(item.prompt);
     expect(quiz.querySelectorAll('.qopt').map((b) => b.textContent)).toEqual(item.options);
     expect(quiz.querySelector('.card')!.getAttribute('lang')).toBeNull();
+  });
+
+  it('a read-only item in an English card: its Spanish "read this one" line is marked lang="es" (UI 4); English adds no attribute', async () => {
+    const lesson = { ...item, id: 'q0000000-0000-4000-8000-000000000002', type: 'lesson', options: [], readOnly: true };
+    const { quiz } = await draw(runtime('es'), [item, lesson]);
+    const card = quiz.querySelectorAll('.card')[1]!;
+    expect(card.getAttribute('lang')).toBe('en');
+    const scope = card.querySelector('.scope')!;
+    expect(scope.textContent).toBe('Lea esta — no hay nada que contestar.');
+    expect(scope.getAttribute('lang')).toBe('es');
+    const { quiz: q2 } = await draw(runtime('en'), [item, lesson]);
+    expect(q2.querySelectorAll('.card')[1]!.querySelector('.scope')!.hasAttribute('lang')).toBe(false);
   });
 
   it('a twin with a different count of options is never drawn — the English shows, marked', async () => {
