@@ -70,6 +70,10 @@ function src(over: Partial<DataSource> = {}): DataSource {
     trainingProfile: async () => ({ scores: { Rigging: 0.4 } }),
     saveTrainingProfile: async () => {},
     recordGate: async () => ({ trainingEventId: 'te1', timeEntryId: 't1' }),
+    // Deliberately added (CREW_PLAN C3, D109): the questions and their answers
+    // are paid time, refused unless the roster says the code is on it (Q7, fail
+    // closed with no lookup). These fixtures are about grading and pay, so it is.
+    crewMember: async () => ({ name: 'SIM-Alder, Test', active: true }),
     ...over,
   };
 }

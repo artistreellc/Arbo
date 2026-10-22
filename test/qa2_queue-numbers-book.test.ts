@@ -309,8 +309,11 @@ describe('Q4 — one-way actions look different and ask twice', () => {
   it('take off the roster and retire this unit use it, in the danger style', () => {
     const r = roster();
     expect(r).toContain("const off = el('button', 'actbtn danger', 'Take off the roster');");
-    // QA round 3: no crew route checks the roster, so the armed line never promises the door closes.
-    expect(r).toContain("armTwice(off, 'Tap again to take ' + p.name + ' off the roster — the safety and training boards stop counting them. Their crew code still opens the crew door.', async () => {");
+    // QA round 3: the armed line never promises the door closes. Deliberately
+    // updated (CREW_PLAN C3, D109): the paid crew routes now check the roster, so
+    // "Their crew code still opens the crew door." is gone — and no closed door is promised.
+    expect(r).toContain("armTwice(off, 'Tap again to take ' + p.name + ' off the roster — the safety and training boards stop counting them.', async () => {");
+    expect(r).not.toMatch(/lose crew-door access|can no longer open/);
     const f = fleet();
     expect(f).toContain("const off = el('button', 'actbtn danger', 'Retire this unit');");
     expect(f).toContain("armTwice(off, 'Tap again to retire ' + u.name, async () => {");

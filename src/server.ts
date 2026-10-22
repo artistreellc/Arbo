@@ -110,6 +110,7 @@ import {
   listCrewJobs,
   recordBriefingAck,
   todaysBriefing,
+  briefingSignedAt,
   listUnits,
   listPermitTracks,
   packetSource,
@@ -142,6 +143,7 @@ import {
   crewWithProfiles,
   referenceEntries,
   crewSkillLevel,
+  crewMemberById,
   draftReferenceEntries,
   createReferenceEntry,
   publishReferenceEntry,
@@ -462,7 +464,8 @@ export function createLiveSource(): DataSource {
     calendarEvents: (from, to) => listCalendarEvents(from, to),
     crewJobs: (from, to) => listCrewJobs(from, to),
     recordBriefingAck: (input) => recordBriefingAck(input),
-    todaysBriefing: () => todaysBriefing(),
+    todaysBriefing: (day) => todaysBriefing(day),
+    briefingSignedAt: (crewMemberId, fromIso, toIso) => briefingSignedAt(crewMemberId, fromIso, toIso),
     units: () => listUnits(),
     permitTracks: () => listPermitTracks(),
     // §6B.3 clearance. Two functions, and the WRITE is deliberately the
@@ -500,6 +503,7 @@ export function createLiveSource(): DataSource {
     crewProfiles: () => crewWithProfiles(),
     referenceEntries: () => referenceEntries(),
     crewSkillLevel: (id) => crewSkillLevel(id),
+    crewMember: (id) => crewMemberById(id),
     createEquipmentUnit: (input) => createEquipmentUnit(input),
     retireEquipmentUnit: (id) => retireEquipmentUnit(id),
     addEquipmentPart: (input) => addEquipmentPart(input),
@@ -1162,6 +1166,9 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
         return send(out.status, out.body);
       }
       // ═══ end Bouncie (public) ═══
+      // CREW_PLAN C4 (D109): which key opened the /api door — 'owner' or
+      // 'crew'. Only the owner key is exempt from the crew sign-off lock (M11).
+      let doorKey: 'owner' | 'crew' | null = null;
       if (url.pathname.startsWith('/api/')) {
         // D89 lives on in checkApiDoor: with no CREW_ACCESS_KEY the crew door
         // says 'crew_key_not_set' by name, so the crew page does not send the
@@ -1184,6 +1191,7 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
           });
           return res.end(JSON.stringify(door.body));
         }
+        doorKey = door.matched;
       }
       // R26 (defence in depth): the office's look-only crew preview sends
       // x-arbo-preview: 1 on every request. A crew route that is not a read is
@@ -1359,11 +1367,25 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
         return send(...unpack(await api.calendar(url.searchParams.get('from') ?? '', url.searchParams.get('to') ?? '')));
       }
       // §6F crew surface — payload is admin-data-free by construction.
+      // M11 (CREW_PLAN C4, Q5): a crew phone reads its work orders only after
+      // signing today's briefing. The lock is HERE, keyed on the key the door
+      // matched — only the owner key (Mike's look-only preview) is exempt; the
+      // x-arbo-preview header alone exempts nothing. Talk calls crewWorkOrders
+      // directly and never passes through this route.
       if (req.method === 'GET' && url.pathname === '/api/crew/workorders') {
-        return send(...unpack(await api.crewWorkOrders(url.searchParams.get('date') ?? '', url.searchParams.get('briefingId'))));
+        if (doorKey !== 'owner') {
+          const locked = await api.crewSignOffLock(url.searchParams.get('crewMemberId') ?? '');
+          if (locked) return send(...unpack(locked));
+        }
+        return send(...unpack(await api.crewWorkOrders(url.searchParams.get('date') ?? '')));
       }
+      // C4: with the crew code, the briefing says whether it is already signed today.
       if (req.method === 'GET' && url.pathname === '/api/crew/briefing') {
-        return send(...unpack(await api.crewBriefing()));
+        return send(...unpack(await api.crewBriefing(url.searchParams.get('crewMemberId') ?? '')));
+      }
+      // CREW_PLAN C3: who a crew code is ("On this phone: Rudy") — a read on the crew link.
+      if (req.method === 'GET' && url.pathname === '/api/crew/me') {
+        return send(...unpack(await api.crewMe(url.searchParams.get('crewMemberId') ?? '')));
       }
       if (req.method === 'POST' && url.pathname === '/api/crew/briefing/ack') {
         return send(...unpack(await api.ackBriefing((await readJson(req)) as Record<string, unknown>)));

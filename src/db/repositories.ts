@@ -1396,13 +1396,20 @@ export async function recordBriefingAck(input: {
   return { trainingEventId: evt.data.id as string, timeEntryId: time.data.id as string };
 }
 
-/** Today's published tailgate briefing (§6M.8). Null when none is published. */
-export async function todaysBriefing(): Promise<{ id: string; body: string; standardRefs: string[] } | null> {
+/**
+ * The published tailgate briefing FOR `day` (§6M.8), an ET date (YYYY-MM-DD).
+ * CREW_PLAN C4 (D109): a briefing's day rides in body.forDay — no migration —
+ * and only that day's is served. Before this the newest row came back every
+ * day, so yesterday's briefing could be signed as today's. A row with no
+ * forDay never matches, so it is never served. Null when none for that day.
+ */
+export async function todaysBriefing(day: string): Promise<{ id: string; body: string; standardRefs: string[] } | null> {
   const db = getDb();
   const res = await db.from('training_item')
     .select('id, body, topic')
     .eq('type', 'tailgate_brief')
     .eq('published', true)
+    .eq('body->>forDay', day)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -1412,6 +1419,28 @@ export async function todaysBriefing(): Promise<{ id: string; body: string; stan
   const text = typeof raw === 'string' ? raw : raw.text ?? '';
   const refs = typeof raw === 'string' ? [] : raw.standardRefs ?? [];
   return { id: res.data.id as string, body: text, standardRefs: refs };
+}
+
+/**
+ * CREW_PLAN C4 (D109): when this crew member signed the briefing in a window
+ * — the server's own training_event.created_at, never the phone's start time.
+ * The first tailgate_ack in [fromIso, toIso), or null when none. A read on the
+ * crew link (readable under read-only); a failed read throws, so the caller
+ * names it instead of reading it as "not signed".
+ */
+export async function briefingSignedAt(crewMemberId: string, fromIso: string, toIso: string): Promise<string | null> {
+  const db = getDb();
+  const res = await db.from('training_event')
+    .select('created_at')
+    .eq('crew_member_id', crewMemberId)
+    .eq('context', 'tailgate_ack')
+    .gte('created_at', fromIso)
+    .lt('created_at', toIso)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (res.error) throw res.error;
+  return res.data ? String(res.data.created_at) : null;
 }
 
 // ============================================================================
@@ -2473,6 +2502,21 @@ export async function crewSkillLevel(crewMemberId: string): Promise<number | nul
     .maybeSingle();
   if (res.error) throw res.error;
   return res.data ? Number(res.data.competency_level) : null;
+}
+
+/**
+ * CREW_PLAN C3: one crew member by crew code — the name and whether they are
+ * on the roster. A read (crew link). Null when no such person; a failed read
+ * throws, so the caller names it instead of reading it as "not on the roster".
+ */
+export async function crewMemberById(crewMemberId: string): Promise<{ name: string; active: boolean } | null> {
+  const db = getDb();
+  const res = await db.from('crew_member')
+    .select('name, active')
+    .eq('id', crewMemberId)
+    .maybeSingle();
+  if (res.error) throw res.error;
+  return res.data ? { name: String(res.data.name ?? ''), active: res.data.active === true } : null;
 }
 
 /**

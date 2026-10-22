@@ -928,10 +928,15 @@ describe('the routes, end to end with a fake Bouncie', () => {
       const pos2 = await (await realFetch(base + '/api/fleet/positions', { headers: owner })).json() as typeof pos;
       expect(pos2.units.find((u) => u.unitId === 'sim-unit-1')!.truck).toMatchObject({ motion: 'driving', lat: 36.86012 });
       // The crew door: work orders and the briefing carry none of it.
+      // Deliberately updated (CREW_PLAN C4, D109): the crew key now meets the
+      // sign-off lock on work orders (a 403 that carries nothing), so the work
+      // orders are ALSO read the way they still render — through the owner key
+      // (Mike's look-only preview) — and the payload itself is checked, as before.
       const today = new Date().toISOString().slice(0, 10);
-      for (const path of [`/api/crew/workorders?date=${today}`, '/api/crew/briefing']) {
-        const r = await realFetch(base + path, { headers: { 'x-arbor-key': 'crew-k' } });
+      for (const [path, key] of [[`/api/crew/workorders?date=${today}`, 'crew-k'], [`/api/crew/workorders?date=${today}`, 'admin-k'], ['/api/crew/briefing', 'crew-k']] as const) {
+        const r = await realFetch(base + path, { headers: { 'x-arbor-key': key, ...(key === 'admin-k' ? { 'x-arbo-preview': '1' } : {}) } });
         const text = (await r.text()).toLowerCase();
+        if (key === 'admin-k') expect(text, 'the preview read the practice work orders').toContain('workorders');
         for (const leak of [String(LAT), String(LON), '36.86012', '-75.99001', IMEI, 'bouncie', 'tracking']) {
           expect(text, `${path} leaked ${leak}`).not.toContain(leak.toLowerCase());
         }

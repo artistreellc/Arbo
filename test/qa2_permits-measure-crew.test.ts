@@ -302,8 +302,14 @@ describe('Crew door — a mistyped crew code is told as one (POST /api/crew/brie
   const content = { id: '33333333-3333-3333-3333-333333333333', body: 'Watch the drop zone. Call every cut.', standardRefs: [] };
   const passing = { scrolledToBottom: true, checkboxTicked: true, secondsOnScreen: 20 };
   const times = { startedAtIso: '2026-10-18T10:00:00Z', completedAtIso: '2026-10-18T10:00:20Z' };
+  // Deliberately updated (CREW_PLAN C3, D109): the sign-off is paid time and Q7
+  // refuses it unless the roster says the code is on it, so the source carries
+  // a roster that does. The foreign key stays the backstop these tests pin.
   const src = (record: DataSource['recordBriefingAck']): DataSource => ({
     ready: () => true, stopsBetween: async () => [], newLeads: async () => [], recordBriefingAck: record,
+    crewMember: async () => ({ name: 'SIM-Alder, Test', active: true }),
+    // C4 (D109): the server signs against its own briefing for today — the same one here.
+    todaysBriefing: async () => content,
   });
   const neverCalled: DataSource['recordBriefingAck'] = async () => { throw new Error('must not be reached'); };
 
@@ -416,7 +422,9 @@ describe('Crew door — one wording for a read that failed', () => {
   });
 
   it('the briefing card: the reason, then the order as its own line — never "Do / not start work"', () => {
-    const boot = crew.slice(crew.indexOf("api('/api/crew/briefing').then(renderGate)"));
+    // C4 (D109): the read now carries the crew code, so the slice starts at the call itself.
+    const boot = crew.slice(crew.indexOf("api('/api/crew/briefing' + (CREW_ID"));
+    expect(boot.length).toBeLessThan(crew.length);
     expect(boot).toContain('await LINKS_READY;');
     expect(boot).toContain("s.appendChild(document.createTextNode(why.charAt(0).toUpperCase() + why.slice(1) + '.'));");
     expect(boot).toContain("s.appendChild(el('b', 'order', 'Do not start work \\u2014 call the office.'));");

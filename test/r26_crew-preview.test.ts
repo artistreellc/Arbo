@@ -13,6 +13,8 @@ import { loadAppHtml } from '../src/server/appPage.js';
 const crew = readFileSync(new URL('../src/app/crew.html', import.meta.url), 'utf8');
 const app = loadAppHtml();
 const WHY = 'Off in the preview — nothing here signs, files or clocks in.';
+/** A practice crew code (CREW_PLAN C3): UUID-shaped and obviously fake. */
+const CREW_CODE = '00000000-0000-4000-8000-0000000000c1';
 
 /** One top-level function (closing "}" alone on its line), built with stand-ins. */
 function pageFn<T>(src: string, name: string, deps: Record<string, unknown> = {}): T {
@@ -180,16 +182,22 @@ describe('R26 crew preview — work orders render read-only', () => {
     const changeOrderButton = pageFn<(id: string) => FakeNode>(crew, 'changeOrderButton', { el, api, PREVIEW: preview, prompt });
     // C2 (D107): the card's address link and Navigate come from the page's one maps builder.
     const crewMapsUrl = pageFn<(a: string, c: string) => string>(crew, 'crewMapsUrl');
+    // CREW_PLAN C4 (D109): a crew phone's read carries its crew code (CREW_ID); the preview's stays bare.
     await pageFn<() => Promise<void>>(crew, 'renderWork', {
       $: () => work, el, GATE: { unlocked }, PREVIEW: preview, PREVIEW_WHY: WHY, api, fmtTime: () => '9:00 AM',
-      arrivalButton, changeOrderButton, crewMapsUrl, document: fakeDocument(),
+      arrivalButton, changeOrderButton, crewMapsUrl, document: fakeDocument(), CREW_ID: preview ? '' : CREW_CODE,
     })();
     return { work, asked };
   };
 
+  // Deliberately rewritten (CREW_PLAN C4, D109; plan names this pin): it pins
+  // BOTH calls now — the preview's read is bare (Mike's own key is the one
+  // exemption from the sign-off lock), the crew phone's carries its code (the
+  // server opens its work orders only on a signed-today ack). Meaning kept: one
+  // read, nothing else, and the preview reads the day without a sign-off.
   it('the preview reads the day without a sign-off, and every job button is off with the reason on the card', async () => {
     const { work, asked } = await render(true);
-    expect(asked).toEqual([['/api/crew/workorders', undefined]]); // one read, nothing else
+    expect(asked).toEqual([['/api/crew/workorders', undefined]]); // one bare read, nothing else
     const card = work.kids.find((k) => k.className === 'wo')!;
     expect(card).toBeDefined();
     const buttons = card.all().filter((n) => n.tag === 'button');
@@ -205,6 +213,23 @@ describe('R26 crew preview — work orders render read-only', () => {
     expect(card.all().some((n) => n.className === 'photos')).toBe(true);
   });
 
+  // Review round (D109, UI 5): the address became a live 44px link to Maps
+  // right above a Navigate the preview draws switched off — two controls for
+  // one route disagreeing. In the preview the address is plain text, so Maps
+  // opens from neither; on a crew phone both still come from the one builder.
+  it('in the preview the address is plain text — Maps opens from neither it nor Navigate', async () => {
+    const { work } = await render(true);
+    const card = work.kids.find((k) => k.className === 'wo')!;
+    expect(card.all().filter((n) => n.tag === 'a')).toEqual([]);
+    expect(card.all().filter((n) => n.href)).toEqual([]);
+    const addr = card.kids.find((k) => k.className === 'addr')!;
+    expect(addr.textContent).toBe('1 SIM Way, Norfolk');
+    const crewPhone = (await render(false, true)).work.kids.find((k) => k.className === 'wo')!;
+    const links = crewPhone.all().filter((n) => n.tag === 'a');
+    expect(links.map((n) => n.textContent)).toEqual(['1 SIM Way, Norfolk', 'Navigate']);
+    expect(links[0]!.href).toBe(links[1]!.href);
+  });
+
   it('on a crew phone the day stays locked until the briefing, and nothing is read', async () => {
     const { work, asked } = await render(false);
     expect(asked).toEqual([]);
@@ -218,7 +243,7 @@ describe('R26 crew preview — work orders render read-only', () => {
   // preview's line is the preview's alone, and a crew phone never shows it.
   it('on a crew phone after the briefing the job buttons are off for want of a job record, and carry no preview line', async () => {
     const { work, asked } = await render(false, true);
-    expect(asked).toEqual([['/api/crew/workorders', undefined]]);
+    expect(asked).toEqual([[`/api/crew/workorders?crewMemberId=${CREW_CODE}`, undefined]]); // C4: the crew phone's read carries its code
     const card = work.kids.find((k) => k.className === 'wo')!;
     const buttons = card.all().filter((n) => n.tag === 'button');
     expect(buttons.map((b) => b.textContent)).toEqual(['📷 Log arrival condition', '+ Extra work agreed']);
