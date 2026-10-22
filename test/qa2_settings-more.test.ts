@@ -327,6 +327,7 @@ describe('More: the disabled Talk tile and the hard hat (ST5)', () => {
   it('the Crew tile keeps its label; its target is the look-only preview (X1, decided by Mike in R26)', () => {
     // Deliberately updated (R26, 2026-10-20): Mike's answer to X1 — the tile
     // opens the crew page as a preview that cannot sign (test/r26_crew-preview.test.ts).
-    expect(html).toContain("tile('i-crew', 'Crew', 'What the crew sees', () => { location.href = '/crew?preview=1'; });");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same tile and target, its words through T.
+    expect(html).toContain("tile('i-crew', T('Crew'), T('What the crew sees'), () => { location.href = '/crew?preview=1'; });");
   });
 });

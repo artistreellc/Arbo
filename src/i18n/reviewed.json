@@ -303,11 +303,11 @@
       "en": "EXPIRED",
       "es": "VENCIDO",
       "sha": "4d65a24f76f7f02d68096f8732b30132fb90ddd3f2f30c248c122320e79f8e91",
-      "where": "dict:app-safety",
+      "where": "dict:app-safety; dict:app-settings",
       "pass": "draft",
-      "translatedBy": "Claude — R27 Phase A, owner app (Estimate, Permit rules, Properties on file, Follow-ups, Money, Fleet, Crew & safety), first translation pass",
+      "translatedBy": "Claude — R27 Phase A, owner app (Estimate, Permit rules, Properties on file, Follow-ups, Money, Fleet, Crew & safety), first translation pass; Claude — R27 Phase A, owner app (Office, Numbers, Settings, Agents, Measure, Teach Arbo, the assistant), first translation pass",
       "on": "2026-10-22",
-      "note": "Not recorded — new in R27 Phase A (owner app): a first translation only. No blind second translation and no blind back-translation yet, so it is served in English under the Spanish pointer until both are recorded (R27 #5, D112)."
+      "note": "Not recorded — new in R27 Phase A (owner app): a first translation only. No blind second translation and no blind back-translation yet, so it is served in English under the Spanish pointer until both are recorded (R27 #5, D112). One entry for every place this exact pair is drawn (D113: the units wrote the same Spanish)."
     },
     {
       "en": "NO RECORD",
@@ -356,6 +356,16 @@
       "where": "dict:app-money",
       "pass": "draft",
       "translatedBy": "Claude — R27 Phase A, owner app (Estimate, Permit rules, Properties on file, Follow-ups, Money, Fleet, Crew & safety), first translation pass",
+      "on": "2026-10-22",
+      "note": "Not recorded — new in R27 Phase A (owner app): a first translation only. No blind second translation and no blind back-translation yet, so it is served in English under the Spanish pointer until both are recorded (R27 #5, D112)."
+    },
+    {
+      "en": "Every text, before it goes out. Texts to customers also need their consent, stop for good on STOP, and only go 8am–9pm ET.",
+      "es": "Cada mensaje de texto, antes de que salga. Los mensajes a clientes además necesitan el consentimiento del cliente, se detienen para siempre con STOP y solo salen de 8am–9pm ET.",
+      "sha": "834ccdde5d0a679dc474aae8fec54b0386d066131df53b26712bc8806519cdf6",
+      "where": "dict:app-assistant",
+      "pass": "draft",
+      "translatedBy": "Claude — R27 Phase A, owner app (Office, Numbers, Settings, Agents, Measure, Teach Arbo, the assistant), first translation pass",
       "on": "2026-10-22",
       "note": "Not recorded — new in R27 Phase A (owner app): a first translation only. No blind second translation and no blind back-translation yet, so it is served in English under the Spanish pointer until both are recorded (R27 #5, D112)."
     }

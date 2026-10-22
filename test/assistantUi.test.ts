@@ -338,7 +338,8 @@ describe('R28 — the approval sheet', () => {
     expect(s.log.slice(1)).toEqual(['closed:approval', 'done:sevt_pay1:Approved — Arbo will charge it now.']);
     // The armed button turns the alarm colour, so the second tap is never by accident.
     expect(css).toContain('.actbtn.charge.armed{background:var(--emergency);color:var(--on-emergency)}');
-    expect(fnSrc('openApproval')).toContain("if (pay) armTwice(yes, amount ? 'Tap again to charge ' + money : 'Tap again to approve', () => send('allow'), 600);");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same two-tap arm with its 600 ms gap; the armed words one template, the amount a slot.
+    expect(fnSrc('openApproval')).toContain("if (pay) armTwice(yes, amount ? tf('Tap again to charge {amount}', { amount: money }) : T('Tap again to approve'), () => send('allow'), 600);");
   });
 
   it('a quick double-tap (a bump in the truck) never charges: the second tap must come 600 ms after the armed line shows', async () => {

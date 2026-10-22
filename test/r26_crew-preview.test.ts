@@ -331,7 +331,8 @@ describe('R26 crew preview — library lookup, near-miss filing and the clock-in
 
 describe('R26 crew preview — the Crew tile in More', () => {
   it('opens the look-only preview in this same tab', () => {
-    expect(app).toContain("tile('i-crew', 'Crew', 'What the crew sees', () => { location.href = '/crew?preview=1'; });");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same tile and target, its words through T.
+    expect(app).toContain("tile('i-crew', T('Crew'), T('What the crew sees'), () => { location.href = '/crew?preview=1'; });");
     expect(app).not.toContain("window.open('/crew'");
   });
 });

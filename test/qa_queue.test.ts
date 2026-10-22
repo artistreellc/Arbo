@@ -149,7 +149,9 @@ describe('Numbers — the benchmark reads as what it is (§1B/§6N.3)', () => {
 
   it('says which jobs and which window it covers, and when it was checked', () => {
     const p = perf();
-    expect(p).toContain("'Paid, completed jobs in the '");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the window line is one template per case (12 months or N days, checked or not, one job or many).
+    expect(p).toContain("'Paid, completed jobs in the last 12 months: {n} jobs.'");
+    expect(p).toContain("'Paid, completed jobs in the last {days} days: {n} jobs, checked {when}.'");
     expect(p).toContain('p.windowDays');
     expect(p).toContain('p.checkedAtIso');
     // Right under the tiles, before anything is judged against it.
@@ -159,7 +161,8 @@ describe('Numbers — the benchmark reads as what it is (§1B/§6N.3)', () => {
 
   it('two tiles under the hero, and unrated is not dressed as a warning', () => {
     expect(html).toContain('#view-perf .hud{grid-template-columns:repeat(2,1fr)}');
-    expect(perf()).toContain("hud.appendChild(tile(p.withheld.length, 'unrated'));");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same plain tile, its word through T.
+    expect(perf()).toContain("hud.appendChild(tile(p.withheld.length, T('unrated')));");
   });
 
   it('every figure is whole dollars through one helper, and money() is not duplicated', () => {
@@ -182,7 +185,8 @@ describe('Numbers — the benchmark reads as what it is (§1B/§6N.3)', () => {
 
   it('section headings are short titles with the explanation underneath', () => {
     const p = perf();
-    expect(p).toContain("'Rated areas \\u2014 ' + judged.length");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the same short title, the count a slot of its template.
+    expect(p).toContain("tf('Rated areas \\u2014 {n}', { n: judged.length })");
     expect(p).toContain('Ranked by revenue per crew-hour, not per job');
     expect(p).not.toContain('Do not read them as either');
     expect(html).toContain(".panel-title::after{content:'';flex:1;min-width:24px;");
@@ -193,9 +197,10 @@ describe('Numbers — campaigns', () => {
   it('a card is titled the way the form names it, and its value says what it is', () => {
     const c = campaigns();
     expect(c).toContain('CAMPAIGN_TYPES.find(([k]) => k === c.type)');
-    expect(c).toContain("' per booked job'");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the figure says what it is, the amount a slot of its template.
+    expect(c).toContain("tf('{amount} per booked job', { amount: dollars(c.costPerBookedJob) })");
     // UNKNOWN for an untracked campaign, as the form promises — never a bare dash.
-    expect(c).toContain("c.bookedJobs === null ? 'Unknown'");
+    expect(c).toContain("c.bookedJobs === null ? T('Unknown')"); // pin moved (R27 Phase A, owner app c): the same word, through T
     expect(c).not.toContain("'\\u2013'");
     expect(c).toContain("if (!figure) val.style.color = 'var(--ink-3)';");
   });
@@ -203,7 +208,8 @@ describe('Numbers — campaigns', () => {
   it('the composer labels every control and opens the number keyboard for the cost', () => {
     const k = composer();
     for (const label of ["'Type'", "'What it cost ($)'", "'Tracking number (optional)'", "'Date it went out'"]) {
-      expect(k).toContain('field(' + label);
+      // Pin moved (R27 Phase A, owner app c), meaning kept: every control still labelled, its label said through T.
+      expect(k).toContain('field(T(' + label);
     }
     expect(k).toContain("n.setAttribute('aria-label', label);");
     expect(k).toContain("cost.inputMode = 'decimal';");

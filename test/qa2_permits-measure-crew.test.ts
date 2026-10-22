@@ -275,8 +275,10 @@ describe('Measure — status is a fact, the up axis is plain words, an unconfirm
   });
 
   it('an axis the scan could not confirm is an amber warning after the units warning, above the tiles', () => {
-    const warnAt = result.indexOf("for (const w of m.warnings) wrap.appendChild(el('div', 'late', w));");
-    const axisAt = result.indexOf("if (ua && ua.source === 'format' && /no clear ground layer/.test(ua.reason || '')) wrap.appendChild(el('div', 'late', 'Which way is up was not confirmed by the scan (read ' + ua.axis.toUpperCase() + ' as up). Every number depends on it — if height reads far too small, switch Up and open the file again.'));");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: the warnings (the engine's own lines, English and marked in Spanish), then the axis warning as one
+    // template with the axis a slot — the same order, the same amber look.
+    const warnAt = result.indexOf("for (const w of m.warnings) wrap.appendChild(esSayTwin(el('div', 'late'), { line: w }, 'line'));");
+    const axisAt = result.indexOf("if (ua && ua.source === 'format' && /no clear ground layer/.test(ua.reason || '')) wrap.appendChild(el('div', 'late', tf('Which way is up was not confirmed by the scan (read {axis} as up). Every number depends on it — if height reads far too small, switch Up and open the file again.', { axis: ua.axis.toUpperCase() })));");
     expect(warnAt).toBeGreaterThan(-1);
     expect(axisAt).toBeGreaterThan(warnAt);
     expect(result.indexOf('wrap.appendChild(hud);')).toBeGreaterThan(axisAt);
@@ -284,7 +286,8 @@ describe('Measure — status is a fact, the up axis is plain words, an unconfirm
   });
 
   it('scatter reads inches first, centimetres in brackets', () => {
-    expect(result).toContain("'; scatter ' + round(m.dbhFit.rmseCm / 2.54, 2) + ' in (' + round(m.dbhFit.rmseCm, 1) + ' cm)'");
+    // Pin moved (R27 Phase A, owner app c), meaning kept: inches first, centimetres in brackets, as slots of the line's template.
+    expect(result).toContain("tf('{what} — {level}: {why}; scatter {in} in ({cm} cm)', Object.assign(say, { in: round(m.dbhFit.rmseCm / 2.54, 2), cm: round(m.dbhFit.rmseCm, 1) }))");
   });
 });
 

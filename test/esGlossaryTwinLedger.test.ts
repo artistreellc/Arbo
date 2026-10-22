@@ -19,11 +19,12 @@ import { esGateProblems } from '../src/i18n/gates.js';
 import { currentSafetyPairs } from '../src/i18n/dictionaries.js';
 import { RECORDED_EN, RECORDED_SHA, HELD_EN, oneCharEdit } from './support/esRecorded.js';
 import { OWNER_A_DRAFTS } from './support/esOwnerA.js';
-// R27 Phase A, owner app (builder b): its NEW safety-class lines, each a ledger draft (no review claimed).
+// R27 Phase A, owner app (builders b and c): their NEW safety-class lines, each a ledger draft (no review claimed).
 import { OWNER_B_DRAFTS } from './support/esOwnerB.js';
+import { OWNER_C_DRAFTS } from './support/esOwnerC.js';
 // D113 (the three owner-app units merged): one ledger entry per exact pair, in the order the units added them — a pair two
 // units both draw (POWER LINES, DOWN, EXPIRED) is one draft naming every place.
-const OWNER_DRAFTS: readonly string[] = [...new Set([...OWNER_A_DRAFTS, ...OWNER_B_DRAFTS.map((d) => d.en)])];
+const OWNER_DRAFTS: readonly string[] = [...new Set([...OWNER_A_DRAFTS, ...OWNER_B_DRAFTS.map((d) => d.en), ...OWNER_C_DRAFTS.map((d) => d.en)])];
 
 describe('the glossary — usted, neutral Latin-American Spanish, trade terms with the English beside', () => {
   it('names the register and the variety Mike chose (R29 #3)', () => {
@@ -152,7 +153,7 @@ describe('the review ledger (src/i18n/reviewed.json) — a safety string edited 
     expect(at('reviewed')).toEqual([...RECORDED_EN]);
     // …and by fingerprint, so a recorded line's Spanish can't change and be re-marked unnoticed.
     expect(loadLedger().filter((e) => e.pass === 'reviewed').map((e) => e.sha)).toEqual([...RECORDED_SHA]);
-    // Pin moved (R27 Phase A, owner app a + b, merged in D113), meaning kept: D112's five held lines first, then the owner
+    // Pin moved (R27 Phase A, owner app a, b and c, merged in D113), meaning kept: D112's five held lines first, then the owner
     // app's new drafts, exactly — never a review recorded, never touching the 17.
     expect(at('draft')).toEqual([...HELD_EN, ...OWNER_DRAFTS]);
     expect(at('person')).toEqual([]);
@@ -168,7 +169,7 @@ describe('the review ledger (src/i18n/reviewed.json) — a safety string edited 
         expect(e.reviewedBy, e.en).toBeUndefined();
         expect(e.note, e.en).toMatch(/^Not recorded \(D112\)/);
       } else {
-        // Pin moved (R27 Phase A, owner app a + b, merged in D113), meaning kept: a new draft says it is one — no review
+        // Pin moved (R27 Phase A, owner app a, b and c, merged in D113), meaning kept: a new draft says it is one — no review
         // claimed, no back-translation.
         expect(e.reviewedBy, e.en).toBeUndefined();
         expect(e.backTranslation, e.en).toBeUndefined();
