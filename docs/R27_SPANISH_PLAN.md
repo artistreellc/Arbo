@@ -1,15 +1,20 @@
 # R27 — The Spanish version: the build plan
 
-**Status (2026-10-22):** Foundation built (D110, branch `es-foundation`) — the
-runtime (`T`, `tf`, `tn`, `esPick`, `esPair`), per-door dictionaries inlined at
-serve time, both switches (Office → Appearance, Settings → Appearance and
-the key screen; the crew door's header toggle), the glossary, the ban list in
-every never-say-clear guard, `withEs`/`enSha` twins, the review ledger and the
-customer fence. Review round done (15 findings fixed, D110). Nothing is translated yet beyond the switches' own words:
-Spanish mode shows every screen in English, marked "en inglés". The plan's
-safety-label table is in the ledger as a draft, so no safety label is served
-in Spanish until its review is recorded. **Phase A is next** (crew door
-first). Not deployed.
+**Status (2026-10-22):** Foundation built and merged (D110). **Phase A unit 1,
+the crew door, built** (D111, branch `es-crew`): every crew screen and state
+wrapped (one literal per sentence, values as `tf` slots, counts as `tn`), nine
+crew units (`src/app/i18n/crew-*.es.json`, first translation pass), the server
+text the crew door shows twinned (`src/i18n/twins/crew-workorder.es.json`,
+`crew-library.es.json`; the day's briefing and quiz items through
+`src/i18n/dataTwins.ts`), and a change after sign-off redraws every panel in
+place. **No safety-class review is recorded yet:** the three stop-work orders
+and the seven work-order hazard and permit lines are in the ledger as drafts,
+so Spanish mode shows them in English, marked "en inglés". Next for this unit:
+the Language phase (a blind second translation and a back-translation of every
+safety line, then their review recorded in `src/i18n/reviewed.json`), then the
+phone read-through by a Spanish-reading crew member — Mike named "rudy or marco
+or temo" (R29 #3) — before crews rely on it (`docs/GO_LIVE.md` §2). Phase A's
+other units (the owner app's screens) come after. Not deployed.
 
 Mike, 2026-10-20: *"The whole app needs to be able to have a Spanish version
 as well for our Spanish speaking, employees"* (ruling R27). This is the plan
@@ -222,7 +227,10 @@ These stay byte-identical, and tests prove it by output:
    Until each lands it shows English with "en inglés", never a blank.
 5. A second translation and review wave, screenshots in both languages,
    then the PR and deploy.
-6. Mike's phone read-through by a Spanish-speaking crew member.
+6. Mike's phone read-through by a Spanish-speaking crew member — Rudy, Marco
+   or Temo (Mike, R29 #3: *"rudy or marco or temo"*) — of the briefing, the quiz
+   and the work orders, before crews rely on them. Still owed for the crew door
+   (D111); it is separate from, and comes after, the recorded reviews.
 
 ## Questions for Mike (each has a default; none blocks the build)
 
