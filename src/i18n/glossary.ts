@@ -108,10 +108,13 @@ export const FALSE_FRIENDS: ReadonlyArray<GlossaryPair & { never: string[]; why:
  * obligation. On screen each shows the Spanish first and the FULL English line
  * beneath it, smaller and marked as English (the runtime's esPair).
  *
- * These are a DRAFT: decided in the plan, critiqued twice, but not yet through
- * the blind second pass and the back-translation. The ledger
- * (src/i18n/reviewed.json) says so, and nothing safety-class is served in
- * Spanish until it records that review.
+ * Decided in the plan and critiqued twice. D112: six of the seven passed the
+ * blind second translation and the blind back-translation and are recorded in
+ * the ledger (src/i18n/reviewed.json) as reviewed. HELD is not — the blind
+ * second translation read it as "do not drive — out of service", and "no se
+ * maneja" can read as a description rather than an order — so it stays a draft
+ * (the English shows) until new words pass a fresh blind pass. Nothing
+ * safety-class is served in Spanish until the ledger records its review.
  */
 export const SAFETY_PAIRS: readonly GlossaryPair[] = [
   { en: 'PERMIT LIKELY', es: 'PROBABLEMENTE SE NECESITA PERMISO' },

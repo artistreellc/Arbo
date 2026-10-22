@@ -15,6 +15,7 @@ import { unitFiles, readUnit, loadDoorDictionary } from '../src/i18n/dictionarie
 import { isSafetyClass, loadLedger } from '../src/i18n/ledger.js';
 import { TRADE_TERMS, APP_TERMS } from '../src/i18n/glossary.js';
 import { normalizeEs } from '../src/i18n/banList.js';
+import { RECORDED_EN } from './support/esRecorded.js';
 
 const crew = readFileSync(new URL('../src/app/crew.html', import.meta.url), 'utf8');
 const script = [...crew.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]!).join('\n');
@@ -160,15 +161,16 @@ describe('every place on the crew page has its unit, so Spanish mode marks nothi
 });
 
 // The plan's safety-pair rule (R27 #4): a safety or legal line shows the Spanish first and the FULL
-// English beneath. On the crew door that is the stop-work order in its three wordings. They are
-// drafts: nothing in this unit is recorded as reviewed (the blind second pass and the
-// back-translation come first), so each reads in English, marked, until its review is in the ledger.
+// English beneath. On the crew door that is the stop-work order in its three wordings. D112: all three
+// passed the blind review (a blind second translation agreed word for word, D111; a back-translation
+// made without the English found no drift) and are recorded as reviewed — so each now reads in Spanish
+// over its full English. The phone read-through (R27 #5) is still owed; no line is at "person".
 const SAFETY_KEYS = [
   'Do not start work — call the office.',
   'Your work orders stay locked — do not start work; call the office to log your briefing.',
   'This is not an empty day — do not start work; call the office.',
 ];
-describe('the crew door’s safety lines — through the pair helper, in the ledger as drafts only', () => {
+describe('the crew door’s safety lines — through the pair helper, recorded as reviewed by both blind passes (D112)', () => {
   it('the safety-class keys are exactly the stop-work orders', () => {
     expect(Object.keys(crewDict()).filter(isSafetyClass).sort()).toEqual([...SAFETY_KEYS].sort());
   });
@@ -176,22 +178,26 @@ describe('the crew door’s safety lines — through the pair helper, in the led
     for (const c of keyedCalls()) if (isSafetyClass(c.key)) expect(c.name, c.key).toBe('esSay');
     for (const k of SAFETY_KEYS) expect(keyedCalls().some((c) => c.name === 'esSay' && c.key === k), k).toBe(true);
   });
-  it('each has a ledger entry for its exact Spanish — as a draft: no review is recorded in this unit', () => {
+  it('each has a ledger entry for its exact Spanish — recorded as reviewed, both blind passes named, its back-translation on it', () => {
     const dict = crewDict();
     for (const k of SAFETY_KEYS) {
       const e = loadLedger().find((x) => x.en === k && x.es === dict[k]);
       expect(e, k).toBeDefined();
-      expect(e!.pass, k).toBe('draft');
-      expect(e!.reviewedBy, k).toBeUndefined();
-      expect(e!.backTranslation, k).toBeUndefined();
+      expect(e!.pass, k).toBe('reviewed');
+      expect(e!.reviewedBy, k).toMatch(/second translation[\s\S]*back-translation[\s\S]*2026-10-22/);
+      expect(e!.backTranslation, k).toMatch(/do not start working/i);
+      expect(RECORDED_EN, k).toContain(k);
     }
   });
-  it('no entry anywhere in the ledger records a review yet (the Language phase records it, R27 #5)', () => {
-    for (const e of loadLedger()) expect(e.pass, e.en).toBe('draft');
+  it('the ledger records exactly the blind-reviewed set — and nothing is at "person" (the phone read-through is still owed, R27 #5)', () => {
+    expect(loadLedger().filter((e) => e.pass === 'reviewed').map((e) => e.en)).toEqual([...RECORDED_EN]);
+    expect(loadLedger().filter((e) => e.pass === 'person')).toEqual([]);
   });
-  it('so the served crew dictionary holds every one back — Spanish mode shows the English, marked', () => {
-    const held = loadDoorDictionary('crew').held.map((h) => h.key).sort();
-    expect(held).toEqual([...SAFETY_KEYS].sort());
+  it('so the served crew dictionary serves all three — nothing is held back', () => {
+    const served = loadDoorDictionary('crew');
+    expect(served.held).toEqual([]);
+    const dict = crewDict();
+    for (const k of SAFETY_KEYS) expect(Object.values(served.units).some((u) => u[k] === dict[k]), k).toBe(true);
   });
 });
 
