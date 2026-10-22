@@ -232,11 +232,12 @@ describe('Book + estimate prep (source pins)', () => {
 
   it('an unreadable Book is worded by the feed-state vocabulary, never "The Book is empty"', () => {
     // Direction B P15 review: the Book is "Properties on file" (VIEW_TITLES.book) — its dead feed says that name.
-    expect(book).toContain("feedState(e, VIEW_TITLES.book, 'an empty list')");
+    // Pin moved (D113), meaning kept: es-owner-a translated the shared §1B words, so the same call now keys its words (T).
+    expect(book).toContain("feedState(e, VIEW_TITLES.book, T('an empty list'))");
     for (const gone of ['The Book is empty', 'Pull refresh', 'Database not connected']) {
       expect(book, gone).not.toContain(gone);
     }
-    expect(twin).toContain("feedState(e, 'This property', 'a property with no history', 'Close this and tap the property again.')");
+    expect(twin).toContain("feedState(e, T('This property'), T('a property with no history'), T('Close this and tap the property again.'))");
     expect(twin).not.toContain('Pull refresh');
   });
 
@@ -244,7 +245,8 @@ describe('Book + estimate prep (source pins)', () => {
     const named = book.indexOf('if (data.forecastUnavailable)');
     expect(named).toBeGreaterThan(-1);
     expect(named).toBeLessThan(book.indexOf('data.comingDue && data.comingDue.length'));
-    expect(book).toContain("feedLine(null, 'Coming-due forecast'");
+    // Pin moved (D113), meaning kept: es-owner-a translated the shared §1B words, so the same call now keys its words (T).
+    expect(book).toContain("feedLine(null, T('Coming-due forecast'), T('Due badges below are missing, not \"nothing due\".'))");
   });
 
   it('SCREEN NOT RUN and NO OVERLAY — VERIFY never wear the green ON TARGET style', () => {

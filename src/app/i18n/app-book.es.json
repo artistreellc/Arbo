@@ -1,8 +1,8 @@
 {
   "Every property Arbo has on file.": "Cada propiedad que Arbo tiene registrada.",
   "Tap one for its history, trees and permit screens.": "Toque una para ver su historial, sus árboles y sus revisiones de permiso.",
-  "Coming due": "Por revisar pronto",
-  "Coming due — worth a look": "Por revisar pronto — vale la pena verlas",
+  "Coming due": "Por vencer",
+  "Coming due — worth a look": "Por vencer — vale la pena revisarlas",
   "OVERDUE": "ATRASADO",
   "DUE NOW": "YA TOCA",
   "All properties": "Todas las propiedades",
@@ -14,7 +14,7 @@
   "{n} estimates": "{n} estimados",
   "{n} tree": "{n} árbol",
   "{n} trees": "{n} árboles",
-  "COMING DUE": "POR REVISAR PRONTO",
+  "COMING DUE": "POR VENCER",
   "POWER LINES": "LÍNEAS ELÉCTRICAS",
   "STRUCTURES": "ESTRUCTURAS",
   "Property": "Propiedad",
@@ -42,5 +42,11 @@
   "PERMIT LIKELY": "PROBABLEMENTE SE NECESITA PERMISO",
   "PERMIT: REVIEW NEEDED": "PERMISO: HAY QUE REVISAR",
   "NO OVERLAY — VERIFY W/ CITY": "VERIFIQUE CON LA CIUDAD — EL MAPA NO MOSTRÓ ZONA PROTEGIDA",
-  "PERMIT SCREEN PENDING": "CHEQUEO DE PERMISO SIN HACER"
+  "PERMIT SCREEN PENDING": "CHEQUEO DE PERMISO SIN HACER",
+  "an empty list": "una lista vacía",
+  "Coming-due forecast": "Pronóstico de lo que está por vencer",
+  "Due badges below are missing, not \"nothing due\".": "Faltan las etiquetas de vencimiento de abajo; no quiere decir \"nada por vencer\".",
+  "This property": "Esta propiedad",
+  "a property with no history": "una propiedad sin historial",
+  "Close this and tap the property again.": "Cierre esto y vuelva a tocar la propiedad."
 }

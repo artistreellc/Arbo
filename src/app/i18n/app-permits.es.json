@@ -60,5 +60,7 @@
   "NO OVERLAY — VERIFY W/ CITY": "VERIFIQUE CON LA CIUDAD — EL MAPA NO MOSTRÓ ZONA PROTEGIDA",
   "PERMIT SCREEN PENDING": "CHEQUEO DE PERMISO SIN HACER",
   "CALL FIRST": "LLAME PRIMERO",
-  "TICKET REQUIRED": "SE REQUIERE TICKET DE LOCALIZACIÓN"
+  "TICKET REQUIRED": "SE REQUIERE TICKET DE LOCALIZACIÓN",
+  "Permit base — {state}": "Base de permisos — {state}",
+  "Arbo could not read its permit base right now. That is not the same as “no rules”.": "Arbo no pudo leer su base de permisos en este momento. Eso no es lo mismo que “no hay reglas”."
 }

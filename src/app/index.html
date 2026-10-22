@@ -1195,7 +1195,10 @@ function saveFailText(e) {
   if (k === 'unset') return T('Not saved — this is not set up on the server yet. Nothing was written.');
   return T('Not saved — the server did not accept it. Nothing was written.');
 }
-function showSaveFail(box, e) { const n = box.querySelector(':scope > .save-err') || box.appendChild(el('div', 'errline save-err')); n.textContent = saveFailText(e); return n; }
+// R27 (D113): a save refused in the server's own words (read-only's line) is English until Phase B twins it — marked
+// "en inglés" in Spanish; every other reason is the page's own (saveFailText). A reused line loses an old mark.
+function saveFailMark(n, e) { if (ES.lang !== 'es') return n; if (e && e.message === 'read_only' && e.line) { n.setAttribute('lang', 'en'); n.appendChild(esEnMark()); } else n.removeAttribute('lang'); return n; }
+function showSaveFail(box, e) { const n = box.querySelector(':scope > .save-err') || box.appendChild(el('div', 'errline save-err')); n.textContent = saveFailText(e); return saveFailMark(n, e); }
 
 // ---------- The feeds card (Direction B P12; R29 #1: one feeds card per screen that still names every dead feed, §1B) ----------
 // A screen hands each panel's answer — the node, or the read's promise — to place(slot, x):
@@ -4484,12 +4487,8 @@ async function renderEstimate() {
     book.b.classList.toggle('gap', !yes);
   };
   book.b.addEventListener('click', () => { if (go) switchTab('book'); });
-  // R27: a count said in the page's language; a dead feed in the shared feed words — English, marked "en inglés" in Spanish.
-  const said = () => {
-    book.note.textContent = EST_BOOK.said;
-    if (EST_BOOK.en && ES.lang === 'es') { book.note.setAttribute('lang', 'en'); book.note.appendChild(esEnMark()); }
-    else if (ES.lang === 'es') book.note.removeAttribute('lang');
-  };
+  // R27 (D113): a count, and a dead feed in the shared feed words — both in the page's language.
+  const said = () => { book.note.textContent = EST_BOOK.said; };
   if (EST_BOOK) { said(); can(EST_BOOK.go); }
   else { book.note.replaceChildren(readingLine()); can(true); } // P15 review: it opens while its count reads, as Office's desks do
   let p;
@@ -4501,7 +4500,7 @@ async function renderEstimate() {
     if (e.code === 401) return showKeywall();
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
     if (gen !== EST_GEN) return;
-    EST_BOOK = { said: 'Not counted — ' + FEED_WORD[feedKind(e)], go: false, en: true }; // the row's title already names the feed
+    EST_BOOK = { said: tf('Not counted — {state}', { state: FEED_WORD[feedKind(e)] }), go: false }; // the row's title already names the feed
     said();
     can(false);
     return;
@@ -4510,7 +4509,7 @@ async function renderEstimate() {
   // A forecast Arbo could not read is said beside the count — never "0 coming due" (§1B).
   EST_BOOK = Array.isArray(p.comingDue)
     ? { said: tf('{n} on file · {due} coming due', { n: p.properties.length, due: p.comingDue.length }), go: true }
-    : { said: p.properties.length + ' on file · coming due: ' + FEED_WORD.unread, go: true, en: true };
+    : { said: tf('{n} on file · coming due: {state}', { n: p.properties.length, state: FEED_WORD.unread }), go: true };
   said();
   can(true);
 }
@@ -4582,9 +4581,8 @@ function estimatePrepPanel() {
       // §1B: a street Arbo could not read is named; one not on file is said — the box is focused, once, to type it.
       const gap = lead.streetUnreadable ? 'unread' : lead.streetCut ? 'cut' : null;
       addr.placeholder = gap ? T('Type the street') : T('Street not on file');
-      streetLine = el('div', gap ? 'feed-state ' + gap : 'storm-muted', gap ? 'Street: ' + FEED_WORD[gap] + ' — type it in.' : T('Street not on file — type it in.'));
-      // R27: a street Arbo could not read is said in the shared feed words — English, marked "en inglés" in Spanish.
-      if (gap && ES.lang === 'es') { streetLine.setAttribute('lang', 'en'); streetLine.appendChild(esEnMark()); }
+      // R27 (D113): a street Arbo could not read is said in the shared feed words, in the page's language.
+      streetLine = el('div', gap ? 'feed-state ' + gap : 'storm-muted', gap ? tf('Street: {state} — type it in.', { state: FEED_WORD[gap] }) : T('Street not on file — type it in.'));
       said.push(streetLine);
       if (!lead.focused) { lead.focused = true; setTimeout(() => addr.focus(), 0); }
     }
@@ -4700,8 +4698,7 @@ async function renderBook() {
   head.appendChild(el('p', '', T('Every property Arbo has on file.') + ' ' + T('Tap one for its history, trees and permit screens.')));
   v.appendChild(head);
   const reading = first ? v.appendChild(readingLine()) : null;
-  // R27: a dead feed is said in the shared §1B feed words — English as written, marked "en inglés" in Spanish.
-  const en = (n) => { if (ES.lang === 'es') { n.setAttribute('lang', 'en'); n.appendChild(esEnMark()); } return n; };
+  // R27 (D113): a dead feed is said in the shared §1B feed words, in the page's language (es-owner-a translated them).
   let data;
   try {
     data = await api('/api/properties').finally(() => { if (reading) reading.remove(); });
@@ -4709,13 +4706,13 @@ async function renderBook() {
     if (e.code === 401) return showKeywall();
     // §1B: a Book Arbo could not read is NAMED, never headed "empty".
     await LINKS_READY;
-    v.appendChild(en(feedState(e, VIEW_TITLES.book, 'an empty list'))); // P15 review: the screen's own name (the Book was renamed)
+    v.appendChild(feedState(e, VIEW_TITLES.book, T('an empty list'))); // P15 review: the screen's own name (the Book was renamed)
     return;
   }
   if (data.forecastUnavailable) {
     // §1B: a dead forecast is not "nothing due" — said before the list.
     v.appendChild(el('div', 'sect', T('Coming due')));
-    v.appendChild(en(feedLine(null, 'Coming-due forecast', 'Due badges below are missing, not "nothing due".')));
+    v.appendChild(feedLine(null, T('Coming-due forecast'), T('Due badges below are missing, not "nothing due".')));
   } else if (data.comingDue && data.comingDue.length) {
     v.appendChild(el('div', 'sect', T('Coming due — worth a look')));
     for (const d of data.comingDue) {
@@ -4771,9 +4768,8 @@ async function openTwin(id, title) {
     if (e.code === 401) { closeSheet('twin'); return showKeywall(); }
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
     // §1B: a twin Arbo could not read is named, never drawn as a lot with no history.
-    // R27: in the shared §1B feed words — English as written, marked "en inglés" in Spanish.
-    const dead = body.appendChild(feedState(e, 'This property', 'a property with no history', 'Close this and tap the property again.'));
-    if (ES.lang === 'es') { dead.setAttribute('lang', 'en'); dead.appendChild(esEnMark()); }
+    // R27 (D113): in the shared §1B feed words, in the page's language (es-owner-a translated them).
+    body.appendChild(feedState(e, T('This property'), T('a property with no history'), T('Close this and tap the property again.')));
     return;
   }
   const p = t.property;
@@ -5101,11 +5097,15 @@ async function renderSafety(slot) {
     if (e.code === 401) return;
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
     slot.appendChild(el('div', 'panel-title', T('Safety')));
-    // R27: a dead feed in the shared §1B feed words — English as written, marked "en inglés" in Spanish.
-    const dead = slot.appendChild(state('Safety board — ' + FEED_WORD[feedKind(e)], e.code === 503
+    // R27 (D113): a dead feed in the shared §1B feed words, said in the page's language (es-owner-a translated them). The
+    // older pins (appUi, the Q1 title shape) read the English card's source as written, so the English is kept whole and the
+    // Spanish card is drawn beside it — the title one template, each sentence its own key (as Numbers, es-owner-c).
+    slot.appendChild(ES.lang === 'es' ? state(tf('Safety board — {state}', { state: FEED_WORD[feedKind(e)] }), e.code === 503
+      ? feedSays(e) + ' ' + T('Arbo cannot check credentials or near misses.')
+      : T('Could not read the safety board. This is not a claim that everyone is current.'))
+      : state('Safety board — ' + FEED_WORD[feedKind(e)], e.code === 503
       ? feedSays(e) + ' Arbo cannot check credentials or near misses.'
       : 'Could not read the safety board. This is not a claim that everyone is current.'));
-    if (ES.lang === 'es') { dead.setAttribute('lang', 'en'); dead.appendChild(esEnMark()); }
     return;
   }
   // R27: a card's state (CERT_STATE's English label) said into its node after `lead` — EXPIRED, NO RECORD and NO EXPIRY
@@ -5244,11 +5244,15 @@ async function renderRosterList(slot) {
   } catch (e) {
     if (e.code === 401) return false;
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
-    // R27: a dead feed in the shared §1B feed words — English as written, marked "en inglés" in Spanish.
-    const dead = slot.appendChild(state('Roster — ' + FEED_WORD[feedKind(e)], e.code === 503
+    // R27 (D113): a dead feed in the shared §1B feed words, said in the page's language (es-owner-a translated them). The
+    // older pins (appUi, the Q1 title shape) read the English card's source as written, so the English is kept whole and the
+    // Spanish card is drawn beside it — the title one template, each sentence its own key (as Numbers, es-owner-c).
+    slot.appendChild(ES.lang === 'es' ? state(tf('Roster — {state}', { state: FEED_WORD[feedKind(e)] }), e.code === 503
+      ? feedSays(e) + ' ' + T('Arbo cannot tell you who is on the crew.')
+      : T('Could not read the roster. This is not a claim that nobody is on it.'))
+      : state('Roster — ' + FEED_WORD[feedKind(e)], e.code === 503
       ? feedSays(e) + ' Arbo cannot tell you who is on the crew.'
       : 'Could not read the roster. This is not a claim that nobody is on it.'));
-    if (ES.lang === 'es') { dead.setAttribute('lang', 'en'); dead.appendChild(esEnMark()); }
     return false;
   }
   if (!r.certsKnown) {
@@ -5475,11 +5479,15 @@ async function renderTrainingBoard(slot) {
     if (e.code === 401) return;
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
     slot.appendChild(el('div', 'panel-title', T('Crew training')));
-    // R27: a dead feed in the shared §1B feed words — English as written, marked "en inglés" in Spanish.
-    const dead = slot.appendChild(state('Training board — ' + FEED_WORD[feedKind(e)], e.code === 503
+    // R27 (D113): a dead feed in the shared §1B feed words, said in the page's language (es-owner-a translated them). The
+    // older pins (appUi, the Q1 title shape) read the English card's source as written, so the English is kept whole and the
+    // Spanish card is drawn beside it — the title one template, each sentence its own key (as Numbers, es-owner-c).
+    slot.appendChild(ES.lang === 'es' ? state(tf('Training board — {state}', { state: FEED_WORD[feedKind(e)] }), e.code === 503
+      ? feedSays(e) + ' ' + T('Arbo cannot show who is weak on what.')
+      : T('Could not read the training board. This is not a claim that everyone is current.'))
+      : state('Training board — ' + FEED_WORD[feedKind(e)], e.code === 503
       ? feedSays(e) + ' Arbo cannot show who is weak on what.'
       : 'Could not read the training board. This is not a claim that everyone is current.'));
-    if (ES.lang === 'es') { dead.setAttribute('lang', 'en'); dead.appendChild(esEnMark()); }
     return;
   }
   if (!b.rows.length && !b.blindSpots.length) return;
@@ -5799,11 +5807,15 @@ async function renderVetting(slot) {
     if (e.code === 401) return;
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
     slot.appendChild(el('div', 'panel-title', T('Safety lessons')));
-    // R27: a dead feed in the shared §1B feed words — English as written, marked "en inglés" in Spanish.
-    const dead = slot.appendChild(state('Draft queue — ' + FEED_WORD[feedKind(e)], e.code === 503
+    // R27 (D113): a dead feed in the shared §1B feed words, said in the page's language (es-owner-a translated them). The
+    // older pins (appUi, the Q1 title shape) read the English card's source as written, so the English is kept whole and the
+    // Spanish card is drawn beside it — the title one template, each sentence its own key (as Numbers, es-owner-c).
+    slot.appendChild(ES.lang === 'es' ? state(tf('Draft queue — {state}', { state: FEED_WORD[feedKind(e)] }), e.code === 503
+      ? feedSays(e) + ' ' + T('Arbo cannot show what is waiting to be vetted.')
+      : T('Could not read the draft queue. This is not a claim that nothing is waiting.'))
+      : state('Draft queue — ' + FEED_WORD[feedKind(e)], e.code === 503
       ? feedSays(e) + ' Arbo cannot show what is waiting to be vetted.'
       : 'Could not read the draft queue. This is not a claim that nothing is waiting.'));
-    if (ES.lang === 'es') { dead.setAttribute('lang', 'en'); dead.appendChild(esEnMark()); }
     return;
   }
   if (!d.count) return;
@@ -5878,11 +5890,15 @@ async function renderLibraryQueue(slot) {
     if (e.code === 401) return false;
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
     // §1B: a queue Arbo could not read is not an empty queue.
-    // R27: in the shared §1B feed words — English as written, marked "en inglés" in Spanish.
-    const dead = slot.appendChild(state('Library drafts — ' + FEED_WORD[feedKind(e)], e.code === 503
+    // R27 (D113): a dead feed in the shared §1B feed words, said in the page's language (es-owner-a translated them). The
+    // older pins (appUi, the Q1 title shape) read the English card's source as written, so the English is kept whole and the
+    // Spanish card is drawn beside it — the title one template, each sentence its own key (as Numbers, es-owner-c).
+    slot.appendChild(ES.lang === 'es' ? state(tf('Library drafts — {state}', { state: FEED_WORD[feedKind(e)] }), e.code === 503
+      ? feedSays(e) + ' ' + T('Arbo cannot show what is waiting to be vetted.')
+      : T('Could not read the library drafts. This is not a claim that nothing is waiting.'))
+      : state('Library drafts — ' + FEED_WORD[feedKind(e)], e.code === 503
       ? feedSays(e) + ' Arbo cannot show what is waiting to be vetted.'
       : 'Could not read the library drafts. This is not a claim that nothing is waiting.'));
-    if (ES.lang === 'es') { dead.setAttribute('lang', 'en'); dead.appendChild(esEnMark()); }
     return false;
   }
 
@@ -6037,15 +6053,20 @@ async function renderMoney(slot) {
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
     // §1B: a ledger Arbo could not read is NOT a ledger with nothing owed.
     slot.appendChild(el('div', 'panel-title', T('Money')));
-    // R27: a dead feed in the shared §1B feed words — English as written, marked "en inglés" in Spanish.
-    const dead = slot.appendChild(state('Ledger — ' + FEED_WORD[feedKind(e)], e.code === 503
+    // R27 (D113): a dead feed in the shared §1B feed words, said in the page's language (es-owner-a translated them). The
+    // older pins (appUi, the Q1 title shape) read the English card's source as written, so the English is kept whole and the
+    // Spanish card is drawn beside it — the title one template, each sentence its own key (as Numbers, es-owner-c).
+    slot.appendChild(ES.lang === 'es' ? state(tf('Ledger — {state}', { state: FEED_WORD[feedKind(e)] }), e.code === 503
+      ? feedSays(e) + ' ' + T('Arbo cannot tell you what is owed.')
+      : T('Could not read the invoices. This is not a claim that everything is paid.'))
+      : state('Ledger — ' + FEED_WORD[feedKind(e)], e.code === 503
       ? feedSays(e) + ' Arbo cannot tell you what is owed.'
       : 'Could not read the invoices. This is not a claim that everything is paid.'));
-    if (ES.lang === 'es') { dead.setAttribute('lang', 'en'); dead.appendChild(esEnMark()); }
     return;
   }
-  // R27: a save that failed is said in the shared words (saveFailText) — English, marked "en inglés" in Spanish.
-  const failed = (box, e) => { const n = showSaveFail(box, e); if (ES.lang === 'es') { n.setAttribute('lang', 'en'); n.appendChild(esEnMark()); } };
+  // R27 (D113): a save that failed is said in the shared words (saveFailText, in the page's language); showSaveFail marks
+  // only a refusal in the server's own words.
+  const failed = (box, e) => { showSaveFail(box, e); };
 
   if (m.collections.length) {
     slot.appendChild(el('div', 'panel-title', tf('Owed — {n} past due', { n: m.collections.length })));
@@ -6153,9 +6174,8 @@ function paidButton(invoiceId, slot) {
       renderMoney(slot);
     } catch (e) {
       btn.disabled = false;
-      // R27: in the shared words (saveFailText) — English, marked "en inglés" in Spanish.
-      const n = showSaveFail(btn.parentNode, e);
-      if (ES.lang === 'es') { n.setAttribute('lang', 'en'); n.appendChild(esEnMark()); }
+      // R27 (D113): in the shared words (saveFailText, in the page's language); a refusal in the server's own words is marked.
+      showSaveFail(btn.parentNode, e);
     }
   });
   return btn;
@@ -6220,32 +6240,27 @@ function truckWords(k) {
 }
 function trackWords(t, unitId) {
   if (!t) return ['', 'storm-muted']; // not read yet: no line rather than a guess
-  // R27: a line in the shared §1B feed words stays English as written; in Spanish it carries a third word, 'en',
-  // so the line is drawn marked "en inglés" (English mode answers exactly the [words, look] it always did).
-  const shared = (x) => (ES.lang === 'es' ? [x[0], x[1], 'en'] : x);
+  // R27 (D113): a line in the shared §1B feed words is said in the page's language (es-owner-a translated them).
   // The Fleet list beside this line just read with the same key, so a 401 here is the route's own lock (no APP_ACCESS_KEY).
-  if (t.failed) return t.failed.code === 401 ? [T('Tracking locked — APP_ACCESS_KEY isn’t set on the server'), 'feed-state unset'] : shared(['Tracking: ' + FEED_WORD[feedKind(t.failed)], 'feed-state ' + feedKind(t.failed)]);
-  if (t.state !== 'ok' && t.state !== 'unreadable') return TRACK_SAYS[t.state] || shared(['Tracking: ' + FEED_WORD.unread, 'feed-state unread']);
+  if (t.failed) return t.failed.code === 401 ? [T('Tracking locked — APP_ACCESS_KEY isn’t set on the server'), 'feed-state unset'] : [tf('Tracking: {state}', { state: FEED_WORD[feedKind(t.failed)] }), 'feed-state ' + feedKind(t.failed)];
+  if (t.state !== 'ok' && t.state !== 'unreadable') return TRACK_SAYS[t.state] || [tf('Tracking: {state}', { state: FEED_WORD.unread }), 'feed-state unread'];
   const u = (t.units || []).find((x) => x.unitId === unitId);
   if (u && u.truck) return truckWords(u.truck);
   return t.state === 'unreadable' ? TRACK_SAYS.unreadable : [T('No Bouncie truck matched to this unit'), 'storm-muted'];
 }
 // The one line each Fleet card carries. Drawn from the last read; fillTrack rewrites it when a new read lands.
 function fleetTrackLine(u) {
-  const [words, look, en] = trackWords(TRACK, u.id);
+  const [words, look] = trackWords(TRACK, u.id);
   const n = el('div', look + ' fleet-track', words);
-  if (en) { n.setAttribute('lang', 'en'); n.appendChild(esEnMark()); } // R27: the shared feed words, marked "en inglés"
   n.dataset.unit = u.id;
   return n;
 }
 // After a read: every unit line, then the trucks no unit claims (with the fleet list unavailable, that is all of them).
 function fillTrack(listSlot, trackSlot) {
   for (const n of listSlot.querySelectorAll('.fleet-track')) {
-    const [words, look, en] = trackWords(TRACK, n.dataset.unit);
+    const [words, look] = trackWords(TRACK, n.dataset.unit);
     n.className = look + ' fleet-track';
     n.textContent = words;
-    // R27: the shared feed words are marked "en inglés"; a line rewritten into the page's words loses the mark.
-    if (en) { n.setAttribute('lang', 'en'); n.appendChild(esEnMark()); } else if (ES.lang === 'es') n.removeAttribute('lang');
   }
   trackSlot.replaceChildren();
   const t = TRACK;
@@ -6437,11 +6452,15 @@ async function renderFleetList(slot) {
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
     // §1B: a dead feed is named, never drawn as a confident "all trucks up".
     slot.appendChild(el('div', 'panel-title', T('Fleet')));
-    // R27: a dead feed in the shared §1B feed words — English as written, marked "en inglés" in Spanish.
-    const dead = slot.appendChild(state('Fleet — ' + FEED_WORD[feedKind(e)], e.code === 503
+    // R27 (D113): a dead feed in the shared §1B feed words, said in the page's language (es-owner-a translated them). The
+    // older pins (appUi, the Q1 title shape) read the English card's source as written, so the English is kept whole and the
+    // Spanish card is drawn beside it — the title one template, each sentence its own key (as Numbers, es-owner-c).
+    slot.appendChild(ES.lang === 'es' ? state(tf('Fleet — {state}', { state: FEED_WORD[feedKind(e)] }), e.code === 503
+      ? feedSays(e) + ' ' + T('Arbo cannot tell you which units are down.')
+      : T('Could not read the fleet. This is not a claim that everything runs.'))
+      : state('Fleet — ' + FEED_WORD[feedKind(e)], e.code === 503
       ? feedSays(e) + ' Arbo cannot tell you which units are down.'
       : 'Could not read the fleet. This is not a claim that everything runs.'));
-    if (ES.lang === 'es') { dead.setAttribute('lang', 'en'); dead.appendChild(esEnMark()); }
     return false;
   }
   // A held unit is off the schedule as surely as a DOWN one, so the heading
@@ -6512,8 +6531,8 @@ async function renderFleetList(slot) {
           sign.disabled = false;
           // A refused tap says so under the button; the hold stays on screen as it is.
           signErr.textContent = ex.code === 409 ? T('Not on hold any more — nothing to sign back on.') + ' ' + T('Tap ↻ to see where it stands.') : saveFailText(ex);
-          // R27: a save that failed is said in the shared words (saveFailText) — English, marked "en inglés" in Spanish.
-          if (ex.code !== 409 && ES.lang === 'es') { signErr.setAttribute('lang', 'en'); signErr.appendChild(esEnMark()); }
+          // R27 (D113): the shared words are in the page's language; a refusal in the server's own words is marked.
+          if (ex.code !== 409) saveFailMark(signErr, ex);
         }
       });
       c.appendChild(sign);
@@ -6815,8 +6834,7 @@ async function renderFollowUps() {
   head.appendChild(el('h1', '', VIEW_TITLES.followups));
   head.appendChild(el('p', '', T('Open loops and recommended sends.') + ' ' + T('Arbo recommends — you decide.')));
   v.appendChild(head);
-  // R27: a dead feed is said in the shared §1B feed words — English as written, marked "en inglés" in Spanish.
-  const en = (n) => { if (ES.lang === 'es') { n.setAttribute('lang', 'en'); n.appendChild(esEnMark()); } return n; };
+  // R27 (D113): a dead feed is said in the shared §1B feed words, in the page's language (es-owner-a translated them).
   // Both panels read their own feed and name their own failure, so both are
   // built BEFORE the follow-ups read. One missing feed must never blank the
   // whole screen (§1B).
@@ -6837,7 +6855,7 @@ async function renderFollowUps() {
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
     // One line, not a dashed card: the recommended sends below stay on the first screen.
     loopsSlot.appendChild(el('div', 'panel-title', T('Open loops')));
-    loopsSlot.appendChild(en(feedLine(e, 'Open loops', 'That is not a sign that nothing is open.')));
+    loopsSlot.appendChild(feedLine(e, T('Open loops'), T('That is not a sign that nothing is open.')));
   });
   // The sends this screen is named for come next, in their own slot, so the
   // read below fills this place whenever it lands.
@@ -6857,7 +6875,7 @@ async function renderFollowUps() {
     if (gen !== FU_GEN) return;
     if (e.code === 401) return showKeywall(); // the key wall owns the screen; the next draw takes the hold over
     await LINKS_READY; // whether db_not_configured means "cut" depends on the links
-    fuSlot.appendChild(en(feedState(e, 'Follow-ups', 'an empty queue')));
+    fuSlot.appendChild(feedState(e, T('Follow-ups'), T('an empty queue')));
     release();
     return;
   }
@@ -6903,7 +6921,7 @@ async function renderFollowUps() {
           btn.className = 'actbtn done';
           const err = c.querySelector(':scope > .save-err');
           if (err) err.remove();
-        } catch (e) { btn.disabled = false; en(showSaveFail(c, e)); }
+        } catch (e) { btn.disabled = false; showSaveFail(c, e); }
       });
       c.appendChild(btn);
     }
@@ -8180,9 +8198,8 @@ async function renderPermits() {
   try { db = await api('/api/permits/db?city=' + encodeURIComponent(PERMIT_CITY)).finally(() => { if (reading) reading.remove(); }); } catch (e) {
     if (gen !== PERMIT_GEN) return;
     if (e.code === 401) return showKeywall();
-    // R27: a dead feed in the shared §1B feed words — English as written, marked "en inglés" in Spanish.
-    const dead = v.appendChild(state('Permit base — ' + FEED_WORD[feedKind(e)], 'Arbo could not read its permit base right now. That is not the same as “no rules”.'));
-    if (ES.lang === 'es') { dead.setAttribute('lang', 'en'); dead.appendChild(esEnMark()); }
+    // R27 (D113): a dead feed in the shared §1B feed words, said in the page's language (es-owner-a translated them).
+    v.appendChild(state(tf('Permit base — {state}', { state: FEED_WORD[feedKind(e)] }), T('Arbo could not read its permit base right now. That is not the same as “no rules”.')));
     return;
   }
   if (gen !== PERMIT_GEN) return;

@@ -12,7 +12,7 @@
 //   - every safety-class key goes through esSay, and each NEW one is a ledger DRAFT — nothing is reviewed;
 //   - the Spanish speaks with the glossary's words;
 //   - run over the REAL runtime and the dictionaries as served, each screen draws Spanish — data as written,
-//     the shared dead-feed words in English and marked, a safety label as its pair (or the pointer) —
+//     the shared dead-feed words in Spanish (es-owner-a translated them; D113), a safety label as its pair (or the pointer) —
 //     and English mode draws exactly the English.
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -22,7 +22,7 @@ import { isSafetyClass, loadLedger, pairSha } from '../src/i18n/ledger.js';
 import { TRADE_TERMS, APP_TERMS } from '../src/i18n/glossary.js';
 import { normalizeEs, findBannedEs } from '../src/i18n/banList.js';
 import { esGateProblems } from '../src/i18n/gates.js';
-import { OWNER_B_DRAFTS, OWNER_B_REUSED } from './support/esOwnerB.js';
+import { OWNER_B_DRAFTS, OWNER_B_REUSED, OWNER_B_PANELS, OWNER_B_SHARED } from './support/esOwnerB.js';
 import { RECORDED_EN, HELD_EN } from './support/esRecorded.js';
 import { loadI18n, fakeDoc, FakeNode, type I18n } from './support/i18nRuntime.js';
 
@@ -30,20 +30,10 @@ const raw = readFileSync(new URL('../src/app/index.html', import.meta.url), 'utf
 const script = [...raw.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]!).join('\n');
 const sf = ts.createSourceFile('index.html', script, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
 
-// ── This unit's code, by screen: top-level functions, tables and the sheets' listeners ($('id')). ──
-const PANELS: Record<string, string[]> = {
-  'app-estimate': ['openYard', 'yardWords', "$('yard-close')", "$('y-go')", 'ESTIMATE_TOOLS', 'renderEstimate', 'prepFromLead', 'estimatePrepPanel'],
-  'app-book': ['renderBook', 'openTwin', 'twinWords', "$('twin-close')"],
-  'app-followups': ['FU_LABEL', 'renderFollowUps'],
-  'app-money': ['STAGE_LABEL', 'renderMoney', 'paidButton', 'renderMoneyView'],
-  'app-fleet': ['TRACK_SAYS', 'loadTrack', 'agoWords', 'truckWords', 'trackWords', 'fleetTrackLine', 'fillTrack', 'renderFleet', 'renderFleetList',
-    'partAdder', 'fleetComposer', 'openBreakdown', 'bdWords', "$('bd-close')", "$('bd-go')", 'renderFleetView'],
-  'app-safety': ['CERT_STATE', 'CERT_TYPES', 'CREW_ROLES', 'renderSafety', 'renderRoster', 'renderRosterList', 'disclose', 'certAdder', 'rosterComposer',
-    'renderTrainingBoard', 'renderVetting', 'renderLibraryDesk', 'renderLibraryQueue', 'libraryComposer', 'renderSafetyView'],
-  'app-permits': ['PERMIT_STATUS', 'TOPIC_NAMES', 'KNOWN_HOSTS', 'permitVerdict', 'topicFold', 'renderPermits', 'checkCard', 'whoLine', 'factCard'],
-};
-// The permit-label helper is this unit's, shared by four of its screens (Estimate, Properties on file, Permit rules).
-const SHARED = ['permitLabel'];
+// This unit's code, by screen (its scope), lives in test/support/esOwnerB.ts since D113, where the whole-app scan
+// (test/esOwnerWhole.test.ts) reads it beside the other two units' scopes.
+const PANELS: Record<string, string[]> = OWNER_B_PANELS;
+const SHARED = OWNER_B_SHARED;
 // Each screen, and each sheet a screen opens, names its unit in ES_PLACES.
 const PLACES: Record<string, string> = {
   '#view-estimate': 'app-estimate', '#yard': 'app-estimate', '#view-book': 'app-book', '#twin': 'app-book', '#view-followups': 'app-followups',
@@ -74,9 +64,10 @@ const CODE_CALLS: Record<string, number[] | 'all'> = {
   toggle: 'all', contains: 'all', closest: 'all', indexOf: 'all', split: 'all', startsWith: 'all', includes: 'all', replace: 'all', localeCompare: 'all',
   toLocaleString: 'all' as const, toLocaleDateString: 'all', api: 'all', fetch: 'all', encodeURIComponent: 'all', scrollIntoView: 'all', scrollTo: 'all',
   switchTab: 'all', openMap: 'all', icon: 'all', sheetOpened: 'all', closeSheet: 'all', Option: [1], Error: 'all', has: 'all', get: 'all',
-  // The page's chip/badge: words first, then the tone (or class). A shared dead-feed helper (feedState, feedLine) composes the
-  // shared §1B vocabulary in English — its line is drawn English and marked "en inglés" in Spanish (see the draw tests).
-  chip: [1], badge: [1], feedState: 'all', feedLine: 'all',
+  // The page's chip/badge: words first, then the tone (or class). Pin moved (D113, stricter): a shared dead-feed helper
+  // (feedState, feedLine) says the shared §1B words in the page's language (es-owner-a) — only its first argument, the
+  // read's error, is code; the panel's name and its line are words, keyed at the call.
+  chip: [1], badge: [1], feedState: [0], feedLine: [0],
   // A server line's field name; the prep form's field id; the job check's answer keys.
   esSayTwin: [2], esSayPick: [2], field: [0], tri: [0], flag: [0], forLabel: [0],
 };
@@ -133,16 +124,10 @@ function exempt(lit: ts.StringLiteral | ts.NoSubstitutionTemplateLiteral, f: ts.
       if (i !== -1 && code && (code === 'all' || code.includes(i))) return `code (${name})`;
       const a0 = p.arguments?.[0];
       if (name === 'setAttribute' && i === 1 && a0 && ts.isStringLiteral(a0) && CODE_ATTRS.has(a0.text)) return 'a code attribute';
-      // A dead-feed card: state(title, body) whose title is built on FEED_WORD — the shared vocabulary, English, marked.
-      if (name === 'state' && i !== -1 && p.arguments?.[0] && /\bFEED_WORD\b/.test(p.arguments[0].getText(f))) return 'the shared dead-feed words';
     }
-    // A line built on the shared §1B feed words (FEED_WORD, feedSays, RETRY) is the shared dead-feed vocabulary — English as
-    // written, and marked "en inglés" where it is drawn in Spanish (the draw tests prove the mark).
-    if (ts.isBinaryExpression(p) && p.operatorToken.kind === ts.SyntaxKind.PlusToken) {
-      let top: ts.Node = p;
-      while (ts.isBinaryExpression(top.parent) && top.parent.operatorToken.kind === ts.SyntaxKind.PlusToken) top = top.parent;
-      if (/\bFEED_WORD\b|\bfeedSays\(|\bRETRY\b/.test(top.getText(f))) return 'the shared dead-feed words';
-    }
+    // Pin moved (D113, stricter): the shared §1B feed words (FEED_WORD, feedSays, RETRY) are said in the page's language
+    // (es-owner-a), so a literal glued to them is English inside Spanish — no longer exempt. Each such card is keyed whole
+    // (tf with the state as a slot), or keeps its English half in a Spanish-mode choice an older pin reads (appUi).
     if (ts.isBinaryExpression(p) && [ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsEqualsToken,
       ts.SyntaxKind.EqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsToken].includes(p.operatorToken.kind)) return 'a comparison';
     if (ts.isCaseClause(p) && child === p.expression) return 'a case';
@@ -452,7 +437,7 @@ const constOf = (name: string): string => {
 };
 const CONSTS = ['READ_ONLY_LINE', 'FEED_WORD', 'Cap', 'FEED_TAG', 'FEED_SAYS', 'RETRY', 'TONE', 'FEED_TONE', 'PERMIT_STATE', 'ESTIMATE_TOOLS', 'CERT_STATE', 'CERT_TYPES',
   'CREW_ROLES', 'STAGE_LABEL', 'TRACK_SAYS', 'UNIT_STATUS', 'FU_LABEL', 'LOOP_LABEL', 'DESK_LINE', 'VIEW_TITLES', 'PERMIT_STATUS', 'TOPIC_NAMES', 'KNOWN_HOSTS', 'PERMIT_ANS', 'nb'];
-const FNS = ['state', 'readingLine', 'chip', 'badge', 'plural', 'fmtWhen', 'fmtTime', 'feedKind', 'feedSays', 'feedLine', 'feedState', 'saveFailText', 'permitChip',
+const FNS = ['state', 'readingLine', 'chip', 'badge', 'plural', 'fmtWhen', 'fmtTime', 'feedKind', 'feedSays', 'feedLine', 'feedState', 'saveFailText', 'saveFailMark', 'showSaveFail', 'permitChip',
   'permitLabel', 'armTwice', 'disclose', 'loopCard', 'renderEstimate', 'estimatePrepPanel', 'renderBook', 'openTwin', 'renderSafety', 'renderRosterList', 'certAdder',
   'renderTrainingBoard', 'renderVetting', 'renderLibraryQueue', 'money', 'renderMoney', 'paidButton', 'agoWords', 'truckWords', 'trackWords', 'fleetTrackLine', 'fillTrack',
   'renderFleetList', 'partAdder', 'renderFollowUps', 'permitVerdict', 'topicFold', 'checkCard', 'whoLine', 'factCard'] as const;
@@ -529,14 +514,57 @@ describe('the screens in Spanish — the page’s words in Spanish, data as writ
     expect(t).not.toMatch(/inglés|Se debe|Dinero/);
     expect(all(slot).some((n) => n.getAttribute('lang') !== null || n.classList.contains('es-pair'))).toBe(false);
   });
-  it('a dead ledger in Spanish: the panel’s name in Spanish, the dead-feed card in the shared words — English, lang="en", marked', async () => {
+  // Pin moved (D113): es-owner-a translated the shared §1B words, so a dead card says them in Spanish — never English, never marked.
+  it('a dead ledger in Spanish: the panel’s name and the dead-feed card in Spanish — no English, no mark', async () => {
     const p = screens('es', () => fail(503, 'link_cut'));
     const slot = new XNode('div');
     await p.renderMoney(slot);
     expect(slot.children[0]!.textContent).toBe('Dinero');
     const card = slot.children[1]!;
-    expect(card.getAttribute('lang')).toBe('en');
-    expect(card.textContent).toMatch(/^Ledger — (?:cut on purpose|not set up yet).*en inglés$/);
+    expect(card.getAttribute('lang')).toBeNull();
+    expect(card.textContent).toBe('Cuentas — se cortó a propósito' + 'No se borró nada — sigue apagado hasta que usted lo vuelva a conectar. Arbo no puede decirle lo que se debe.');
+    expect(markedEnglish(slot)).toEqual([]);
+  });
+
+  // D113: every dead-feed card on this unit's screens, drawn over the real runtime — in Spanish the shared §1B words in
+  // Spanish (es-owner-a's), the screen's own sentence keyed, nothing marked English; in English exactly the old glue.
+  const DEAD: Array<[string, (p: Page, slot: XNode) => Promise<unknown>, string, string]> = [
+    ['renderSafety', (p, s) => p.renderSafety(s), 'Safety board — cut on purpose', 'Tablero de seguridad — se cortó a propósito'],
+    ['renderRosterList', (p, s) => p.renderRosterList(s), 'Roster — cut on purpose', 'Lista del personal — se cortó a propósito'],
+    ['renderTrainingBoard', (p, s) => p.renderTrainingBoard(s), 'Training board — cut on purpose', 'Tablero de capacitación — se cortó a propósito'],
+    ['renderVetting', (p, s) => p.renderVetting(s), 'Draft queue — cut on purpose', 'Borradores en espera — se cortó a propósito'],
+    ['renderLibraryQueue', (p, s) => p.renderLibraryQueue(s), 'Library drafts — cut on purpose', 'Borradores de la biblioteca — se cortó a propósito'],
+    ['renderMoney', (p, s) => p.renderMoney(s), 'Ledger — cut on purpose', 'Cuentas — se cortó a propósito'],
+    ['renderFleetList', (p, s) => p.renderFleetList(s), 'Fleet — cut on purpose', 'Flota — se cortó a propósito'],
+  ];
+  for (const [name, draw, en, es] of DEAD) {
+    it(`${name}: a dead feed in Spanish is all Spanish (no English piece, no "en inglés"); in English the old words exactly`, async () => {
+      for (const err of [fail(503, 'link_cut'), fail(500, 'boom')]) {
+        const sp = new XNode('div');
+        await draw(screens('es', () => err), sp);
+        expect(markedEnglish(sp), name).toEqual([]);
+        expect(sp.textContent, name).not.toMatch(/\b(?:Arbo cannot|Could not read|This is not a claim|cut on purpose|couldn’t read)\b/);
+        const eng = new XNode('div');
+        await draw(screens('en', () => err), eng);
+        expect(eng.textContent).not.toMatch(/inglés|se cortó|no se pudo/);
+        if (err.code === 503) { expect(sp.textContent, name).toContain(es); expect(eng.textContent, name).toContain(en); }
+      }
+    });
+  }
+  it('Properties on file, a property sheet and the Follow-ups screen: their dead feeds in Spanish too — no English, no mark', async () => {
+    const book = screens('es', () => fail(503, 'link_cut'));
+    await book.renderBook();
+    const bv = book.byId('view-book');
+    expect(markedEnglish(bv)).toEqual([]);
+    expect(bv.textContent).toContain('Propiedades registradas — se cortó a propósito');
+    expect(bv.textContent).toContain('Esto no es una lista vacía.');
+    const fu = screens('es', () => fail(503, 'link_cut'));
+    await fu.renderFollowUps();
+    await flush();
+    const fv = fu.byId('view-followups');
+    expect(markedEnglish(fv)).toEqual([]);
+    expect(fv.textContent).toContain('Seguimientos — se cortó a propósito');
+    expect(fv.textContent).toContain('Esto no es una cola vacía.');
   });
 
   const FLEET = {
@@ -570,14 +598,15 @@ describe('the screens in Spanish — the page’s words in Spanish, data as writ
     expect(chips).toEqual([['DOWN', 'NOT SCHEDULABLE', '1 open task'], ['HELD', 'NOT SCHEDULABLE', 'SIZE UNKNOWN — ROUTED CONSERVATIVELY'], ['UP']]);
     expect(slot.textContent).toContain('On hold: brake/steering defect. It stays off the schedule until you sign it back on.');
   });
-  it('a truck line in the shared feed words is marked "en inglés" in Spanish — and English answers exactly the [words, look] it always did', () => {
+  // Pin moved (D113): the shared feed words are Spanish now (es-owner-a) — the truck line says them in Spanish, unmarked.
+  it('a truck line in the shared feed words is Spanish in Spanish — and English answers exactly the [words, look] it always did', () => {
     const es = screens('es', () => ({}));
-    expect(es.trackWords({ failed: { code: 500 } }, 'u1')).toEqual(['Tracking: couldn’t read it', 'feed-state unread', 'en']);
+    expect(es.trackWords({ failed: { code: 500 } }, 'u1')).toEqual(['Rastreo: no se pudo leer', 'feed-state unread']);
     expect(es.trackWords({ state: 'link_cut', units: [] }, 'u1')).toEqual(['Rastreo cortado a propósito — Arbo no lee ninguna ubicación hasta que se vuelva a conectar', 'feed-state cut']);
     es.setTrack({ failed: { code: 500 } });
     const line = es.fleetTrackLine({ id: 'u1' });
-    expect(line.getAttribute('lang')).toBe('en');
-    expect(line.textContent).toBe('Tracking: couldn’t read iten inglés');
+    expect(line.getAttribute('lang')).toBeNull();
+    expect(line.textContent).toBe('Rastreo: no se pudo leer');
     const en = screens('en', () => ({}));
     expect(en.trackWords({ failed: { code: 500 } }, 'u1')).toEqual(['Tracking: couldn’t read it', 'feed-state unread']);
     expect(en.agoWords(5)).toBe('5 min ago');
@@ -718,18 +747,19 @@ describe('the screens in Spanish — the page’s words in Spanish, data as writ
     expect(heldEnglish(badges.children[2]!)).toBe('STRUCTURES');
   });
 
-  it('Follow-ups in Spanish: the sends in Spanish, a dead loops feed in the shared words (marked), the legal gate’s STOP line held', async () => {
+  it('Follow-ups in Spanish: the sends in Spanish, a dead loops feed in the shared words (Spanish, D113), the legal gate’s STOP line held', async () => {
     const p = screens('es', (path) => (path === '/api/queue' ? fail(503, 'link_cut') : { due: [{ type: 'estimate_follow_up', name: 'SIM-Elm', scheduledFor: null, note: 'Estimate sent 5 days ago.', targetId: 't1' }], suppressed: [{}], seasonalUnavailable: false, growthUnavailable: true }));
     await p.renderFollowUps();
     await flush();
     const v = p.byId('view-followups');
     const t = v.textContent;
     for (const s of ['Envíos recomendados', 'SEGUIMIENTO', 'Marcar como enviado ✓', 'SIM-Elm', 'Retenidos por el filtro legal: 1',
-      'Arbo no pudo revisar los avisos de revisión pronta (no se pudieron leer los registros de propiedades). Esto no quiere decir que no haya ninguno pendiente.']) expect(t, s).toContain(s);
+      'Arbo no pudo revisar los avisos de lo que está por vencer (no se pudieron leer los registros de propiedades). Esto no quiere decir que no haya ninguno pendiente.']) expect(t, s).toContain(s);
     const loops = v.querySelector('#queue-loops')!;
     expect(loops.children[0]!.textContent).toBe('Pendientes abiertos');
-    expect(loops.children[1]!.getAttribute('lang')).toBe('en');
-    expect(loops.children[1]!.textContent).toMatch(/^Open loops: .*en inglés$/);
+    // Pin moved (D113): the dead loops line is the shared feed line in Spanish (es-owner-a's template), unmarked.
+    expect(loops.children[1]!.getAttribute('lang')).toBeNull();
+    expect(loops.children[1]!.textContent).toBe('Pendientes abiertos: se cortó a propósito. Eso no es señal de que no haya nada abierto.');
     const gate = all(v).find((n) => n.classList.contains('es-pair'))!;
     expect(gate.children[1]!.textContent).toBe('No consent on file or STOP on record — these never send.');
   });

@@ -8,7 +8,7 @@
   "Truck-to-truck hrs": "Horas de camión a camión",
   "Crew size": "Tamaño de la cuadrilla",
   "Quote $": "Cotización $",
-  "Loaded $/man-hr": "Costo cargado $/hora-hombre",
+  "Loaded $/man-hr": "$ por hora-hombre (con cargas)",
   "Equipment $ (opt.)": "Equipo $ (opcional)",
   "Dump fees $ (opt.)": "Tarifas de vertedero $ (opcional)",
   "Run the number": "Calcular",
@@ -37,7 +37,7 @@
   "Start with the address: permit, drive time, 811 and access.": "Empiece por la dirección: permiso, tiempo de viaje, 811 y acceso.",
   "Never a price, never a booking.": "Nunca un precio, nunca una cita.",
   "Tools for the estimate": "Herramientas para el estimado",
-  "{n} on file · {due} coming due": "Registradas: {n} · por revisar pronto: {due}",
+  "{n} on file · {due} coming due": "Registradas: {n} · por vencer: {due}",
   "Choose the city": "Elija la ciudad",
   "5 digits": "5 dígitos",
   "Removal": "Remoción",
@@ -72,5 +72,8 @@
   "PERMIT LIKELY": "PROBABLEMENTE SE NECESITA PERMISO",
   "PERMIT: REVIEW NEEDED": "PERMISO: HAY QUE REVISAR",
   "NO OVERLAY — VERIFY W/ CITY": "VERIFIQUE CON LA CIUDAD — EL MAPA NO MOSTRÓ ZONA PROTEGIDA",
-  "PERMIT SCREEN PENDING": "CHEQUEO DE PERMISO SIN HACER"
+  "PERMIT SCREEN PENDING": "CHEQUEO DE PERMISO SIN HACER",
+  "Not counted — {state}": "Sin contar — {state}",
+  "{n} on file · coming due: {state}": "Registradas: {n} · por vencer: {state}",
+  "Street: {state} — type it in.": "Calle: {state} — escríbala."
 }

@@ -162,8 +162,9 @@ describe('Q1 — a failed read has one title shape: "X — <feed word>"', () => 
     const t = twin();
     // The sheet is a back step (Mike, 2026-10-20): a lost key steps back past it, then the keywall.
     expect(t).toContain("if (e.code === 401) { closeSheet('twin'); return showKeywall(); }");
-    expect(t).toContain("feedState(e, 'This property', 'a property with no history', 'Close this and tap the property again.')");
-    expect(t.indexOf('await LINKS_READY;')).toBeLessThan(t.indexOf("feedState(e, 'This property'"));
+    // Pin moved (D113), meaning kept: es-owner-a translated the shared §1B words, so the same call now keys its words (T).
+    expect(t).toContain("feedState(e, T('This property'), T('a property with no history'), T('Close this and tap the property again.'))");
+    expect(t.indexOf('await LINKS_READY;')).toBeLessThan(t.indexOf("feedState(e, T('This property')"));
   });
 });
 
@@ -224,8 +225,9 @@ describe('Q2 — the safety board has its own heading and words its blind spots'
 
   it('a dead open-loops feed is one line, so the safety stop leads the first screen', () => {
     const q = queue();
-    // Pin moved (R27 Phase A, owner app b), meaning kept: the same one line, marked "en inglés" in Spanish (the shared feed words).
-    expect(q).toContain("loopsSlot.appendChild(en(feedLine(e, 'Open loops', 'That is not a sign that nothing is open.')));");
+    // Pin moved (R27 Phase A, owner app b; again in D113), meaning kept: the same one line — the shared feed words are in the
+    // page's language now (es-owner-a), so its words are keyed and nothing is marked English.
+    expect(q).toContain("loopsSlot.appendChild(feedLine(e, T('Open loops'), T('That is not a sign that nothing is open.')));");
     expect(q).not.toContain("feedState(e, 'Open loops'");
   });
 });
@@ -387,7 +389,8 @@ describe('Q5 — admin forms fold away, and the sends come right after safety', 
     const sends = q.slice(q.indexOf("fuSlot.appendChild(el('div', 'panel-title', T('Recommended sends')));"));
     expect(sends.length).toBeGreaterThan(0);
     expect(sends.startsWith("fuSlot.appendChild(el('div', 'panel-title', T('Recommended sends')));")).toBe(true);
-    expect(sends).toContain("fuSlot.appendChild(en(feedState(e, 'Follow-ups', 'an empty queue')));");
+    // Pin moved (D113): the same dead-feed card, its words keyed — the shared feed words are in the page's language now.
+    expect(sends).toContain("fuSlot.appendChild(feedState(e, T('Follow-ups'), T('an empty queue')));");
     expect(sends).not.toContain('v.appendChild(');
     // Every stale-render guard is still there.
     expect(q.match(/gen !== FU_GEN/g)).toHaveLength(2);
@@ -480,7 +483,8 @@ describe('Q7 — the Book never dresses a dead screen as a help tip', () => {
     expect(est).toContain("const lede = head.appendChild(esSay(el('p'), 'Start with the address: permit, drive time, 811 and access.'));");
     expect(est).toContain("lede.appendChild(document.createTextNode(' ' + T('Never a price, never a booking.')));");
     expect(p).not.toContain("'feed-state', 'Permit check");
-    expect(book()).toContain("feedState(e, VIEW_TITLES.book, 'an empty list')");
+    // Pin moved (D113), meaning kept: es-owner-a translated the shared §1B words, so the same call now keys its words (T).
+    expect(book()).toContain("feedState(e, VIEW_TITLES.book, T('an empty list'))");
   });
 
   it('the property counts read as real plurals', () => {

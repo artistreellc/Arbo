@@ -1,6 +1,6 @@
 {
   "Close": "Cerrar",
-  "YARD CHECK": "REVISIÓN EN EL TERRENO",
+  "YARD CHECK": "REVISIÓN DE RENTABILIDAD",
   "Job type": "Tipo de trabajo",
   "Removal ($1,000/hr target)": "Remoción (meta de $1,000/h)",
   "Pruning ($700/hr target)": "Poda (meta de $700/h)",
@@ -9,8 +9,8 @@
   "Crew size": "Tamaño de la cuadrilla",
   "Quote $": "Cotización $",
   "Loaded $/man-hr": "$ por hora-hombre (con cargas)",
-  "Equipment $ (opt.)": "Equipo $ (opc.)",
-  "Dump fees $ (opt.)": "Cuotas de vertedero $ (opc.)",
+  "Equipment $ (opt.)": "Equipo $ (opcional)",
+  "Dump fees $ (opt.)": "Tarifas de vertedero $ (opcional)",
   "Run the number": "Calcular",
   "Internal instrument — never quoted to a customer (§6J2.5)": "Herramienta interna — nunca se le cotiza a un cliente (§6J2.5)",
   "BREAKDOWN": "AVERÍA",

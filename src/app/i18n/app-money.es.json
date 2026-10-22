@@ -22,5 +22,8 @@
   "Mark paid ✓": "Marcar como pagada ✓",
   "Recorded": "Registrado",
   "What is past due, and finished work ready to bill.": "Lo que tiene el pago atrasado y el trabajo terminado listo para facturar.",
-  "Arbo recommends — you decide.": "Arbo recomienda — usted decide."
+  "Arbo recommends — you decide.": "Arbo recomienda — usted decide.",
+  "Ledger — {state}": "Cuentas — {state}",
+  "Arbo cannot tell you what is owed.": "Arbo no puede decirle lo que se debe.",
+  "Could not read the invoices. This is not a claim that everything is paid.": "No se pudieron leer las facturas. Esto no quiere decir que todo esté pagado."
 }

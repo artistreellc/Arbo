@@ -3,7 +3,7 @@
   "REVIEW ASK": "PEDIR RESEÑA",
   "NO-SHOW SAVE": "NO SE PRESENTÓ — RECUPERAR",
   "SEASONAL": "DE TEMPORADA",
-  "COMING DUE": "POR REVISAR PRONTO",
+  "COMING DUE": "POR VENCER",
   "Open loops and recommended sends.": "Pendientes abiertos y envíos recomendados.",
   "Arbo recommends — you decide.": "Arbo recomienda — usted decide.",
   "No open loops as of {time}.": "No hay pendientes abiertos (revisado: {time}).",
@@ -12,9 +12,9 @@
   "Open loops": "Pendientes abiertos",
   "Recommended sends": "Envíos recomendados",
   "Arbo recommends — nothing sends without you.": "Arbo recomienda — no se envía nada sin usted.",
-  "Arbo could not check storm nudges (weather feed unreadable) or coming-due nudges (property records unreadable).": "Arbo no pudo revisar los avisos por tormenta (no se pudo leer el clima) ni los avisos de revisión pronta (no se pudieron leer los registros de propiedades).",
+  "Arbo could not check storm nudges (weather feed unreadable) or coming-due nudges (property records unreadable).": "Arbo no pudo revisar los avisos por tormenta (no se pudo leer el clima) ni los avisos de lo que está por vencer (no se pudieron leer los registros de propiedades).",
   "Arbo could not check storm nudges (weather feed unreadable).": "Arbo no pudo revisar los avisos por tormenta (no se pudo leer el clima).",
-  "Arbo could not check coming-due nudges (property records unreadable).": "Arbo no pudo revisar los avisos de revisión pronta (no se pudieron leer los registros de propiedades).",
+  "Arbo could not check coming-due nudges (property records unreadable).": "Arbo no pudo revisar los avisos de lo que está por vencer (no se pudieron leer los registros de propiedades).",
   "This is not a claim that none are due.": "Esto no quiere decir que no haya ninguno pendiente.",
   "Nothing due from what Arbo could read": "Nada pendiente en lo que Arbo puede leer",
   "No follow-ups due": "No hay seguimientos pendientes",
@@ -24,5 +24,8 @@
   "Mark sent ✓": "Marcar como enviado ✓",
   "Recorded": "Registrado",
   "{n} held by the legal gate": "Retenidos por el filtro legal: {n}",
-  "No consent on file or STOP on record — these never send.": "No hay consentimiento registrado o hay un STOP registrado — estos nunca se envían."
+  "No consent on file or STOP on record — these never send.": "No hay consentimiento registrado o hay un STOP registrado — estos nunca se envían.",
+  "Follow-ups": "Seguimientos",
+  "an empty queue": "una cola vacía",
+  "That is not a sign that nothing is open.": "Eso no es señal de que no haya nada abierto."
 }

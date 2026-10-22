@@ -110,5 +110,19 @@
   "Could not save that.": "No se pudo guardar eso.",
   "Write a new library entry": "Escribir una entrada nueva en la biblioteca",
   "Credentials and near misses first, then the roster, training, safety lessons and the library.": "Primero las certificaciones y los casi accidentes (near misses), luego la lista del personal, la capacitación, las lecciones de seguridad y la biblioteca.",
-  "Arbo recommends — you decide.": "Arbo recomienda — usted decide."
+  "Arbo recommends — you decide.": "Arbo recomienda — usted decide.",
+  "Safety board — {state}": "Tablero de seguridad — {state}",
+  "Arbo cannot check credentials or near misses.": "Arbo no puede revisar las certificaciones ni los casi accidentes (near misses).",
+  "Could not read the safety board. This is not a claim that everyone is current.": "No se pudo leer el tablero de seguridad. Esto no quiere decir que todos estén al día.",
+  "Roster — {state}": "Lista del personal — {state}",
+  "Arbo cannot tell you who is on the crew.": "Arbo no puede decirle quién está en la cuadrilla.",
+  "Could not read the roster. This is not a claim that nobody is on it.": "No se pudo leer la lista del personal. Esto no quiere decir que no haya nadie en ella.",
+  "Training board — {state}": "Tablero de capacitación — {state}",
+  "Arbo cannot show who is weak on what.": "Arbo no puede mostrar a quién le falta repasar qué tema.",
+  "Could not read the training board. This is not a claim that everyone is current.": "No se pudo leer el tablero de capacitación. Esto no quiere decir que todos estén al día.",
+  "Draft queue — {state}": "Borradores en espera — {state}",
+  "Arbo cannot show what is waiting to be vetted.": "Arbo no puede mostrar lo que espera revisión.",
+  "Could not read the draft queue. This is not a claim that nothing is waiting.": "No se pudieron leer los borradores en espera. Esto no quiere decir que no haya nada esperando.",
+  "Library drafts — {state}": "Borradores de la biblioteca — {state}",
+  "Could not read the library drafts. This is not a claim that nothing is waiting.": "No se pudieron leer los borradores de la biblioteca. Esto no quiere decir que no haya nada esperando."
 }

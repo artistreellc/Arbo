@@ -23,7 +23,7 @@ import { isSafetyClass, loadLedger, pairSha } from '../src/i18n/ledger.js';
 import { TRADE_TERMS, APP_TERMS } from '../src/i18n/glossary.js';
 import { normalizeEs, findBannedEs } from '../src/i18n/banList.js';
 import { esGateProblems } from '../src/i18n/gates.js';
-import { OWNER_C_DRAFTS, OWNER_C_UNITS } from './support/esOwnerC.js';
+import { OWNER_C_DRAFTS, OWNER_C_UNITS, OWNER_C_PANELS, OWNER_C_SWEEP } from './support/esOwnerC.js';
 import { RECORDED_EN, HELD_EN } from './support/esRecorded.js';
 import { loadI18n, fakeDoc, FakeNode, type I18n } from './support/i18nRuntime.js';
 
@@ -35,21 +35,10 @@ const OFFSET = raw.slice(0, at).split('\n').length - 1;
 const sf = ts.createSourceFile('index.html', script, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
 const lineOf = (n: ts.Node, f: ts.SourceFile = sf) => f.getLineAndCharacterOfPosition(n.getStart(f)).line + 1 + (f === sf ? OFFSET : 0);
 
-// ── This unit's code, by screen: top-level functions and tables, and the approval sheet's close ($('id')). ──
-const PANELS: Record<(typeof OWNER_C_UNITS)[number], string[]> = {
-  'app-office': ['OFFICE_DESKS', 'officeDesk', 'officeProposals', 'officeRunAge', 'officeAge', 'officeHub', 'renderMore', 'isStandalone', 'installCard'],
-  'app-numbers': ['VERDICT_LABEL', 'MIX_SAYS', 'mixLine', 'renderPerformance', 'renderCampaignList', 'refreshCampaignList', 'CAMPAIGN_TYPES', 'campaignComposer', 'areaCard'],
-  'app-settings': ['renderSettings', 'buildSettings', 'bouncieRows', 'bouncieSettings'],
-  'app-agents': ['AGENT_ICONS', 'INPUT_STATE', 'REPORT_STATUS', 'noRefs', 'PROPOSAL_GO', 'PROPOSAL_AT', 'agentProposals', 'proposalRow', 'runAllEight', 'renderAgents'],
-  'app-measure': ['CONF_BADGE', 'upWords', 'renderMeasure', 'measureResult'],
-  'app-learn': ['SECTION_NAMES', 'BRAIN_LABEL', 'lessonLabel', 'lessonTier', 'lessonsWaiting', 'renderLearn'],
-  'app-assistant': ['APPROVAL_KIND', 'approvalChip', 'APPROVAL_NEXT', 'approvalAnswered', 'approvalRow', 'approvalDone', 'assistantReread', 'APPROVAL_BOX',
-    'openApproval', "$('approval-close')", 'fillAssistToday', 'assistGap', 'ACTIVITY_CHIP', 'activityRow', 'assistStateLine', 'ASSIST_STATE', 'renderAssistant'],
-};
-// The sweep (task: "any remaining owner-app view or panel not named in groups a/b"): the shared code no other builder
-// carries — the desk names' table (Teach Arbo's line is a word; the R26 names are names), the desk screens' head, the
-// two-tap arm, the theme — each proven to hold no unwrapped English. Their keys (one: 'Learn') live in app-office.
-const SWEEP = ['DESK_LINE', 'DESK_GEN', 'deskView', 'armTwice', 'themePref', 'applyTheme', 'setTheme', 'refreshActiveMoreView', "$('tab-more')", "$('settings-btn')"];
+// This unit's code, by screen, and its sweep (its scope) live in test/support/esOwnerC.ts since D113, where the
+// whole-app scan (test/esOwnerWhole.test.ts) reads them beside the other two units' scopes.
+const PANELS = OWNER_C_PANELS;
+const SWEEP = OWNER_C_SWEEP;
 
 function topName(n: ts.Statement): string | null {
   if (ts.isFunctionDeclaration(n) && n.name) return n.name.text;
@@ -536,7 +525,7 @@ const constOf = (name: string): string => {
 const CONSTS = ['FEED_WORD', 'Cap', 'FEED_TAG', 'FEED_SAYS', 'RETRY', 'TONE', 'FEED_TONE', 'VIEW_TITLES', 'DESK_LINE', 'nb', 'VERDICT_LABEL', 'MIX_SAYS',
   'CAMPAIGN_TYPES', 'AGENT_ICONS', 'INPUT_STATE', 'REPORT_STATUS', 'noRefs', 'PROPOSAL_GO', 'PROPOSAL_AT', 'CONF_BADGE', 'SECTION_NAMES', 'BRAIN_LABEL',
   'lessonTier', 'APPROVAL_KIND', 'APPROVAL_NEXT', 'APPROVAL_BOX', 'ACTIVITY_CHIP', 'ASSIST_STATE', 'OFFICE_DESKS'];
-const FNS = ['state', 'readingLine', 'chip', 'badge', 'plural', 'fmtWhen', 'fmtTime', 'feedKind', 'feedSays', 'feedLine', 'feedState', 'saveFailText', 'showSaveFail',
+const FNS = ['state', 'readingLine', 'chip', 'badge', 'plural', 'fmtWhen', 'fmtTime', 'feedKind', 'feedSays', 'feedLine', 'feedState', 'saveFailText', 'saveFailMark', 'showSaveFail',
   'dollars', 'money', 'moneyCounts', 'armTwice', 'mixLine', 'renderPerformance', 'renderCampaignList', 'campaignComposer', 'areaCard', 'agentProposals', 'proposalRow',
   'renderAgents', 'upWords', 'renderMeasure', 'measureResult', 'lessonLabel', 'lessonsWaiting', 'renderLearn', 'approvalChip', 'approvalAnswered', 'approvalRow',
   'approvalDone', 'openApproval', 'assistGap', 'activityRow', 'assistStateLine', 'renderAssistant', 'fillAssistToday', 'officeDesk', 'officeRunAge',
@@ -713,7 +702,8 @@ describe('the Office desk tiles in Spanish — one template per part, the count�
   };
   it('Spanish and English, word for word', async () => {
     const es = screens('es', (path) => ANSWERS[path]);
-    expect(await es.officeDesk('money')).toMatchObject({ n: 2, what: 'vencidas', sub: '1 por facturar · 1 no se sabe' });
+    // Pin moved (D113): "overdue" is number-invariant now, one word with Today's tile — "1 con atraso", never "1 vencidas".
+    expect(await es.officeDesk('money')).toMatchObject({ n: 2, what: 'con atraso', sub: '1 por facturar · 1 no se sabe' });
     expect(await es.officeDesk('fleet')).toMatchObject({ n: 1, what: 'en espera o fuera de servicio', sub: '1 unidad en servicio · 1 necesita atención' });
     expect(await es.officeDesk('safety')).toMatchObject({ n: 1, what: 'sin trabajo en altura', sub: '1 certificación vence dentro de 30 días · 1 más necesita revisión · ⚠ 1 sin poder ver' });
     expect(await es.officeDesk('perf')).toMatchObject({ n: 1, what: 'zona calificada', sub: 'Anuncios: $120 gastados · 1 sin el costo registrado' });

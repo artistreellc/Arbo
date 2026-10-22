@@ -157,7 +157,9 @@ describe('Permits — one chip table; the power-line CALL FIRST is the only alar
   it('a failed read is a named feed line or state, never the alarm box', () => {
     const permits = region(html, 'async function renderPermits()', 'function checkCard(');
     expect(permits).toContain("out.replaceChildren(el('div', 'feed-state unread', (e.code ?");
-    expect(permits).toContain("state('Permit base — ' + FEED_WORD[feedKind(e)], 'Arbo could not read its permit base right now. That is not the same as “no rules”.')");
+    // Pin moved (D113), meaning kept: the dead permit base is named in the shared feed word and says it is not "no rules" —
+    // one template for the title (the feed word a slot), its sentence keyed: es-owner-a translated the shared words.
+    expect(permits).toContain("state(tf('Permit base — {state}', { state: FEED_WORD[feedKind(e)] }), T('Arbo could not read its permit base right now. That is not the same as “no rules”.'))");
     expect(permits).not.toContain('Permit base unavailable');
   });
 });

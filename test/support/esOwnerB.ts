@@ -36,3 +36,18 @@ export const OWNER_B_DRAFTS: ReadonlyArray<{ en: string; es: string; unit: strin
 export const OWNER_B_REUSED: readonly string[] = [
   'PERMIT LIKELY', 'PERMIT: REVIEW NEEDED', 'NO OVERLAY — VERIFY W/ CITY', 'PERMIT SCREEN PENDING', 'NO AERIAL WORK', 'NO EXPIRY DATE', 'HELD',
 ];
+
+// ── This unit's code, by screen: top-level functions, tables and the sheets' listeners ($('id')). ──
+export const OWNER_B_PANELS: Record<string, string[]> = {
+  'app-estimate': ['openYard', 'yardWords', "$('yard-close')", "$('y-go')", 'ESTIMATE_TOOLS', 'renderEstimate', 'prepFromLead', 'estimatePrepPanel'],
+  'app-book': ['renderBook', 'openTwin', 'twinWords', "$('twin-close')"],
+  'app-followups': ['FU_LABEL', 'renderFollowUps'],
+  'app-money': ['STAGE_LABEL', 'renderMoney', 'paidButton', 'renderMoneyView'],
+  'app-fleet': ['TRACK_SAYS', 'loadTrack', 'agoWords', 'truckWords', 'trackWords', 'fleetTrackLine', 'fillTrack', 'renderFleet', 'renderFleetList',
+    'partAdder', 'fleetComposer', 'openBreakdown', 'bdWords', "$('bd-close')", "$('bd-go')", 'renderFleetView'],
+  'app-safety': ['CERT_STATE', 'CERT_TYPES', 'CREW_ROLES', 'renderSafety', 'renderRoster', 'renderRosterList', 'disclose', 'certAdder', 'rosterComposer',
+    'renderTrainingBoard', 'renderVetting', 'renderLibraryDesk', 'renderLibraryQueue', 'libraryComposer', 'renderSafetyView'],
+  'app-permits': ['PERMIT_STATUS', 'TOPIC_NAMES', 'KNOWN_HOSTS', 'permitVerdict', 'topicFold', 'renderPermits', 'checkCard', 'whoLine', 'factCard'],
+};
+// The permit-label helper is this unit's, shared by four of its screens (Estimate, Properties on file, Permit rules).
+export const OWNER_B_SHARED: string[] = ['permitLabel'];

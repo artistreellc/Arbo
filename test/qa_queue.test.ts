@@ -46,7 +46,8 @@ describe('Queue — one dead feed never blanks the screen (§1B)', () => {
 
   it('names a dead follow-ups feed with the shared words, under Recommended sends only', () => {
     const q = queue();
-    expect(q).toContain("feedState(e, 'Follow-ups', 'an empty queue')");
+    // Pin moved (D113), meaning kept: es-owner-a translated the shared §1B words, so the same call now keys its words (T).
+    expect(q).toContain("feedState(e, T('Follow-ups'), T('an empty queue'))");
     expect(q).not.toContain('No follow-up queue yet');
     expect(q).not.toContain('Database not connected');
     expect(q).not.toContain('Pull refresh');
@@ -64,8 +65,10 @@ describe('Queue — one dead feed never blanks the screen (§1B)', () => {
   it('a failed open-loops read is named, and a real empty list says so', () => {
     const q = queue();
     // One line, not a dashed card, so the safety stop stays on the first screen.
-    expect(q).toContain("feedLine(e, 'Open loops', 'That is not a sign that nothing is open.')");
+    // Pin moved (D113), meaning kept: es-owner-a translated the shared §1B words, so the same call now keys its words (T).
+    expect(q).toContain("feedLine(e, T('Open loops'), T('That is not a sign that nothing is open.'))");
     expect(q).not.toContain("feedState(e, 'Open loops'");
+    expect(q).not.toContain("feedState(e, T('Open loops')");
     expect(q).not.toContain('.catch(() => {})');
     // Pin moved (R27 Phase A, owner app b), meaning kept: the real empty list says so, in one keyed sentence (with or without the time).
     expect(q).toContain("T('No open loops.')");
@@ -108,16 +111,17 @@ describe('Queue — one dead feed never blanks the screen (§1B)', () => {
   it('a save that fails says so, and a lost key opens the keywall', () => {
     // saveFailText (foundation) calls showKeywall() on a 401.
     const q = queue();
-    // Pins moved (R27 Phase A, owner app b), meaning kept: each failed save still says so through showSaveFail (saveFailText),
-    // now marked "en inglés" in Spanish mode (the shared words).
-    expect(q).toContain('} catch (e) { btn.disabled = false; en(showSaveFail(c, e)); }');
+    // Pins moved (R27 Phase A, owner app b; again in D113), meaning kept: each failed save still says so through showSaveFail
+    // (saveFailText) — in the page's language since es-owner-a translated it; showSaveFail itself marks a refusal in the
+    // server's own words (saveFailMark).
+    expect(q).toContain('} catch (e) { btn.disabled = false; showSaveFail(c, e); }');
     expect(q).toContain("c.querySelector(':scope > .save-err')");
     const money = between('async function renderMoney(', 'function paidButton(');
     expect(money).toContain('} catch (e) { btn.disabled = false; failed(c, e); }');
-    expect(money).toContain('const failed = (box, e) => { const n = showSaveFail(box, e);');
+    expect(money).toContain('const failed = (box, e) => { showSaveFail(box, e); };');
     const paid = between('function paidButton(', '// ---------- Fleet');
     expect(paid).toContain('btn.disabled = false;');
-    expect(paid).toContain('const n = showSaveFail(btn.parentNode, e);');
+    expect(paid).toContain('showSaveFail(btn.parentNode, e);');
     for (const body of [q, money, paid]) expect(body).not.toContain('catch { btn.disabled = false; }');
   });
 

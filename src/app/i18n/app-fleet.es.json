@@ -92,8 +92,8 @@
   "Close": "Cerrar",
   "BREAKDOWN": "AVERÍA",
   "What happened?": "¿Qué pasó?",
-  "Hydraulic hose blew on the chipper": "Se reventó una manguera hidráulica en la astilladora",
-  "It cannot be driven or run at all": "No se puede conducir ni encender para nada",
+  "Hydraulic hose blew on the chipper": "Se reventó la manguera hidráulica de la astilladora (chipper)",
+  "It cannot be driven or run at all": "No se puede manejar ni hacer funcionar para nada",
   "File the report": "Enviar el reporte",
   "Say what broke": "Diga qué se rompió",
   "A blank report tells nobody anything.": "Un reporte en blanco no le dice nada a nadie.",
@@ -108,5 +108,9 @@
   "Arbo never places the order and holds no card — you click, you buy.": "Arbo nunca hace el pedido y no guarda ninguna tarjeta — usted hace clic, usted compra.",
   "Trucks on the map": "Camiones en el mapa",
   "Every unit, what is down or held, and breakdowns.": "Cada unidad, lo que está fuera de servicio o retenido, y las averías.",
-  "Only you sign a held unit back on.": "Solo usted vuelve a habilitar una unidad retenida."
+  "Only you sign a held unit back on.": "Solo usted vuelve a habilitar una unidad retenida.",
+  "Fleet — {state}": "Flota — {state}",
+  "Arbo cannot tell you which units are down.": "Arbo no puede decirle qué unidades están fuera de servicio.",
+  "Could not read the fleet. This is not a claim that everything runs.": "No se pudo leer la flota. Esto no quiere decir que todo funcione.",
+  "Tracking: {state}": "Rastreo: {state}"
 }
