@@ -235,12 +235,16 @@ function esBrokenNotice() {
   }
 }
 
-/** Storage refused the choice: said in both languages right after the switch that was tapped. */
+/**
+ * Storage refused the choice: said once, in both languages, right after the switch that was tapped —
+ * or, for a switch in a header row (the crew door), at the top of the page, where there is room.
+ */
 function esSayStorage(anchor) {
-  if (!anchor || !anchor.parentNode) return;
-  const next = anchor.nextSibling;
-  if (next && next.classList && next.classList.contains('es-storage')) return;
-  anchor.parentNode.insertBefore(esNotice(ES_STORAGE_LINE, 'es-storage'), next);
+  if (!anchor || !anchor.parentNode || document.querySelector('.es-storage')) return;
+  const row = anchor.parentNode;
+  const host = String(row.tagName).toLowerCase() === 'header' ? document.querySelector('main') : row;
+  if (!host) return;
+  host.insertBefore(esNotice(ES_STORAGE_LINE, 'es-storage'), host === row ? anchor.nextSibling : host.firstChild);
 }
 
 /**
