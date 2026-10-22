@@ -182,8 +182,10 @@ cockpit design (near-black, luminous purple, mono numerals, 48px+ targets).
 - **Yard check (sheet):** job type, truck-to-truck hours, crew, quote,
   labor rate → verdict (ON TARGET / BELOW TARGET / LOSES MONEY) with the
   drivers named. Internal only. *Writes:* none.
+- **Owner live map — built** (today's stops, permit areas, leads; D106,
+  D108); trucks wait on Mike's Bouncie steps; crew location not built (Q8).
 - **Coming:** crew app screens (work order, gated briefing, clock, profile
-  with private pay tab), owner live map, AR camera views.
+  with private pay tab), AR camera views.
 
 ## 7. Architecture
 

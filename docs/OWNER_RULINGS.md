@@ -1448,13 +1448,15 @@ crew and trucks; permit areas); launch — *"I use it daily first"*; date — th
 month (October 2026). Earlier: *"for a route planner intergrate tomtom"* (R35)
 and, on Bouncie, *"why dont you build and then i add later"* (R31).
 
-What this changes (built so far: M0 and M1, D106; the plan is
-`docs/MAPS_PLAN.md`):
+What this changes (built: M0 and M1, D106; M2, M3 and M4, D108 — all four
+layers; the plan is `docs/MAPS_PLAN.md`):
 1. **One Map screen in the owner app**, reached from Calendar's Today's stops
-   (the **Map** button) and the links `/app#map-today`, `#map-permits`,
+   (the **Map** button), Estimate (*RPA areas on the map* on Permit rules and
+   on the prep's permit result), the Leads header (**Map**), Office → Fleet
+   (*Trucks on the map*) and the links `/app#map-today`, `#map-permits`,
    `#map-leads`, `#map-trucks`. Four layers Mike switches on and off: Today,
-   Permit areas, Leads & jobs, Trucks. Today is drawn now; the other three
-   say they are not drawn yet when switched on — never an empty map (§1B).
+   Permit areas, Leads & jobs, Trucks. Each says in words what it can't draw
+   — never an empty map (§1B).
 2. **Today's stops on the map**, from the same calendar read and plan as
    Calendar's Today's stops (R35): numbered in the planned order, joined by
    straight lines that show order only. An **exact pin** only where TomTom
@@ -1470,6 +1472,20 @@ What this changes (built so far: M0 and M1, D106; the plan is
 5. **It keeps to today.** While Map is on screen, Today's stops read again on
    the same minute Calendar's do, and when the app comes back — a map left open
    overnight never shows yesterday's stops as today's (§1B; review, D106).
+6. **Permit areas** (D108): Virginia DEQ's statewide RPA layer as orange
+   shading when zoomed in close enough for DEQ to draw it; the phone asks DEQ
+   for the box on screen only — never an address. *"Not shaded does not mean
+   no permit — VERIFY W/ CITY."* The city layers, floodplain, Norfolk CRO and
+   reservoir areas are named as not on this map; an area never gets a permit
+   word.
+7. **Leads & jobs** (D108): open leads grouped by ZIP area (*"ZIP from the
+   lead's record"*), never by address; outside practice the Leads tab's own
+   *"Arbo doesn't receive new leads yet …"* comes first. A name opens that lead
+   in Leads. Jobs: today's are on the Today layer.
+8. **Trucks** (D108): Bouncie's positions once Mike connects it (until then,
+   Bouncie's own *"not set up"* line); owner only, 8am–8pm Monday to Saturday;
+   dots come down at 8 pm, when a read fails, and when the Map is left.
+   Crew: *"Crew aren't on the map — Arbo has no crew location."*
 
 Defaults Claude used where Mike did not say (Mike may change any) — the plan's
 questions, as built:
@@ -1491,6 +1507,20 @@ questions, as built:
   `/privacy` changes only after Mike OKs the words, and before the TomTom key
   goes in.
 
+Built as their defaults in wave B (D108; Mike may change any):
+- **Q6 Older leads (14+ days) on the map:** hidden and counted first (*"2
+  older leads hidden — Show older"*); a tap shows them, for this visit only.
+- **Q7a Exact lead pins:** no — ZIP areas only. **Q7b Leads from Gmail and
+  Sona on the map:** not built (needs a ruling: R4, §3, R24).
+- **Q8 Crew phones reporting where they are:** not built.
+- **Q11 Centre the permit map on the address being prepped:** no — the
+  four-city view; the address is never handed to the map.
+- **Q14 What "jobs" on the map are:** today's calendar jobs on the Today
+  layer; Arbo's own job and estimate records are named as not drawn (cut on
+  purpose in read-only, R32).
+- **Q15 Placing leads by the ZIP on their property record:** yes, labelled
+  *"ZIP from the lead's record"*.
+
 Draft privacy line (Q12) — for Mike's OK, not on `/privacy`:
 > *Maps. Arbo's map shows OpenStreetMap's street map: the phone asks
 > OpenStreetMap for the map squares on screen, so it learns which area was
@@ -1502,27 +1532,24 @@ Draft privacy line (Q12) — for Mike's OK, not on `/privacy`:
 
 Open — Mike's call (each built as its default above, or not built):
 1. Q1, Q2, Q3, Q4, Q5, Q9, Q10, Q12 above — confirm or change.
-2. **Q6 Older leads (14+ days) on the map** — default: hidden and counted
-   (Leads & jobs, M3, not built yet).
-3. **Q7a Exact lead pins** (needs a new address lookup) — default: no, ZIP
-   areas only. **Q7b Leads from Gmail and Sona on the map** — not built; needs
-   a ruling first (R4, §3, R24).
+2. **Q6, Q7a, Q11, Q14, Q15** — built as their defaults (above, D108) —
+   confirm or change. Q15's property rows are FLAGGED in the data check
+   (`docs/DATA_LINKS.md`); 11 of the 14 FLAGGED properties belong to the held
+   job rows.
+3. **Q7b Leads from Gmail and Sona on the map** — not built; needs a ruling
+   first (R4, §3, R24).
 4. **Q8 Crew phones reporting where they are** — default: **not built**. Only
    on a ruling that names whose phones, working hours only, how each crew
    member agrees and can see it is on, who sees it (Mike only), how long it is
    kept, and that R32's no-writes rule is lifted for it.
-5. **Q11 Centre the permit map on the address being prepped** — default: no.
-6. **Q13 Trucks' trips after 8 pm** — not built (R31's open item).
-7. **Q14 What "jobs" on the map should be** — default: neither yet; today's
-   calendar jobs show on the Today layer.
-8. **Q15 Placing leads by the ZIP on their property record** (those rows are
-   FLAGGED in the data check) — default: yes, labelled "ZIP from the lead's
-   record" (M3).
-9. **The ZIP areas themselves.** The build could not read the Census ZIP file
-   (its host was refused by the build machine's network), so no ZIP area is
-   on the map yet and stops without an exact pin are listed instead. Filling
-   the table from the Census file is a build step, dated and tested — not a
-   decision — but until it is done, ZIP-area pins do not appear.
+5. **Q13 Trucks' trips after 8 pm** — not built (R31's open item).
+6. **The ZIP areas** — done, not a decision: the table is filled from the
+   Census 2020 ZIP areas (checked 2026-10-22, D108); 39 of the 69 ZIPs Arbo
+   accepts are placed, the other 30 (PO box and business ZIPs) are named
+   *"ZIP has no map area"*.
+7. **After a deploy, on your iPhone:** the street map, DEQ's shading at a
+   public waterfront, and — once Bouncie is connected — real trucks in
+   working hours. None of these could be reached from the build machine.
 
 What did NOT move: R2 — the calendar frame is unchanged; R4 and §3 — nothing
 imported, nothing saved; R24, R32, R33 — read only; R35 — TomTom is asked only
@@ -1534,8 +1561,10 @@ logs carry counts and codes; the crew door gets no map; deploys stay manual.
 `/map/leaflet.*`, `GET /api/map/today`), `src/server/appPage.ts`
 (`loadMapHtml`, `loadLeafletFile`), `src/ops/mapToday.ts`,
 `src/ops/todayStops.ts` (`readRows`), `src/integrations/tomtom.ts` (`peek`),
-`src/lib/zipCentroids.ts`, `src/permitting/gis/layers.ts`
-(`DEQ_MAPSERVER_BASE`), `src/app/sw.js`, `docs/MAPS_PLAN.md`,
-`docs/ROUTE_PLANNER.md`, `test/mapPage.test.ts`, `test/mapRoutes.test.ts`,
-`test/mapShell.test.ts`, `test/mapToday.test.ts`, `test/mapTodayFrame.test.ts`,
-`test/zipCentroids.test.ts`.
+`src/lib/zipCentroids.ts` (filled, D108), `src/permitting/gis/layers.ts`
+(`DEQ_MAPSERVER_BASE`, `DEQ_RPA_LIMITS`), `src/app/sw.js`,
+`docs/MAPS_PLAN.md`, `docs/ROUTE_PLANNER.md`, `docs/BOUNCIE.md`,
+`test/mapPage.test.ts`, `test/mapRoutes.test.ts`, `test/mapShell.test.ts`,
+`test/mapToday.test.ts`, `test/mapTodayFrame.test.ts`,
+`test/zipCentroids.test.ts`, `test/mapPermits.test.ts`,
+`test/mapLeads.test.ts`, `test/mapTrucks.test.ts`.
