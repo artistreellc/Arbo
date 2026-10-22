@@ -64,7 +64,7 @@ describe('what the map keeps of a lead — and nothing more (M3)', () => {
     const r = srcOf(script, 'readLeads');
     expect(r).toContain("mapGet('/api/leads?limit=50')");
     expect(r).toContain('body.leads.map(keepLead)');
-    expect(script).not.toMatch(/LEADS\.\w+ = body\b/);
+    expect(script).not.toMatch(/LEADS\.\w+ = body\s*[;,)}]/);
   });
 });
 

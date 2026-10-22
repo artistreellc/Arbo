@@ -6312,7 +6312,7 @@ $('bd-go').addEventListener('click', async () => {
 // Direction B P14: Office's desk tiles read their small line here too — Teach Arbo's is "Learn" (the plan's table).
 const DESK_LINE = { followups: 'Chief of Staff', money: 'Yard Boss', fleet: 'Yard Boss', safety: 'Crew Chief', perf: 'Analyst', learn: 'Learn' };
 const DESK_GEN = {};
-async function deskView(view, sub, panels) {
+async function deskView(view, sub, panels, headExtra) {
   const gen = DESK_GEN[view] = (DESK_GEN[view] || 0) + 1;
   const v = $('view-' + view);
   // P13 review: the minute redraw must not collapse the screen and throw its scroll to the top (renderCalls' hold).
@@ -6323,6 +6323,7 @@ async function deskView(view, sub, panels) {
   head.appendChild(el('div', 'eyebrow', DESK_LINE[view]));
   head.appendChild(el('h1', '', VIEW_TITLES[view]));
   head.appendChild(el('p', '', sub));
+  if (headExtra) head.appendChild(headExtra()); // Maps wave B: Fleet's "Trucks on the map"
   v.appendChild(head);
   const runs = panels.map(([id, render]) => {
     const slot = el('div');
@@ -6342,7 +6343,14 @@ function renderMoneyView() {
 }
 // §6E fleet: every unit, what is down or held (R26) — a scheduling constraint — and the Bouncie line (R31).
 function renderFleetView() {
-  return deskView('fleet', 'Every unit, what is down or held, and breakdowns. Only you sign a held unit back on.', [['queue-fleet', renderFleet]]);
+  // Maps wave B (M4): the trucks on the map — Bouncie's positions, owner only, working hours only (R31).
+  const toMap = () => {
+    const b = el('button', 'minibtn mapbtn', 'Trucks on the map');
+    b.type = 'button';
+    b.addEventListener('click', () => openMap('trucks'));
+    return b;
+  };
+  return deskView('fleet', 'Every unit, what is down or held, and breakdowns. Only you sign a held unit back on.', [['queue-fleet', renderFleet]], toMap);
 }
 // §6V safety leads: a lapsed rescue card outranks everything else on the desk; its blind spots and
 // aerial stops come first (renderSafety). Then the people and cards on file (§4), training (§6M.5),

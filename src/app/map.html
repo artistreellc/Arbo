@@ -101,6 +101,11 @@ html.night #osm{background:rgba(11,21,18,.85);color:#C5D2CA}
 .pin.leadpin{background:var(--card);color:var(--ink-1);border:3px dashed var(--gold)}
 .pin.leadpin.alarm{border:3px solid var(--emergency);color:var(--emergency)}
 .pop small.alarm{color:var(--emergency);font-weight:700}
+/* A truck: solid at a fresh fix (an arrow when driving, turned to its heading), grey and dashed at a last-known spot. */
+.pin.truck.solid{background:var(--forest);color:var(--on-forest);border:2px solid var(--card)}
+.pin.truck.grey{background:var(--paper-2);color:var(--ink-3);border:3px dashed var(--ink-4)}
+.pin.truck .hd{display:inline-block;font-size:16px;line-height:1}
+.pop .muted{padding:2px 0}
 .pop{overflow-wrap:anywhere}
 .pop b{display:block;font-size:13px;color:var(--ink-3);margin-bottom:4px;padding-right:30px}
 .pop button{display:block;width:100%;min-height:44px;margin-top:6px;padding:6px 10px;text-align:left;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--ink-1);font:600 14px/1.35 var(--sans);cursor:pointer}
@@ -143,7 +148,6 @@ const MAP_SAYS = {
   namePermits: 'Permit areas',
   nameLeads: 'Leads & jobs',
   nameTrucks: 'Trucks',
-  trucksSoon: 'Trucks aren’t on the map yet — that layer is still to be built. Office → Fleet lists each truck.',
   practice: 'PRACTICE DATA — pins sit in their ZIP area; these are not real places.',
   todayFailed: 'Today’s stops: couldn’t read them just now. This is not an empty day.',
   emptyDay: 'Nothing on your Google Calendar today.',
@@ -231,13 +235,44 @@ const MAP_SAYS = {
   jobsCutR32: 'Arbo’s job and estimate records are cut on purpose (R32) — none drawn; this is not “no jobs”.',
   jobsCut: 'Arbo’s job and estimate records are cut on purpose — none drawn; this is not “no jobs”.',
   jobsNotDrawn: 'Arbo’s own job and estimate records aren’t drawn on the map — this is not “no jobs”.',
+  // Trucks (M4): the server's own words name every Bouncie state; these name the rest.
+  readingTrucks: 'Reading the trucks…',
+  trucksFailed: 'Couldn’t read the trucks just now — no dots are shown; this is not “no trucks”.',
+  trucksAfterHours: 'After hours — trucks show 8am–8pm, Monday to Saturday, so no dots are shown now. This is not “no trucks”.',
+  crew: 'Crew aren’t on the map — Arbo has no crew location. Trucks show where crews drive.',
+  fleetList: 'Couldn’t read the Fleet list ({why}) — trucks show by VIN.',
+  fleetUnread: 'couldn’t be read',
+  truckUnmatched: 'Not matched to a Fleet unit',
+  truckUnit: 'Fleet unit: {unit}',
+  truckDriving: 'Driving · seen {ago}',
+  truckParked: 'Parked · seen {ago}',
+  truckSeen: 'Seen {ago}',
+  truckStale: 'Last fix {ago} — may have moved',
+  truckUnplugged: 'Bouncie unplugged — last known spot',
+  truckNoFix: 'No position yet — not on the map',
+  truckAfterHours: 'After hours — where it is now isn’t shown',
+  truckLastKnown: 'Last known spot — Bouncie didn’t answer just now',
+  truckUnknown: 'Not on the map — Bouncie gave no state Arbo knows',
+  agoMin: '{k} min ago',
+  agoHour: '{k} h ago',
+  agoNone: 'at a time Bouncie didn’t give',
+  trucksCount: '{on} of {n} trucks on the map',
+  trucksCountOne: '{on} of 1 truck on the map',
+  todaysTrips: 'Today’s trips',
+  readingTrips: 'Reading today’s trips for {truck}…',
+  tripsFailed: 'Couldn’t read today’s trips just now — this is not “no trips”.',
+  truckListChanged: 'The truck list changed — pick the truck again.',
+  tripsNoDay: 'This phone can’t tell today’s date in Virginia — no trips were asked for.',
+  tripsCount: '{k} trips drawn for {truck}',
+  tripsCountOne: '1 trip drawn for {truck}',
+  truckKeySolid: 'A truck at Bouncie’s fresh fix — an arrow when driving shows its heading.',
+  truckKeyGrey: 'Grey: last known spot — the fix is old, Bouncie is unplugged, or Bouncie didn’t answer.',
+  tripKey: 'Line: today’s trips inside working hours — Bouncie’s path.',
 };
 
 const LAYERS = ['today', 'permits', 'leads', 'trucks'];
 const LAYER_NAME = { today: MAP_SAYS.nameToday, permits: MAP_SAYS.namePermits, leads: MAP_SAYS.nameLeads, trucks: MAP_SAYS.nameTrucks };
-// A layer not built yet says so when it is switched on — never an empty map.
-const LAYER_SOON = { trucks: MAP_SAYS.trucksSoon };
-// The layers this build draws: each reads its own feed and names its own gaps.
+// Every layer is built (Maps wave B): each reads its own feed and names its own gaps — never an empty map.
 const LAYER_READ = {};
 const LAYER_CLEAR = {};
 
@@ -328,7 +363,8 @@ async function mapGet(path) {
   if (res.status === 429 && body && body.error === 'too_many_attempts') throw Object.assign(new Error('throttled'), { why: 'throttled' });
   if (res.status === 401) throw Object.assign(new Error('refused'), { why: body && body.error === 'no_app_key' ? 'noAppKey' : 'refused' });
   // The server's own reason rides as `message` (db_not_configured, link_cut …), so a layer can say the Leads tab's word.
-  if (!res.ok || !body || typeof body !== 'object') throw Object.assign(new Error('unread'), { why: 'unread', code: res.status, message: body && typeof body.error === 'string' ? body.error : 'error' });
+  // A refusal's own sentence rides as `said` (a trips 400's message), so it can be shown as the server wrote it.
+  if (!res.ok || !body || typeof body !== 'object') throw Object.assign(new Error('unread'), { why: 'unread', code: res.status, message: body && typeof body.error === 'string' ? body.error : 'error', said: body && typeof body.message === 'string' ? body.message : null });
   return body;
 }
 
@@ -374,10 +410,7 @@ function setLayer(l, on) {
 }
 
 function readLayer(l) {
-  if (!ON[l]) return;
-  if (LAYER_READ[l]) { LAYER_READ[l](); return; }
-  GAPS[l] = [{ cls: 'unset', text: LAYER_SOON[l] }];
-  drawStatus();
+  if (ON[l] && LAYER_READ[l]) LAYER_READ[l]();
 }
 function readAll() {
   for (const l of LAYERS) readLayer(l);
@@ -1257,6 +1290,318 @@ KEYS.leads = () => {
 LAYER_READ.leads = readLeads;
 LAYER_CLEAR.leads = leadsOff;
 
+// ═══ TRUCKS (M4): Bouncie's positions — owner only, working hours only (R31) ═══
+// The MAP HOOK, GET /api/fleet/positions, read every minute while the layer is on and Map is on screen. Every
+// state the server names is said in its own words; only `ok` and `unreadable` draw, `unreadable` in grey (last
+// known spots). Dots come down after a failed refresh or with no signal, when Map leaves the screen or the app hides
+// (until a fresh answer), and at 8 pm ET by this phone's clock — before the server's next answer. An answer is cut
+// down to what is drawn and replaced whole; nothing is stored or logged. Crew have no location source (Q8).
+const TRUCKS = { seq: 0, d: null, failed: false, afterHours: false, layer: null, trips: null, tripFor: null, tripSeq: 0, tripLine: null, tripRetry: null, tripsOk: null };
+
+// Arbo's working hours by the ET clock: 8am–8pm, Monday to Saturday (withinWorkingHours, src/ops/locationIntel.ts).
+function truckHoursOk(now) {
+  try {
+    const p = {};
+    for (const x of new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', hourCycle: 'h23' }).formatToParts(now)) p[x.type] = x.value;
+    const h = Number(p.hour) % 24;
+    return p.weekday !== 'Sun' && h >= 8 && h < 20;
+  } catch (e) {
+    return false; // a clock this page can't read never shows a truck
+  }
+}
+// What the map keeps of the answer: per truck its id, a label (its name, else the last 4 of its VIN), its Fleet
+// unit or none, the fix (5 decimals), heading, motion and the fix's age — nothing else.
+function keepTrucks(body) {
+  const out = [];
+  const num = (x) => (typeof x === 'number' && Number.isFinite(x) ? x : null);
+  const at = (x) => (num(x) === null ? null : Math.round(x * 1e5) / 1e5);
+  const add = (t, unit) => {
+    if (!t || typeof t !== 'object' || typeof t.id !== 'string') return;
+    out.push({
+      id: t.id,
+      label: typeof t.name === 'string' && t.name.trim() ? t.name.trim() : typeof t.vin4 === 'string' ? 'VIN …' + t.vin4 : 'Bouncie …' + String(t.device4 || ''),
+      unit: unit,
+      lat: at(t.lat),
+      lon: at(t.lon),
+      heading: num(t.heading),
+      motion: typeof t.motion === 'string' ? t.motion : 'no_fix',
+      age: num(t.positionAgeMinutes),
+    });
+  };
+  if (Array.isArray(body.units)) for (const u of body.units) if (u && u.truck) add(u.truck, typeof u.unitName === 'string' && u.unitName ? u.unitName : null);
+  if (Array.isArray(body.unmatched)) for (const t of body.unmatched) add(t, null);
+  return out;
+}
+// How a truck is drawn: solid at a fresh fix, grey at an old one or when Bouncie didn't answer; not at all without one.
+function truckStyle(t, state) {
+  if (t.lat === null || t.lon === null || t.motion === 'no_fix' || t.motion === 'after_hours') return null;
+  if (state === 'unreadable') return 'grey';
+  if (state !== 'ok') return null;
+  if (t.motion === 'driving' || t.motion === 'parked' || t.motion === 'seen') return 'solid';
+  if (t.motion === 'stale' || t.motion === 'unplugged') return 'grey';
+  return null;
+}
+function agoWords(m) {
+  if (typeof m !== 'number') return MAP_SAYS.agoNone;
+  return m < 60 ? MAP_SAYS.agoMin.replace('{k}', String(m)) : MAP_SAYS.agoHour.replace('{k}', String(Math.floor(m / 60)));
+}
+// A truck in words, by its motion — the dot sits at its fix, so the age is the fix's (never the last report's).
+function truckWords(t, state) {
+  const ago = agoWords(t.age);
+  if (state === 'unreadable' && truckStyle(t, state)) return MAP_SAYS.truckLastKnown + ' · ' + ago;
+  if (t.motion === 'driving') return MAP_SAYS.truckDriving.replace('{ago}', ago);
+  if (t.motion === 'parked') return MAP_SAYS.truckParked.replace('{ago}', ago);
+  if (t.motion === 'seen') return MAP_SAYS.truckSeen.replace('{ago}', ago);
+  if (t.motion === 'stale') return MAP_SAYS.truckStale.replace('{ago}', ago);
+  if (t.motion === 'unplugged') return MAP_SAYS.truckUnplugged;
+  if (t.motion === 'no_fix') return MAP_SAYS.truckNoFix;
+  if (t.motion === 'after_hours') return MAP_SAYS.truckAfterHours;
+  return MAP_SAYS.truckUnknown;
+}
+// Why the Fleet list couldn't be read, in the feed words.
+function fleetWhy(e, links) {
+  if (e === 'link_cut') return MAP_SAYS.feed_cut;
+  if (e === 'db_not_configured') return links === 'live' || links === 'readonly' ? MAP_SAYS.feed_unset : MAP_SAYS.feed_cut;
+  if (e === 'not_simulated') return MAP_SAYS.feed_sim;
+  if (e === 'not_built' || /_(not_configured|not_wired|not_started|missing)$/.test(e)) return MAP_SAYS.feed_unset;
+  return MAP_SAYS.fleetUnread;
+}
+// The layer's lines: a failed read, this phone's after-hours, or the server's own words for its state; the Fleet
+// list when it failed; today's trips when they say something; and the crew, always.
+function truckGaps(T, links) {
+  const out = [];
+  const cls = { keys_missing: 'unset', link_cut: 'cut', sign_in_cut: 'cut', sign_in_store: 'unread', not_connected: 'unset', token_expired: 'unread', after_hours: 'unset', unreadable: 'unread' };
+  if (T.failed === true) out.push({ cls: 'unread', text: MAP_SAYS.trucksFailed, retry: true });
+  else if (T.d && T.afterHours) out.push({ cls: 'unset', text: MAP_SAYS.trucksAfterHours, retry: false });
+  else if (T.d) {
+    if (cls[T.d.state]) out.push({ cls: cls[T.d.state], text: T.d.message, retry: T.d.state === 'unreadable' });
+    else if (T.d.state !== 'ok' && T.d.state !== 'no_trucks') out.push({ cls: 'unread', text: T.d.message, retry: true });
+    if (T.d.unitsError && (T.d.state === 'ok' || T.d.state === 'unreadable')) {
+      const why = fleetWhy(T.d.unitsError, links);
+      out.push({ cls: why === MAP_SAYS.feed_cut ? 'cut' : 'unread', text: MAP_SAYS.fleetList.replace('{why}', why), retry: false });
+    }
+  } else if (!T.failed) out.push({ cls: 'unset', text: MAP_SAYS.readingTrucks, retry: false });
+  if (T.tripLine) out.push(T.tripLine);
+  out.push({ cls: 'unset', text: MAP_SAYS.crew, retry: false });
+  return out;
+}
+function setTruckLines() {
+  GAPS.trucks = truckGaps(TRUCKS, LINKS).map((g) => ({ cls: g.cls, text: g.text, retry: g.retry === 'trips' ? TRUCKS.tripRetry : g.retry ? readTrucks : null }));
+  drawStatus();
+  drawFacts();
+  drawLegend();
+}
+// Today's trips come down (another truck picked, or the dots dropped).
+function dropTrips() {
+  TRUCKS.tripSeq++;
+  if (TRUCKS.trips) TRUCKS.trips.clearLayers();
+  TRUCKS.tripFor = null;
+  TRUCKS.tripLine = null;
+  TRUCKS.tripsOk = null;
+}
+// Every dot and trip comes down, and the answer with it: nothing is held once it is not current.
+function dropTrucks() {
+  TRUCKS.d = null;
+  if (TRUCKS.layer) TRUCKS.layer.clearLayers();
+  if (TRUCKS.trips) TRUCKS.trips.clearLayers();
+  TRUCKS.tripFor = null;
+  TRUCKS.tripLine = null;
+  TRUCKS.tripsOk = null;
+}
+// The dots alone come down (8 pm by this phone's clock): the server's last words stay until its next answer.
+function dropDots() {
+  if (TRUCKS.d) TRUCKS.d.trucks = [];
+  if (TRUCKS.layer) TRUCKS.layer.clearLayers();
+  dropTrips();
+}
+async function readTrucks() {
+  const seq = ++TRUCKS.seq;
+  if (!TRUCKS.d && !TRUCKS.failed) {
+    GAPS.trucks = [{ cls: 'unset', text: MAP_SAYS.readingTrucks }];
+    drawStatus();
+  }
+  let body;
+  try {
+    body = await mapGet('/api/fleet/positions');
+    if (typeof body.state !== 'string' || typeof body.message !== 'string') throw Object.assign(new Error('shape'), { why: 'unread' });
+  } catch (e) {
+    if (seq !== TRUCKS.seq || !ON.trucks) return;
+    dropTrucks(); // a refresh that failed never leaves old dots up as current
+    TRUCKS.failed = keyGap(e) ? 'key' : true;
+    setTruckLines();
+    return;
+  }
+  if (seq !== TRUCKS.seq || !ON.trucks) return;
+  GAPS.key = [];
+  TRUCKS.failed = false;
+  const drawable = body.state === 'ok' || body.state === 'unreadable';
+  // After hours by this phone's clock: the server's answer is said, but no dot is drawn from it.
+  TRUCKS.afterHours = drawable && !truckHoursOk(new Date());
+  TRUCKS.d = { state: body.state, message: body.message, unitsError: typeof body.unitsError === 'string' ? body.unitsError : null, trucks: drawable && !TRUCKS.afterHours ? keepTrucks(body) : [] };
+  if (TRUCKS.tripFor && !TRUCKS.d.trucks.some((t) => t.id === TRUCKS.tripFor)) dropTrips();
+  setTruckLines();
+  drawTrucks();
+}
+// Map off the screen or the app hidden: the dots come down and stay down until a fresh answer.
+function pauseTrucks() {
+  if (!ON.trucks) return;
+  TRUCKS.seq++; // an answer already on its way is not drawn
+  dropTrucks();
+  TRUCKS.failed = false;
+  setTruckLines();
+}
+// No signal: no dot is current.
+function trucksOffline() {
+  if (!ON.trucks) return;
+  TRUCKS.seq++;
+  dropTrucks();
+  TRUCKS.failed = true;
+  setTruckLines();
+}
+// The layer's own minute: 8 pm by this phone's clock takes the dots down at once; then a fresh read while Map shows.
+function truckTick(now) {
+  if (!ON.trucks) return;
+  if (!truckHoursOk(now) && !TRUCKS.afterHours && TRUCKS.d && TRUCKS.d.trucks.length) {
+    dropDots();
+    TRUCKS.afterHours = true;
+    setTruckLines();
+  }
+  if (shownNow()) readTrucks();
+}
+// A path of at most `max` points, evenly thinned, first and last kept.
+function capPath(pts, max) {
+  if (pts.length <= max) return pts;
+  const out = [];
+  for (let i = 0; i < max; i++) out.push(pts[Math.round((i * (pts.length - 1)) / (max - 1))]);
+  return out;
+}
+async function readTrips(t) {
+  dropTrips();
+  const seq = ++TRUCKS.tripSeq;
+  const day = etToday(new Date());
+  TRUCKS.tripFor = t.id;
+  TRUCKS.tripRetry = () => readTrips(t);
+  if (!day) {
+    TRUCKS.tripLine = { cls: 'unread', text: MAP_SAYS.tripsNoDay, retry: false };
+    setTruckLines();
+    return;
+  }
+  TRUCKS.tripLine = { cls: 'unset', text: MAP_SAYS.readingTrips.replace('{truck}', t.label), retry: false };
+  setTruckLines();
+  let body;
+  try {
+    body = await mapGet('/api/fleet/trips?truck=' + encodeURIComponent(t.id) + '&day=' + day);
+    if (typeof body.state !== 'string' || typeof body.message !== 'string' || !Array.isArray(body.trips)) throw Object.assign(new Error('shape'), { why: 'unread' });
+  } catch (e) {
+    if (seq !== TRUCKS.tripSeq || !ON.trucks) return;
+    if (e.code === 404 && e.message === 'unknown_truck') {
+      // Truck ids change when Arbo restarts: the positions are read again, once, and Mike picks the truck again.
+      TRUCKS.tripFor = null;
+      TRUCKS.tripLine = { cls: 'unread', text: MAP_SAYS.truckListChanged, retry: false };
+      setTruckLines();
+      readTrucks();
+      return;
+    }
+    TRUCKS.tripLine = e.code === 400 && e.said ? { cls: 'unread', text: e.said, retry: false } : keyGap(e) ? null : { cls: 'unread', text: MAP_SAYS.tripsFailed, retry: 'trips' };
+    setTruckLines();
+    return;
+  }
+  if (seq !== TRUCKS.tripSeq || !ON.trucks) return;
+  if (body.state !== 'ok') {
+    // Every state but ok in the server's own words (TRIPS_SAYS) — never "no trips" for one it couldn't read.
+    const cls = { link_cut: 'cut', sign_in_cut: 'cut', unreadable: 'unread', sign_in_store: 'unread', token_expired: 'unread' }[body.state] || 'unset';
+    TRUCKS.tripLine = { cls: cls, text: body.message, retry: body.state === 'unreadable' ? 'trips' : false };
+  } else {
+    let k = 0;
+    for (const trip of body.trips) {
+      const pts = Array.isArray(trip && trip.path) ? trip.path.filter((p) => p && typeof p.lat === 'number' && typeof p.lon === 'number').map((p) => [p.lat, p.lon]) : [];
+      if (pts.length < 2) continue;
+      TRUCKS.trips.addLayer(L.polyline(capPath(pts, 2000), { color: forestColor(), weight: 4, opacity: 0.75, interactive: false }));
+      k++;
+    }
+    TRUCKS.tripLine = null;
+    TRUCKS.tripsOk = body.message + ' ' + (k === 1 ? MAP_SAYS.tripsCountOne : MAP_SAYS.tripsCount.replace('{k}', String(k))).replace('{truck}', t.label) + '.';
+  }
+  setTruckLines();
+  drawLegend();
+}
+function truckPinNode(t, style) {
+  const n = el('span', 'pin truck ' + style);
+  if (style === 'solid' && t.motion === 'driving' && t.heading !== null) {
+    const a = el('span', 'hd', '▲');
+    a.style.transform = 'rotate(' + Math.round(t.heading) + 'deg)';
+    n.appendChild(a);
+  }
+  return n;
+}
+// A truck's card: its name, how and when it was fixed, its Fleet unit, and Today's trips.
+function truckNode(t, state) {
+  const box = el('div', 'pop');
+  box.appendChild(el('b', '', t.label));
+  box.appendChild(el('div', 'muted', truckWords(t, state)));
+  box.appendChild(el('div', 'muted', t.unit ? MAP_SAYS.truckUnit.replace('{unit}', t.unit) : MAP_SAYS.truckUnmatched));
+  const b = el('button', '', MAP_SAYS.todaysTrips);
+  b.type = 'button';
+  b.addEventListener('click', () => { if (MAP) MAP.closePopup(); readTrips(t); });
+  box.appendChild(b);
+  return box;
+}
+function truckMarker(t, style, state) {
+  const label = t.label + ' — ' + truckWords(t, state);
+  const m = L.marker([t.lat, t.lon], { icon: L.divIcon({ html: truckPinNode(t, style), className: 'pinwrap', iconSize: [0, 0] }), title: label, alt: label, keyboard: true, riseOnHover: true });
+  const pop = L.popup(popRoom());
+  pop.setContent(truckNode(t, state));
+  m.on('click', () => Object.assign(pop.options, popRoom()));
+  m.bindPopup(pop);
+  return m;
+}
+function drawTrucks() {
+  if (!MAP || !TRUCKS.layer) return;
+  TRUCKS.layer.clearLayers();
+  const d = TRUCKS.d;
+  if (!ON.trucks || !d) return;
+  for (const t of d.trucks) {
+    const style = truckStyle(t, d.state);
+    if (style) TRUCKS.layer.addLayer(truckMarker(t, style, d.state));
+  }
+}
+// The facts under the lines: the server's own "ok" or "no trucks", the count, each truck not drawn and why, the trips.
+FACTS.trucks = () => {
+  const d = TRUCKS.d;
+  if (!d) return [];
+  const out = [];
+  if (d.state === 'ok' || d.state === 'no_trucks') out.push(el('div', 'muted', d.message));
+  if ((d.state === 'ok' || d.state === 'unreadable') && !TRUCKS.afterHours) {
+    const on = d.trucks.filter((t) => truckStyle(t, d.state)).length;
+    out.push(el('div', 'muted', (d.trucks.length === 1 ? MAP_SAYS.trucksCountOne : MAP_SAYS.trucksCount.replace('{n}', String(d.trucks.length))).replace('{on}', String(on))));
+    for (const t of d.trucks) {
+      if (truckStyle(t, d.state)) continue;
+      const row = el('div', 'line unset');
+      row.appendChild(el('span', '', t.label + ' — ' + truckWords(t, d.state)));
+      out.push(row);
+    }
+  }
+  if (TRUCKS.tripsOk) out.push(el('div', 'muted', TRUCKS.tripsOk));
+  return out;
+};
+KEYS.trucks = () => {
+  const d = TRUCKS.d;
+  if (!d) return [];
+  const styles = new Set(d.trucks.map((t) => truckStyle(t, d.state)).filter(Boolean));
+  const out = [];
+  for (const [s, text] of [['solid', MAP_SAYS.truckKeySolid], ['grey', MAP_SAYS.truckKeyGrey]]) {
+    if (!styles.has(s)) continue;
+    const row = el('div', 'key');
+    row.appendChild(truckPinNode({ motion: 'parked', heading: null }, s));
+    row.appendChild(el('span', '', text));
+    out.push(row);
+  }
+  if (TRUCKS.tripsOk) out.push(el('div', 'muted', MAP_SAYS.tripKey));
+  return out;
+};
+LAYER_READ.trucks = readTrucks;
+LAYER_CLEAR.trucks = () => { TRUCKS.seq++; dropTrucks(); TRUCKS.failed = false; TRUCKS.afterHours = false; };
+
 // While another screen shows, the shell's Map view loses its 'active' class (the frame keeps its size and
 // gets no event of its own). Same origin, so the frame watches that class: when Map comes back, its layers read again.
 function watchShown() {
@@ -1267,6 +1612,7 @@ function watchShown() {
   new MutationObserver(() => {
     const now = view.classList.contains('active');
     if (now && !shown) { dropStaleDay(); readAll(); }
+    if (!now && shown) pauseTrucks(); // Map left the screen: no truck dot waits there to be read as current
     shown = now;
   }).observe(view, { attributes: true, attributeFilter: ['class'] });
 }
@@ -1279,7 +1625,10 @@ function boot() {
   window.addEventListener('storage', (e) => { if (e.key === 'arboTheme') applyNight(); });
   if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyNight);
   window.addEventListener('online', () => { retryTiles(); readAll(); });
-  window.addEventListener('offline', tilesState);
+  window.addEventListener('offline', () => { tilesState(); trucksOffline(); });
+  // Trucks: the app hidden takes the dots down; back on screen, a fresh read. Its own minute while Map shows.
+  document.addEventListener('visibilitychange', () => { if (document.hidden) pauseTrucks(); else if (ON.trucks && shownNow()) readTrucks(); });
+  setInterval(() => truckTick(new Date()), 60000);
   if (shellKey() === null) keyGap({ why: 'outsideShell' });
   if (typeof L === 'undefined') {
     GAPS.code = [{ cls: 'unread', text: MAP_SAYS.codeFailed, retry: () => location.reload() }];
@@ -1311,6 +1660,8 @@ function boot() {
     TILES.addTo(MAP);
     TODAY.layer = L.layerGroup().addTo(MAP);
     LEADS.layer = L.layerGroup().addTo(MAP);
+    TRUCKS.trips = L.layerGroup().addTo(MAP);
+    TRUCKS.layer = L.layerGroup().addTo(MAP);
     tilesState();
   }
   toShell({ type: 'ready' });
