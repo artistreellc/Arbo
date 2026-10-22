@@ -188,22 +188,19 @@ describe('the switches — a change is stored for this door, then the page acts 
   });
   it('storage that refuses: nothing reloads, and the line says so in both languages beside the switch', () => {
     const r = loadI18n({ door: 'app', units: {}, stored: 'throw' });
-    const row = r.esLangRow('chips', 'loc-toggle') as FakeNode;
-    r.doc.querySelector('main')!.appendChild(row);
-    const chips = row.children[1]!;
-    expect(chips.children.map((c) => [c.textContent, c.className])).toEqual([['English', 'loc-toggle on'], ['Español', 'loc-toggle']]);
-    chips.children[1]!.click();
+    const b = r.esToggleButton('es-toggle') as FakeNode;
+    r.doc.querySelector('main')!.appendChild(b);
+    b.click();
     expect(r.reloads).toBe(0);
-    const said = chips.nextSibling!;
+    const said = b.nextSibling!;
     expect(said.className).toBe('es-storage');
     expect(said.textContent).toBe(r.ES_STORAGE_LINE.es + r.ES_STORAGE_LINE.en);
-    chips.children[1]!.click();
+    b.click();
     expect(r.doc.querySelectorAll('.es-storage')).toHaveLength(1); // said once, not stacked
   });
   it('tapping the language already chosen does nothing', () => {
     const r = loadI18n({ door: 'app', units: {} });
-    const row = r.esLangRow('chips', 'loc-toggle') as FakeNode;
-    row.children[1]!.children[0]!.click();
+    r.esChange('en', null);
     expect(r.reloads).toBe(0);
     expect(r.storage.size).toBe(0);
   });

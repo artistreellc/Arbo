@@ -13,7 +13,7 @@ export const RUNTIME_SRC = readFileSync(new URL('../../src/app/i18n/runtime.js',
 /** The names the runtime defines for a page — the stubs every harness gets. */
 export const RUNTIME_NAMES = [
   'ES', 'T', 'tf', 'tn', 'esPick', 'esPickEl', 'esPair', 'esEnMark', 'esLocale', 'esNum', 'esMarkPlaces',
-  'esBrokenNotice', 'esSayStorage', 'esChange', 'esSwitchInPlace', 'esToggleButton', 'esLangRow',
+  'esBrokenNotice', 'esSayStorage', 'esChange', 'esSwitchInPlace', 'esToggleButton',
   'ES_BROKEN_LINE', 'ES_STORAGE_LINE', 'ES_LANG_NAME', 'ES_SWITCH_LABEL',
 ] as const;
 
@@ -122,7 +122,8 @@ export function loadI18n(o: I18nOptions = {}): I18n {
   const door = o.door ?? 'app';
   const doc = o.doc ?? fakeDoc(o.extra);
   const json = o.json === undefined ? JSON.stringify({ door, units: o.units ?? {}, broken: [] }) : o.json;
-  if (json !== null) {
+  // A harness's own document may have no body to hold the tag: then the runtime reads no tag (English).
+  if (json !== null && doc.body) {
     const tag = new FakeNode('script', json);
     tag.setAttribute('id', 'arbo-i18n');
     tag.setAttribute('data-door', door);
