@@ -66,6 +66,13 @@ const BOOT = (() => {
   return html.slice(start, end);
 })();
 const NAV_DRAW_LINE = /^const NAV_DRAW = .*;$/m.exec(html)![0];
+/** Maps wave A (D106): a map hash aims the map's layer before it shows (startView → mapAim), so boot carries the map's tables. */
+const MAP_SCOPE = [
+  ...['MAP_HOME', 'MAP_LAYER_OF', 'NAV_PARENT', 'DOCK_OF'].map((n) => new RegExp(`^const ${n} = .*;$`, 'm').exec(html)![0]),
+  'let MAP_READY = false; let MAP_HELD = null;',
+  fnSrc('mapPost'),
+  fnSrc('mapAim'),
+].join('\n');
 function boot(hash: string): { landed: string; drawn: string[] } {
   const drawn: string[] = [];
   const renders = [...new Set([...NAV_DRAW_LINE.matchAll(/\b(render[A-Z]\w*)\(/g)].map((m) => m[1]!))];
@@ -73,6 +80,7 @@ function boot(hash: string): { landed: string; drawn: string[] } {
   const fn = new Function('location', 'VIEW_TITLES', 'VIEW_ALIAS', 'history', '$', ...renders, `
     let CUR_TAB = 'today'; let NAV_QUIET = false;
     const switchTab = (w) => { CUR_TAB = w; };
+    ${MAP_SCOPE}
     ${NAV_DRAW_LINE}
     ${fnSrc('navShow')}
     ${fnSrc('startView')}
@@ -127,6 +135,13 @@ describe('every link that exists today lands on a real screen (P1)', () => {
   it('new #estimate resolves at boot to its own view-* container (P15)', () => {
     expect(html).toContain('id="view-estimate"');
     expect(boot('estimate').landed).toBe('estimate');
+  });
+
+  // Maps wave A (D106): Map is a screen of its own, and its four layer links are aliases for it.
+  it.each(['map', 'map-today', 'map-permits', 'map-leads', 'map-trucks'])('#%s resolves at boot to view-map (Maps wave A)', (h) => {
+    expect(html).toContain('id="view-map"');
+    expect(boot(h).landed).toBe('map');
+    expect(boot(h).drawn).toContain('renderMap');
   });
 
   it('#queue lands on More, where the four desks the Queue held now sit (P13)', () => {

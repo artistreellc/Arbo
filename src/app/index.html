@@ -564,6 +564,13 @@ nav button .dot.p-unread::after{background:var(--card);box-shadow:inset 0 0 0 2p
 #gcal-frame{width:100%;height:calc(100vh - 250px);min-height:440px;border:1px solid var(--hairline);border-radius:var(--r-lg);background:var(--card);box-shadow:var(--shadow-card)}
 .cal-open{display:flex;align-items:center;justify-content:center;min-height:48px;border-radius:16px;background:var(--card);border:1px solid var(--border);color:var(--forest);font-size:14px;font-weight:700;text-decoration:none;margin-top:10px}
 .cal-src{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:10px}
+/* Map: the frame is the band between the app bar and the dock — the shell never scrolls on Map (D106). */
+#view-map{position:relative}
+.stops-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:22px 0 12px}
+.stops-head .panel-title{margin:0 2px}
+#view-map.view.active{display:block}
+#map-frame{display:block;width:100%;height:calc(100vh - 185px);height:calc(100dvh - 185px - env(safe-area-inset-top) - env(safe-area-inset-bottom));min-height:320px;border:1px solid var(--hairline);border-radius:var(--r-lg);background:var(--paper)}
+.map-edge{position:absolute;left:0;top:0;bottom:0;width:16px;z-index:2}
 .cal-day{margin-bottom:14px}
 .cal-daylabel{display:flex;align-items:baseline;gap:8px;font-family:var(--serif);font-size:16px;font-weight:600;color:var(--ink-1);padding:6px 0;border-bottom:1px solid var(--hairline);margin-bottom:8px}
 .cal-day.today .cal-daylabel{color:var(--gold-6)}
@@ -867,6 +874,7 @@ button.cal-ev{width:100%;text-align:left;font:inherit;color:inherit;cursor:point
   <div id="leads-head" class="hubhead"></div>
   <div id="view-leads" class="view"></div>
   <div id="view-cal" class="view"></div>
+  <div id="view-map" class="view"></div>
   <div id="view-book" class="view"></div>
   <div id="view-estimate" class="view"></div>
   <div id="view-followups" class="view"></div>
@@ -3869,7 +3877,8 @@ function openMapsStop(s) {
   const no = el('button', 'minibtn wide-btn', 'No');
   no.type = 'button';
   no.addEventListener('click', () => closeSheet('maps'));
-  $('maps-body').replaceChildren(el('div', 'panel-title', 'Open in Google Maps?'), el('div', 'maps-who', s.title || 'No title'), el('div', 'storm-muted', s.address), yes, no);
+  const parts = [el('div', 'panel-title', 'Open in Google Maps?'), el('div', 'maps-who', s.title || 'No title'), s.note ? el('div', 'storm-muted', s.note) : null, el('div', 'storm-muted', s.address), yes, no];
+  $('maps-body').replaceChildren(...parts.filter(Boolean));
   $('maps').classList.add('show'); sheetOpened('maps');
 }
 function openMapsDay(d) {
@@ -3922,6 +3931,17 @@ function todayStopRow(s) {
   }
   return row;
 }
+// Maps wave A M1: Today's stops on the map.
+function todayStopsHead() {
+  const head = el('div', 'stops-head');
+  head.appendChild(el('div', 'panel-title', 'Today’s stops'));
+  const b = el('button', 'minibtn', 'Map');
+  b.type = 'button';
+  b.setAttribute('aria-label', 'Today’s stops on the map');
+  b.addEventListener('click', () => openMap('today'));
+  head.appendChild(b);
+  return head;
+}
 // How the plan line reads: a live plan is a plain note; estimates and gaps wear the feed-state dot.
 const PLAN_LINE_CLASS = { live: 'storm-muted', estimate: 'feed-state unset', estimate_failed: 'feed-state unread', none: 'feed-state cut', practice: 'feed-state sim' };
 let TODAY_SEQ = 0; // a slow answer never draws over a newer one
@@ -3933,11 +3953,11 @@ async function renderTodayStops() {
   try { d = await api('/api/route/today'); }
   catch (e) {
     if (e.code === 401 || seq !== TODAY_SEQ) return;
-    box.replaceChildren(el('div', 'panel-title', 'Today’s stops'), feedLine(e, 'Today’s stops', 'This is not an empty day.'));
+    box.replaceChildren(todayStopsHead(), feedLine(e, 'Today’s stops', 'This is not an empty day.'));
     return;
   }
   if (seq !== TODAY_SEQ) return;
-  const out = [el('div', 'panel-title', 'Today’s stops')];
+  const out = [todayStopsHead()];
   if (d.practice) out.push(el('div', 'feed-state sim', 'Practice stops — SIM names on streets that do not exist. TomTom and Google are not asked in practice mode; your real calendar is below.'));
   const tomtomLine = d.tomtom && d.tomtom.line ? el('div', 'feed-state ' + (d.tomtom.state === 'failed' ? 'unread' : 'unset'), d.tomtom.line) : null;
   if (d.state !== 'ok' && d.state !== 'practice') {
@@ -4097,6 +4117,85 @@ function renderCalendar() {
   routePlannerPanel(v);
   renderTodayStops();
 }
+
+// ---------- Map (Maps wave A M0, docs/MAPS_PLAN.md): /map framed once; layers by message, never the hash ----------
+const MAP_HOME = { today: 'cal', permits: 'estimate', leads: 'leads', trucks: 'fleet' };
+const MAP_LAYER_OF = { 'map-today': 'today', 'map-permits': 'permits', 'map-leads': 'leads', 'map-trucks': 'trucks' };
+const MAP_MAX = 300;
+let MAP_READY = false;
+let MAP_HELD = null;
+window.arboMapKey = () => KEY;
+function mapPost(msg) {
+  const f = $('map-frame');
+  if (f && MAP_READY && f.contentWindow) f.contentWindow.postMessage(msg, location.origin);
+}
+function mapAim(layer) {
+  if (!Object.prototype.hasOwnProperty.call(MAP_HOME, layer)) return;
+  NAV_PARENT.map = MAP_HOME[layer];
+  DOCK_OF.map = DOCK_OF[MAP_HOME[layer]];
+  if (MAP_READY) mapPost({ type: 'layer', layer: layer });
+  else MAP_HELD = layer;
+}
+function openMap(layer) {
+  mapAim(layer);
+  renderMap();
+  switchTab('map');
+}
+function renderMap() {
+  if ($('map-frame')) return;
+  const f = document.createElement('iframe');
+  f.id = 'map-frame';
+  f.title = 'Map';
+  f.src = '/map';
+  const edge = el('div', 'map-edge');
+  edge.setAttribute('aria-hidden', 'true');
+  $('view-map').replaceChildren(f, edge);
+}
+function refreshMap() {
+  mapPost({ type: 'refresh' });
+}
+// autoRefresh's minute and back-on-screen: the frame re-reads Today while Map shows — never yesterday's (§1B).
+function mapTick() {
+  mapPost({ type: 'tick' });
+}
+function mapMessage(e) {
+  const f = $('map-frame');
+  if (!f || e.origin !== location.origin || e.source !== f.contentWindow) return;
+  const m = e.data;
+  if (!m || typeof m !== 'object') return;
+  const short = (s) => typeof s === 'string' && s.length <= MAP_MAX;
+  if (m.type === 'ready') {
+    MAP_READY = true;
+    if (MAP_HELD) { const l = MAP_HELD; MAP_HELD = null; mapPost({ type: 'layer', layer: l }); }
+    return;
+  }
+  if (m.type === 'stop') {
+    if (!short(m.title) || !short(m.address) || !m.address.trim() || (m.note !== undefined && !short(m.note))) return;
+    openMapsStop({ title: m.title, address: m.address, note: m.note || '' });
+    return;
+  }
+  if (m.type === 'day') { mapDay(); return; }
+  if (m.type === 'lead' && typeof m.id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(m.id)) openPanel('leads', 'lead-' + m.id);
+}
+// Route the whole day: Calendar's own answer, R35's own sheet.
+async function mapDay() {
+  let d;
+  try { d = await api('/api/route/today'); }
+  catch (e) {
+    if (e.code === 401) { showKeywall(); return; }
+    readOnlyToast('Couldn’t read today’s route just now — tap ↻ and try again.');
+    return;
+  }
+  // Not read: R35's own line, never "nothing to route"; the map re-reads to agree.
+  if (d && d.state !== 'ok' && d.state !== 'practice') {
+    readOnlyToast(typeof d.line === 'string' && d.line ? d.line : 'Couldn’t read today’s route just now — tap ↻ and try again.');
+    mapTick();
+    return;
+  }
+  if (d && d.plan && Array.isArray(d.plan.order) && d.plan.order.length) openMapsDay(d);
+  else readOnlyToast('Nothing to route today — Calendar says why for each stop.');
+}
+window.addEventListener('message', mapMessage);
 
 // ---------- Estimate (Direction B P15; R29 #1 and #4: "Before you write it up") ----------
 // Prep starts from the address (a lead's, P18), then the tools for the estimate. The head and the prep
@@ -8144,12 +8243,12 @@ async function renderLearn() {
   }
 }
 
-const VIEW_TITLES = { learn: 'Teach Arbo', measure: 'Measure', agents: 'Agents', permits: 'Permit rules', today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Properties on file', estimate: 'Estimate', followups: 'Follow-ups', money: 'Money', fleet: 'Fleet', safety: 'Crew & safety', calls: 'Calls & texts', perf: 'Numbers', settings: 'Settings', more: 'Office', assistant: 'Assistant' };
+const VIEW_TITLES = { learn: 'Teach Arbo', measure: 'Measure', agents: 'Agents', permits: 'Permit rules', today: 'ARBO', leads: 'Leads', cal: 'Calendar', book: 'Properties on file', estimate: 'Estimate', followups: 'Follow-ups', money: 'Money', fleet: 'Fleet', safety: 'Crew & safety', calls: 'Calls & texts', perf: 'Numbers', settings: 'Settings', more: 'Office', assistant: 'Assistant', map: 'Map' };
 // Direction B P13: a link that names no screen of its own — #queue (never a link before) opens More, where the Queue's four desks sit.
-const VIEW_ALIAS = { queue: 'more' };
+const VIEW_ALIAS = { queue: 'more', 'map-today': 'map', 'map-permits': 'map', 'map-leads': 'map', 'map-trucks': 'map' };
 // Direction B P13/P19: which dock tab lights for each screen — one table, the plan's DOCK_OF (the dock is
 // Today · Leads · Calendar · Estimate · Office). Settings opens from the sliders button and lights none.
-const DOCK_OF = { today: 'today', leads: 'leads', calls: 'leads', cal: 'cal', estimate: 'estimate', book: 'estimate', permits: 'estimate', measure: 'estimate', more: 'more', followups: 'more', money: 'more', fleet: 'more', safety: 'more', perf: 'more', agents: 'more', learn: 'more', assistant: 'more' };
+const DOCK_OF = { today: 'today', leads: 'leads', calls: 'leads', cal: 'cal', estimate: 'estimate', book: 'estimate', permits: 'estimate', measure: 'estimate', more: 'more', followups: 'more', money: 'more', fleet: 'more', safety: 'more', perf: 'more', agents: 'more', learn: 'more', assistant: 'more', map: 'cal' };
 
 // The line under ARBO. Today's hero already carries the date, so Today shows
 // the name alone; every screen says SIMULATION while the data is practice data.
@@ -8500,7 +8599,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && TAL
 // home-screen shortcut, the crew preview's way back) a screen lands on its hub —
 // an Office desk on Office, an Estimate tool on Estimate, Calls & texts on Leads
 // (Direction B P19) — and anything else on Today.
-const NAV_PARENT = { calls: 'leads', book: 'estimate', followups: 'more', money: 'more', fleet: 'more', safety: 'more', perf: 'more', permits: 'estimate', agents: 'more', measure: 'estimate', learn: 'more', assistant: 'more', settings: 'today', estimate: 'today' };
+const NAV_PARENT = { calls: 'leads', book: 'estimate', followups: 'more', money: 'more', fleet: 'more', safety: 'more', perf: 'more', permits: 'estimate', agents: 'more', measure: 'estimate', learn: 'more', assistant: 'more', settings: 'today', estimate: 'today', map: 'cal' };
 const SHEETS = ['twin', 'yard', 'bd', 'talk', 'approval', 'photo', 'maps'];
 let NAV_QUIET = false; // true while a back step is drawn — drawing it must not add a new step
 function navPush(which) {
@@ -8521,7 +8620,7 @@ function navShowBack() {
 }
 // A screen drawn by stepping back keeps what it showed (an agents run, a typed
 // ZIP); only one never drawn yet is drawn now. More is always redrawn, as its tab does.
-const NAV_DRAW = { more: () => renderMore(), settings: () => renderSettings(), permits: () => renderPermits(), agents: () => renderAgents(), measure: () => renderMeasure(), learn: () => renderLearn(), assistant: () => renderAssistant() };
+const NAV_DRAW = { more: () => renderMore(), settings: () => renderSettings(), permits: () => renderPermits(), agents: () => renderAgents(), measure: () => renderMeasure(), learn: () => renderLearn(), assistant: () => renderAssistant(), map: () => renderMap() };
 // Direction B P19: where a link lands — the home-screen shortcuts (/app#calls, /app#cal), crew.html's way back
 // (/app#more) and every #screen. An alias lands on its screen (#queue → Office); Settings (it opens from the
 // sliders button) and a hash that names no screen land on Today. Drawn the way a step back draws (navShow), so a
@@ -8530,6 +8629,7 @@ const NAV_DRAW = { more: () => renderMore(), settings: () => renderSettings(), p
 function startView(hash) {
   const asked = String(hash || '').replace(/^#/, '');
   const want = Object.prototype.hasOwnProperty.call(VIEW_ALIAS, asked) ? VIEW_ALIAS[asked] : asked;
+  if (want === 'map') mapAim(MAP_LAYER_OF[asked]); // Maps wave A
   if (want && want !== 'today' && want !== 'settings' && Object.prototype.hasOwnProperty.call(VIEW_TITLES, want)) navShow(want);
   try { history.replaceState({ v: CUR_TAB, d: 0 }, '', '#' + CUR_TAB); } catch (e) { /* ignore */ }
 }
@@ -8605,8 +8705,9 @@ $('tab-more').addEventListener('click', () => { renderMore(); switchTab('more');
 const TIMED = { today: renderToday, leads: renderLeads, cal: renderCalendar, estimate: renderEstimate, book: renderBook, followups: renderFollowUps, money: renderMoneyView, fleet: renderFleetView, safety: renderSafetyView, calls: renderCalls, perf: renderPerformance };
 function refreshAll() { for (const t in TIMED) TIMED[t](); renderLeadsHead(); }
 // ↻ and the key screen also redraw a More desk that is on screen — refreshAll never draws those.
+// Map: ↻ reaches its frame by message (never a reload).
 function refreshActiveMoreView() {
-  const r = { settings: renderSettings, permits: renderPermits, agents: renderAgents, measure: renderMeasure, learn: renderLearn, assistant: renderAssistant, more: renderMore };
+  const r = { settings: renderSettings, permits: renderPermits, agents: renderAgents, measure: renderMeasure, learn: renderLearn, assistant: renderAssistant, more: renderMore, map: () => refreshMap() };
   for (const t in r) {
     if ($('view-' + t).classList.contains('active')) { r[t](); return; }
   }
@@ -8638,6 +8739,7 @@ function autoRefresh() {
   TIMER_REDRAW = true;
   try { for (const t in TIMED) if (!holdsTyping($('view-' + t))) TIMED[t](); } finally { TIMER_REDRAW = false; }
   renderLeadsHead(); // Direction B P16: the Leads head and the tab's badge, every minute, even while both Leads views hold
+  mapTick(); // the map's Today, on the same minute (D106)
 }
 for (const t of ['leads', 'calls']) $('view-' + t).addEventListener('click', (e) => { e.currentTarget.dataset.taps = String(tapCount(e.currentTarget) + 1); }, true);
 $('refresh').addEventListener('click', () => {

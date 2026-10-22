@@ -1,0 +1,862 @@
+<!doctype html>
+<!--
+  Arbo — Map (Maps wave A, docs/MAPS_PLAN.md; Mike, 2026-10-20: "the map … needs
+  to start tightening up"). The owner app's one shared map, in a same-origin frame
+  the shell makes once (the calendar frame's pattern, R2). Its own page ON PURPOSE:
+  Leaflet's source uses innerHTML and names its own site, which the shell's laws
+  forbid — Arbo's code here still follows them (test/mapPage.test.ts):
+    · text by textContent only; Leaflet's string APIs get DOM nodes, never strings;
+    · the key comes from the shell (parent.arboMapKey), rides x-arbor-key, never storage;
+    · only OpenStreetMap's tiles and DEQ's images are fetched from another host;
+    · §1B: a layer that can't draw says why, in words — never an empty map.
+  Nothing is written anywhere and nothing is posted to Arbo; coordinates live in
+  this page's memory only.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Arbo — Map</title>
+<link rel="stylesheet" href="/map/leaflet.css">
+<style>
+@font-face{font-family:'Instrument Sans';src:url('/fonts/instrument-sans.woff2') format('woff2');font-weight:400 700;font-style:normal;font-display:swap}
+:root{
+  color-scheme:light;
+  --paper:#F7F5F0;--paper-2:#EFEBE1;--card:#FFFFFF;
+  --ink-1:#13201A;--ink-2:#3B4A43;--ink-3:#5A675F;--ink-4:#8B958F;
+  --forest:#1B4D3E;--on-forest:#FFFFFF;--warning:#A87A0A;--gold:#C9971C;
+  --border:rgba(19,32,26,.12);--hairline:rgba(19,32,26,.075);
+  --sans:'Instrument Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  --shadow:0 1px 2px rgba(8,26,20,.18),0 6px 16px -8px rgba(8,26,20,.42);
+}
+html.night{
+  color-scheme:dark;
+  --paper:#0B1512;--paper-2:#101D18;--card:#13221C;
+  --ink-1:#EAF1EC;--ink-2:#C5D2CA;--ink-3:#98A99F;--ink-4:#6E8077;
+  --forest:#5FB08F;--on-forest:#0B1512;--warning:#E6B84A;--gold:#DDB24C;
+  --border:rgba(234,241,236,.13);--hairline:rgba(234,241,236,.075);
+  --shadow:0 8px 22px -8px rgba(0,0,0,.7);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%;background:var(--paper)}
+/* The page is exactly its frame (the band between the shell's app bar and dock) and never scrolls: the chips, then
+   the map in all the rest — the notes card, Route the day, the zoom buttons and the attribution ride on the map. */
+html,body{height:100%}
+body{font-family:var(--sans);font-size:16px;line-height:1.45;color:var(--ink-1);background:var(--paper);-webkit-tap-highlight-color:transparent;display:flex;flex-direction:column;overflow:hidden}
+#top{flex:0 0 auto;padding:8px 8px 0}
+#chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:6px}
+#chips::-webkit-scrollbar{display:none}
+.chip{flex:0 0 auto;min-height:44px;padding:0 14px;border-radius:999px;border:1px solid var(--border);background:var(--card);color:var(--ink-2);font:600 14px/1 var(--sans);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--forest);border-color:var(--forest);color:var(--on-forest)}
+.line{display:flex;align-items:center;gap:8px;min-height:28px;padding:3px 0 3px 16px;position:relative;font-size:13px;font-weight:600;line-height:1.35;color:var(--ink-2);text-wrap:pretty}
+.line::before{content:'';position:absolute;left:1px;top:calc(50% - 4px);width:8px;height:8px;border-radius:50%;background:var(--warning)}
+.line.cut::before,.line.sim::before{background:var(--ink-4)}
+.line.unread::before{background:none;border:2px solid var(--warning)}
+.line > span{flex:1 1 auto;min-width:0}
+.line a{color:var(--forest);font-weight:700}
+.retry{flex:0 0 auto;min-width:44px;min-height:44px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--ink-1);font:700 18px/1 var(--sans);cursor:pointer}
+.muted{color:var(--ink-3);font-size:13px;line-height:1.4;padding:3px 0}
+.counts{display:flex;align-items:center;gap:8px}
+.counts > :first-child{flex:1 1 auto;min-width:0}
+.factbtn{display:block;width:100%;min-height:44px;text-align:left;border:0;background:none;color:var(--ink-1);font:600 13.5px/1.35 var(--sans);padding:4px 0;cursor:pointer}
+.keybtn{flex:0 0 auto;min-width:44px;min-height:44px;padding:0 12px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--forest);font:700 13.5px/1 var(--sans);cursor:pointer}
+.keybtn[aria-expanded="true"]{background:var(--forest);border-color:var(--forest);color:var(--on-forest)}
+.factbtn[aria-expanded]::after{content:' ›';color:var(--ink-3)}
+.factbtn[aria-expanded="true"]::after{content:' ⌄'}
+.missing{list-style:none;padding:0 0 6px}
+.missing li{font-size:13.5px;color:var(--ink-2);padding:3px 0}
+#mapbox{position:relative;flex:1 1 auto;min-height:0;margin:0 8px 8px;border-radius:16px;overflow:hidden;border:1px solid var(--hairline)}
+#map{position:absolute;inset:0;background:var(--paper-2)}
+/* The notes card: every gap, the counts and the key, over the top of the map (it scrolls inside, never the page). */
+#card{position:absolute;z-index:1000;top:8px;left:8px;right:8px;max-height:calc(100% - 150px);overflow-y:auto;overscroll-behavior:contain;padding:4px 10px;border-radius:14px;border:1px solid var(--border);background:var(--card);box-shadow:var(--shadow)}
+#card[hidden],#offview[hidden]{display:none}
+#offview{position:absolute;z-index:1000;right:8px;top:8px;max-width:calc(100% - 16px);min-height:44px;padding:0 14px;border-radius:22px;border:1px solid var(--border);background:var(--card);color:var(--forest);font:700 13.5px/1.2 var(--sans);box-shadow:var(--shadow);cursor:pointer}
+#hud{position:absolute;z-index:1000;left:62px;right:8px;bottom:28px}
+#hud:empty{display:none}
+.leaflet-container{font-family:var(--sans);background:var(--paper-2)}
+html.night .leaflet-tile-pane{filter:brightness(.62) contrast(1.15) saturate(.7)}
+#osm{position:absolute;right:0;bottom:0;z-index:1000;padding:3px 8px;border-top-left-radius:10px;background:rgba(255,255,255,.88);color:#1B4D3E;font:600 12px/1.4 var(--sans);text-decoration:none}
+html.night #osm{background:rgba(11,21,18,.85);color:#C5D2CA}
+#legend{padding:0 0 4px}
+.key{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink-2);padding:2px 0}
+.key .pin{flex:0 0 auto;transform:scale(.7);margin:-6px}
+.hud{display:block;width:100%;min-height:48px;padding:6px 12px;border:0;border-radius:14px;background:var(--forest);color:var(--on-forest);font:700 14px/1.25 var(--sans);box-shadow:var(--shadow);cursor:pointer}
+/* Leaflet's zoom buttons and a stop list's ×: 44 px, in the app's colours by Day and Night. */
+#mapbox .leaflet-bar{border:1px solid var(--border);box-shadow:var(--shadow)}
+#mapbox .leaflet-bar a{width:44px;height:44px;line-height:44px;font:700 22px/44px var(--sans);background:var(--card);color:var(--ink-1);border-bottom-color:var(--border)}
+#mapbox .leaflet-bar a.leaflet-disabled{background:var(--paper-2);color:var(--ink-4)}
+#mapbox a.leaflet-popup-close-button{width:44px;height:44px;font:400 26px/44px var(--sans);color:var(--ink-3)}
+#mapbox .leaflet-popup-content{margin:10px 12px}
+.pinwrap{background:none;border:0}
+.pinwrap .pin{position:absolute;left:0;top:0;transform:translate(-50%,-50%);cursor:pointer}
+.pin{display:flex;align-items:center;justify-content:center;min-width:44px;height:44px;padding:0 9px;border-radius:22px;font:700 15px/1 var(--sans);white-space:nowrap;box-shadow:var(--shadow)}
+.pin.exact{background:var(--forest);color:var(--on-forest);border:2px solid var(--card)}
+.pin.area{background:var(--card);color:var(--ink-1);border:3px dashed var(--forest)}
+.pin.practice{background:var(--card);color:var(--ink-1);border:3px dashed var(--ink-4)}
+.pop{overflow-wrap:anywhere}
+.pop b{display:block;font-size:13px;color:var(--ink-3);margin-bottom:4px;padding-right:30px}
+.pop button{display:block;width:100%;min-height:44px;margin-top:6px;padding:6px 10px;text-align:left;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--ink-1);font:600 14px/1.35 var(--sans);cursor:pointer}
+.pop small{display:block;font-weight:500;color:var(--ink-3)}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--card);color:var(--ink-1)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<!--ARBO:SPRITE-->
+<div id="top">
+  <div id="chips" role="group" aria-label="Map layers"></div>
+</div>
+<div id="mapbox">
+  <div id="map" role="region" aria-label="Map"></div>
+  <div id="card" hidden>
+    <div id="status" role="status" aria-live="polite"></div>
+    <div id="facts"></div>
+    <div id="legend"></div>
+  </div>
+  <button id="offview" type="button" hidden></button>
+  <div id="hud"></div>
+  <a id="osm" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a>
+</div>
+<script type="application/json" id="map-zips"><!--ARBO:ZIPS--></script>
+<script type="application/json" id="map-deq"><!--ARBO:DEQ--></script>
+<script src="/map/leaflet.js"></script>
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+};
+
+// Every sentence the map says, in one place (Spanish later, R27). None of them says "clear".
+const MAP_SAYS = {
+  nameToday: 'Today',
+  namePermits: 'Permit areas',
+  nameLeads: 'Leads & jobs',
+  nameTrucks: 'Trucks',
+  permitsSoon: 'Permit areas aren’t drawn yet — the next map build adds Virginia DEQ’s RPA layer. No shading here is not a “no”.',
+  leadsSoon: 'Leads & jobs aren’t on the map yet — the next map build adds them. Your leads are on the Leads tab.',
+  trucksSoon: 'Trucks aren’t on the map yet — that layer is still to be built. Office → Fleet lists each truck.',
+  practice: 'PRACTICE DATA — pins sit in their ZIP area; these are not real places.',
+  todayFailed: 'Today’s stops: couldn’t read them just now. This is not an empty day.',
+  emptyDay: 'Nothing on your Google Calendar today.',
+  countsOne: '{on} of {n} event on the map',
+  countsMany: '{on} of {n} events on the map',
+  countsMissing: ' · {k} not on the map',
+  orderOnly: 'Order only — straight lines, not roads. Google Maps draws the road.',
+  ends: 'Where the day starts and ends isn’t drawn — Calendar’s plan says where the route starts and ends.',
+  exact: 'Exact spot — TomTom placed it for today’s route',
+  exactShort: 'Exact spot',
+  key: 'Key',
+  keyName: 'What the pins and lines mean',
+  offOne: '1 stop is off this view — show all',
+  offMany: '{k} stops are off this view — show all',
+  zipArea: 'ZIP area — not the exact spot',
+  practicePin: 'Practice pin — not a real place',
+  outside: 'placed outside the four cities',
+  stopN: 'stop {n} in the plan',
+  stopsHere: '{k} stops here — tap one to open it',
+  routeDay: 'Route the whole day in Google Maps',
+  tooLong: 'This address is too long to open from the map — open it from Calendar.',
+  noTitle: 'No title',
+  outsideShell: 'Open Map from Arbo.',
+  openArbo: 'Open Arbo',
+  noKey: 'Open Arbo and enter the key first.',
+  refused: 'Arbo didn’t take this phone’s key — open Arbo and enter it again. Nothing is drawn; this is not an empty map.',
+  throttled: 'Too many wrong keys from this connection — wait a minute, then tap ↻, or switch between Wi-Fi and cellular. Nothing is drawn; this is not an empty map.',
+  readingToday: 'Reading today’s stops…',
+  noAppKey: 'Arbo’s server has no app key set yet, so nothing can be read. Nothing is drawn; this is not an empty map.',
+  codeFailed: 'The map’s own code didn’t load — check your signal, then tap ↻. Nothing is drawn; this is not an empty map.',
+  tilesFailed: 'Street map didn’t load (OpenStreetMap) — pins are still placed; this is not an empty map.',
+  tilesFailedBare: 'Street map didn’t load (OpenStreetMap) — this is not an empty map.',
+  offline: 'No signal — the street map needs one.',
+  retry: 'Try again',
+};
+
+const LAYERS = ['today', 'permits', 'leads', 'trucks'];
+const LAYER_NAME = { today: MAP_SAYS.nameToday, permits: MAP_SAYS.namePermits, leads: MAP_SAYS.nameLeads, trucks: MAP_SAYS.nameTrucks };
+// A layer not built yet says so when it is switched on — never an empty map.
+const LAYER_SOON = { permits: MAP_SAYS.permitsSoon, leads: MAP_SAYS.leadsSoon, trucks: MAP_SAYS.trucksSoon };
+// The layers this build draws: each reads its own feed and names its own gaps.
+const LAYER_READ = {};
+const LAYER_CLEAR = {};
+
+const OSM_TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+// Filled at serve time (src/server/appPage.ts) from their one source each.
+function inlined(id) {
+  try { return JSON.parse($(id).textContent); } catch (e) { return null; }
+}
+const ZIPS = inlined('map-zips') || { zips: {}, noArea: [], checked: null, box: { south: 36.53, west: -76.58, north: 36.99, east: -75.84 } };
+const BOX = ZIPS.box;
+
+let ON = readLayers();
+let MAP = null;
+let TILES = null;
+const TILE = { errors: 0, loaded: 0 };
+// The opening four-city view holds (refitted as the notes card grows or shrinks) until Mike first touches the map.
+let KEEP_VIEW = true;
+let KEY_OPEN = false;
+let POP_OPEN = false; // a stop list is open: the off-view button steps aside so it never covers the list
+// The status list: one line per gap, never one for a layer Mike switched off.
+const GAPS = { code: [], key: [], net: [], tiles: [], today: [], permits: [], leads: [], trucks: [] };
+
+function readLayers() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('arboMapLayers') || 'null'); } catch (e) { saved = null; }
+  const on = { today: true, permits: false, leads: false, trucks: false };
+  if (saved && typeof saved === 'object') for (const l of LAYERS) if (typeof saved[l] === 'boolean') on[l] = saved[l];
+  return on;
+}
+function saveLayers() {
+  try { localStorage.setItem('arboMapLayers', JSON.stringify(ON)); } catch (e) { /* storage blocked: the choice lasts this visit */ }
+}
+
+// Night follows the shell's own setting (arboTheme), and the phone's when it is Auto.
+function nightOn() {
+  let pref = 'auto';
+  try { pref = localStorage.getItem('arboTheme') || 'auto'; } catch (e) { pref = 'auto'; }
+  if (pref === 'dark') return true;
+  if (pref === 'light') return false;
+  return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+}
+function applyNight() {
+  document.documentElement.classList.toggle('night', nightOn());
+  if (TODAY.d) drawToday(TODAY.d); // the route line takes the theme's own colour
+}
+
+// The key, from the shell that framed this page — it works even when the shell holds it for the visit only.
+// null = not inside Arbo's shell; '' = the shell has no key yet.
+function shellKey() {
+  try {
+    if (window.parent === window || typeof window.parent.arboMapKey !== 'function') return null;
+    return String(window.parent.arboMapKey() || '');
+  } catch (e) {
+    return null;
+  }
+}
+
+// One read of Arbo's /api with the shell's key. A refusal or a failure is named by `why`, never an empty answer.
+async function mapGet(path) {
+  const key = shellKey();
+  if (key === null) throw Object.assign(new Error('outside'), { why: 'outsideShell' });
+  if (!key) throw Object.assign(new Error('nokey'), { why: 'noKey' });
+  let res;
+  try {
+    res = await fetch(path, { headers: { 'x-arbor-key': key } });
+  } catch (e) {
+    throw Object.assign(new Error('unreachable'), { why: 'unread' });
+  }
+  let body = null;
+  try { body = await res.json(); } catch (e) { body = null; }
+  // The door's 429 (too many wrong keys from this connection) is a wait, not a refused key; any other 429 is a read that failed.
+  if (res.status === 429 && body && body.error === 'too_many_attempts') throw Object.assign(new Error('throttled'), { why: 'throttled' });
+  if (res.status === 401) throw Object.assign(new Error('refused'), { why: body && body.error === 'no_app_key' ? 'noAppKey' : 'refused' });
+  if (!res.ok || !body || typeof body !== 'object') throw Object.assign(new Error('unread'), { why: 'unread', code: res.status });
+  return body;
+}
+
+// A read refused at the door is said once, for the whole map, in the key's own words.
+function keyGap(e) {
+  if (!e || !MAP_SAYS[e.why] || e.why === 'unread') return false;
+  // A slowed connection clears by waiting: its line has its own ↻. A refused key is fixed on Arbo's key screen.
+  const retry = e.why === 'throttled' ? () => { GAPS.key = []; readAll(); } : null;
+  GAPS.key = [{ cls: e.why === 'outsideShell' ? 'unset' : 'unread', text: MAP_SAYS[e.why], link: e.why === 'outsideShell', retry: retry }];
+  drawStatus();
+  return true;
+}
+
+function toShell(msg) {
+  if (window.parent === window) return;
+  window.parent.postMessage(msg, location.origin);
+}
+
+function drawChips() {
+  const box = $('chips');
+  box.replaceChildren();
+  for (const l of LAYERS) {
+    const b = el('button', 'chip', LAYER_NAME[l]);
+    b.type = 'button';
+    b.setAttribute('aria-pressed', ON[l] ? 'true' : 'false');
+    b.addEventListener('click', () => setLayer(l, !ON[l]));
+    box.appendChild(b);
+  }
+}
+
+function setLayer(l, on) {
+  ON[l] = on;
+  saveLayers();
+  drawChips();
+  if (on) readLayer(l);
+  else {
+    GAPS[l] = [];
+    if (LAYER_CLEAR[l]) LAYER_CLEAR[l]();
+    drawStatus();
+    drawFacts();
+    drawLegend();
+  }
+}
+
+function readLayer(l) {
+  if (!ON[l]) return;
+  if (LAYER_READ[l]) { LAYER_READ[l](); return; }
+  GAPS[l] = [{ cls: 'unset', text: LAYER_SOON[l] }];
+  drawStatus();
+}
+function readAll() {
+  for (const l of LAYERS) readLayer(l);
+}
+
+function drawStatus() {
+  GAPS.tiles = tilesGap();
+  GAPS.net = navigator.onLine === false ? [{ cls: 'unread', text: MAP_SAYS.offline }] : [];
+  const box = $('status');
+  box.replaceChildren();
+  const order = ['code', 'key', 'net', 'tiles', ...LAYERS.filter((l) => ON[l])];
+  for (const slot of order) {
+    for (const g of GAPS[slot]) {
+      const row = el('div', 'line ' + g.cls);
+      row.appendChild(el('span', '', g.text));
+      if (g.link) {
+        const a = el('a', '', MAP_SAYS.openArbo);
+        a.href = '/app#map';
+        a.target = '_top';
+        row.appendChild(a);
+      }
+      if (g.retry) {
+        const r = el('button', 'retry', '↻');
+        r.type = 'button';
+        r.setAttribute('aria-label', MAP_SAYS.retry);
+        r.addEventListener('click', g.retry);
+        row.appendChild(r);
+      }
+      box.appendChild(row);
+    }
+  }
+  syncCard();
+}
+
+// Facts and legend belong to the layers drawn; each layer adds its own (FACTS / KEYS).
+const FACTS = {};
+const KEYS = {};
+function drawFacts() {
+  const box = $('facts');
+  box.replaceChildren();
+  for (const l of LAYERS) if (ON[l] && FACTS[l]) for (const n of FACTS[l]()) box.appendChild(n);
+  syncCard();
+}
+// The key opens from its button beside the counts (keyButton); Route the day rides on the map (HUDS).
+const HUDS = {};
+function keyRows() {
+  const out = [];
+  for (const l of LAYERS) if (ON[l] && KEYS[l]) out.push(...KEYS[l]());
+  return out;
+}
+function drawLegend() {
+  const box = $('legend');
+  box.replaceChildren(...(KEY_OPEN ? keyRows() : []));
+  const hud = $('hud');
+  hud.replaceChildren();
+  for (const l of LAYERS) if (ON[l] && HUDS[l]) for (const n of HUDS[l]()) hud.appendChild(n);
+  syncCard();
+}
+function keyButton() {
+  const b = el('button', 'keybtn', MAP_SAYS.key);
+  b.type = 'button';
+  b.setAttribute('aria-label', MAP_SAYS.keyName);
+  b.setAttribute('aria-expanded', KEY_OPEN ? 'true' : 'false');
+  b.addEventListener('click', () => { KEY_OPEN = !KEY_OPEN; drawFacts(); drawLegend(); });
+  return b;
+}
+// The card shows only when it has something to say.
+function syncCard() {
+  $('card').hidden = !($('status').childElementCount || $('facts').childElementCount || $('legend').childElementCount);
+}
+
+// The street map. §1B: three failures and none loaded is named; so is no signal. "Pins are still placed" only when they are.
+function tileLine(pins) {
+  return pins ? MAP_SAYS.tilesFailed : MAP_SAYS.tilesFailedBare;
+}
+function tilesGap() {
+  return TILE.errors >= 3 && TILE.loaded === 0 ? [{ cls: 'unread', text: tileLine(placedCount() > 0), retry: retryTiles }] : [];
+}
+function tilesState() {
+  drawStatus();
+}
+function retryTiles() {
+  TILE.errors = 0;
+  TILE.loaded = 0;
+  if (TILES) TILES.redraw();
+  tilesState();
+}
+function placedCount() {
+  return ON.today && TODAY.d ? TODAY.d.stops.length : 0;
+}
+
+// What the notes card and Route the day cover on the map, in the map's own pixels.
+function cardPad() {
+  const c = $('card');
+  return c.hidden ? 0 : c.offsetTop + c.offsetHeight;
+}
+function hudPad() {
+  const h = $('hud');
+  return h.childElementCount ? $('mapbox').clientHeight - h.offsetTop : 24;
+}
+// The opening view: all four cities in the map's clear part (under the card, above Route the day). The zoom floor is
+// whatever that takes on this phone (8 at the least, never above 10) — a fixed 10 cut Virginia Beach off a phone.
+function openView() {
+  if (!MAP) return;
+  const box = L.latLngBounds([BOX.south, BOX.west], [BOX.north, BOX.east]);
+  const tl = L.point(10, cardPad() + 10);
+  const br = L.point(10, hudPad() + 10);
+  // Floor down first (getBoundsZoom never answers below the floor, and lowering it never moves the map), fit, then
+  // floor up to the fit: raising the floor above the zoom shown would start an animated zoom of its own.
+  MAP.setMinZoom(8);
+  const z = Math.min(10, MAP.getBoundsZoom(box, false, tl.add(br)));
+  MAP.fitBounds(box, { paddingTopLeft: tl, paddingBottomRight: br, animate: false });
+  MAP.setMinZoom(z);
+}
+// Stops off the clear part of the map — outside it, under the card or under Route the day — are counted, never silent.
+function offViewCount(stops, toPt, w, top, bottom) {
+  let k = 0;
+  for (const s of stops) {
+    const p = toPt(s);
+    if (p.x < 0 || p.x > w || p.y < top || p.y > bottom) k++;
+  }
+  return k;
+}
+function offView() {
+  const b = $('offview');
+  if (!MAP || !ON.today || !TODAY.d || POP_OPEN) { b.hidden = true; return; }
+  const size = MAP.getSize();
+  const k = offViewCount(TODAY.d.stops, (s) => MAP.latLngToContainerPoint([s.lat, s.lon]), size.x, cardPad(), size.y - hudPad());
+  b.hidden = k === 0;
+  if (!k) return;
+  b.textContent = k === 1 ? MAP_SAYS.offOne : MAP_SAYS.offMany.replace('{k}', String(k));
+  b.style.top = (cardPad() + 8) + 'px';
+}
+// Mike's tap: every placed stop in the clear part of the map (the floor drops only as far as that takes).
+function showAll() {
+  if (!MAP || !TODAY.d || !TODAY.d.stops.length) return;
+  const b = L.latLngBounds(TODAY.d.stops.map((s) => [s.lat, s.lon]));
+  const tl = L.point(30, cardPad() + 30);
+  const br = L.point(30, hudPad() + 30);
+  const floor = MAP.getMinZoom();
+  KEEP_VIEW = false;
+  MAP.setMinZoom(5); // fitBounds never fits below the floor
+  MAP.fitBounds(b, { paddingTopLeft: tl, paddingBottomRight: br, maxZoom: 14, animate: false });
+  MAP.setMinZoom(Math.min(floor, MAP.getZoom()));
+  offView();
+}
+
+// The pan limit: the four cities and every placed pin, padded — no placed pin is ever out of reach.
+function panBox(box, stops) {
+  let s = box.south, w = box.west, n = box.north, e = box.east;
+  for (const p of stops) {
+    if (typeof p.lat !== 'number' || typeof p.lon !== 'number') continue;
+    s = Math.min(s, p.lat); n = Math.max(n, p.lat);
+    w = Math.min(w, p.lon); e = Math.max(e, p.lon);
+  }
+  // Padded 1° — wider than the view at the lowest zoom, which would otherwise pull the four cities back under the
+  // notes card (a view bigger than its limit is centred on it) — and a pin near the edge pans clear of its list.
+  const pad = 1;
+  return [[s - pad, w - pad], [n + pad, e + pad]];
+}
+function setPanLimit(stops) {
+  if (MAP) MAP.setMaxBounds(panBox(BOX, stops));
+}
+
+// Messages from the shell: only from the shell that framed this page, on this origin.
+function onShellMessage(e) {
+  if (e.origin !== location.origin || e.source !== window.parent) return;
+  const m = e.data;
+  if (!m || typeof m !== 'object') return;
+  if (m.type === 'layer' && LAYERS.includes(m.layer)) {
+    if (ON[m.layer]) readLayer(m.layer);
+    else setLayer(m.layer, true);
+    return;
+  }
+  if (m.type === 'refresh') {
+    GAPS.key = [];
+    retryTiles();
+    readAll();
+    return;
+  }
+  if (m.type === 'tick') onTick();
+}
+
+// The ET calendar day (Arbo's day), whatever zone the phone is in; null when the phone can't say.
+function etToday(now) {
+  try {
+    const p = {};
+    for (const x of new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now)) p[x.type] = x.value;
+    return p.year && p.month && p.day ? p.year + '-' + p.month + '-' + p.day : null;
+  } catch (e) {
+    return null;
+  }
+}
+function staleDay(day, today) {
+  return typeof day === 'string' && typeof today === 'string' && day !== today;
+}
+// Is Map on screen? The app in front and the shell's Map view active (or this page open on its own).
+function shownNow() {
+  if (document.hidden) return false;
+  try {
+    const v = window.frameElement ? window.frameElement.closest('.view') : null;
+    return !v || v.classList.contains('active');
+  } catch (e) {
+    return true;
+  }
+}
+// Yesterday's pins come down at once — never shown as today's while the new day reads.
+function dropStaleDay() {
+  if (!TODAY.d || !staleDay(TODAY.d.day, etToday(new Date()))) return;
+  clearToday();
+  GAPS.today = [{ cls: 'unset', text: MAP_SAYS.readingToday }];
+  drawStatus();
+}
+// The shell's minute tick (and its back-on-screen one): Today re-reads while Map shows, on the minute Calendar's
+// Today's stops reads.
+function onTick() {
+  if (!shownNow()) return;
+  dropStaleDay();
+  readLayer('today');
+}
+
+// ═══ TODAY (M1): today's calendar stops, numbered in R35's planned order ═══
+// /api/map/today places each stop from what Arbo already holds: an exact pin only where TomTom's
+// day memory has it (the planner placed it), a hollow ZIP-area pin otherwise, and every stop it
+// can't place is named. The map opens on the four cities and never zooms to a pin by itself.
+const TODAY = { seq: 0, d: null, layer: null, open: false };
+
+function clock12(s) {
+  if (typeof s !== 'string' || !/^\d{1,2}:\d{2}$/.test(s)) return '';
+  const [h, m] = s.split(':').map(Number);
+  return ((h + 11) % 12 + 1) + ':' + String(m).padStart(2, '0') + (h < 12 ? ' AM' : ' PM');
+}
+// Time order inside a pin's list: booked time, then the plan's number; no time last.
+function byTime(a, b) {
+  if (a.time !== b.time) return a.time === null ? 1 : b.time === null ? -1 : a.time < b.time ? -1 : 1;
+  if (a.n !== b.n) return a.n === null ? 1 : b.n === null ? -1 : a.n - b.n;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+// One group per point: stops in one ZIP area share a hollow marker that lists them all, so no
+// stop hides under another. An exact pin is never merged with a ZIP-area one at the same point here.
+function mapGroups(stops) {
+  const out = [];
+  const at = new Map();
+  for (const s of stops) {
+    const exact = s.placedBy === 'tomtom';
+    const k = (exact ? 'x' : 'a') + ':' + s.lat + ',' + s.lon;
+    let g = at.get(k);
+    if (!g) {
+      g = { lat: s.lat, lon: s.lon, exact: exact, practice: s.placedBy === 'practice', stops: [] };
+      at.set(k, g);
+      out.push(g);
+    }
+    g.stops.push(s);
+  }
+  for (const g of out) g.stops.sort(byTime);
+  return out;
+}
+// On screen: pins that would touch at this zoom (44 px circles, centres closer than the gap) share one marker
+// listing them all, in time order — two stops a street apart never hide one under the other. The marker sits at
+// the middle of its stops, never on one of them (stop 3 drawn on stop 1, 20 km off, at 320 px). A marker holding
+// anything but exact pins is drawn hollow; its list says how each stop was placed. Redone at every zoom.
+function screenGroups(groups, toPx, gap) {
+  const out = [];
+  for (const g of groups) {
+    const p = toPx(g);
+    const hit = out.find((c) => Math.hypot(c.x - p.x, c.y - p.y) < gap);
+    if (!hit) { out.push({ x: p.x, y: p.y, parts: [g] }); continue; }
+    hit.parts.push(g);
+    hit.x += (p.x - hit.x) / hit.parts.length; // the centre the next pin is measured from moves with the marker
+    hit.y += (p.y - hit.y) / hit.parts.length;
+  }
+  const mid = (parts, k) => parts.reduce((a, g) => a + g[k], 0) / parts.length;
+  return out.map((c) => (c.parts.length === 1 ? c.parts[0] : {
+    lat: mid(c.parts, 'lat'),
+    lon: mid(c.parts, 'lon'),
+    exact: c.parts.every((g) => g.exact),
+    practice: c.parts.every((g) => g.practice),
+    stops: c.parts.flatMap((g) => g.stops).sort(byTime),
+  }));
+}
+const PIN_GAP = 48; // a 44 px pin and a hair
+// The dashed line: numbered pins only, in the plan's order — order, not roads.
+function routeLine(stops) {
+  const pts = stops.filter((s) => s.n !== null).sort((a, b) => a.n - b.n).map((s) => [s.lat, s.lon]);
+  return pts.length >= 2 ? pts : [];
+}
+// A pin's words: its plan numbers; a pin with no number shows none (never a count that reads as one).
+function pinText(g) {
+  return g.stops.filter((s) => s.n !== null).map((s) => s.n).sort((a, b) => a - b).join('·');
+}
+function pinNode(g) {
+  const n = el('span', 'pin ' + (g.exact ? 'exact' : g.practice ? 'practice' : 'area'));
+  n.textContent = pinText(g);
+  return n;
+}
+function countsLine(d) {
+  const c = d.counts;
+  if (!c || typeof c.events !== 'number' || c.events === 0) return null;
+  const t = (c.events === 1 ? MAP_SAYS.countsOne : MAP_SAYS.countsMany).replace('{on}', String(c.onMap)).replace('{n}', String(c.events));
+  return t + (c.notOnMap ? MAP_SAYS.countsMissing.replace('{k}', String(c.notOnMap)) : '');
+}
+// Gaps for the status list: the practice banner, a calendar not read (R35's own line, with ↻), TomTom's own line.
+function todayLines(d) {
+  const out = [];
+  if (d.practice) out.push({ cls: 'sim', text: MAP_SAYS.practice, retry: false });
+  if (d.state !== 'ok' && d.state !== 'practice') out.push({ cls: d.state === 'google_not_connected' ? 'unset' : 'unread', text: d.line, retry: true });
+  if (d.tomtomLine) out.push({ cls: /^TomTom couldn/.test(d.tomtomLine) ? 'unread' : 'unset', text: d.tomtomLine, retry: false });
+  return out;
+}
+// Facts above the map, not gaps: the empty day — said only after a good read.
+function todayFacts(d) {
+  const read = d.state === 'ok' || d.state === 'practice';
+  return read && d.counts && d.counts.events === 0 ? [MAP_SAYS.emptyDay] : [];
+}
+// The plan's own line, in the key (it keeps the notes card short over the map).
+function planNote(d) {
+  const read = d.state === 'ok' || d.state === 'practice';
+  return read && d.planLine && d.counts && d.counts.events > 0 ? d.planLine : null;
+}
+// How a stop was placed, in a list several stops share.
+function placeNote(s) {
+  return s.placedBy === 'tomtom' ? MAP_SAYS.exactShort : s.placedBy === 'practice' ? MAP_SAYS.practicePin : MAP_SAYS.zipArea;
+}
+// What the pins mean: only the kinds on the map now, with sample pins that carry no number (a "1" read as stop 1).
+function legendPins(stops) {
+  const has = (k) => stops.some((s) => s.placedBy === k);
+  const out = [];
+  if (has('tomtom')) out.push({ g: { exact: true, practice: false, stops: [] }, text: MAP_SAYS.exact });
+  if (has('zip')) out.push({ g: { exact: false, practice: false, stops: [] }, text: MAP_SAYS.zipArea });
+  if (has('practice')) out.push({ g: { exact: false, practice: true, stops: [] }, text: MAP_SAYS.practicePin });
+  return out;
+}
+// A stop list fits the map's width, a 320 px phone too (Leaflet adds 26 px of its own around it).
+function popupFits(w) {
+  const max = Math.max(150, Math.min(260, w - 48));
+  return { maxWidth: max, minWidth: Math.min(200, max) };
+}
+function stopNote(s) {
+  const parts = [];
+  if (s.n !== null) parts.push(MAP_SAYS.stopN.replace('{n}', String(s.n)));
+  if (s.placedBy === 'zip') parts.push(MAP_SAYS.zipArea);
+  if (s.placedBy === 'practice') parts.push(MAP_SAYS.practicePin);
+  if (s.outside) parts.push(MAP_SAYS.outside);
+  if (s.why) parts.push(s.why);
+  return parts.join(' · ');
+}
+// A stop opens R35's own "Open in Google Maps?" sheet in the shell — the shell builds the link.
+function openStop(s, g) {
+  if (typeof s.address !== 'string' || s.address.length > 300) {
+    if (MAP) L.popup().setLatLng([g.lat, g.lon]).setContent(el('div', 'pop', MAP_SAYS.tooLong)).openOn(MAP);
+    return;
+  }
+  toShell({ type: 'stop', title: String(s.title || MAP_SAYS.noTitle).slice(0, 300), address: s.address, note: stopNote(s).slice(0, 300) });
+}
+function groupNode(g) {
+  const box = el('div', 'pop');
+  box.appendChild(el('b', '', MAP_SAYS.stopsHere.replace('{k}', String(g.stops.length))));
+  for (const s of g.stops) {
+    const b = el('button', '', [s.n !== null ? s.n : null, clock12(s.time), s.title || MAP_SAYS.noTitle].filter(Boolean).join(' · '));
+    b.type = 'button';
+    const small = [s.city, placeNote(s), s.why, s.outside ? MAP_SAYS.outside : null].filter(Boolean).join(' · ');
+    if (small) b.appendChild(el('small', '', small));
+    b.addEventListener('click', () => openStop(s, g));
+    box.appendChild(b);
+  }
+  return box;
+}
+function groupMarker(g) {
+  const label = g.stops.map((s) => [s.n !== null ? MAP_SAYS.stopN.replace('{n}', String(s.n)) : null, s.title || MAP_SAYS.noTitle].filter(Boolean).join(', ')).join('; ');
+  const m = L.marker([g.lat, g.lon], { icon: L.divIcon({ html: pinNode(g), className: 'pinwrap', iconSize: [0, 0] }), title: label, alt: label, keyboard: true, riseOnHover: true });
+  if (g.stops.length === 1) {
+    m.on('click', () => openStop(g.stops[0], g));
+    return m;
+  }
+  // The list opens clear of the notes card and Route the day, and fits the map's width. This click runs before
+  // Leaflet's own (registered first), so the sizes are the map's as it is now.
+  const room = () => Object.assign(popupFits(MAP.getSize().x), {
+    autoPanPaddingTopLeft: L.point(10, cardPad() + 10),
+    autoPanPaddingBottomRight: L.point(10, hudPad() + 10),
+    maxHeight: Math.max(120, MAP.getSize().y - cardPad() - hudPad() - 60),
+  });
+  const pop = L.popup(room());
+  pop.setContent(groupNode(g));
+  m.on('click', () => Object.assign(pop.options, room()));
+  m.bindPopup(pop);
+  return m;
+}
+function forestColor() {
+  return getComputedStyle(document.documentElement).getPropertyValue('--forest').trim() || '#1B4D3E';
+}
+function clearToday() {
+  TODAY.d = null;
+  if (TODAY.layer) TODAY.layer.clearLayers();
+  GAPS.today = [];
+  setPanLimit([]);
+  drawFacts();
+  drawLegend();
+  offView();
+}
+// The line and the pins at this zoom (pins that would overlap share a marker — redrawn on every zoom).
+function drawPins() {
+  if (!MAP || !TODAY.layer) return;
+  TODAY.layer.clearLayers();
+  const d = TODAY.d;
+  if (!d) return;
+  const line = routeLine(d.stops);
+  if (line.length) TODAY.layer.addLayer(L.polyline(line, { color: forestColor(), weight: 3, opacity: 0.85, dashArray: '6 8', interactive: false }));
+  const toPx = (g) => MAP.latLngToLayerPoint([g.lat, g.lon]);
+  for (const g of screenGroups(mapGroups(d.stops), toPx, PIN_GAP)) TODAY.layer.addLayer(groupMarker(g));
+}
+function drawToday(d) {
+  TODAY.d = d;
+  GAPS.today = todayLines(d).map((g) => ({ cls: g.cls, text: g.text, retry: g.retry ? readToday : null }));
+  drawPins();
+  setPanLimit(d.stops);
+  drawStatus();
+  drawFacts();
+  drawLegend();
+  offView();
+}
+async function readToday() {
+  const seq = ++TODAY.seq;
+  let d;
+  try {
+    d = await mapGet('/api/map/today');
+    if (!Array.isArray(d.stops) || !Array.isArray(d.notOnMap) || !d.counts) throw Object.assign(new Error('shape'), { why: 'unread' });
+  } catch (e) {
+    if (seq !== TODAY.seq || !ON.today) return;
+    clearToday();
+    if (!keyGap(e)) GAPS.today = [{ cls: 'unread', text: MAP_SAYS.todayFailed, retry: readToday }];
+    drawStatus();
+    return;
+  }
+  if (seq !== TODAY.seq || !ON.today) return;
+  GAPS.key = [];
+  // The minute's re-read of an unchanged day draws nothing new: an open stop list stays open.
+  if (TODAY.d && JSON.stringify(TODAY.d) === JSON.stringify(d)) { drawStatus(); return; }
+  drawToday(d);
+}
+FACTS.today = () => {
+  const d = TODAY.d;
+  if (!d) return [];
+  const out = [];
+  const c = countsLine(d);
+  if (c) {
+    // The counts, with the key beside them; a tap on the counts lists the stops not on the map, each with why.
+    const row = el('div', 'counts');
+    if (d.notOnMap.length) {
+      const b = el('button', 'factbtn', c);
+      b.type = 'button';
+      b.setAttribute('aria-expanded', TODAY.open ? 'true' : 'false');
+      b.addEventListener('click', () => { TODAY.open = !TODAY.open; drawFacts(); });
+      row.appendChild(b);
+    } else row.appendChild(el('div', 'muted', c));
+    if (keyRows().length) row.appendChild(keyButton());
+    out.push(row);
+    if (TODAY.open && d.notOnMap.length) {
+      const ul = el('ul', 'missing');
+      for (const m of d.notOnMap) ul.appendChild(el('li', '', (m.title || MAP_SAYS.noTitle) + ' — ' + m.why));
+      out.push(ul);
+    }
+  }
+  for (const f of todayFacts(d)) out.push(el('div', 'muted', f));
+  return out;
+};
+KEYS.today = () => {
+  const d = TODAY.d;
+  if (!d) return [];
+  const out = [];
+  const plan = planNote(d);
+  if (plan) out.push(el('div', 'muted', plan));
+  // What the pins and the line mean — only what is drawn.
+  if (!d.stops.length) return out;
+  for (const k of legendPins(d.stops)) {
+    const row = el('div', 'key');
+    row.appendChild(pinNode(k.g));
+    row.appendChild(el('span', '', k.text));
+    out.push(row);
+  }
+  if (routeLine(d.stops).length) out.push(el('div', 'muted', MAP_SAYS.orderOnly));
+  out.push(el('div', 'muted', MAP_SAYS.ends));
+  return out;
+};
+// Route the whole day rides on the map, above the attribution.
+HUDS.today = () => {
+  const d = TODAY.d;
+  if (!d || !d.canRoute) return [];
+  const b = el('button', 'hud', MAP_SAYS.routeDay);
+  b.type = 'button';
+  b.addEventListener('click', () => toShell({ type: 'day' }));
+  return [b];
+};
+LAYER_READ.today = readToday;
+LAYER_CLEAR.today = clearToday;
+
+// While another screen shows, the shell's Map view loses its 'active' class (the frame keeps its size and
+// gets no event of its own). Same origin, so the frame watches that class: when Map comes back, its layers read again.
+function watchShown() {
+  let view = null;
+  try { view = window.frameElement ? window.frameElement.closest('.view') : null; } catch (e) { view = null; }
+  if (!view) return;
+  let shown = view.classList.contains('active');
+  new MutationObserver(() => {
+    const now = view.classList.contains('active');
+    if (now && !shown) { dropStaleDay(); readAll(); }
+    shown = now;
+  }).observe(view, { attributes: true, attributeFilter: ['class'] });
+}
+
+function boot() {
+  applyNight();
+  drawChips();
+  window.addEventListener('message', onShellMessage);
+  watchShown();
+  window.addEventListener('storage', (e) => { if (e.key === 'arboTheme') applyNight(); });
+  if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyNight);
+  window.addEventListener('online', () => { retryTiles(); readAll(); });
+  window.addEventListener('offline', tilesState);
+  if (shellKey() === null) keyGap({ why: 'outsideShell' });
+  if (typeof L === 'undefined') {
+    GAPS.code = [{ cls: 'unread', text: MAP_SAYS.codeFailed, retry: () => location.reload() }];
+    drawStatus();
+  } else {
+    // Zoom buttons bottom-left: a popup listing a ZIP area's stops opens upward and must not sit under them.
+    MAP = L.map('map', { attributionControl: false, zoomControl: false, zoomSnap: 0.25, minZoom: 8, maxZoom: 18, maxBoundsViscosity: 1 });
+    L.control.zoom({ position: 'bottomleft' }).addTo(MAP);
+    for (const t of ['pointerdown', 'touchstart', 'wheel']) $('map').addEventListener(t, () => { KEEP_VIEW = false; }, { passive: true, capture: true });
+    MAP.on('zoomend', drawPins);
+    MAP.on('moveend', offView);
+    MAP.on('popupopen', () => { POP_OPEN = true; offView(); });
+    MAP.on('popupclose', () => { POP_OPEN = false; offView(); });
+    MAP.on('resize', () => { if (KEEP_VIEW) openView(); offView(); });
+    openView();
+    setPanLimit([]);
+    // The card and Route the day change size as lines come and go: the opening view keeps every city clear of them.
+    if (window.ResizeObserver) {
+      const ro = new ResizeObserver(() => { if (KEEP_VIEW) openView(); offView(); });
+      ro.observe($('card'));
+      ro.observe($('hud'));
+    }
+    $('offview').addEventListener('click', showAll);
+    TILES = L.tileLayer(OSM_TILES, { minZoom: 8, maxZoom: 18 });
+    TILES.on('tileerror', () => { TILE.errors++; tilesState(); });
+    TILES.on('tileload', () => { TILE.loaded++; tilesState(); });
+    TILES.addTo(MAP);
+    TODAY.layer = L.layerGroup().addTo(MAP);
+    tilesState();
+  }
+  toShell({ type: 'ready' });
+  readAll();
+}
+boot();
+</script>
+</body>
+</html>

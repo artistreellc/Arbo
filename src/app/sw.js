@@ -39,6 +39,28 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(caches.match(req).then((hit) => hit || fetch(req)));
     return;
   }
+  // Maps wave A (M0): the map's own code, Leaflet, cache first — kept on first use, never in
+  // PRECACHE (addAll fails whole if one file fails, and /crew phones share this worker).
+  // OpenStreetMap's tiles and DEQ's images are another origin: they pass straight through above.
+  if (url.pathname === '/map/leaflet.js' || url.pathname === '/map/leaflet.css') {
+    event.respondWith(caches.match(req).then((hit) => hit || fetch(req).then((res) => {
+      if (res.ok) { const copy = res.clone(); caches.open(SHELL).then((c) => c.put(req, copy)); }
+      return res;
+    })));
+    return;
+  }
+  // The map page: network first, like the app pages; the copy kept when used opens it with no signal.
+  if (url.pathname === '/map') {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res.ok) { const copy = res.clone(); caches.open(SHELL).then((c) => c.put('/map', copy)); }
+          return res;
+        })
+        .catch(() => caches.match('/map').then((hit) => hit || Response.error())),
+    );
+    return;
+  }
   // The two app pages: network first so a deploy shows at once; the cached
   // copy only when there is no signal.
   if (url.pathname === '/app' || url.pathname === '/crew' || url.pathname === '/crew/') {

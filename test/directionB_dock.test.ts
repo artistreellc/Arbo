@@ -69,6 +69,7 @@ describe('the dock flips once: Today · Leads · Calendar · Estimate · Office 
       cal: 'cal',
       estimate: 'estimate', book: 'estimate', permits: 'estimate', measure: 'estimate',
       more: 'more', followups: 'more', money: 'more', fleet: 'more', safety: 'more', perf: 'more', agents: 'more', learn: 'more', assistant: 'more',
+      map: 'cal', // Maps wave A (D106): until a layer says otherwise; openMap moves it with MAP_HOME (test/mapShell.test.ts)
     });
     const visible = BUTTONS.filter((b) => !b.hidden).map((b) => b.id);
     for (const t of new Set(Object.values(DOCK_OF))) expect(visible, t).toContain('tab-' + t);

@@ -186,10 +186,11 @@ import { planRouteBest, ROUTE_MAX_STOPS, type BestPlanDeps } from './ops/routePl
 import { fetchDriveMinutesMatrix } from './integrations/googleRoutes.js';
 import { createTomTomClient } from './integrations/tomtom.js';
 import { createTodayStops } from './ops/todayStops.js';
+import { buildMapToday } from './ops/mapToday.js';
 import { etInstant, etRfc3339 } from './lib/etDay.js';
 import { withinWorkingHours } from './ops/locationIntel.js';
 import type { Alerter } from './reception/receptionist.js';
-import { loadAppHtml, loadCrewHtml, loadTalkHtml, loadTalkWidgetJs } from './server/appPage.js';
+import { loadAppHtml, loadCrewHtml, loadLeafletFile, loadMapHtml, loadTalkHtml, loadTalkWidgetJs } from './server/appPage.js';
 import { emitSafe } from './binder/eventBus.js';
 import { runAgentSweep, startAgentScheduler } from './agents/sweep.js';
 import {
@@ -605,6 +606,11 @@ const consoleAlerter: Alerter = {
   },
 };
 
+// Maps wave A (M0, docs/MAPS_PLAN.md): the Map page's CSP — the browser holds the same
+// host list test/mapPage.test.ts scans for. Images from Arbo, OpenStreetMap's tiles and
+// DEQ's RPA layer; data only from Arbo; framed only by Arbo's own shell.
+const MAP_CSP = "default-src 'self'; img-src 'self' data: blob: https://tile.openstreetmap.org https://gisdata.deq.virginia.gov; connect-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-ancestors 'self'";
+
 /**
  * The one request handler, used by node:http on Railway and locally.
  *
@@ -914,6 +920,21 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
       if (req.method === 'GET' && url.pathname === '/app') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
         return res.end(loadAppHtml());
+      }
+      // Maps wave A (M0): the Map page the shell frames — open like /app, carrying no data
+      // (it reads /api with the shell's key). No referrer-policy on purpose: OpenStreetMap's
+      // tile policy asks for an accurate Referer.
+      if (req.method === 'GET' && url.pathname === '/map') {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'content-security-policy': MAP_CSP });
+        return res.end(loadMapHtml());
+      }
+      // Leaflet from Arbo's own node_modules — exactly two files. Anything else under /map/ is a 404.
+      if (url.pathname.startsWith('/map/')) {
+        const name = url.pathname.slice('/map/'.length);
+        const text = req.method === 'GET' ? loadLeafletFile(name) : null;
+        if (text === null) return send(404, { error: 'not_found' });
+        res.writeHead(200, { 'content-type': name.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8', 'cache-control': 'public, max-age=86400' });
+        return res.end(text);
       }
       // §9 / iOS: both doors install to the iPhone home screen and open
       // full-screen. Two manifests because they are two different apps — Mike
@@ -1816,6 +1837,14 @@ export function createArborRequestHandler(opts: { assistant?: Assistant; quoMedi
       // memory), planned by TomTom / Google / ZIP, for the Calendar tab.
       if (req.method === 'GET' && url.pathname === '/api/route/today') {
         return send(200, await todayStops.read());
+      }
+      // Maps wave A (M1): today's stops placed for the map — the same calendar read and plan
+      // memory as Calendar's (readRows). Exact pins only from TomTom's day memory (peek): the map
+      // asks TomTom nothing and sends no address anywhere new. Owner key only (the door above
+      // refuses the crew key); locked with no APP_ACCESS_KEY, like every route that holds places.
+      if (req.method === 'GET' && url.pathname === '/api/map/today') {
+        if (!env.appAccessKey) return send(401, { error: 'no_app_key', message: 'APP_ACCESS_KEY is not set — the map is locked until it is.' });
+        return send(200, buildMapToday(await todayStops.readRows(), { peek: (q) => (tomtomClient ? tomtomClient.peek(q) : undefined) }));
       }
       // R16: the route planner. R35: TomTom first when its key is set, then
       // live traffic via Google when a Maps key is configured, then ZIP

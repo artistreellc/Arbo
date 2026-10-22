@@ -267,7 +267,7 @@ describe('Leads: a spam Undo holds the minute timer for about 2 minutes, not for
     const ran: string[] = [];
     const TIMED = { today: () => ran.push('today'), leads: () => ran.push('leads') };
     const views: Record<string, unknown> = { 'view-today': el('div'), 'view-leads': s.v, keywall: el('div') };
-    const tick = pageFn<() => void>('autoRefresh', { document: { hidden: false }, $: (id: string) => views[id], TIMED, holdsTyping, renderLeadsHead: () => {} /* P16: the Leads head, its own tests */ });
+    const tick = pageFn<() => void>('autoRefresh', { document: { hidden: false }, $: (id: string) => views[id], TIMED, holdsTyping, renderLeadsHead: () => {} /* P16: the Leads head, its own tests */, mapTick: () => {} /* Maps review: the map's tick, mapShell's own tests */ });
     vi.setSystemTime(t0 + 60000);
     tick();
     expect(ran).toEqual(['today']); // a minute in: the Undo is still on offer

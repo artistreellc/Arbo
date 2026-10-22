@@ -1,6 +1,8 @@
 # Arbo maps: build plan
 
-**Status:** plan only, not built yet. Drafted read-only on 2026-10-21 against main e4a6415, then revised once against a 25-point critique. All 25 points were taken. At e4a6415:
+**Status (2026-10-21):** M0 and M1 built (D106, branch `maps-a`, commits 6938c2c and 6f4a5ce; draft ruling R37), then reviewed and fixed on the same branch (D106's review round: 45a3fa4, adead5d, df4f3b2; its verification round: f081d18, 5c1029a) — not deployed (Railway unreachable from the build). The ZIP table ships empty (the Census host was refused from the build machine), so ZIP-area pins wait on it; layer 33's limits are not read yet (M2 waits on them). M2, M3 and M4 are not built. Where the review moved the plan, the lines below say so ("review, D106").
+
+**Status when drafted:** plan only, not built yet. Drafted read-only on 2026-10-21 against main e4a6415, then revised once against a 25-point critique. All 25 points were taken. At e4a6415:
 - Direction B was complete.
 - R35 TomTom was built, with Today's stops above the Calendar frame.
 - R31 Bouncie was dormant, with the owner-only MAP HOOK.
@@ -130,6 +132,8 @@ These are `SLOW::ARBO` files. Read every line of one before editing it.
 | `src/integrations/tomtom.ts` | a read-only `peek(query)` |
 | `src/ops/routePlanner.ts` | `export` on `addressOf`, nothing else |
 | `src/permitting/gis/layers.ts` | export the DEQ MapServer base; record layer 33's scale and image limits |
+| `src/app/sw.js` | `/map` network-first, the two Leaflet files cache-first; `PRECACHE` and `neverCache` unchanged (named in M0; added to this table when M0 was built, D106) |
+| `package.json`, `package-lock.json` | `leaflet` 1.9.4 in `dependencies`, exact; the lockfile written by npm (added with M0, D106) |
 
 Not edited:
 - `api.ts`, `locationIntel.ts`, `simSource.ts`, `address.ts` and `bouncie.ts`.
@@ -227,15 +231,15 @@ New files: `src/app/map.html`, `src/ops/mapToday.ts`, `src/lib/zipCentroids.ts`,
   default-src 'self'; img-src 'self' data: blob: https://tile.openstreetmap.org https://gisdata.deq.virginia.gov; connect-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-ancestors 'self'
   ```
 
-**`src/app/map.html`** (under 30 KB including the ZIP table):
+**`src/app/map.html`** (under 30 KB including the ZIP table — review, D106: 40 KB as source after the review's fixes; the inlined sprite, about 12 KB, is unused by the page):
 - **View and zoom:**
-  - It opens on the four-city view, at zoom 10–18.
+  - It opens on the four-city view, at zoom 10–18. (Review, D106: zoom 10 cut Virginia Beach off a phone; the floor is now whatever fits the four cities into the map's clear part on that phone, 8 at the least, never above 10.)
   - Panning is limited to the four cities plus every placed pin, padded, so no placed pin is ever out of reach.
 - **Chips:** Today · Permit areas · Leads & jobs · Trucks, each 44 px.
   - The choice is remembered on this phone in `arboMapLayers`, inside try/catch.
   - The default is Today.
   - A layer Mike turned off shows only as an unlit chip.
-- **Status list** under the chips (R29 #1's feeds card):
+- **Status list** under the chips (R29 #1's feeds card) — review, D106: in a notes card over the top of the map, so the whole map, its attribution and its zoom buttons are on the first screen and the page never scrolls:
   - one line for each layer that is **cut or couldn't be read**, never for one Mike switched off;
   - each line has its own ↻, which re-reads that layer;
   - a legend follows.
@@ -251,14 +255,14 @@ New files: `src/app/map.html`, `src/ops/mapToday.ts`, `src/lib/zipCentroids.ts`,
   - Every sentence lives in one `MAP_SAYS` table, ready for Spanish later (R27).
 - **Messages:**
   - The frame accepts only messages where `e.origin === location.origin` and `e.source === parent`.
-  - Types in: `layer` (one of the four names) and `refresh`.
+  - Types in: `layer` (one of the four names) and `refresh` (review, D106: and `tick`, the shell's minute).
   - On load it posts `ready`.
 - **Timing:**
-  - Only Trucks has a minute tick. It pauses when the page is hidden or its view isn't active (`frameElement.closest('.view.active')`).
+  - Only Trucks has a minute tick. It pauses when the page is hidden or its view isn't active (`frameElement.closest('.view.active')`). (Review, D106: Today also re-reads on the shell's minute — the same minute Calendar's Today's stops reads, sharing one server build — sent as a `tick` message; a map left open overnight showed yesterday as today.)
   - Today, Leads and Permit areas re-read on open, on ↻ and when the view comes back.
 - **What it keeps:** only the fields it draws. A lead is reduced to id, name, ZIP, city, age, `older`, emergency and status as soon as it arrives. Phone numbers and details are dropped and never shown.
 
-**`src/app/index.html`** (grows by under 4 KB):
+**`src/app/index.html`** (grows by under 4 KB — review, D106: 4.5 KB after the review's fixes):
 - **New view:**
   - `<div id="view-map" class="view">`;
   - `VIEW_TITLES.map = 'Map'`, `NAV_DRAW.map = renderMap`.
@@ -539,7 +543,7 @@ New files: `src/app/map.html`, `src/ops/mapToday.ts`, `src/lib/zipCentroids.ts`,
   - Route tiles to a fixture PNG, and block them once.
   - Check:
     - `scrollWidth ≤ 390` on the shell and inside the frame;
-    - the map is at least 560 px tall;
+    - the map is at least 560 px tall (review, D106: all of it on the first screen, the frame above the dock);
     - one Back leaves Map after a layer change;
     - ↻ reaches the frame.
   - After a deploy, relaunch the installed app twice.
