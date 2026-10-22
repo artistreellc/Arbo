@@ -1,6 +1,6 @@
 # Arbo maps: build plan
 
-**Status (2026-10-21):** M0 and M1 built (D106, branch `maps-a`, commits 6938c2c and 6f4a5ce; draft ruling R37), then reviewed and fixed on the same branch (D106's review round: 45a3fa4, adead5d, df4f3b2) — not deployed (Railway unreachable from the build). The ZIP table ships empty (the Census host was refused from the build machine), so ZIP-area pins wait on it; layer 33's limits are not read yet (M2 waits on them). M2, M3 and M4 are not built. Where the review moved the plan, the lines below say so ("review, D106").
+**Status (2026-10-21):** M0 and M1 built (D106, branch `maps-a`, commits 6938c2c and 6f4a5ce; draft ruling R37), then reviewed and fixed on the same branch (D106's review round: 45a3fa4, adead5d, df4f3b2; its verification round: f081d18, 5c1029a) — not deployed (Railway unreachable from the build). The ZIP table ships empty (the Census host was refused from the build machine), so ZIP-area pins wait on it; layer 33's limits are not read yet (M2 waits on them). M2, M3 and M4 are not built. Where the review moved the plan, the lines below say so ("review, D106").
 
 **Status when drafted:** plan only, not built yet. Drafted read-only on 2026-10-21 against main e4a6415, then revised once against a 25-point critique. All 25 points were taken. At e4a6415:
 - Direction B was complete.
