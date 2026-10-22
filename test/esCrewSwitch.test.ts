@@ -47,12 +47,16 @@ describe('the header toggle — on every screen, the door-key screen included', 
     // The header is outside <main>, so main.door-locked (the door-key card) never hides it.
     expect(crew).toMatch(/<\/header>\n<main>/);
   });
-  it('is a 44px target, and the header text gives it room', () => {
+  it('is a 44px target that sits OUT of the header’s flow, so the English header keeps its height (review round, UI 2)', () => {
     const rule = /header \.es-toggle\{([^}]*)\}/.exec(css)?.[1] ?? '';
     expect(rule).toMatch(/min-height:44px/);
-    expect(rule).toMatch(/margin-left:auto/);
-    expect(rule).toMatch(/flex:none/);
-    expect(css).toContain('header > div{min-width:0}');
+    expect(rule).toMatch(/position:absolute/);
+    expect(rule).toMatch(/right:16px/);
+    // The pill is drawn 5px inside the 44px target, so it spans the brand line and never the date line.
+    expect(css).toMatch(/header \.es-toggle::before\{[^}]*inset:5px 0/);
+    // Nothing else in the header changes: the date line is not squeezed (it was, at 320px).
+    expect(css).not.toContain('header > div{min-width:0}');
+    expect(rule).not.toMatch(/margin-left:auto|flex:none/);
   });
   it('the crew door handles a change itself (ES.onChange) — the office app’s plain reload is not its rule', () => {
     expect(crew).toContain('ES.onChange = crewLangChange;');
@@ -62,7 +66,10 @@ describe('the header toggle — on every screen, the door-key screen included', 
     const places = new Function(`${src}\nreturn ES_PLACES;`)() as Record<string, string>;
     for (const s of ['header', '#whoami', '#gate-slot', '#quiz', '#work', '#library', '#nearmiss', '.preview-bar']) expect(places[s], s).toMatch(/^crew-[a-z]+$/);
     expect(crew).toContain('esMarkPlaces(ES_PLACES);');
-    expect(css).toMatch(/main > div\[data-es-en\]:not\(:empty\)::before\{content:attr\(data-es-en\)/);
+    // Review round (UI 3): ONE mark for the page, at the top of <main> — never one per panel,
+    // where each sat under the card above it and read as that card's label.
+    expect(css).toMatch(/main\[data-es-en\]::before\{content:attr\(data-es-en\)/);
+    expect(css).not.toMatch(/main > div\[data-es-en\][^{]*::before/);
   });
 });
 
@@ -70,8 +77,8 @@ describe('a change BEFORE sign-off reloads — the gate restarts in the new lang
   const run = async (gate: Record<string, unknown>) => {
     const did: string[] = [];
     const p = lift<{ crewLangChange: (to: string) => Promise<void> }>(['crewLangChange', 'crewRedraw'], {
-      GATE: gate, QUIZ: { sending: false }, location: { reload: () => did.push('reload') },
-      esSwitchInPlace: (to: string) => did.push('inplace:' + to), paintSigned: () => did.push('paint'),
+      GATE: gate, QUIZ: { sending: false }, NM: { sending: false }, location: { reload: () => did.push('reload') },
+      esSwitchInPlace: (to: string) => did.push('inplace:' + to), crewEsMark: () => {}, paintSigned: () => did.push('paint'),
       renderQuiz: () => did.push('quiz'), renderWork: () => did.push('work'), renderLibrary: () => did.push('library'),
       libSearch: () => did.push('lib'), $: () => null,
     });
@@ -88,8 +95,8 @@ describe('a change BEFORE sign-off reloads — the gate restarts in the new lang
     const gate = { unlocked: false, sending: true };
     const did: string[] = [];
     const p = lift<{ crewLangChange: (to: string) => Promise<void> }>(['crewLangChange', 'crewRedraw'], {
-      GATE: gate, QUIZ: { sending: false, done: true, result: null }, location: { reload: () => did.push('reload') },
-      esSwitchInPlace: () => did.push('inplace'), paintSigned: () => did.push('paint'), quizLogged: () => did.push('logged'),
+      GATE: gate, QUIZ: { sending: false, done: true, result: null }, NM: { sending: false }, location: { reload: () => did.push('reload') },
+      esSwitchInPlace: () => did.push('inplace'), crewEsMark: () => {}, paintSigned: () => did.push('paint'), quizLogged: () => did.push('logged'),
       renderQuiz: () => did.push('quiz'), renderWork: Object.assign(() => did.push('work'), { lastDay: null }), renderLibrary: () => did.push('library'),
       libSearch: Object.assign(() => did.push('lib'), { last: null }), $: () => null,
     });
@@ -111,9 +118,9 @@ describe('a change AFTER sign-off redraws in place — no reload, no read, no se
     const day = { workOrders: [], notWorkOrders: 0, contractLookupFailed: false };
     const lib = new N('input'); lib.value = 'rigging a heav';
     const p = lift<{ crewLangChange: (to: string) => Promise<void> }>(['crewLangChange', 'crewRedraw'], {
-      GATE: { unlocked: true, sending: false }, QUIZ: { sending: false, done: false, pool: { items: [] }, context: 'clock_in_gate' },
+      GATE: { unlocked: true, sending: false }, QUIZ: { sending: false, done: false, pool: { items: [] }, context: 'clock_in_gate' }, NM: { sending: false },
       location: { reload: () => did.push('reload') },
-      esSwitchInPlace: (to: string) => did.push('inplace:' + to), paintSigned: () => did.push('paint'), quizLogged: () => did.push('logged'),
+      esSwitchInPlace: (to: string) => did.push('inplace:' + to), crewEsMark: () => {}, paintSigned: () => did.push('paint'), quizLogged: () => did.push('logged'),
       renderQuiz: (ctx: string, kept: boolean) => did.push(`quiz:${ctx}:${kept}`),
       renderWork: Object.assign((kept: unknown) => did.push('work:' + (kept === day)), { lastDay: day }),
       renderLibrary: () => did.push('library'),
@@ -132,8 +139,8 @@ describe('a change AFTER sign-off redraws in place — no reload, no read, no se
     const did: string[] = [];
     const res = { payableMinutes: 2 };
     const p = lift<{ crewLangChange: (to: string) => Promise<void> }>(['crewLangChange', 'crewRedraw'], {
-      GATE: { unlocked: true, sending: false }, QUIZ: { sending: false, done: true, result: res },
-      location: { reload: () => did.push('reload') }, esSwitchInPlace: () => {}, paintSigned: () => {},
+      GATE: { unlocked: true, sending: false }, QUIZ: { sending: false, done: true, result: res }, NM: { sending: false },
+      location: { reload: () => did.push('reload') }, esSwitchInPlace: () => {}, crewEsMark: () => {}, paintSigned: () => {},
       quizLogged: (_v: unknown, r: unknown) => did.push('logged:' + (r === res)), renderQuiz: () => did.push('quiz'),
       renderWork: Object.assign(() => {}, { lastDay: null }), renderLibrary: () => {}, libSearch: Object.assign(() => {}, { last: null }), $: () => new N('div'),
     });
@@ -145,8 +152,8 @@ describe('a change AFTER sign-off redraws in place — no reload, no read, no se
     const did: string[] = [];
     const quiz = { sending: true, done: false, pool: null, context: 'clock_in_gate' };
     const p = lift<{ crewLangChange: (to: string) => Promise<void> }>(['crewLangChange', 'crewRedraw'], {
-      GATE: { unlocked: true, sending: false }, QUIZ: quiz, location: { reload: () => did.push('reload') },
-      esSwitchInPlace: () => did.push('inplace'), paintSigned: () => {}, quizLogged: () => {}, renderQuiz: () => did.push('quiz'),
+      GATE: { unlocked: true, sending: false }, QUIZ: quiz, NM: { sending: false }, location: { reload: () => did.push('reload') },
+      esSwitchInPlace: () => did.push('inplace'), crewEsMark: () => {}, paintSigned: () => {}, quizLogged: () => {}, renderQuiz: () => did.push('quiz'),
       renderWork: Object.assign(() => {}, { lastDay: null }), renderLibrary: () => {}, libSearch: Object.assign(() => {}, { last: null }), $: () => new N('div'),
     });
     const pending = p.crewLangChange('es');
@@ -254,5 +261,160 @@ describe('two quiz draws never stack — the newest owns the panel', () => {
     await first;
     expect(v.all().filter((n) => n.className === 'qprompt')).toHaveLength(1);
     expect(reads).toBe(2);
+  });
+});
+
+// ── Review round (D110) ─────────────────────────────────────────────────────
+
+// Correctness #1: the library kept only its last SUCCESS, so a language change
+// put an older answer under the newer words and the named failure vanished.
+describe('review round — the library redraws exactly what it last had, a failure included', () => {
+  const libDeps = (api: () => Promise<unknown>) => ({ el, api, CREW_ID: 'x', LINKS_READY: Promise.resolve(), crewWhy: () => 'the office data link is cut on purpose', doorKeyChanged: () => {} });
+  it('a failed lookup is kept as a failure, and a redraw says it again — never the older answer, never a read', async () => {
+    let reads = 0;
+    const ok = { entries: [{ techniqueName: 'SIM Rigging a heavy limb', howTo: 'SIM how', pros: [], cons: [], wontWorkWhen: 'SIM limit', standardRefs: [] }] };
+    const { libSearch } = lift<{ libSearch: ((q: string, o: N, b: N, kept?: unknown, keptErr?: unknown) => Promise<void>) & { last?: { q: string; res?: unknown; err?: unknown } } }>(['libSearch', 'libEntry'], libDeps(async () => {
+      reads += 1;
+      if (reads === 1) return ok;
+      throw Object.assign(new Error('link_cut'), { code: 503 });
+    }));
+    await libSearch('rigging a heavy limb', new N('div'), new N('button'));
+    const out = new N('div');
+    await libSearch('felling a dead pine', out, new N('button'));
+    expect(out.text()).toMatch(/Library: the office data link is cut on purpose/);
+    expect(libSearch.last!.q).toBe('felling a dead pine');
+    expect(libSearch.last!.res).toBeUndefined();
+    expect(libSearch.last!.err).toBeTruthy();
+    const again = new N('div');
+    await libSearch(libSearch.last!.q, again, new N('button'), libSearch.last!.res, libSearch.last!.err);
+    expect(again.text()).toBe(out.text());
+    expect(again.text()).not.toContain('SIM Rigging');
+    expect(reads).toBe(2);
+  });
+  it('crewRedraw hands the kept failure back with its own words', async () => {
+    const did: string[] = [];
+    const err = Object.assign(new Error('link_cut'), { code: 503 });
+    const p = lift<{ crewLangChange: (to: string) => Promise<void> }>(['crewLangChange', 'crewRedraw'], {
+      GATE: { unlocked: true, sending: false }, QUIZ: { sending: false, done: true, result: null }, NM: { sending: false },
+      location: { reload: () => did.push('reload') }, esSwitchInPlace: () => {}, crewEsMark: () => {}, paintSigned: () => {}, quizLogged: () => {}, renderQuiz: () => {},
+      renderWork: Object.assign(() => {}, { lastDay: null }), renderLibrary: () => {},
+      libSearch: Object.assign((q: string, _o: unknown, _b: unknown, kept: unknown, keptErr: unknown) => did.push(`lib:${q}:${kept === undefined}:${keptErr === err}`), { last: { q: 'felling a dead pine', err } }),
+      $: () => new N('input'),
+    });
+    await p.crewLangChange('es');
+    expect(did).toEqual(['lib:felling a dead pine:true:true']);
+  });
+  it('a lookup still on its way is waited for, so its answer is what the redraw shows', async () => {
+    const did: string[] = [];
+    const libSearch = Object.assign(() => did.push('lib'), { last: null as unknown, pending: 1 });
+    const p = lift<{ crewLangChange: (to: string) => Promise<void> }>(['crewLangChange', 'crewRedraw'], {
+      GATE: { unlocked: true, sending: false }, QUIZ: { sending: false, done: true, result: null }, NM: { sending: false },
+      location: { reload: () => did.push('reload') }, esSwitchInPlace: () => did.push('inplace'), crewEsMark: () => {}, paintSigned: () => {}, quizLogged: () => {}, renderQuiz: () => {},
+      renderWork: Object.assign(() => {}, { lastDay: null }), renderLibrary: () => {}, libSearch, $: () => new N('input'),
+    });
+    const pending = p.crewLangChange('es');
+    await tick(150);
+    expect(did).toEqual([]);
+    libSearch.pending = 0;
+    libSearch.last = { q: 'felling', res: { entries: [] } };
+    await pending;
+    expect(did).toEqual(['inplace', 'lib']);
+  });
+  it('a lookup marks itself while it is out, and unmarks on an answer or a failure', () => {
+    const src = fnSrc('libSearch');
+    expect(src).toMatch(/libSearch\.pending = \(libSearch\.pending \|\| 0\) \+ 1;/);
+    expect((src.match(/libSearch\.pending -= 1;/g) ?? []).length).toBe(2);
+    expect(src).toContain('libSearch.last = { q, err: e };');
+  });
+});
+
+// Correctness #4: before sign-off a change reloads — and reloaded straight over
+// a near-miss report: the typed words were lost, and a report just sent lost
+// its "Filed", so the crew could not tell whether it went in.
+describe('review round — a change before sign-off never reloads over a near-miss report', () => {
+  const run = async (o: { typed?: string; nm?: { sending: boolean }; release?: (nm: { sending: boolean }, box: N) => void } = {}) => {
+    const did: string[] = [];
+    const box = new N('textarea'); box.value = o.typed ?? '';
+    const nm = o.nm ?? { sending: false };
+    const p = lift<{ crewLangChange: (to: string) => Promise<void> }>(['crewLangChange', 'crewRedraw'], {
+      GATE: { unlocked: false, sending: false }, QUIZ: { sending: false }, NM: nm, NM_HOLD: { typed: 'TYPED', sent: 'SENT' },
+      location: { reload: () => did.push('reload') }, esSwitchInPlace: () => did.push('inplace'), crewEsMark: () => {},
+      crewLangHold: (line: string) => did.push('hold:' + line), libSearch: Object.assign(() => {}, { pending: 0 }),
+      $: (id: string) => (id === 'nm-desc' ? box : null),
+    });
+    const pending = p.crewLangChange('es');
+    if (o.release) { await tick(150); expect(did).toEqual([]); o.release(nm, box); }
+    await pending;
+    return did;
+  };
+  it('typed and not sent: held, with the words kept — no reload', async () => {
+    expect(await run({ typed: 'limb swung toward the truck' })).toEqual(['hold:TYPED']);
+  });
+  it('only spaces typed: nothing to lose, so it reloads', async () => {
+    expect(await run({ typed: '   ' })).toEqual(['reload']);
+  });
+  it('sent and still out: waited for; filed (box cleared) → held so the crew reads "Filed"', async () => {
+    expect(await run({ typed: 'x', nm: { sending: true }, release: (nm, box) => { box.value = ''; nm.sending = false; } })).toEqual(['hold:SENT']);
+  });
+  it('sent and still out: waited for; failed (words still in the box) → held on the words', async () => {
+    expect(await run({ typed: 'x', nm: { sending: true }, release: (nm) => { nm.sending = false; } })).toEqual(['hold:TYPED']);
+  });
+  it('nothing typed, nothing out: the plain reload', async () => {
+    expect(await run()).toEqual(['reload']);
+  });
+  it('the hold puts the stored choice back and says why in both languages, at the report', () => {
+    const src = fnSrc('crewLangHold');
+    expect(src).toContain('esKeepLang();');
+    expect(src).toMatch(/esNotice\(line, 'es-hold'\)/);
+    expect(src).toContain("$('nm-card')");
+    expect(css).toMatch(/\.es-hold/);
+  });
+  it('a near-miss send marks itself while it is out (set before the POST, cleared in finally)', () => {
+    const src = fnSrc('renderNearMiss');
+    expect(src.indexOf('NM.sending = true;')).toBeGreaterThan(0);
+    expect(src.indexOf('NM.sending = true;')).toBeLessThan(src.indexOf("api('/api/crew/near-miss'"));
+    expect(src).toMatch(/finally \{\n\s*NM\.sending = false;/);
+  });
+  it('the hold lines are usted, pass the ban list and every gate, and keep the glossary’s "casi accidente (near miss)"', async () => {
+    const { findBannedEs } = await import('../src/i18n/banList.js');
+    const { esGateProblems } = await import('../src/i18n/gates.js');
+    const m = /^const NM_HOLD = (\{[\s\S]*?^\});$/m.exec(crew);
+    expect(m).not.toBeNull();
+    const lines = new Function(`return ${m![1]};`)() as Record<string, { es: string; en: string }>;
+    for (const [k, l] of Object.entries(lines)) {
+      expect(findBannedEs(l.es), k).toEqual([]);
+      expect(esGateProblems(l.en, l.es), k).toEqual([]);
+      expect(l.es, k).toContain('casi accidente (near miss)');
+    }
+  });
+});
+
+// UI 3: one "en inglés" mark for the page, at the top of <main>, the office app's one per screen.
+describe('review round — one "en inglés" mark for the crew page, not one per panel', () => {
+  const page = () => {
+    const kids = ['whoami', 'gate-slot', 'quiz'].map((id) => { const d = new N('div'); d.id = id; return d; });
+    const main = new N('main');
+    for (const k of kids) main.appendChild(k);
+    Object.assign(main, {
+      removeAttribute: (k: string) => { delete main.attrs[k]; },
+      getAttribute: (k: string) => main.attrs[k] ?? null,
+      querySelector: (sel: string) => (sel === ':scope > [data-es-en]' ? kids.find((k) => 'data-es-en' in k.attrs) ?? null : null),
+    });
+    for (const k of kids) Object.assign(k, { getAttribute: (a: string) => k.attrs[a] ?? null });
+    return { main, kids };
+  };
+  it('the page mark follows the panels: on while any panel is English in Spanish mode, off when none is', () => {
+    const { main, kids } = page();
+    const { crewEsMark } = lift<{ crewEsMark: () => void }>(['crewEsMark'], { document: { querySelector: () => main } });
+    kids[1]!.attrs['data-es-en'] = 'en inglés';
+    crewEsMark();
+    expect(main.attrs['data-es-en']).toBe('en inglés');
+    delete kids[1]!.attrs['data-es-en'];
+    crewEsMark();
+    expect(main.attrs['data-es-en']).toBeUndefined();
+  });
+  it('is set at boot and again after an in-place change', () => {
+    expect(crew.indexOf('crewEsMark();', crew.indexOf('esMarkPlaces(ES_PLACES);'))).toBeGreaterThan(0);
+    expect(fnSrc('crewLangChange')).toMatch(/esSwitchInPlace\(to\);\n\s*crewEsMark\(\);/);
   });
 });

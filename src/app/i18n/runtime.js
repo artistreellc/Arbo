@@ -267,6 +267,14 @@ function esChange(to, anchor) {
   else location.reload();
 }
 
+/**
+ * A page held a change (the crew door, before sign-off, over a near-miss report): the stored choice
+ * goes back to the language on screen, so a later reload does not switch behind the reader's back.
+ */
+function esKeepLang() {
+  try { localStorage.setItem(ES.key, ES.wanted); } catch { /* storage refused: nothing was kept to undo */ }
+}
+
 /** Switch in place, without a reload (the crew door after sign-off). The page redraws its own panels. */
 function esSwitchInPlace(to) {
   ES.wanted = to === 'es' ? 'es' : 'en';

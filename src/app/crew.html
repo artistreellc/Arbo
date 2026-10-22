@@ -275,15 +275,21 @@ body.preview{padding-bottom:calc(132px + env(safe-area-inset-bottom))}
 
 /* R27 (D110): the language toggle in the header, and the Spanish marks. In English nothing below
    draws but the toggle; the marks, the pair and the notices exist only in Spanish mode, or for a
-   Spanish reader whose dictionary failed. */
-header > div{min-width:0}
-header .es-toggle{margin-left:auto;flex:none;min-height:44px;min-width:44px;padding:0 14px;border:1px solid var(--border);border-radius:999px;
-  background:var(--surface);color:var(--ink);font-size:15px;font-weight:800;cursor:pointer}
-main > div[data-es-en]:not(:empty)::before{content:attr(data-es-en);display:inline-block;margin:0 0 8px;padding:2px 8px;
+   Spanish reader whose dictionary failed.
+   Review round (D110, UI 2): the toggle sits OUT of the header's flow, top right, so the English
+   header keeps its height — in the flow it squeezed the date line onto a second line at 320px.
+   The 44px target is the button; the pill is drawn 5px inside it, level with the brand line,
+   so it never covers the date line beneath. */
+header .es-toggle{position:absolute;right:16px;top:calc(9px + env(safe-area-inset-top));min-height:44px;min-width:44px;padding:0 14px;
+  border:0;background:none;isolation:isolate;color:var(--ink);font-size:15px;font-weight:800;cursor:pointer}
+header .es-toggle::before{content:'';position:absolute;inset:5px 0;z-index:-1;border:1px solid var(--border);border-radius:999px;background:var(--surface)}
+/* Review round (D110, UI 3): one "en inglés" mark for the page, at the top of <main> — the office
+   app's one per screen. A mark per panel sat under the card above it and read as that card's label. */
+main[data-es-en]::before{content:attr(data-es-en);display:inline-block;margin:0 0 8px;padding:2px 8px;
   border:1px solid var(--border);border-radius:999px;font-size:12px;font-weight:700;color:var(--muted)}
-.es-broken,.es-storage{border-left:3px solid var(--warning);background:#2A1D06;color:#FFD9A0;border-radius:var(--r-md);
+.es-broken,.es-storage,.es-hold{border-left:3px solid var(--warning);background:#2A1D06;color:#FFD9A0;border-radius:var(--r-md);
   padding:10px 12px;margin-bottom:14px;font-size:15px;font-weight:700;line-height:1.4}
-.es-broken div+div,.es-storage div+div{margin-top:4px;font-weight:600}
+.es-broken div+div,.es-storage div+div,.es-hold div+div{margin-top:4px;font-weight:600}
 .es-en-mark{display:inline-block;margin-left:6px;padding:1px 6px;border:1px solid var(--border);border-radius:999px;font-size:12px;font-weight:700;color:var(--muted);vertical-align:middle}
 .es-pair-es{display:block}
 .es-pair-en{display:block;margin-top:2px;font-size:13px;font-weight:600;opacity:.85}
@@ -1143,25 +1149,33 @@ function renderLibrary() {
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') run(); });
 }
 
-async function libSearch(q, out, btn, kept) {
+async function libSearch(q, out, btn, kept, keptErr) {
   out.replaceChildren();
   btn.disabled = true;
   let res;
+  // R27 review round (D110): a lookup on its way is counted, so a language change waits for its answer.
+  const live = !kept && !keptErr;
+  if (live) libSearch.pending = (libSearch.pending || 0) + 1;
   try {
-    // R27 (D110): a language change redraws the last answer this phone read (kept) — no new lookup.
+    // R27 (D110): a language change redraws exactly what this phone last had, with no new lookup —
+    // the answer (kept) or, review round, the failure (keptErr): never an older answer under newer words.
+    if (keptErr) throw keptErr;
     res = kept || await api('/api/crew/reference?q=' + encodeURIComponent(q)
       + '&crewMemberId=' + encodeURIComponent(CREW_ID));
   } catch (e) {
+    libSearch.last = { q, err: e }; // R27 review round (D110): a failure is what crewRedraw redraws too
     // §1B: a library Arbo could not read is not an empty library. Say which
     // one this is, so nobody concludes there is no guidance on file.
     await LINKS_READY;
     out.appendChild(el('div', 'lib-warn', 'Library: ' + crewWhy(e) + '. That is NOT "nothing on file" — ask the office.'));
     btn.disabled = false;
+    if (live) libSearch.pending -= 1;
     if (e.code === 401) doorKeyChanged(e); // review round (D109): somewhere to put the new key
     return;
   }
   btn.disabled = false;
   libSearch.last = { q, res }; // R27 (D110): what crewRedraw redraws
+  if (live) libSearch.pending -= 1;
   const entries = res.entries || [];
 
   // Everything Arbo could not do goes ABOVE the answers, never underneath.
@@ -1246,6 +1260,10 @@ function libEntry(e) {
   return c;
 }
 
+// R27 review round (D110): a near-miss report on its way is marked, so a language change before
+// sign-off waits for its answer and never reloads over it (crewLangChange).
+const NM = { sending: false };
+
 // ---- Near-miss filing (§6V). Deliberately OUTSIDE the briefing gate: a
 // near miss must be reportable at any moment, including before the day has
 // started. Nothing here records blame, because nothing anywhere in Arbo does.
@@ -1304,6 +1322,7 @@ function renderNearMiss() {
       return;
     }
     btn.disabled = true;
+    NM.sending = true;
     try {
       const res = await api('/api/crew/near-miss', {
         method: 'POST',
@@ -1329,6 +1348,7 @@ function renderNearMiss() {
         : 'Did not save — ' + crewWhy(e) + '.') + ' Tell the office directly.';
       if (e.code === 401) doorKeyChanged(e); // review round (D109): somewhere to put the new key
     } finally {
+      NM.sending = false;
       btn.disabled = false;
     }
   });
@@ -1565,11 +1585,53 @@ const ES_PLACES = {
 // reloads: a reload would re-lock the day and could write a second paid sign-off. Then the gate's
 // words, the quiz, the work orders and the library are redrawn in place from what this phone already
 // read. A sign-off or quiz answer still on its way is waited for first — its answer decides.
+// Review round (D110): a library lookup still out is waited for too, so the redraw shows its answer.
+// And before sign-off a change never reloads over a near-miss report: typed words would be lost, and a
+// report just sent would lose its "Filed" (or its failure), so the crew could not tell whether it went
+// in — a report the crew THINKS they filed is worse than one they know failed. The change is held,
+// said in both languages at the report, and the stored choice goes back (crewLangHold).
 async function crewLangChange(to) {
-  while (GATE.sending || QUIZ.sending) await new Promise((r) => setTimeout(r, 100));
-  if (!GATE.unlocked) { location.reload(); return; }
+  const nmWasOut = NM.sending;
+  while (GATE.sending || QUIZ.sending || NM.sending || libSearch.pending > 0) await new Promise((r) => setTimeout(r, 100));
+  if (!GATE.unlocked) {
+    const nm = $('nm-desc');
+    if (nm && nm.value.trim()) { crewLangHold(NM_HOLD.typed); return; }
+    if (nmWasOut) { crewLangHold(NM_HOLD.sent); return; }
+    location.reload();
+    return;
+  }
   esSwitchInPlace(to);
+  crewEsMark();
   crewRedraw();
+}
+// Said in both languages: the reader is mid-switch, so the language they want is not on screen yet.
+const NM_HOLD = {
+  typed: {
+    es: 'Primero envíe su reporte de casi accidente (near miss) o borre lo que escribió. Cambiar de idioma recarga la página, y lo escrito se perdería.',
+    en: 'Send your near-miss report first, or delete what you typed. Changing language reloads the page, and what you typed would be lost.',
+  },
+  sent: {
+    es: 'Su reporte de casi accidente (near miss) ya tiene respuesta: léala abajo. Luego toque el idioma otra vez; la página se recarga.',
+    en: 'Your near-miss report has its answer — read it below. Then tap the language again; the page reloads.',
+  },
+};
+function crewLangHold(line) {
+  esKeepLang();
+  const card = $('nm-card');
+  if (!card) return;
+  const old = card.querySelector('.es-hold');
+  if (old) old.remove();
+  const n = esNotice(line, 'es-hold');
+  card.insertBefore(n, card.firstChild);
+  if (n.scrollIntoView) n.scrollIntoView({ block: 'nearest' });
+}
+// Review round (D110, UI 3): one "en inglés" mark for the page, at the top of <main>, while any panel
+// is still English in Spanish mode — the office app's one per screen. Each panel keeps lang="en".
+function crewEsMark() {
+  const main = document.querySelector('main');
+  const english = main.querySelector(':scope > [data-es-en]');
+  if (english) main.setAttribute('data-es-en', english.getAttribute('data-es-en'));
+  else main.removeAttribute('data-es-en');
 }
 // Redraw in place after sign-off: never a send. The gate's words, the work orders and the library
 // redraw from what this phone already read, typed text and picked answers kept; a list still being
@@ -1585,11 +1647,12 @@ function crewRedraw() {
   renderLibrary();
   const again = $('lib-q');
   if (again) again.value = typed;
-  if (last) libSearch(last.q, $('lib-out'), $('lib-go'), last.res);
+  if (last) libSearch(last.q, $('lib-out'), $('lib-go'), last.res, last.err);
 }
 ES.onChange = crewLangChange;
 document.querySelector('header').appendChild(esToggleButton('es-toggle'));
 esMarkPlaces(ES_PLACES);
+crewEsMark();
 
 // M11 (audit 2026-10-20): the briefing used to be read ONCE. One dead spot
 // at 6:30am locked the crew out until someone force-quit the app, and a phone
