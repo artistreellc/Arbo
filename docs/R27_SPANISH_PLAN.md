@@ -105,9 +105,14 @@ Labels lead with what to do, so a clipped label still shows the obligation:
 | PERMIT: REVIEW NEEDED | PERMISO: HAY QUE REVISAR |
 | NO OVERLAY — VERIFY W/ CITY | VERIFIQUE CON LA CIUDAD — EL MAPA NO MOSTRÓ ZONA PROTEGIDA |
 | PERMIT SCREEN PENDING | CHEQUEO DE PERMISO SIN HACER |
-| HELD (brake/steering) | NO SE MANEJA — FRENOS/DIRECCIÓN |
+| HELD (brake/steering) | NO LO MANEJE NI LO USE — FUERA DE SERVICIO (FRENOS O DIRECCIÓN) |
 | NO AERIAL WORK | NO PUEDE TRABAJAR EN ALTURA |
 | NO EXPIRY DATE | FALTA LA FECHA DE VENCIMIENTO |
+
+HELD's Spanish changed after the table was decided (D112): the plan's "NO SE
+MANEJA — FRENOS/DIRECCIÓN" drifted in the blind review (it can read as a
+description, not an order, and it said less than "out of service"); the words
+above passed a fresh blind pass in D112's held-five round (2026-10-22).
 
 The rest of the safety and legal set gets the same treatment:
 - the chips EMERGENCY, POWER LINES, STRUCTURES, CALL FIRST, TICKET REQUIRED,
