@@ -1,6 +1,6 @@
 # Arbo maps: build plan
 
-**Status (2026-10-22):** M0–M4 built: M0 and M1 in D106 (maps wave A, merged to main as f4c0487; draft ruling R37), M2, M3 and M4 in D108 (maps wave B, branch `maps-b`: the ZIP table 600ab2b, M2 4f8ace1, M3 6398b13, M4 91eb461, self-review fixes d2d98b5). Not deployed (Railway unreachable from the build). The ZIP-area table is filled from the Census 2020 ZCTA points (TIGERweb layer 11, checked 2026-10-22): 39 accepted ZIPs placed, 30 named "no map area". Layer 33's limits are recorded in `layers.ts` (read 2026-10-21: 1:50,000 and closer, 4096 px images). Still waiting on Mike: the questions below (Q6, Q7, Q8, Q11, Q14, Q15 are built as their defaults), and the phone checks after a deploy (live tiles, live DEQ shading, real trucks once Bouncie is connected). Where a review or wave B moved the plan, the lines below say so ("review, D106"; "wave B, D108").
+**Status (2026-10-22):** M0–M4 built: M0 and M1 in D106 (maps wave A, merged to main as f4c0487; draft ruling R37), M2, M3 and M4 in D108 (maps wave B, branch `maps-b`: the ZIP table 600ab2b, M2 4f8ace1, M3 6398b13, M4 91eb461, self-review fixes d2d98b5; review round c9650fa, 22914f7, 7c5562f, 5d73806 — 4 correctness and 9 UI findings, all fixed). Not deployed (Railway unreachable from the build). The ZIP-area table is filled from the Census 2020 ZCTA points (TIGERweb layer 11, checked 2026-10-22): 39 accepted ZIPs placed, 30 named "no map area". Layer 33's limits are recorded in `layers.ts` (read 2026-10-21: 1:50,000 and closer, 4096 px images). Still waiting on Mike: the questions below (Q6, Q7, Q8, Q11, Q14, Q15 are built as their defaults), and the phone checks after a deploy (live tiles, live DEQ shading, real trucks once Bouncie is connected). Where a review or wave B moved the plan, the lines below say so ("review, D106"; "wave B, D108").
 
 **Status when drafted:** plan only, not built yet. Drafted read-only on 2026-10-21 against main e4a6415, then revised once against a 25-point critique. All 25 points were taken. At e4a6415:
 - Direction B was complete.
@@ -231,18 +231,19 @@ New files: `src/app/map.html`, `src/ops/mapToday.ts`, `src/lib/zipCentroids.ts`,
   default-src 'self'; img-src 'self' data: blob: https://tile.openstreetmap.org https://gisdata.deq.virginia.gov; connect-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-ancestors 'self'
   ```
 
-**`src/app/map.html`** (under 30 KB including the ZIP table — review, D106: 40 KB as source after the review's fixes; the inlined sprite, about 12 KB, is unused by the page — wave B, D108: the sprite is no longer inlined; with all four layers the page is 83,769 bytes as source and 85,878 served (about 15 KB of it comments and 8 KB the one `MAP_SAYS` table) — well over the 30 KB budget, still under Leaflet's own 147 KB; for Mike):
+**`src/app/map.html`** (under 30 KB including the ZIP table — review, D106: 40 KB as source after the review's fixes; the inlined sprite, about 12 KB, is unused by the page — wave B, D108: the sprite is no longer inlined; with all four layers the page is 83,769 bytes as source and 85,878 served (about 15 KB of it comments and 8 KB the one `MAP_SAYS` table) — well over the 30 KB budget, still under Leaflet's own 147 KB; for Mike. Review round, D108: 102,501 as source and 104,610 served, after one placement rule for every layer's markers, truck markers that share, the card's cues and the way-in rule):
 - **View and zoom:**
   - It opens on the four-city view, at zoom 10–18. (Review, D106: zoom 10 cut Virginia Beach off a phone; the floor is now whatever fits the four cities into the map's clear part on that phone, 8 at the least, never above 10.)
-  - Panning is limited to the four cities plus every placed pin, padded, so no placed pin is ever out of reach.
+  - Panning is limited to the four cities plus every placed pin, padded, so no placed pin is ever out of reach. (Review, D108: every placed point of every layer — Today's stops, the trucks drawn, today's trips, the leads' ZIP areas; a truck off the view is counted on the off-view button with the stops.)
+  - (Review, D108.) **Nothing hides under anything:** markers are drawn in one order — Today's stops where they are, then trucks, then leads — and a later layer's marker that would touch one already drawn steps aside to the nearest free spot in the clear part of the map, joined to its own point by a dotted line. A lead's ZIP area on a stop's own Census point never covers the stop.
 - **Chips:** Today · Permit areas · Leads & jobs · Trucks, each 44 px.
-  - The choice is remembered on this phone in `arboMapLayers`, inside try/catch.
+  - The choice is remembered on this phone in `arboMapLayers`, inside try/catch. (Review, D108: the chips' choice only — a chip tap saves what is on. A way in (Calendar, Estimate, Leads, Fleet) shows the saved layers plus the one it names, for that arrival only, and saves nothing; a layer on only from an earlier way in goes off. The named layer's lines and facts lead the notes card, and its chip is scrolled into view; the chip row fades at an edge with more chips beyond it.)
   - The default is Today.
   - A layer Mike turned off shows only as an unlit chip.
 - **Status list** under the chips (R29 #1's feeds card) — review, D106: in a notes card over the top of the map, so the whole map, its attribution and its zoom buttons are on the first screen and the page never scrolls:
   - one line for each layer that is **cut or couldn't be read**, never for one Mike switched off;
   - each line has its own ↻, which re-reads that layer;
-  - a legend follows.
+  - a legend follows. (Review, D108: "More ↓" over the card's bottom edge while more of it is below; the Key opens right under its own button, which stays at the card's top, and the card grows while it is open; while a list is open the card and Route the day step aside with the zoom buttons, so a list has the whole map — at 320 the part under the card was shorter than one list.)
 - **The key:**
   - It comes from the shell through a same-origin getter, `parent.arboMapKey()`, and is sent as `x-arbor-key`. That works even when the shell holds the key for the visit only.
   - The frame never reads `arborKey` itself.
@@ -442,7 +443,7 @@ New files: `src/app/map.html`, `src/ops/mapToday.ts`, `src/lib/zipCentroids.ts`,
 - **Production first line:** outside practice mode, the layer opens with `notFed`, word for word, so a quiet map is never read as an empty inbox. Where other leads live comes only from `notFed`'s own wording.
 - **Older leads:** the server's `older` flag decides (`leadAge.ts`, 14 days). An older lead is never counted as new. "N older leads hidden — Show older" is shown **before** any count or empty line (Q6).
 - **Counts:** labelled "open leads" (new, qualified, emergency). When the answer is exactly 50 long, the line says "newest 50 open leads".
-- **Markers:** one round marker per ZIP area, e.g. "23508 · Norfolk · 3 open leads, 1 new". Emergency leads are marked the way Leads marks them.
+- **Markers:** one round marker per ZIP area, e.g. "23508 · Norfolk · 3 open leads, 1 new". Emergency leads are marked the way Leads marks them. (Review, D108: a gold square saying "1 lead" / "3 leads" — never a bare number that reads as a stop; it steps aside from a Today stop or a truck it would cover.)
 - **Taps:** a tap lists names and ages (`textContent`). Tapping a name opens that lead in Leads. Phone numbers and details are never shown.
 - **No new transfers:** no lead address goes anywhere new, and no geocoder is asked.
 - **Where the ZIP comes from:** each lead's ZIP and city come from its property record, embedded in the same answer the Leads tab already shows. The property rows are FLAGGED in `DATA_LINKS.md`, and Mike is told (Q15).
@@ -495,16 +496,18 @@ New files: `src/app/map.html`, `src/ops/mapToday.ts`, `src/lib/zipCentroids.ts`,
   - `stale`: grey, "last fix 3 h ago — may have moved";
   - `unplugged`: grey, "Bouncie unplugged — last known spot";
   - `no_fix` and `after_hours`: listed, not drawn.
+  - (Review, D108.) Each truck's marker is an ink pill carrying its name — never the exact stop's forest; trucks that would touch share one marker ("3 trucks") whose list names each truck with its own Today's trips.
 - **`unreadable`:** the server still sends the trucks it held. They are drawn grey as last-known spots, under the server's message ("Bouncie didn't answer just now").
 - **Not matched to a Fleet unit** (`equipment_unit` has 0 rows): labelled so. When `unitsError` is set, the layer says "Couldn't read the Fleet list (cut on purpose / couldn't be read) — trucks show by VIN".
 - **Dots are dropped:**
   - when a refresh fails or the phone is offline;
-  - when the frame comes back from hidden or paused (cleared until a fresh answer arrives);
+  - when the frame comes back from hidden or paused (cleared until a fresh answer arrives; review, D108: and nothing is read or drawn while Map is off screen — an "online" event had drawn a dot there);
   - outside 8am–8pm Mon–Sat by the ET clock, even before the server's next answer.
 - **Trips:** a truck's card offers **Today's trips**. It draws `/api/fleet/trips?truck=&day=<ET today>`, with at most 2,000 points per path.
   - Every state other than ok uses `TRIPS_SAYS` word for word.
   - A 400 (`bad_day`, `bad_truck`, `bad_window`) shows the server's `message`.
-  - A 404 `unknown_truck` (truck ids change on every restart) re-reads positions once and says "The truck list changed — pick the truck again."
+  - A 404 `unknown_truck` (truck ids change on every restart) re-reads positions once and says "The truck list changed — pick the truck again." (Review, D108: the line lasts through that re-read; the next answer, or one with no dots, takes it down.)
+  - (Review, D108.) A trip whose route Bouncie sent unreadable is named ("Bouncie sent N trips … whose routes couldn't be read — not drawn"), never folded into "0 trips drawn". Drawn trips fit the clear part of the map on Mike's tap, in their own colour (never Today's route green), and widen the pan limit.
 - **Already enforced by the server:** owner-only, and 8am–8pm Mon–Sat.
 - **On the page:** no position is held once an answer is replaced, and none is stored.
 

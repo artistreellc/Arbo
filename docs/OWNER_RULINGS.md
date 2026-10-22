@@ -1456,7 +1456,10 @@ layers; the plan is `docs/MAPS_PLAN.md`):
    (*Trucks on the map*) and the links `/app#map-today`, `#map-permits`,
    `#map-leads`, `#map-trucks`. Four layers Mike switches on and off: Today,
    Permit areas, Leads & jobs, Trucks. Each says in words what it can't draw
-   — never an empty map (§1B).
+   — never an empty map (§1B). A way in shows the layers Mike keeps on with the
+   chips plus its own, whose lines come first; only his chip taps are
+   remembered. Nothing on the map hides under anything: a lead or a truck that
+   would cover a stop steps aside (review, D108).
 2. **Today's stops on the map**, from the same calendar read and plan as
    Calendar's Today's stops (R35): numbered in the planned order, joined by
    straight lines that show order only. An **exact pin** only where TomTom
@@ -1493,7 +1496,7 @@ questions, as built:
   (down to street level), the phone's IP and Arbo's address — never a name,
   an address or a ZIP. The map opens on all four cities (zoomed out as far as
   your phone needs for that) and never zooms to a pin by itself — only your
-  tap on *"show all"* does.
+  tap on *"show all"* or on a truck's *Today's trips* does.
 - **Q2 TomTom map tiles instead:** no — kept as the fallback if OSM refuses.
 - **Q3 Exact pins for stops the planner skips** (before 4 PM, all day,
   ongoing): no — ZIP-area pins; TomTom is not sent those addresses.

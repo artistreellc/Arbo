@@ -98,6 +98,9 @@ on a map (Maps wave A, D106; draft ruling R37).
 - **Stops close together share one pin** (*"1·2"*), drawn between them, only
   when their pins would touch — zoom in and they part; tap it to see each one,
   with how it was placed.
+- **Nothing covers a stop** (review, D108): a lead marker (a gold square,
+  *"3 leads"*) or a truck that would sit on a stop steps aside, a dotted line
+  to its own spot.
 - **Not on the map:** the line *"6 of 8 events on the map · 2 not on the
   map"* — tap it to see which, and why (no address, no ZIP, a PO box ZIP, a
   ZIP outside the four cities).
@@ -130,7 +133,9 @@ the stops TomTom places show as exact pins.
 when you zoom in (Estimate → Permit rules → *RPA areas on the map*);
 **Leads & jobs** — open leads by ZIP area (Leads → *Map*); **Trucks** —
 Bouncie, once connected (Office → Fleet → *Trucks on the map*;
-`docs/BOUNCIE.md`). Each says in words what it can't draw.
+`docs/BOUNCIE.md`). Each says in words what it can't draw. A way in shows
+the layers you keep on with the chips plus its own, its lines first in the
+notes card; only your chip taps are remembered (review, D108).
 
 **Before the TomTom key goes in:** a privacy-page line is drafted in R37 for
 your OK — it now covers the map too.
