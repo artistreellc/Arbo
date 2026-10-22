@@ -294,7 +294,8 @@ describe('Crew door — no flash of the full page on a keyless phone', () => {
     const gate = /^function renderGate\(brief\) \{\n([^\n]*)\n/m.exec(crew)?.[1];
     expect(gate).toBe("  document.querySelector('main').classList.remove('door-locked'); // the door answered: show the panels");
     // The key card itself is unchanged: it still locks the door.
-    expect(region(crew, 'function renderDoorKey(', "box.appendChild(el('h2', '', 'Crew door key'));")).toContain("document.querySelector('main').classList.add('door-locked');");
+    // D111 (pin followed, meaning kept): the card's heading is said through T now.
+    expect(region(crew, 'function renderDoorKey(', "box.appendChild(el('h2', '', T('Crew door key')));")).toContain("document.querySelector('main').classList.add('door-locked');");
   });
 });
 
@@ -375,7 +376,13 @@ describe('Crew door — the gate counts down the server’s number and styles a 
   it('a failed sign-off is an error line with the crew door’s reason and the stop-work order', async () => {
     const g = await run(async () => { throw Object.assign(new Error('db_not_configured'), { code: 503 }); }, 'cut');
     expect(g.serverErr).toBe(true);
-    expect(g.serverMsg).toBe('Your sign-off could not be recorded (the office data link is cut on purpose). Your work orders stay locked — do not start work; call the office to log your briefing.');
+    // D111 (pin moved, meaning kept): the reason and the stop-work order are two sentences — refreshGate
+    // says the order after serverMsg as a safety line (serverOrder). The line the crew reads is unchanged:
+    expect(g.serverMsg).toBe('Your sign-off could not be recorded (the office data link is cut on purpose).');
+    expect(g.serverOrder).toBe(true);
+    const status = { textContent: '', classList: { toggle: () => {} } };
+    pageFn<() => void>(crew, 'refreshGate', { GATE: g, $: (id: string) => (id === 'gate-status' ? status : { disabled: false, className: '' }), secondsOnScreen: () => 99 })();
+    expect(status.textContent).toBe('Your sign-off could not be recorded (the office data link is cut on purpose). Your work orders stay locked — do not start work; call the office to log your briefing.');
     const s = await run(async () => { throw Object.assign(new Error('not_simulated'), { code: 503 }); });
     expect(s.serverMsg).toMatch(/^Your sign-off could not be recorded \(not part of the practice data\)\./);
     const bad = await run(async () => { throw Object.assign(new Error('bad_crew_id'), { code: 400 }); });
@@ -427,7 +434,8 @@ describe('Crew door — one wording for a read that failed', () => {
     expect(boot.length).toBeLessThan(crew.length);
     expect(boot).toContain('await LINKS_READY;');
     expect(boot).toContain("s.appendChild(document.createTextNode(why.charAt(0).toUpperCase() + why.slice(1) + '.'));");
-    expect(boot).toContain("s.appendChild(el('b', 'order', 'Do not start work \\u2014 call the office.'));");
+    // D111 (pin moved, meaning kept): the order is still its own bold line, said through esSay (a safety line).
+    expect(boot).toContain("s.appendChild(esSay(el('b', 'order'), 'Do not start work \\u2014 call the office.'));");
     expect(boot).not.toContain("+ ' Do not start work");
     expect(crew).not.toContain('The office system isn');
     expect(crew).not.toContain('the office system is not connected');
@@ -435,9 +443,10 @@ describe('Crew door — one wording for a read that failed', () => {
   });
 
   it('near miss, sign-off and library say the same reason', () => {
-    expect(crew).toContain("'Did not save — ' + crewWhy(e) + '.'");
-    expect(crew).toContain("'Your sign-off could not be recorded (' + crewWhy(e) + ').'");
-    expect(crew).toContain("'Library: ' + crewWhy(e) + '. That is NOT \"nothing on file\" — ask the office.'");
+    // D111 (pins moved, meaning kept): each is one template now, the same crewWhy reason a value in it.
+    expect(crew).toContain("tf('Did not save — {why}.', { why: crewWhy(e) })");
+    expect(crew).toContain("tf('Your sign-off could not be recorded ({why}).', { why: crewWhy(e) })");
+    expect(crew).toContain("tf('Library: {why}.', { why: crewWhy(e) }) + ' ' + T('That is NOT \"nothing on file\" — ask the office.')");
   });
 });
 
@@ -448,9 +457,8 @@ describe('Crew door — polish', () => {
 
   it('the near-miss intro is short, says "the office" once, and wraps evenly', () => {
     const nm = region(crew, 'function renderNearMiss()', "const ta = el('textarea');");
-    expect(nm).toContain("'Something almost went wrong? Say it here — nobody gets blamed or written up. '");
-    expect(nm).toContain("+ 'It’s filed under your crew code, and the office turns it into a lesson for the next crew. '");
-    expect(nm).toContain("+ 'Leave other people’s names out.'");
+    // D111 (pin moved, meaning kept): the same three sentences, one key so they translate as one paragraph.
+    expect(nm).toContain("T('Something almost went wrong? Say it here — nobody gets blamed or written up. It’s filed under your crew code, and the office turns it into a lesson for the next crew. Leave other people’s names out.')");
     expect(crew).toMatch(/#nm-card \.why\{[^}]*text-wrap:pretty\}/);
     expect(crew).toMatch(/#lib-card \.why\{[^}]*text-wrap:pretty\}/);
   });

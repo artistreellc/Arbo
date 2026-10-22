@@ -626,7 +626,11 @@ describe('C4 review — a 400 sign-off is named for what it is', () => {
       ['bad_request', 'the office couldn’t use what this phone sent'],
     ] as const) {
       const p = await refusedWith(message);
-      expect(p.GATE.serverMsg, message).toBe(`Your sign-off could not be recorded (${reason}). Your work orders stay locked — do not start work; call the office to log your briefing.`);
+      // D111 (pin moved, meaning kept): the reason and the stop-work order are two sentences now — the
+      // order said by refreshGate as a safety line after serverMsg. What the crew reads is unchanged.
+      expect(p.GATE.serverMsg, message).toBe(`Your sign-off could not be recorded (${reason}).`);
+      expect(p.GATE.serverOrder, message).toBe(true);
+      expect(p.find('gate-status')!.textContent, message).toBe(`Your sign-off could not be recorded (${reason}). Your work orders stay locked — do not start work; call the office to log your briefing.`);
       expect(p.GATE.serverHold, message).toBe(true);
       expect(p.find('gobtn')!.className, message).toBe('');
     }

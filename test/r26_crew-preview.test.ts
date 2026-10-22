@@ -68,8 +68,10 @@ describe('R26 crew preview — how the page knows it is a preview, and whose key
   });
 
   it('the banner is fixed on screen, says exactly what Mike approved, and carries the way back', () => {
-    expect(crew).toContain("const PREVIEW_BANNER = 'Preview — this is what the crew sees. Nothing here signs, files or clocks in.';");
-    expect(crew).toContain(`const PREVIEW_WHY = '${WHY}';`);
+    // D111 (pins moved, meaning kept): exactly the words Mike approved, through T (the preview never
+    // changes language in place — a change reloads it — so they are said once, at load).
+    expect(crew).toContain("const PREVIEW_BANNER = T('Preview — this is what the crew sees. Nothing here signs, files or clocks in.');");
+    expect(crew).toContain(`const PREVIEW_WHY = T('${WHY}');`);
     expect(crew).toMatch(/\.preview-bar\{position:fixed;left:0;right:0;bottom:0;/);
     // The page's last item keeps clear of the bar.
     expect(crew).toMatch(/body\.preview\{padding-bottom:calc\(\d+px \+ env\(safe-area-inset-bottom\)\)\}/);
