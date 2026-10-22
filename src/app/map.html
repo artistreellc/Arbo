@@ -1429,7 +1429,8 @@ function leadsNode(parts) {
       b.type = 'button';
       const tags = [l.emergency ? MAP_SAYS.tagEmergency : null, l.older ? MAP_SAYS.tagOlder : null, l.status === 'qualified' ? MAP_SAYS.tagQualified : null].filter(Boolean).join(' · ');
       if (tags) b.appendChild(el('small', l.emergency ? 'alarm' : '', tags));
-      if (/^[A-Za-z0-9_-]{1,64}$/.test(l.id)) b.addEventListener('click', () => toShell({ type: 'lead', id: l.id }));
+      // Leads takes the screen: the list closes first, so Map comes back with its notes card (hidden while a list is open).
+      if (/^[A-Za-z0-9_-]{1,64}$/.test(l.id)) b.addEventListener('click', () => { if (MAP) MAP.closePopup(); toShell({ type: 'lead', id: l.id }); });
       else b.disabled = true;
       box.appendChild(b);
     }
