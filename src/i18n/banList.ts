@@ -117,3 +117,9 @@ export function findBannedEs(text: string): Array<{ id: string; category: EsBanC
 export function hasBannedEs(text: string): boolean {
   return findBannedEs(text).length > 0;
 }
+
+/** The first banned word or phrase in a line, as '"matched" (category)' — null when the line is fine. For a guard's message. */
+export function bannedEsLine(text: string): string | null {
+  const hit = findBannedEs(text)[0];
+  return hit ? `"${hit.matched}" (${hit.category})` : null;
+}

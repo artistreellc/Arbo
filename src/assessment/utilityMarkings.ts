@@ -91,6 +91,7 @@
 // same thing". This file is that sentence in code.
 
 import { FORBIDDEN_CLEAR } from '../permitting/screening.js';
+import { bannedEsLine } from '../i18n/banList.js';
 
 /**
  * APWA uniform colour code. Kept as the vocabulary because it is what is
@@ -337,6 +338,11 @@ export function assertNeverClearToDig(s: DigStanding): void {
     }
     if (FORBIDDEN_CLEAR.test(line)) {
       throw new Error(`dig standing implied a "clear" — forbidden (§6B.3): ${line}`);
+    }
+    // R27 (D110): banned in Spanish as in English — "ya puede excavar", "zona despejada"… (src/i18n/banList.ts).
+    const es = bannedEsLine(line);
+    if (es) {
+      throw new Error(`dig standing used a word banned in Spanish — forbidden (§6B.3, R27 #4): ${es}`);
     }
   }
   for (const m of s.markings) {

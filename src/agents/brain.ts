@@ -25,6 +25,7 @@ import type { Guardrails } from '../config/guardrails.schema.js';
 import { loadGuardrails } from '../config/loadConfig.js';
 import { guardReply } from '../reception/outputGuard.js';
 import { FORBIDDEN_CLEAR } from '../permitting/screening.js';
+import { findBannedEs } from '../i18n/banList.js';
 import { redact } from '../ops/inboxWatch.js';
 import { env } from '../env.js';
 import { RULEBOOK_INPUTS, type AgentReport } from './sections.js';
@@ -131,6 +132,9 @@ export function createBrain(client?: BrainTextClient | null, guardrails: () => G
         return fallback(r, BRAIN_BLOCKED, `brain line blocked by guard (${guard.violations.map((v) => v.rule).join(',')}) — deterministic summary`);
       }
       if (FORBIDDEN_CLEAR.test(raw)) return fallback(r, BRAIN_BLOCKED, 'brain line used clearance language — deterministic summary');
+      // R27 (D110): banned in Spanish as in English (src/i18n/banList.ts). The note names the category, never the line.
+      const es = findBannedEs(raw)[0];
+      if (es) return fallback(r, BRAIN_BLOCKED, `brain line used a phrase banned in Spanish (${es.category}) — deterministic summary`);
       if (redact(raw) !== raw) return fallback(r, BRAIN_BLOCKED, 'brain line carried a customer-shaped string — deterministic summary');
       return { agentId: r.agentId, text: raw.slice(0, MAX_CHARS), source: 'opus' };
     },
